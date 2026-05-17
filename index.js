@@ -208,7 +208,7 @@ const defaultGenericStoryGenerationPrompt = `# 通用旧正文补课摘要
 严格要求：
 - 只总结已经发生的内容，不续写，不扮演角色，不新增事件。
 - 批次编号、楼层范围、标题必须使用插件给出的元数据，不要自行推断章节号。
-- 可以不用 <bakemono> 标签，也不用 HTML；用清晰的 Markdown 输出即可。
+- 用清晰的结构化 Markdown 输出。
 - 如果某项信息无法从原文判断，写“未知”或“无”，不要编造。
 
 建议标题：{{suggestedTitle}}
@@ -224,6 +224,7 @@ const defaultGenericStoryGenerationPrompt = `# 通用旧正文补课摘要
 
 ## 事件经过
 - 按时间顺序整理本批发生的关键事件，保留起因、过程、结果。
+- 不要只写一句总括；重要动作、选择、冲突、转场、后果都要落到具体描述。
 
 ## 角色与关系
 - 记录本批涉及角色的状态、动机、关系变化。
@@ -238,48 +239,69 @@ const defaultGenericStoryGenerationPrompt = `# 通用旧正文补课摘要
 {{blocks}}`;
 
 const defaultGenericStageGenerationPrompt = `# 通用阶段总结
-请把以下摘要片段合并为一份阶段总结。只总结输入内容，不续写，不新增事件。
+请把以下摘要片段合并为一份可长期使用的阶段总结。只总结输入内容，不续写，不新增事件，不替角色做新的决定。
 
-输出 Markdown，不需要 <bakemono> 标签。
+要求：
+- 输出清晰的结构化 Markdown。
+- 按原始时间顺序整理，不要因为后文更醒目就打乱前后因果。
+- 细节保留优先级：影响后续剧情的事件 > 角色关系变化 > 任务/承诺/约定 > 伏笔和未解事项 > 代表性台词。
+- 不要过度压缩成抽象主题；需要让未来模型仅凭这份总结就能接上剧情。
 
 # 阶段总结：自定义标题
 
 ## 覆盖范围
 - 说明本阶段大致覆盖哪些批次 / 楼层 / 时间段。
 
-## 剧情脉络
-- 按时间顺序概括本阶段的起、承、转、合。
+## 分段剧情脉络
+- 按输入片段顺序分段概括，每段写清楚“发生了什么、为什么发生、造成什么变化”。
+- 如果某个片段信息量很大，可以拆成多个小点，不要为了简短而丢掉关键细节。
 
-## 角色变化
-- 记录核心角色的心态、立场、关系变化。
+## 角色状态与关系变化
+- 逐个记录核心角色的目标、情绪、立场、身体/能力/身份状态变化。
+- 记录角色之间的信任、误会、亲密、敌意、交易、承诺等变化。
 
-## 关键场面
-- 挑出最关键的 3 到 5 个场面或对话。
+## 关键场面与话语
+- 挑出最关键的场面、对话或心理活动，说明它为什么会影响后续。
 
-## 未解事项
-- 汇总仍未解决的伏笔、任务、秘密和风险。
+## 任务、伏笔与未解事项
+- 汇总仍未解决的任务、秘密、风险、承诺、道具、地点线索和关系张力。
+
+## 后续接续提示
+- 用简短条目写出下一阶段继续创作时最不能忘的事实。
 
 需要合并的摘要片段：
 {{blocks}}`;
 
 const defaultGenericEpicGenerationPrompt = `# 通用全局总结
-请把以下阶段总结或摘要片段整理成一份全局回顾。只总结输入内容，不续写，不新增事件。
+请把以下阶段总结或摘要片段整理成一份全局回顾。只总结输入内容，不续写，不新增事件，不替角色做新的决定。
 
-输出 Markdown，不需要 <bakemono> 标签。
+要求：
+- 输出清晰的结构化 Markdown。
+- 先按阶段还原时间线，再提炼转折和长期线索。
+- 不要只写宏观评价；必须保留足够多的事件细节、角色关系细节、未解线索，供后续继续剧情使用。
+- 信息冲突时，以输入中较新的阶段总结为准，并在相关条目里标注“此前/后来”的变化。
 
 # 全局回顾：自定义标题
 
-## 时间线总览
+## 分阶段时间线
 - 按阶段顺序整理到目前为止发生过的主要事件。
+- 每个阶段都写清关键事件链、直接后果，以及它如何影响下一阶段。
 
 ## 决定性转折
-- 选出 1 到 3 个真正改变走向的关键时刻，并说明影响。
+- 选出真正改变剧情走向、角色关系或世界状态的关键时刻，并说明影响。
 
-## 核心角色弧光
-- 对比核心角色最初状态与当前状态。
+## 核心角色弧光与关系网
+- 对比核心角色最初状态、重要转折点和当前状态。
+- 汇总重要关系的变化：信任、隐瞒、依赖、对立、亏欠、承诺。
 
 ## 长期线索
 - 汇总仍然重要的伏笔、秘密、目标、危险和关系张力。
+
+## 当前局面
+- 总结当前时间点的地点、阵营/关系状态、正在进行的目标、迫近风险。
+
+## 后续创作备忘
+- 列出未来回复最应遵守的连续性事实，避免遗忘或前后矛盾。
 
 需要整理的内容：
 {{blocks}}`;
@@ -493,6 +515,11 @@ function ensureState() {
         && !String(state.generationPrompts.story || '').includes('{{suggestedTitle}}')
     ) {
         state.generationPrompts.story = defaultStoryGenerationPrompt;
+    }
+    if (String(state.generationPrompts.story || '').includes('可以不用 <bakemono> 标签，也不用 HTML')) {
+        state.generationPrompts.story = defaultGenericStoryGenerationPrompt;
+        state.generationPrompts.stage = defaultGenericStageGenerationPrompt;
+        state.generationPrompts.epic = defaultGenericEpicGenerationPrompt;
     }
     for (const key of ['scanRules', 'classificationRules', 'previewLayouts']) {
         if (!state[key]) {
@@ -927,7 +954,7 @@ function scanBakemonoBlocks({ persist = true } = {}) {
         });
     });
 
-    state.blocks = mergeBlocks(state.blocks, scanned);
+    state.blocks = mergeBlocks(state.blocks, scanned, state, { replaceScanned: true });
     for (const block of scanned) {
         const previous = previousBlocks.find(item => item.content === block.content && item.hash !== block.hash);
         if (previous?.hash && state.coveredBlockHashes.includes(previous.hash)) {
@@ -999,7 +1026,18 @@ function sortSummariesBySource(summaries = []) {
     ));
 }
 
-function mergeBlocks(existing, scanned) {
+function isPersistentMemoryBlock(block, state = ensureState()) {
+    const summaryHashes = new Set([
+        ...state.storySummaries,
+        ...state.stageSummaries,
+        ...state.epicSummaries,
+    ].map(summary => summary.hash));
+    return !!block?.isGeneratedSummary
+        || summaryHashes.has(block?.hash)
+        || (Number(block?.messageId) >= Number.MAX_SAFE_INTEGER && ((block?.sourceHashes || []).length || (block?.sourceStageHashes || []).length));
+}
+
+function mergeBlocks(existing, scanned, state = ensureState(), options = {}) {
     const scannedByHash = new Map(scanned.map(block => [block.hash, block]));
     const scannedByLegacyContent = new Map(scanned.map(block => [block.content, block]));
     const merged = [];
@@ -1011,7 +1049,7 @@ function mergeBlocks(existing, scanned) {
             merged.push({ ...block, ...fresh });
             seen.add(block.hash);
             seen.add(fresh.hash);
-        } else {
+        } else if (!options.replaceScanned || isPersistentMemoryBlock(block, state)) {
             merged.push(block);
             seen.add(block.hash);
         }
