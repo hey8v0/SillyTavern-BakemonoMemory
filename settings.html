@@ -133,6 +133,50 @@
         </div>
 
         <details class="bakemono-memory-advanced-options">
+          <summary><i class="fa-solid fa-filter"></i><span>生成范围</span></summary>
+          <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
+            <div class="bakemono-memory-card-panel">
+              <h4><i class="fa-solid fa-layer-group"></i> 阶段总结读取哪些摘要</h4>
+              <label class="bakemono-memory-field">
+                <span>范围</span>
+                <select id="bakemono-memory-stage-target-mode" class="text_pole">
+                  <option value="all">全部未总结摘要</option>
+                  <option value="oldest">最早 N 个摘要</option>
+                  <option value="range">指定来源楼层</option>
+                </select>
+              </label>
+              <label class="bakemono-memory-field">
+                <span>N 个摘要</span>
+                <input id="bakemono-memory-stage-target-count" class="text_pole" type="number" min="1" step="1">
+              </label>
+              <label class="bakemono-memory-field">
+                <span>楼层范围</span>
+                <input id="bakemono-memory-stage-target-range" class="text_pole" type="text" placeholder="例如 1-50, 80-120">
+              </label>
+            </div>
+            <div class="bakemono-memory-card-panel">
+              <h4><i class="fa-solid fa-timeline"></i> 史诗简史读取哪些总结</h4>
+              <label class="bakemono-memory-field">
+                <span>范围</span>
+                <select id="bakemono-memory-epic-target-mode" class="text_pole">
+                  <option value="all">全部未收束总结</option>
+                  <option value="oldest">最早 N 个总结</option>
+                  <option value="range">指定来源楼层</option>
+                </select>
+              </label>
+              <label class="bakemono-memory-field">
+                <span>N 个总结</span>
+                <input id="bakemono-memory-epic-target-count" class="text_pole" type="number" min="1" step="1">
+              </label>
+              <label class="bakemono-memory-field">
+                <span>楼层范围</span>
+                <input id="bakemono-memory-epic-target-range" class="text_pole" type="text" placeholder="例如 1-300">
+              </label>
+            </div>
+          </div>
+        </details>
+
+        <details class="bakemono-memory-advanced-options">
           <summary><i class="fa-solid fa-gear"></i><span>高级设置</span></summary>
         <div class="bakemono-memory-options">
           <label class="bakemono-memory-field">
@@ -336,6 +380,7 @@
               <select id="bakemono-memory-auto-mode" class="text_pole">
                 <option value="remind">仅提醒</option>
                 <option value="draft">自动生成草稿</option>
+                <option value="commit_hide">自动保存并隐藏已覆盖楼层</option>
               </select>
             </label>
             <label class="bakemono-memory-field">
@@ -395,7 +440,7 @@
 
         <div class="bakemono-memory-prompt-hint">
           <i class="fa-solid fa-shield-heart"></i>
-          <span>自动模式只会生成草稿，不会自动写入长期记忆。自定义 API Key 会保存在当前聊天元数据里，建议只填你本机可用的密钥。</span>
+          <span>“自动保存并隐藏”会先生成阶段总结草稿，再自动写入长期记忆，并隐藏已覆盖楼层但保留最近 2 楼。自定义 API Key 会保存在当前聊天元数据里。</span>
         </div>
 
         <div class="bakemono-memory-inline-actions">

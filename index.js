@@ -62,6 +62,12 @@ const stageSourceModes = {
     AUTO: 'auto',
 };
 
+const targetSelectionModes = {
+    ALL: 'all',
+    OLDEST: 'oldest',
+    RANGE: 'range',
+};
+
 const defaultInjectionTemplate = `【剧情剪辑台：长期剧情记忆】
 以下内容是已经压缩整理过的剧情记忆。请把它当作已发生事实与长期线索参考，不要复述给用户，也不要替代当前回合正文。
 
@@ -423,6 +429,19 @@ const defaultAutomation = {
     lastAutoAt: null,
 };
 
+const defaultGenerationTargets = {
+    stage: {
+        mode: targetSelectionModes.ALL,
+        count: 20,
+        range: '',
+    },
+    epic: {
+        mode: targetSelectionModes.ALL,
+        count: 5,
+        range: '',
+    },
+};
+
 const defaultState = {
     version: 1,
     blocks: [],
@@ -454,6 +473,7 @@ const defaultState = {
         epic: defaultEpicGenerationPrompt,
     },
     automation: defaultAutomation,
+    generationTargets: defaultGenerationTargets,
     scanRules: defaultScanRules,
     classificationRules: defaultClassificationRules,
     previewLayouts: defaultPreviewLayouts,
@@ -589,7 +609,12 @@ function ensureState() {
     state.history = Array.isArray(state.history) ? state.history : [];
     state.taskQueue = Array.isArray(state.taskQueue) ? state.taskQueue : [];
     state.scanPreview = Array.isArray(state.scanPreview) ? state.scanPreview : [];
-    state.generatedMemory = String(state.generatedMemory || state.injection?.content || '');
+    const rawGeneratedMemory = String(state.generatedMemory || state.injection?.content || '');
+    state.generatedMemory = normalizeInjectionMemoryBody(rawGeneratedMemory, state.injection?.template);
+    if (rawGeneratedMemory.trim() && rawGeneratedMemory.trim() !== state.generatedMemory) {
+        state.injection.content = renderInjectionContent(state);
+        saveState();
+    }
     state.coveredBlockHashes = Array.isArray(state.coveredBlockHashes) ? state.coveredBlockHashes : [];
     state.coveredStageHashes = Array.isArray(state.coveredStageHashes) ? state.coveredStageHashes : [];
     state.hiddenMessageIds = Array.isArray(state.hiddenMessageIds) ? state.hiddenMessageIds : [];
@@ -620,8 +645,80 @@ function ensureState() {
             state.automation.customApi[key] = structuredClone(value);
         }
     }
+    state.generationTargets = state.generationTargets && typeof state.generationTargets === 'object'
+        ? state.generationTargets
+        : structuredClone(defaultGenerationTargets);
+    for (const [kind, defaults] of Object.entries(defaultGenerationTargets)) {
+        state.generationTargets[kind] = state.generationTargets[kind] && typeof state.generationTargets[kind] === 'object'
+            ? state.generationTargets[kind]
+            : structuredClone(defaults);
+        for (const [key, value] of Object.entries(defaults)) {
+            if (state.generationTargets[kind][key] === undefined) {
+                state.generationTargets[kind][key] = structuredClone(value);
+            }
+        }
+    }
 
     return state;
+}
+
+function normalizeLineEndings(value) {
+    return String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+function stripLeadingText(value, prefix) {
+    let text = normalizeLineEndings(value).trim();
+    const normalizedPrefix = normalizeLineEndings(prefix).trim();
+    if (!normalizedPrefix) {
+        return text;
+    }
+
+    while (text.startsWith(normalizedPrefix)) {
+        text = text.slice(normalizedPrefix.length).trim();
+    }
+    return text;
+}
+
+function stripTrailingText(value, suffix) {
+    let text = normalizeLineEndings(value).trim();
+    const normalizedSuffix = normalizeLineEndings(suffix).trim();
+    if (!normalizedSuffix) {
+        return text;
+    }
+
+    while (text.endsWith(normalizedSuffix)) {
+        text = text.slice(0, -normalizedSuffix.length).trim();
+    }
+    return text;
+}
+
+function normalizeInjectionMemoryBody(value, template = defaultInjectionTemplate) {
+    let text = normalizeLineEndings(value).trim();
+    if (!text) {
+        return '';
+    }
+
+    const templates = unique([template, defaultInjectionTemplate].map(item => normalizeLineEndings(item || '')).filter(Boolean));
+    for (const currentTemplate of templates) {
+        if (currentTemplate.includes('{{memory}}')) {
+            const [prefix, ...rest] = currentTemplate.split('{{memory}}');
+            text = stripLeadingText(text, prefix);
+            text = stripTrailingText(text, rest.join('{{memory}}'));
+        } else {
+            text = stripLeadingText(text, currentTemplate);
+        }
+    }
+
+    return text.trim();
+}
+
+function confirmDanger(title, lines = [], confirmText = '确认继续吗？') {
+    return window.confirm([
+        title,
+        ...lines.filter(Boolean),
+        '',
+        confirmText,
+    ].join('\n'));
 }
 
 function saveState() {
@@ -1274,6 +1371,99 @@ function getUnsummarizedStageBlocks() {
     ]).filter(block => !covered.has(block.hash));
 }
 
+function getSortedTargetBlocks(blocks = []) {
+    return [...blocks].sort((a, b) => (getBlockSortKey(a) - getBlockSortKey(b)) || (a.blockIndex - b.blockIndex));
+}
+
+function parseLooseNumberRange(value) {
+    const ids = new Set();
+    const invalid = [];
+    for (const rawPart of String(value || '').split(/[,，\s]+/).map(item => item.trim()).filter(Boolean)) {
+        const match = rawPart.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+        if (!match) {
+            invalid.push(rawPart);
+            continue;
+        }
+        let start = Number(match[1]);
+        let end = Number(match[2] || match[1]);
+        if (start > end) {
+            [start, end] = [end, start];
+        }
+        for (let id = Math.max(0, start); id <= end; id++) {
+            ids.add(id);
+        }
+    }
+    return { ids, invalid };
+}
+
+function blockTouchesRange(block, ids) {
+    const sourceIds = getFiniteMessageIds([block?.messageId, ...(block?.sourceMessageIds || [])]);
+    return sourceIds.some(id => ids.has(id));
+}
+
+function selectGenerationTargets(blocks = [], config = {}) {
+    const sorted = getSortedTargetBlocks(blocks);
+    const mode = Object.values(targetSelectionModes).includes(config.mode) ? config.mode : targetSelectionModes.ALL;
+    if (mode === targetSelectionModes.OLDEST) {
+        const count = Math.max(1, Number(config.count || 1));
+        return sorted.slice(0, count);
+    }
+    if (mode === targetSelectionModes.RANGE) {
+        const { ids } = parseLooseNumberRange(config.range || '');
+        if (!ids.size) {
+            return sorted;
+        }
+        return sorted.filter(block => blockTouchesRange(block, ids));
+    }
+    return sorted;
+}
+
+function getAutoStageTargets(targets = []) {
+    const state = ensureState();
+    const sorted = getSortedTargetBlocks(targets);
+    if (state.automation.triggerType === 'chars') {
+        const limit = Math.max(100, Number(state.automation.charInterval || defaultAutomation.charInterval));
+        const selected = [];
+        let totalLength = 0;
+        for (const block of sorted) {
+            selected.push(block);
+            totalLength += String(block.content || '').length;
+            if (totalLength >= limit) {
+                break;
+            }
+        }
+        return selected.length ? selected : sorted.slice(0, 1);
+    }
+    const count = Math.max(1, Number(state.automation.floorInterval || defaultAutomation.floorInterval));
+    return sorted.slice(0, count);
+}
+
+function readGenerationTargetSettings() {
+    const state = ensureState();
+    const readKind = kind => ({
+        mode: String($(`#bakemono-memory-${kind}-target-mode`).val() || state.generationTargets[kind]?.mode || defaultGenerationTargets[kind].mode),
+        count: Math.max(1, Number($(`#bakemono-memory-${kind}-target-count`).val() || state.generationTargets[kind]?.count || defaultGenerationTargets[kind].count)),
+        range: String($(`#bakemono-memory-${kind}-target-range`).val() || '').trim(),
+    });
+    state.generationTargets = {
+        stage: readKind('stage'),
+        epic: readKind('epic'),
+    };
+    saveState();
+    return state.generationTargets;
+}
+
+function getTargetSelectionLabel(kind, selectedLength, totalLength) {
+    const state = ensureState();
+    const config = state.generationTargets?.[kind] || defaultGenerationTargets[kind];
+    const modeLabels = {
+        [targetSelectionModes.ALL]: '全部',
+        [targetSelectionModes.OLDEST]: `最早 ${config.count || defaultGenerationTargets[kind].count} 个`,
+        [targetSelectionModes.RANGE]: `楼层 ${config.range || '未填写'}`,
+    };
+    return `${modeLabels[config.mode] || '全部'}：${selectedLength}/${totalLength} 个`;
+}
+
 function summaryToBlock(summary) {
     const sourceSortKey = getSummarySortKey(summary);
     return {
@@ -1452,6 +1642,8 @@ async function processTaskQueue() {
     isQueueRunning = true;
     setBusy(true);
     const toast = toastr.info('正在处理总结任务队列...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
+    let createdDrafts = 0;
+    let autoCommitted = 0;
     try {
         while (true) {
             const task = state.taskQueue.find(item => item.status === 'queued');
@@ -1469,7 +1661,7 @@ async function processTaskQueue() {
                     prompt: task.prompt,
                     systemPrompt: task.systemPrompt,
                 }));
-                createDraft({
+                const draft = createDraft({
                     kind: task.kind,
                     content: result,
                     sourceHashes: task.sourceHashes || [],
@@ -1479,6 +1671,19 @@ async function processTaskQueue() {
                     trigger: task.trigger || 'manual',
                     metadata: task.metadata || {},
                 });
+                if (task.trigger === 'auto' && state.automation.mode === 'commit_hide' && task.kind === blockTypes.STAGE) {
+                    commitDraft(draft.id, draft.content, { silent: true });
+                    autoCommitted += 1;
+                    task.metadata = {
+                        ...(task.metadata || {}),
+                        autoCommitted: true,
+                        autoHiddenPreserveRecent: 2,
+                    };
+                    await hideCoveredMessages({ confirm: false, preserveRecent: 2, silent: true });
+                    toastr.info('自动阶段总结已保存进长期记忆，并已隐藏被覆盖楼层（保留最近 2 楼）。', '剧情剪辑台');
+                } else {
+                    createdDrafts += 1;
+                }
                 task.status = 'done';
                 task.error = '';
                 task.updatedAt = new Date().toISOString();
@@ -1494,8 +1699,15 @@ async function processTaskQueue() {
             saveState();
             renderAll();
         }
-        switchWorkbenchTab('drafts');
-        renderAll('任务队列处理完成，生成结果已进入草稿箱。');
+        if (createdDrafts) {
+            switchWorkbenchTab('drafts');
+        }
+        const message = autoCommitted && !createdDrafts
+            ? `任务队列处理完成，已自动保存 ${autoCommitted} 个阶段总结并收纳旧楼层。`
+            : autoCommitted
+                ? `任务队列处理完成，已自动保存 ${autoCommitted} 个阶段总结，另有 ${createdDrafts} 个草稿待确认。`
+                : '任务队列处理完成，生成结果已进入草稿箱。';
+        renderAll(message);
     } finally {
         toastr.clear(toast);
         isQueueRunning = false;
@@ -1520,6 +1732,14 @@ function retryQueueTask(taskId) {
 
 function removeQueueTask(taskId) {
     const state = ensureState();
+    const task = state.taskQueue.find(item => item.id === taskId);
+    const confirmed = confirmDanger(
+        `移除任务「${task?.label || '未命名任务'}」？`,
+        ['任务移除后不会删除已保存摘要，但这个队列项无法从队列中恢复。'],
+    );
+    if (!confirmed) {
+        return;
+    }
     state.taskQueue = state.taskQueue.filter(task => task.id !== taskId);
     saveState();
     renderAll('任务已从队列移除。');
@@ -1527,6 +1747,18 @@ function removeQueueTask(taskId) {
 
 function clearFinishedQueueTasks() {
     const state = ensureState();
+    const count = state.taskQueue.filter(task => ['done', 'failed'].includes(task.status)).length;
+    if (!count) {
+        toastr.info('没有可清理的完成/失败队列记录。');
+        return;
+    }
+    const confirmed = confirmDanger(
+        `清理 ${count} 条完成/失败队列记录？`,
+        ['只会清理队列记录，不会删除已保存摘要。'],
+    );
+    if (!confirmed) {
+        return;
+    }
     state.taskQueue = state.taskQueue.filter(task => !['done', 'failed'].includes(task.status));
     saveState();
     renderAll('已清理完成/失败的队列记录。');
@@ -1555,10 +1787,22 @@ async function generateStageDraft(options = {}) {
     }
 
     scanBakemonoBlocks({ persist: false });
-    const targets = getUnsummarizedStoryBlocks();
-    if (!targets.length) {
+    const state = ensureState();
+    if (!options.automatic) {
+        readGenerationTargetSettings();
+    }
+    const allTargets = getUnsummarizedStoryBlocks();
+    const targets = options.automatic
+        ? getAutoStageTargets(allTargets)
+        : selectGenerationTargets(allTargets, state.generationTargets.stage);
+    if (!allTargets.length) {
         renderAll('没有新的剧情摘要需要生成阶段总结。');
         toastr.info('没有新的剧情摘要需要生成阶段总结。');
+        return;
+    }
+    if (!targets.length) {
+        renderAll('当前生成范围没有匹配到可总结摘要。');
+        toastr.warning('当前生成范围没有匹配到可总结摘要。');
         return;
     }
 
@@ -1578,6 +1822,9 @@ async function generateStageDraft(options = {}) {
             sourceEnd: getSourceEnd(sourceMessageIds),
             sourceSortKey: getSourceStart(sourceMessageIds),
             sourceMode: getStageSourceMode(),
+            selectionLabel: options.automatic
+                ? `自动取最早一批：${targets.length}/${allTargets.length} 个`
+                : getTargetSelectionLabel('stage', targets.length, allTargets.length),
         },
     });
     return;
@@ -1610,13 +1857,23 @@ async function generateEpicDraft(options = {}) {
 
     scanBakemonoBlocks({ persist: false });
     const state = ensureState();
-    const stageTargets = getUnsummarizedStageBlocks();
-    const storyFallback = getStoryMaterialBlocks().filter(block => !state.coveredBlockHashes.includes(block.hash));
+    if (!options.automatic) {
+        readGenerationTargetSettings();
+    }
+    const allStageTargets = getUnsummarizedStageBlocks();
+    const allStoryFallback = getStoryMaterialBlocks().filter(block => !state.coveredBlockHashes.includes(block.hash));
+    const stageTargets = selectGenerationTargets(allStageTargets, state.generationTargets.epic);
+    const storyFallback = selectGenerationTargets(allStoryFallback, state.generationTargets.epic);
     const targets = stageTargets.length ? stageTargets : storyFallback;
 
-    if (!targets.length) {
+    if (!allStageTargets.length && !allStoryFallback.length) {
         renderAll('没有可用于生成史诗简史的总结内容。');
         toastr.info('没有可用于生成史诗简史的总结内容。');
+        return;
+    }
+    if (!targets.length) {
+        renderAll('当前生成范围没有匹配到可用于史诗简史的内容。');
+        toastr.warning('当前生成范围没有匹配到可用于史诗简史的内容。');
         return;
     }
 
@@ -1625,8 +1882,9 @@ async function generateEpicDraft(options = {}) {
         const confirmed = window.confirm([
             '即将生成【史诗简史】草稿。',
             '',
-            `阶段总结来源：${stageTargets.length} 个`,
-            `普通摘要 fallback：${storyFallback.length} 个`,
+            `阶段总结来源：${stageTargets.length}/${allStageTargets.length} 个`,
+            `普通摘要 fallback：${storyFallback.length}/${allStoryFallback.length} 个`,
+            `当前范围：${getTargetSelectionLabel('epic', targets.length, stageTargets.length ? allStageTargets.length : allStoryFallback.length)}`,
             `上次史诗生成：${latestEpicAt ? new Date(latestEpicAt).toLocaleString() : '尚未生成'}`,
             '',
             '这只会生成待确认草稿，确认保存后才会写入长期记忆。继续吗？',
@@ -1652,6 +1910,7 @@ async function generateEpicDraft(options = {}) {
             sourceStart: getSourceStart(targets.map(block => block.messageId)),
             sourceEnd: getSourceEnd(targets.map(block => block.messageId)),
             sourceSortKey: getSourceStart(targets.map(block => block.messageId)),
+            selectionLabel: getTargetSelectionLabel('epic', targets.length, stageTargets.length ? allStageTargets.length : allStoryFallback.length),
         },
     });
     return;
@@ -1849,7 +2108,12 @@ async function maybeRunAutoSummary() {
 
     state.automation.lastSignature = signature;
     saveState();
-    if (state.automation.mode === 'draft') {
+    if (state.automation.mode === 'draft' || state.automation.mode === 'commit_hide') {
+        const modeLabel = state.automation.mode === 'commit_hide'
+            ? '自动总结：正在生成草稿，完成后会自动保存长期记忆并隐藏已覆盖楼层。'
+            : '自动总结：正在生成阶段总结草稿。';
+        toastr.info(modeLabel, '剧情剪辑台');
+        renderAll(modeLabel);
         await generateStageDraft({ automatic: true });
     } else {
         renderAll(`自动总结提醒：已有 ${targets.length} 个未总结片段。`);
@@ -1961,7 +2225,7 @@ function getDefaultDraftTitle(kind, state = ensureState()) {
     return `剧集终了草稿 ${state.stageSummaries.length + 1}`;
 }
 
-function commitDraft(draftId, editedContent = null) {
+function commitDraft(draftId, editedContent = null, options = {}) {
     const state = ensureState();
     const draftIndex = state.drafts.findIndex(draft => draft.id === draftId);
     if (draftIndex < 0) {
@@ -2038,8 +2302,11 @@ function commitDraft(draftId, editedContent = null) {
     });
     updateInjectionFromSummaries();
     saveState();
-    renderAll('草稿已确认保存。');
-    toastr.success('草稿已保存进长期记忆。');
+    if (!options.silent) {
+        renderAll('草稿已确认保存。');
+        toastr.success('草稿已保存进长期记忆。');
+    }
+    return summary;
 }
 
 function getSummaryIndexForKind(kind, state = ensureState()) {
@@ -2054,6 +2321,14 @@ function getSummaryIndexForKind(kind, state = ensureState()) {
 
 function discardDraft(draftId) {
     const state = ensureState();
+    const draft = state.drafts.find(item => item.id === draftId);
+    const confirmed = confirmDanger(
+        `丢弃草稿「${draft?.title || getKindLabel(draft?.kind) || '未命名草稿'}」？`,
+        ['草稿丢弃后不会写入长期记忆，也不能从草稿箱恢复。'],
+    );
+    if (!confirmed) {
+        return;
+    }
     const before = state.drafts.length;
     state.drafts = state.drafts.filter(draft => draft.id !== draftId);
     if (state.drafts.length !== before) {
@@ -2086,11 +2361,19 @@ async function regenerateDraft(draftId) {
 
 function undoLastCommit() {
     const state = ensureState();
-    const commit = state.history.shift();
+    const commit = state.history[0];
     if (!commit) {
         toastr.info('暂无可撤回的保存记录。');
         return;
     }
+    const confirmed = confirmDanger(
+        `撤回上次保存「${commit.summary?.title || getKindLabel(commit.kind)}」？`,
+        ['已保存摘要会从长期记忆中移除，原草稿会放回草稿箱。'],
+    );
+    if (!confirmed) {
+        return;
+    }
+    state.history.shift();
 
     removeSummaryByHash(commit.kind, commit.summaryHash);
     state.blocks = state.blocks.filter(block => block.hash !== commit.summaryHash);
@@ -2325,27 +2608,47 @@ function syncInjection() {
 }
 
 function renderInjectionContent(state = ensureState()) {
-    const memory = String(state.generatedMemory || '').trim();
     const template = String(state.injection.template || defaultInjectionTemplate);
+    const memory = normalizeInjectionMemoryBody(state.generatedMemory || '', template);
     if (!memory) {
         return '';
     }
     return template.includes('{{memory}}') ? template.replaceAll('{{memory}}', memory).trim() : `${template.trim()}\n\n${memory}`.trim();
 }
 
-async function hideCoveredMessages() {
+async function hideCoveredMessages(options = {}) {
     scanBakemonoBlocks({ persist: false });
     const state = ensureState();
     const covered = new Set(state.coveredBlockHashes);
     const summaryMessageIds = unique(state.blocks
         .filter(block => block.type === blockTypes.STORY && covered.has(block.hash) && Number.isFinite(block.messageId))
         .flatMap(block => getFiniteMessageIds([block.messageId, ...(block.sourceMessageIds || [])])));
-    const messageIds = collectHideMessageIds(summaryMessageIds);
+    const preserveRecent = Math.max(0, Number(options.preserveRecent || 0));
+    const maxHideId = (chat?.length || 0) - preserveRecent - 1;
+    const messageIds = collectHideMessageIds(summaryMessageIds)
+        .filter(messageId => preserveRecent <= 0 || messageId <= maxHideId);
 
     if (!messageIds.length) {
-        renderAll('没有可隐藏的已总结楼层。');
-        toastr.info('没有可隐藏的已总结楼层。');
+        if (!options.silent) {
+            renderAll('没有可隐藏的已总结楼层。');
+            toastr.info('没有可隐藏的已总结楼层。');
+        }
         return;
+    }
+
+    if (options.confirm !== false) {
+        const confirmed = confirmDanger(
+            `隐藏 ${messageIds.length} 个已总结楼层？`,
+            [
+                '这些楼层不会被删除，可以用“恢复插件隐藏楼层”找回。',
+                '如果阶段总结不完整，隐藏后可能影响后续上下文。',
+                preserveRecent ? `本次会保留最近 ${preserveRecent} 楼不隐藏。` : '',
+            ],
+        );
+        if (!confirmed) {
+            renderAll('已取消隐藏楼层。');
+            return;
+        }
     }
 
     for (const messageId of messageIds) {
@@ -2353,10 +2656,14 @@ async function hideCoveredMessages() {
     }
 
     state.hiddenMessageIds = unique([...state.hiddenMessageIds, ...messageIds]);
+    await saveChatConditional();
     saveState();
     scanBakemonoBlocks({ persist: false });
-    renderAll(`已隐藏 ${messageIds.length} 个已总结楼层。`);
-    toastr.success(`已隐藏 ${messageIds.length} 个楼层。`);
+    if (!options.silent) {
+        renderAll(`已隐藏 ${messageIds.length} 个已总结楼层。`);
+        toastr.success(`已隐藏 ${messageIds.length} 个楼层。`);
+    }
+    return messageIds;
 }
 
 function collectHideMessageIds(summaryMessageIds) {
@@ -2401,6 +2708,15 @@ async function restoreHiddenMessages() {
         saveState();
         renderAll('没有可恢复的隐藏楼层。');
         toastr.info('没有可恢复的隐藏楼层。');
+        return;
+    }
+
+    const confirmed = confirmDanger(
+        `恢复 ${messageIds.length} 个插件隐藏楼层？`,
+        ['恢复后这些楼层会重新进入聊天上下文，可能增加 token。'],
+    );
+    if (!confirmed) {
+        renderAll('已取消恢复隐藏楼层。');
         return;
     }
 
@@ -2628,6 +2944,13 @@ function getWorkflowInfo(state = ensureState()) {
 function applyWorkflowPreset(mode) {
     const state = ensureState();
     const preset = mode === workflowModes.GENERIC ? defaultGenericPromptPreset : defaultPromptPreset;
+    const confirmed = confirmDanger(
+        `切换到「${getWorkflowModeLabel(mode)}」工作流？`,
+        ['这会覆盖当前聊天的扫描规则、分类规则、预览布局和生成提示词。'],
+    );
+    if (!confirmed) {
+        return;
+    }
 
     if (mode === workflowModes.MIXED) {
         state.workflowMode = workflowModes.MIXED;
@@ -2644,6 +2967,7 @@ function applyWorkflowPreset(mode) {
         state.scanRules = { ...structuredClone(defaultScanRules), ...structuredClone(preset.scanRules) };
         state.classificationRules = { ...structuredClone(defaultClassificationRules), ...structuredClone(preset.classificationRules) };
         state.previewLayouts = { ...structuredClone(defaultPreviewLayouts), ...structuredClone(preset.previewLayouts) };
+        state.generationTargets = structuredClone(defaultGenerationTargets);
     }
 
     scanBakemonoBlocks({ persist: false });
@@ -2750,6 +3074,12 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-auto-floor-interval').val(state.automation.floorInterval ?? defaultAutomation.floorInterval);
     $('#bakemono-memory-auto-char-interval').val(state.automation.charInterval ?? defaultAutomation.charInterval);
     $('#bakemono-memory-backfill-batch-size').val(state.automation.backfillBatchSize ?? defaultAutomation.backfillBatchSize);
+    $('#bakemono-memory-stage-target-mode').val(state.generationTargets.stage.mode || defaultGenerationTargets.stage.mode);
+    $('#bakemono-memory-stage-target-count').val(state.generationTargets.stage.count ?? defaultGenerationTargets.stage.count);
+    $('#bakemono-memory-stage-target-range').val(state.generationTargets.stage.range || '');
+    $('#bakemono-memory-epic-target-mode').val(state.generationTargets.epic.mode || defaultGenerationTargets.epic.mode);
+    $('#bakemono-memory-epic-target-count').val(state.generationTargets.epic.count ?? defaultGenerationTargets.epic.count);
+    $('#bakemono-memory-epic-target-range').val(state.generationTargets.epic.range || '');
     $('#bakemono-memory-api-provider').val(state.automation.apiProvider || defaultAutomation.apiProvider);
     $('#bakemono-memory-custom-base-url').val(state.automation.customApi?.baseUrl || '');
     $('#bakemono-memory-custom-api-key').val(state.automation.customApi?.apiKey || '');
@@ -3199,6 +3529,7 @@ function getCurrentPromptPresetPayload(name = '') {
         workflowMode: state.workflowMode || workflowModes.BAKEMONO,
         stageSourceMode: getStageSourceMode(state),
         outputMode: state.outputMode || 'bakemono',
+        generationTargets: structuredClone(state.generationTargets || defaultGenerationTargets),
         automation: {
             ...structuredClone(state.automation),
             lastSignature: '',
@@ -3232,6 +3563,7 @@ function normalizeImportedPreset(value) {
         workflowMode: Object.values(workflowModes).includes(preset.workflowMode) ? preset.workflowMode : workflowModes.BAKEMONO,
         stageSourceMode: Object.values(stageSourceModes).includes(preset.stageSourceMode) ? preset.stageSourceMode : stageSourceModes.SUMMARIES,
         outputMode: ['bakemono', 'plain', 'custom'].includes(preset.outputMode) ? preset.outputMode : 'bakemono',
+        generationTargets: preset.generationTargets && typeof preset.generationTargets === 'object' ? preset.generationTargets : null,
         automation: preset.automation && typeof preset.automation === 'object' ? preset.automation : null,
         createdAt: preset.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -3457,8 +3789,8 @@ function bindSettingsEvents() {
     });
     $('#bakemono-memory-apply-injection').off('click').on('click', () => {
         const state = ensureState();
-        state.generatedMemory = String($('#bakemono-memory-source-content').val() || '').trim();
         state.injection.template = String($('#bakemono-memory-injection-template').val() || defaultInjectionTemplate);
+        state.generatedMemory = normalizeInjectionMemoryBody($('#bakemono-memory-source-content').val() || '', state.injection.template);
         syncInjection();
         saveState();
         renderAll('注入内容已应用。');
@@ -3471,6 +3803,13 @@ function bindSettingsEvents() {
         toastr.success('注入内容已复制。');
     });
     $('#bakemono-memory-reset-template').off('click').on('click', () => {
+        const confirmed = confirmDanger(
+            '恢复默认注入模板？',
+            ['当前注入模板会被默认模板覆盖，记忆正文会保留。'],
+        );
+        if (!confirmed) {
+            return;
+        }
         const state = ensureState();
         state.injection.template = defaultInjectionTemplate;
         syncInjection();
@@ -3478,6 +3817,13 @@ function bindSettingsEvents() {
         renderAll('注入模板已恢复默认。');
     });
     $('#bakemono-memory-clear-injection').off('click').on('click', () => {
+        const confirmed = confirmDanger(
+            '清空记忆正文？',
+            ['这会清空手动编辑的记忆正文；已保存摘要仍在，但当前自定义正文会消失。'],
+        );
+        if (!confirmed) {
+            return;
+        }
         const state = ensureState();
         state.generatedMemory = '';
         syncInjection();
@@ -3494,18 +3840,39 @@ function bindSettingsEvents() {
         toastr.success('生成提示词已应用。');
     });
     $('#bakemono-memory-reset-stage-prompt').off('click').on('click', () => {
+        const confirmed = confirmDanger(
+            '恢复默认阶段总结提示词？',
+            ['当前阶段总结提示词会被默认 Bakemono 模板覆盖。'],
+        );
+        if (!confirmed) {
+            return;
+        }
         const state = ensureState();
         state.generationPrompts.stage = defaultStageGenerationPrompt;
         saveState();
         renderAll('阶段总结提示词已恢复默认。');
     });
     $('#bakemono-memory-reset-epic-prompt').off('click').on('click', () => {
+        const confirmed = confirmDanger(
+            '恢复默认史诗简史提示词？',
+            ['当前史诗简史提示词会被默认 Bakemono 模板覆盖。'],
+        );
+        if (!confirmed) {
+            return;
+        }
         const state = ensureState();
         state.generationPrompts.epic = defaultEpicGenerationPrompt;
         saveState();
         renderAll('史诗简史提示词已恢复默认。');
     });
     $('#bakemono-memory-reset-story-prompt').off('click').on('click', () => {
+        const confirmed = confirmDanger(
+            '恢复默认旧正文补课提示词？',
+            ['当前旧正文补课提示词会被默认 Bakemono 模板覆盖。'],
+        );
+        if (!confirmed) {
+            return;
+        }
         const state = ensureState();
         state.generationPrompts.story = defaultStoryGenerationPrompt;
         saveState();
@@ -3530,10 +3897,16 @@ function bindSettingsEvents() {
                 maxTokens: Number($('#bakemono-memory-custom-max-tokens').val() || defaultAutomation.customApi.maxTokens),
             },
         };
+        readGenerationTargetSettings();
         saveState();
         renderAll('自动总结设置已应用。');
         toastr.success('自动总结设置已应用。');
     });
+    $('#bakemono-memory-stage-target-mode, #bakemono-memory-stage-target-count, #bakemono-memory-stage-target-range, #bakemono-memory-epic-target-mode, #bakemono-memory-epic-target-count, #bakemono-memory-epic-target-range')
+        .off('change input')
+        .on('change input', () => {
+            readGenerationTargetSettings();
+        });
     $('#bakemono-memory-preview-filter').off('input').on('input', () => {
         previewState.pages = { story: 0, stage: 0, epic: 0 };
         renderPreviewSections();
@@ -3555,6 +3928,13 @@ function bindSettingsEvents() {
         const preset = getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
         if (!preset) {
             toastr.warning('没有找到选中的预设。');
+            return;
+        }
+        const confirmed = confirmDanger(
+            `载入预设「${preset.name || '未命名预设'}」？`,
+            ['这会覆盖当前聊天的生成提示词、扫描规则和工作流设置。'],
+        );
+        if (!confirmed) {
             return;
         }
         const state = ensureState();
@@ -3590,6 +3970,12 @@ function bindSettingsEvents() {
             state.stageSourceMode = state.workflowMode === workflowModes.GENERIC ? stageSourceModes.BACKFILL : stageSourceModes.SUMMARIES;
         }
         state.outputMode = ['bakemono', 'plain', 'custom'].includes(preset.outputMode) ? preset.outputMode : (state.workflowMode === workflowModes.GENERIC ? 'plain' : 'bakemono');
+        if (preset.generationTargets) {
+            state.generationTargets = {
+                ...structuredClone(defaultGenerationTargets),
+                ...structuredClone(preset.generationTargets),
+            };
+        }
         if (preset.automation) {
             state.automation = {
                 ...structuredClone(defaultAutomation),
@@ -3620,6 +4006,14 @@ function bindSettingsEvents() {
         const selectedId = getSelectedPromptPresetId();
         if (selectedId === defaultPromptPreset.id) {
             toastr.warning('默认预设不能删除。');
+            return;
+        }
+        const selected = getPromptPresets().find(preset => preset.id === selectedId);
+        const confirmed = confirmDanger(
+            `删除预设「${selected?.name || '未命名预设'}」？`,
+            ['删除后不会影响已保存摘要，但这个预设无法从列表里恢复。'],
+        );
+        if (!confirmed) {
             return;
         }
         extension_settings[STORAGE_KEY].promptPresets = getPromptPresets().filter(preset => preset.id !== selectedId);
@@ -3681,6 +4075,13 @@ function bindSettingsEvents() {
         toastr.success('扫描规则已应用。');
     });
     $('#bakemono-memory-reset-rules').off('click').on('click', () => {
+        const confirmed = confirmDanger(
+            '恢复默认扫描与预览规则？',
+            ['当前扫描标签、排除标签、分类关键词和手账分段规则会被默认值覆盖。'],
+        );
+        if (!confirmed) {
+            return;
+        }
         const state = ensureState();
         state.scanRules = structuredClone(defaultScanRules);
         state.classificationRules = structuredClone(defaultClassificationRules);
