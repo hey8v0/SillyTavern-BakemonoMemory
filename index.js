@@ -157,6 +157,7 @@ const defaultStoryGenerationPrompt = `# 👾旧正文补课摘要模式！
 - 你是“剧情剪辑台”的归档员，只负责把已经发生过的聊天正文压缩成剧情摘要。
 - 禁止续写剧情，禁止补写新台词，禁止加入正文里没有发生的新事件。
 - 只允许根据下面提供的历史聊天内容做总结。
+- 本次补课编号、覆盖楼层和推荐标题由插件提供，必须原样使用，不要自行推断章节号。
 
 # 摘要目标
 把以下旧聊天正文整理成一个可继续用于“阶段总结 / 史诗简史”的剧情摘要块。请尽量保留：
@@ -170,7 +171,7 @@ const defaultStoryGenerationPrompt = `# 👾旧正文补课摘要模式！
 <bakemono>
 <details>
 <summary>📋 剧情摘要</summary>
-【☆『第x章：旧正文补课』★日期-星期-时间★地点/小地点-天气|在场角色☆】
+【☆『{{suggestedTitle}}』★{{sourceRange}}★从旧正文补课中可判断的地点/状态|本批出现角色☆】
 
 ➤ 🎬 【场记打板】（流水账形式记录本批次已经发生的全部事件，每个事件要有清楚的起因、过程和结果；不得升华主题，不得续写）
 - 此处为剧情摘要
@@ -192,7 +193,95 @@ const defaultStoryGenerationPrompt = `# 👾旧正文补课摘要模式！
 
 只输出一个完整的 <bakemono> 块，不要输出正文、解释、寒暄或 Markdown 代码围栏。
 
+## 本批补课元数据
+- 批次：{{batchIndex}} / {{batchTotal}}
+- 覆盖楼层：{{sourceRange}}
+- 推荐标题：{{suggestedTitle}}
+- 如果正文无法判断日期、地点或天气，写“未知”，不要编造。
+
 以下是需要补课压缩的旧聊天正文：
+{{blocks}}`;
+
+const defaultGenericStoryGenerationPrompt = `# 通用旧正文补课摘要
+你是“剧情剪辑台”的归档员。请把下面已经发生过的聊天正文压缩成一份可长期保存、可继续用于后续总结的普通摘要。
+
+严格要求：
+- 只总结已经发生的内容，不续写，不扮演角色，不新增事件。
+- 批次编号、楼层范围、标题必须使用插件给出的元数据，不要自行推断章节号。
+- 可以不用 <bakemono> 标签，也不用 HTML；用清晰的 Markdown 输出即可。
+- 如果某项信息无法从原文判断，写“未知”或“无”，不要编造。
+
+建议标题：{{suggestedTitle}}
+批次：{{batchIndex}} / {{batchTotal}}
+覆盖楼层：{{sourceRange}}
+
+请按以下结构输出：
+# {{suggestedTitle}}
+
+## 范围
+- 批次：{{batchIndex}} / {{batchTotal}}
+- 楼层：{{sourceRange}}
+
+## 事件经过
+- 按时间顺序整理本批发生的关键事件，保留起因、过程、结果。
+
+## 角色与关系
+- 记录本批涉及角色的状态、动机、关系变化。
+
+## 关键话语 / 心理
+- 摘录或概括重要台词、心理活动，不要新增原文没有的内容。
+
+## 伏笔与未解事项
+- 记录仍未解决的任务、秘密、危险、承诺、线索。
+
+以下是需要补课压缩的旧聊天正文：
+{{blocks}}`;
+
+const defaultGenericStageGenerationPrompt = `# 通用阶段总结
+请把以下摘要片段合并为一份阶段总结。只总结输入内容，不续写，不新增事件。
+
+输出 Markdown，不需要 <bakemono> 标签。
+
+# 阶段总结：自定义标题
+
+## 覆盖范围
+- 说明本阶段大致覆盖哪些批次 / 楼层 / 时间段。
+
+## 剧情脉络
+- 按时间顺序概括本阶段的起、承、转、合。
+
+## 角色变化
+- 记录核心角色的心态、立场、关系变化。
+
+## 关键场面
+- 挑出最关键的 3 到 5 个场面或对话。
+
+## 未解事项
+- 汇总仍未解决的伏笔、任务、秘密和风险。
+
+需要合并的摘要片段：
+{{blocks}}`;
+
+const defaultGenericEpicGenerationPrompt = `# 通用全局总结
+请把以下阶段总结或摘要片段整理成一份全局回顾。只总结输入内容，不续写，不新增事件。
+
+输出 Markdown，不需要 <bakemono> 标签。
+
+# 全局回顾：自定义标题
+
+## 时间线总览
+- 按阶段顺序整理到目前为止发生过的主要事件。
+
+## 决定性转折
+- 选出 1 到 3 个真正改变走向的关键时刻，并说明影响。
+
+## 核心角色弧光
+- 对比核心角色最初状态与当前状态。
+
+## 长期线索
+- 汇总仍然重要的伏笔、秘密、目标、危险和关系张力。
+
+需要整理的内容：
 {{blocks}}`;
 
 const defaultPromptPreset = {
@@ -201,6 +290,66 @@ const defaultPromptPreset = {
     story: defaultStoryGenerationPrompt,
     stage: defaultStageGenerationPrompt,
     epic: defaultEpicGenerationPrompt,
+    scanRules: structuredClone(defaultScanRules),
+    classificationRules: structuredClone(defaultClassificationRules),
+    previewLayouts: structuredClone(defaultPreviewLayouts),
+    automation: null,
+    outputMode: 'bakemono',
+    createdAt: 'default',
+    updatedAt: 'default',
+};
+
+const defaultGenericPromptPreset = {
+    id: 'default-generic',
+    name: '通用正文压缩',
+    story: defaultGenericStoryGenerationPrompt,
+    stage: defaultGenericStageGenerationPrompt,
+    epic: defaultGenericEpicGenerationPrompt,
+    scanRules: {
+        mode: 'full',
+        includeTags: '',
+        excludeTags: 'thinking, think, reasoning',
+        fullTextMinLength: 40,
+    },
+    classificationRules: {
+        story: '通用旧正文补课摘要, 事件经过, 角色与关系, 伏笔与未解事项',
+        stage: '通用阶段总结, 阶段总结, 剧情脉络, 角色变化',
+        epic: '通用全局总结, 全局回顾, 时间线总览, 决定性转折',
+    },
+    previewLayouts: {
+        story: `🧭 事件|事件经过|normal
+👥 角色|角色与关系|normal
+💬 话语|关键话语,心理|bubble
+🧩 线索|伏笔与未解事项|tag`,
+        stage: `🧭 脉络|剧情脉络|normal
+👥 变化|角色变化|normal
+🎞️ 场面|关键场面|bubble
+🧩 未解|未解事项|tag`,
+        epic: `🕰️ 时间线|时间线总览|normal
+🔀 转折|决定性转折|tag
+👥 弧光|核心角色弧光|normal
+🧩 线索|长期线索|bubble`,
+    },
+    automation: {
+        enabled: false,
+        mode: 'remind',
+        triggerType: 'floors',
+        floorInterval: 10,
+        charInterval: 12000,
+        summaryKind: 'stage',
+        backfillBatchSize: 50,
+        apiProvider: 'tavern',
+        customApi: {
+            baseUrl: '',
+            apiKey: '',
+            model: '',
+            temperature: 0.7,
+            maxTokens: 3000,
+        },
+        lastSignature: '',
+        lastAutoAt: null,
+    },
+    outputMode: 'plain',
     createdAt: 'default',
     updatedAt: 'default',
 };
@@ -283,14 +432,27 @@ function ensureGlobalSettings() {
         extension_settings[STORAGE_KEY] = {};
     }
     if (!Array.isArray(extension_settings[STORAGE_KEY].promptPresets)) {
-        extension_settings[STORAGE_KEY].promptPresets = [structuredClone(defaultPromptPreset)];
+        extension_settings[STORAGE_KEY].promptPresets = [structuredClone(defaultPromptPreset), structuredClone(defaultGenericPromptPreset)];
     }
     if (!extension_settings[STORAGE_KEY].promptPresets.some(preset => preset.id === defaultPromptPreset.id)) {
         extension_settings[STORAGE_KEY].promptPresets.unshift(structuredClone(defaultPromptPreset));
     }
+    if (!extension_settings[STORAGE_KEY].promptPresets.some(preset => preset.id === defaultGenericPromptPreset.id)) {
+        extension_settings[STORAGE_KEY].promptPresets.push(structuredClone(defaultGenericPromptPreset));
+    }
     for (const preset of extension_settings[STORAGE_KEY].promptPresets) {
         if (preset.story === undefined) {
             preset.story = defaultStoryGenerationPrompt;
+        }
+        if (preset.id === defaultGenericPromptPreset.id) {
+            preset.story = defaultGenericStoryGenerationPrompt;
+            preset.stage = defaultGenericStageGenerationPrompt;
+            preset.epic = defaultGenericEpicGenerationPrompt;
+            preset.scanRules = structuredClone(defaultGenericPromptPreset.scanRules);
+            preset.classificationRules = structuredClone(defaultGenericPromptPreset.classificationRules);
+            preset.previewLayouts = structuredClone(defaultGenericPromptPreset.previewLayouts);
+            preset.automation = structuredClone(defaultGenericPromptPreset.automation);
+            preset.outputMode = defaultGenericPromptPreset.outputMode;
         }
     }
     if (!extension_settings[STORAGE_KEY].selectedPromptPresetId) {
@@ -325,6 +487,13 @@ function ensureState() {
     if (String(state.generationPrompts.story || '').includes('请把以下聊天正文压缩成一个可继续用于后续阶段总结的剧情摘要')) {
         state.generationPrompts.story = defaultStoryGenerationPrompt;
     }
+    if (
+        String(state.generationPrompts.story || '').includes('旧正文补课摘要模式')
+        && String(state.generationPrompts.story || '').includes('第x章：旧正文补课')
+        && !String(state.generationPrompts.story || '').includes('{{suggestedTitle}}')
+    ) {
+        state.generationPrompts.story = defaultStoryGenerationPrompt;
+    }
     for (const key of ['scanRules', 'classificationRules', 'previewLayouts']) {
         if (!state[key]) {
             state[key] = structuredClone(defaultState[key]);
@@ -340,6 +509,9 @@ function ensureState() {
     state.storySummaries = Array.isArray(state.storySummaries) ? state.storySummaries : [];
     state.stageSummaries = Array.isArray(state.stageSummaries) ? state.stageSummaries : [];
     state.epicSummaries = Array.isArray(state.epicSummaries) ? state.epicSummaries : [];
+    sortSummariesBySource(state.storySummaries);
+    sortSummariesBySource(state.stageSummaries);
+    sortSummariesBySource(state.epicSummaries);
     state.drafts = Array.isArray(state.drafts) ? state.drafts : [];
     state.history = Array.isArray(state.history) ? state.history : [];
     state.taskQueue = Array.isArray(state.taskQueue) ? state.taskQueue : [];
@@ -777,6 +949,56 @@ function scanBakemonoBlocks({ persist = true } = {}) {
     return state.blocks;
 }
 
+function getFiniteMessageIds(ids = []) {
+    return (ids || [])
+        .map(id => Number(id))
+        .filter(id => Number.isFinite(id) && id < Number.MAX_SAFE_INTEGER);
+}
+
+function getSourceStart(ids = []) {
+    const finite = getFiniteMessageIds(ids);
+    return finite.length ? Math.min(...finite) : Number.MAX_SAFE_INTEGER;
+}
+
+function getSourceEnd(ids = []) {
+    const finite = getFiniteMessageIds(ids);
+    return finite.length ? Math.max(...finite) : Number.MAX_SAFE_INTEGER;
+}
+
+function formatSourceRange(ids = []) {
+    const start = getSourceStart(ids);
+    const end = getSourceEnd(ids);
+    if (!Number.isFinite(start) || start >= Number.MAX_SAFE_INTEGER) {
+        return '来源楼层未知';
+    }
+    return start === end ? `楼层 ${start}` : `楼层 ${start}-${end}`;
+}
+
+function getBlockSortKey(block) {
+    const direct = Number(block?.messageId);
+    if (Number.isFinite(direct) && direct < Number.MAX_SAFE_INTEGER) {
+        return direct;
+    }
+    const sourceStart = getSourceStart(block?.sourceMessageIds || []);
+    return Number.isFinite(sourceStart) ? sourceStart : Number.MAX_SAFE_INTEGER;
+}
+
+function getSummarySortKey(summary) {
+    const explicit = Number(summary?.sourceSortKey);
+    if (Number.isFinite(explicit)) {
+        return explicit;
+    }
+    return getBlockSortKey(summary);
+}
+
+function sortSummariesBySource(summaries = []) {
+    return summaries.sort((a, b) => (
+        getSummarySortKey(a) - getSummarySortKey(b)
+        || String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
+        || String(a.hash || '').localeCompare(String(b.hash || ''))
+    ));
+}
+
 function mergeBlocks(existing, scanned) {
     const scannedByHash = new Map(scanned.map(block => [block.hash, block]));
     const scannedByLegacyContent = new Map(scanned.map(block => [block.content, block]));
@@ -801,7 +1023,7 @@ function mergeBlocks(existing, scanned) {
         }
     }
 
-    return merged.sort((a, b) => (a.messageId - b.messageId) || (a.blockIndex - b.blockIndex));
+    return merged.sort((a, b) => (getBlockSortKey(a) - getBlockSortKey(b)) || (a.blockIndex - b.blockIndex));
 }
 
 function getBlocksByType(type) {
@@ -832,16 +1054,22 @@ function getUnsummarizedStageBlocks() {
 }
 
 function summaryToBlock(summary) {
+    const sourceSortKey = getSummarySortKey(summary);
     return {
         hash: summary.hash,
         type: summary.type || blockTypes.STAGE,
-        messageId: summary.messageId ?? Number.MAX_SAFE_INTEGER,
+        messageId: summary.messageId ?? (sourceSortKey < Number.MAX_SAFE_INTEGER ? sourceSortKey : Number.MAX_SAFE_INTEGER),
         blockIndex: 0,
         title: summary.title,
         content: summary.content,
         sourceHashes: summary.sourceHashes || [],
         sourceStageHashes: summary.sourceStageHashes || [],
         sourceMessageIds: summary.sourceMessageIds || [],
+        sourceStart: summary.sourceStart,
+        sourceEnd: summary.sourceEnd,
+        sourceSortKey,
+        metadata: summary.metadata || {},
+        isGeneratedSummary: true,
         createdAt: summary.createdAt,
         isHidden: false,
     };
@@ -957,7 +1185,7 @@ async function generateEpicSummary() {
     });
 }
 
-function enqueueSummaryTask({ kind, prompt, systemPrompt, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], trigger = 'manual', label = '' }) {
+function enqueueSummaryTask({ kind, prompt, systemPrompt, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], trigger = 'manual', label = '', metadata = {} }) {
     const state = ensureState();
     const task = {
         id: `task-${getHash(`${kind}|${Date.now()}|${prompt}`)}`,
@@ -969,6 +1197,7 @@ function enqueueSummaryTask({ kind, prompt, systemPrompt, sourceHashes = [], sou
         sourceStageHashes,
         sourceMessageIds,
         trigger,
+        metadata,
         status: 'queued',
         error: '',
         createdAt: new Date().toISOString(),
@@ -1015,6 +1244,7 @@ async function processTaskQueue() {
                     sourceMessageIds: task.sourceMessageIds || [],
                     prompt: task.prompt,
                     trigger: task.trigger || 'manual',
+                    metadata: task.metadata || {},
                 });
                 task.status = 'done';
                 task.error = '';
@@ -1108,6 +1338,12 @@ async function generateStageDraft(options = {}) {
         sourceHashes: targets.map(block => block.hash),
         sourceMessageIds: unique(targets.map(block => block.messageId).filter(Number.isFinite)),
         trigger: options.automatic ? 'auto' : 'manual',
+        metadata: {
+            sourceRange: formatSourceRange(targets.map(block => block.messageId)),
+            sourceStart: getSourceStart(targets.map(block => block.messageId)),
+            sourceEnd: getSourceEnd(targets.map(block => block.messageId)),
+            sourceSortKey: getSourceStart(targets.map(block => block.messageId)),
+        },
     });
     return;
     await runGeneration(options.automatic ? '正在自动生成阶段总结草稿...' : '正在生成阶段总结草稿...', async () => {
@@ -1176,6 +1412,12 @@ async function generateEpicDraft(options = {}) {
         sourceStageHashes: stageTargets.map(block => block.hash),
         sourceMessageIds: unique(targets.map(block => block.messageId).filter(Number.isFinite)),
         trigger: options.automatic ? 'auto' : 'manual',
+        metadata: {
+            sourceRange: formatSourceRange(targets.map(block => block.messageId)),
+            sourceStart: getSourceStart(targets.map(block => block.messageId)),
+            sourceEnd: getSourceEnd(targets.map(block => block.messageId)),
+            sourceSortKey: getSourceStart(targets.map(block => block.messageId)),
+        },
     });
     return;
     await runGeneration(options.automatic ? '正在自动生成史诗简史草稿...' : '正在生成史诗简史草稿...', async () => {
@@ -1224,7 +1466,7 @@ async function generateBackfillDrafts() {
 
     await runGeneration('正在分批生成旧正文摘要草稿...', async () => {
         for (const batch of batches) {
-            const prompt = buildStoryUserPrompt(batch.blocks);
+            const prompt = buildStoryUserPrompt(batch.blocks, batch.metadata);
             const result = normalizeGeneratedBakemono(await callGenerationModel({
                 prompt,
                 systemPrompt: buildStageSystemPrompt(),
@@ -1236,6 +1478,7 @@ async function generateBackfillDrafts() {
                 sourceMessageIds: batch.blocks.map(block => block.messageId),
                 prompt,
                 trigger: 'backfill',
+                metadata: batch.metadata,
             });
         }
         saveState();
@@ -1282,7 +1525,27 @@ function buildBackfillBatches() {
     for (let index = 0; index < rawBlocks.length; index += batchSize) {
         batches.push({ blocks: rawBlocks.slice(index, index + batchSize) });
     }
+    const total = batches.length;
+    batches.forEach((batch, index) => {
+        batch.metadata = makeBackfillBatchMetadata(batch.blocks, index, total);
+    });
     return batches;
+}
+
+function makeBackfillBatchMetadata(blocks, index, total) {
+    const sourceMessageIds = blocks.map(block => block.messageId).filter(Number.isFinite);
+    const batchIndex = index + 1;
+    const sourceRange = formatSourceRange(sourceMessageIds);
+    return {
+        batchIndex,
+        batchTotal: total,
+        sourceRange,
+        sourceStart: getSourceStart(sourceMessageIds),
+        sourceEnd: getSourceEnd(sourceMessageIds),
+        sourceSortKey: getSourceStart(sourceMessageIds),
+        suggestedTitle: `旧正文补课 第${batchIndex}批（${sourceRange}）`,
+        lockTitle: true,
+    };
 }
 
 async function generateBackfillQueue() {
@@ -1307,7 +1570,7 @@ async function generateBackfillQueue() {
     }
 
     for (const [index, batch] of batches.entries()) {
-        const prompt = buildStoryUserPrompt(batch.blocks);
+        const prompt = buildStoryUserPrompt(batch.blocks, batch.metadata);
         enqueueSummaryTask({
             kind: blockTypes.STORY,
             label: `旧正文补课 ${index + 1}/${batches.length}`,
@@ -1316,6 +1579,7 @@ async function generateBackfillQueue() {
             sourceHashes: batch.blocks.map(block => block.hash),
             sourceMessageIds: batch.blocks.map(block => block.messageId),
             trigger: 'backfill',
+            metadata: batch.metadata,
         });
     }
     renderAll(`已加入 ${batches.length} 个旧正文补课任务。`);
@@ -1424,20 +1688,22 @@ async function callGenerationModel({ prompt, systemPrompt }) {
     return content;
 }
 
-function createDraft({ kind, content, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], prompt = '', trigger = 'manual' }) {
+function createDraft({ kind, content, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], prompt = '', trigger = 'manual', metadata = {} }) {
     const state = ensureState();
     const createdAt = new Date().toISOString();
     const id = `draft-${getHash(`${kind}|${createdAt}|${content}`)}`;
+    const fallbackTitle = metadata?.suggestedTitle || getDefaultDraftTitle(kind, state);
     const draft = {
         id,
         kind,
-        title: getBlockTitle(content, getDefaultDraftTitle(kind, state)),
+        title: metadata?.lockTitle ? fallbackTitle : getBlockTitle(content, fallbackTitle),
         content,
         sourceHashes,
         sourceStageHashes,
         sourceMessageIds,
         prompt,
         trigger,
+        metadata,
         createdAt,
         provider: state.automation.apiProvider || 'tavern',
     };
@@ -1467,6 +1733,11 @@ function commitDraft(draftId, editedContent = null) {
     const content = normalizeGeneratedBakemono(editedContent ?? draft.content);
     const titleText = String(draft.title || getDefaultDraftTitle(draft.kind, state)).trim();
     const hash = getHash(content);
+    const sourceStart = getSourceStart(draft.sourceMessageIds || []);
+    const sourceEnd = getSourceEnd(draft.sourceMessageIds || []);
+    const sourceSortKey = Number.isFinite(Number(draft.metadata?.sourceSortKey))
+        ? Number(draft.metadata.sourceSortKey)
+        : sourceStart;
     const summary = {
         hash,
         type: draft.kind,
@@ -1475,6 +1746,10 @@ function commitDraft(draftId, editedContent = null) {
         sourceHashes: draft.sourceHashes || [],
         sourceStageHashes: draft.sourceStageHashes || [],
         sourceMessageIds: draft.sourceMessageIds || [],
+        sourceStart,
+        sourceEnd,
+        sourceSortKey,
+        metadata: draft.metadata || {},
         createdAt: new Date().toISOString(),
         draftId: draft.id,
     };
@@ -1482,20 +1757,28 @@ function commitDraft(draftId, editedContent = null) {
     const block = {
         hash,
         type: draft.kind,
-        messageId: Number.MAX_SAFE_INTEGER,
+        messageId: Number.isFinite(sourceSortKey) && sourceSortKey < Number.MAX_SAFE_INTEGER ? sourceSortKey : Number.MAX_SAFE_INTEGER,
         blockIndex: getSummaryIndexForKind(draft.kind, state) + 1,
         title: summary.title,
         content,
+        sourceHashes: summary.sourceHashes,
+        sourceStageHashes: summary.sourceStageHashes,
+        sourceMessageIds: summary.sourceMessageIds,
+        sourceSortKey,
+        isGeneratedSummary: true,
         isHidden: false,
     };
 
     if (draft.kind === blockTypes.STORY) {
         state.storySummaries.push(summary);
+        sortSummariesBySource(state.storySummaries);
     } else if (draft.kind === blockTypes.EPIC) {
         state.epicSummaries.push(summary);
+        sortSummariesBySource(state.epicSummaries);
         state.coveredStageHashes = unique([...state.coveredStageHashes, ...(draft.sourceStageHashes || [])]);
     } else {
         state.stageSummaries.push(summary);
+        sortSummariesBySource(state.stageSummaries);
         state.coveredBlockHashes = unique([...state.coveredBlockHashes, ...(draft.sourceHashes || [])]);
     }
 
@@ -1551,7 +1834,7 @@ async function regenerateDraft(draftId) {
             systemPrompt: draft.kind === blockTypes.EPIC ? buildEpicSystemPrompt() : buildStageSystemPrompt(),
         }));
         draft.content = result;
-        draft.title = getBlockTitle(result, draft.title);
+        draft.title = draft.metadata?.lockTitle ? (draft.title || draft.metadata?.suggestedTitle || getDefaultDraftTitle(draft.kind, state)) : getBlockTitle(result, draft.title);
         draft.createdAt = new Date().toISOString();
         saveState();
         renderAll('草稿已重新生成。');
@@ -1605,7 +1888,7 @@ function normalizeGeneratedBakemono(result) {
 }
 
 function buildStageSystemPrompt() {
-    return '你是剧情剪辑台的总结器。严格遵守用户提供的总结模板，只输出一个完整的 <bakemono> 块，不要输出正文、解释、寒暄或 Markdown 代码围栏。';
+    return '你是剧情剪辑台的总结器。严格遵守用户提供的总结模板；只总结输入材料，不续写剧情，不扮演角色，不新增事件；不要输出寒暄、解释或 Markdown 代码围栏。';
 }
 
 function buildEpicSystemPrompt() {
@@ -1620,21 +1903,46 @@ function buildEpicUserPrompt(blocks) {
     return renderGenerationPrompt(ensureState().generationPrompts.epic, blocks);
 }
 
-function buildStoryUserPrompt(blocks) {
-    return renderGenerationPrompt(ensureState().generationPrompts.story || defaultStoryGenerationPrompt, blocks);
+function buildStoryUserPrompt(blocks, context = {}) {
+    return renderGenerationPrompt(ensureState().generationPrompts.story || defaultStoryGenerationPrompt, blocks, context);
 }
 
-function renderGenerationPrompt(template, blocks) {
-    const blockText = formatBlocksForPrompt(blocks);
+function renderGenerationPrompt(template, blocks, context = {}) {
+    const blockText = formatBlocksForPrompt(blocks, context);
     const prompt = String(template || '').trim();
     if (!prompt) {
         return blockText;
     }
-    return prompt.includes('{{blocks}}') ? prompt.replaceAll('{{blocks}}', blockText).trim() : `${prompt}\n\n${blockText}`.trim();
+    const hadBlocksPlaceholder = prompt.includes('{{blocks}}');
+    const sourceStart = context.sourceStart ?? getSourceStart(blocks.map(block => block.messageId));
+    const sourceEnd = context.sourceEnd ?? getSourceEnd(blocks.map(block => block.messageId));
+    const replacements = {
+        blocks: blockText,
+        batchIndex: context.batchIndex ?? '',
+        batchTotal: context.batchTotal ?? '',
+        sourceRange: context.sourceRange || formatSourceRange(blocks.map(block => block.messageId)),
+        startFloor: Number.isFinite(sourceStart) && sourceStart < Number.MAX_SAFE_INTEGER ? sourceStart : '未知',
+        endFloor: Number.isFinite(sourceEnd) && sourceEnd < Number.MAX_SAFE_INTEGER ? sourceEnd : '未知',
+        suggestedTitle: context.suggestedTitle || '',
+    };
+    let rendered = prompt;
+    for (const [key, value] of Object.entries(replacements)) {
+        rendered = rendered.replaceAll(`{{${key}}}`, String(value));
+    }
+    return hadBlocksPlaceholder ? rendered.trim() : `${rendered}\n\n${blockText}`.trim();
 }
 
-function formatBlocksForPrompt(blocks) {
-    return blocks.map((block, index) => `--- #${index + 1} | message ${block.messageId} | ${block.title} ---\n${block.content}`).join('\n\n');
+function formatBlocksForPrompt(blocks, context = {}) {
+    const header = [
+        context.batchIndex ? `批次：${context.batchIndex} / ${context.batchTotal || '?'}` : '',
+        context.sourceRange ? `覆盖楼层：${context.sourceRange}` : '',
+        context.suggestedTitle ? `推荐标题：${context.suggestedTitle}` : '',
+    ].filter(Boolean).join('\n');
+    const body = blocks.map((block, index) => {
+        const messageLabel = Number.isFinite(block.messageId) ? `message ${block.messageId}` : 'message unknown';
+        return `--- #${index + 1} | ${messageLabel} | ${block.title} ---\n${block.content}`;
+    }).join('\n\n');
+    return [header, body].filter(Boolean).join('\n\n');
 }
 
 function updateInjectionFromSummaries() {
@@ -1850,7 +2158,7 @@ function preparePreviewBlocks(blocks) {
     const filtered = query
         ? blocks.filter(block => normalizeSearchText(`${getPreviewSummaryText(block)}\n${block.title}\n${parsePreviewMeta(block).meta}\n${parsePreviewMeta(block).submeta}\n${stripHtml(block.content)}`).includes(query))
         : [...blocks];
-    filtered.sort((a, b) => (a.messageId - b.messageId) || (a.blockIndex - b.blockIndex));
+    filtered.sort((a, b) => (getBlockSortKey(a) - getBlockSortKey(b)) || (a.blockIndex - b.blockIndex));
     if (order === 'desc') {
         filtered.reverse();
     }
@@ -1938,7 +2246,10 @@ function renderDrafts() {
         titleInput.placeholder = '草稿标题';
         titleWrap.append(titleLabel, titleInput);
         const meta = document.createElement('span');
-        meta.textContent = `${draft.trigger || 'manual'} · ${draft.createdAt ? new Date(draft.createdAt).toLocaleString() : ''}`;
+        const draftMeta = draft.metadata?.sourceRange
+            ? `${draft.metadata.sourceRange}${draft.metadata.batchIndex ? ` · 第 ${draft.metadata.batchIndex}/${draft.metadata.batchTotal || '?'} 批` : ''}`
+            : '';
+        meta.textContent = [draft.trigger || 'manual', draftMeta, draft.createdAt ? new Date(draft.createdAt).toLocaleString() : ''].filter(Boolean).join(' · ');
         header.append(titleWrap, meta);
 
         const textarea = document.createElement('textarea');
