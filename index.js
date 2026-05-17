@@ -1523,34 +1523,105 @@ function promptGenerationTargetSelection(kind, totalLength) {
     const suggestedRange = current.mode === targetSelectionModes.RANGE
         ? (inferNextRange(current.range) || current.range || defaults.range)
         : (current.range || defaults.range);
-    const defaultInput = current.mode === targetSelectionModes.OLDEST
-        ? `oldest:${current.count || defaults.count}`
-        : current.mode === targetSelectionModes.RANGE
-            ? `range:${suggestedRange || '0-20'}`
-            : 'all';
-    const input = window.prompt([
-        `选择本次【${kindLabel}】要合并的范围。`,
-        '',
-        `可用材料：${totalLength} 个`,
-        '输入 all = 全部',
-        '输入 oldest:20 = 最早 20 个',
-        '输入 range:0-20 = 来源楼层 0-20',
-        '',
-        current.mode === targetSelectionModes.RANGE && current.range
-            ? `上次范围：${current.range}，已推导下次：${suggestedRange || '无法推导'}`
-            : '',
-    ].filter(Boolean).join('\n'), defaultInput);
-    if (input === null) {
-        return null;
-    }
-    const parsed = parseGenerationTargetInput(input, current);
-    if (!parsed) {
-        toastr.warning('范围格式没识别到。可以填 all、oldest:20 或 range:0-20。');
-        return null;
-    }
-    state.generationTargets[kind] = parsed;
-    saveState();
-    return parsed;
+    return new Promise(resolve => {
+        document.querySelector('.bakemono-memory-target-dialog')?.remove();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'bakemono-memory-target-dialog';
+        overlay.innerHTML = `
+            <section class="bakemono-memory-target-box" role="dialog" aria-modal="true">
+                <header>
+                    <div>
+                        <span>生成范围</span>
+                        <h3>${kindLabel}</h3>
+                    </div>
+                    <button type="button" class="menu_button" data-bakemono-target-cancel><i class="fa-solid fa-xmark"></i></button>
+                </header>
+                <div class="bakemono-memory-target-body">
+                    <p>本次可用材料：${totalLength} 个。你可以只合并一部分，避免一次压得太简洁。</p>
+                    <label class="bakemono-memory-field">
+                        <span>读取范围</span>
+                        <select class="text_pole" data-bakemono-target-mode>
+                            <option value="all">全部未总结内容</option>
+                            <option value="oldest">最早 N 个</option>
+                            <option value="range">指定来源楼层</option>
+                        </select>
+                    </label>
+                    <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
+                        <label class="bakemono-memory-field">
+                            <span>N 个</span>
+                            <input class="text_pole" data-bakemono-target-count type="number" min="1" step="1">
+                        </label>
+                        <label class="bakemono-memory-field">
+                            <span>来源楼层</span>
+                            <input class="text_pole" data-bakemono-target-range type="text" placeholder="例如 0-20, 80-120">
+                        </label>
+                    </div>
+                    <div class="bakemono-memory-prompt-hint" data-bakemono-target-hint></div>
+                </div>
+                <footer class="bakemono-memory-inline-actions">
+                    <button type="button" class="menu_button" data-bakemono-target-cancel><i class="fa-solid fa-ban"></i><span>取消</span></button>
+                    <button type="button" class="menu_button" data-bakemono-target-confirm><i class="fa-solid fa-check"></i><span>使用这个范围</span></button>
+                </footer>
+            </section>
+        `;
+
+        const modeInput = overlay.querySelector('[data-bakemono-target-mode]');
+        const countInput = overlay.querySelector('[data-bakemono-target-count]');
+        const rangeInput = overlay.querySelector('[data-bakemono-target-range]');
+        const hint = overlay.querySelector('[data-bakemono-target-hint]');
+
+        modeInput.value = current.mode || targetSelectionModes.ALL;
+        countInput.value = current.count || defaults.count;
+        rangeInput.value = current.mode === targetSelectionModes.RANGE
+            ? (suggestedRange || current.range || '0-20')
+            : (current.range || '');
+
+        const close = value => {
+            overlay.remove();
+            resolve(value);
+        };
+        const syncHint = () => {
+            const mode = modeInput.value;
+            countInput.disabled = mode !== targetSelectionModes.OLDEST;
+            rangeInput.disabled = mode !== targetSelectionModes.RANGE;
+            if (mode === targetSelectionModes.RANGE && !rangeInput.value.trim()) {
+                rangeInput.value = suggestedRange || '0-20';
+            }
+            hint.textContent = mode === targetSelectionModes.RANGE && current.range
+                ? `上次范围：${current.range}。已为你推导到：${rangeInput.value || suggestedRange}，可以直接修改。`
+                : mode === targetSelectionModes.OLDEST
+                    ? '会按来源楼层从早到晚取前 N 个。'
+                    : '会合并当前所有尚未进入上层总结的内容。';
+        };
+
+        overlay.querySelectorAll('[data-bakemono-target-cancel]').forEach(button => {
+            button.addEventListener('click', () => close(null));
+        });
+        overlay.querySelector('[data-bakemono-target-confirm]').addEventListener('click', () => {
+            const parsed = {
+                ...current,
+                mode: Object.values(targetSelectionModes).includes(modeInput.value) ? modeInput.value : targetSelectionModes.ALL,
+                count: Math.max(1, Number(countInput.value || current.count || defaults.count)),
+                range: String(rangeInput.value || '').trim(),
+            };
+            if (parsed.mode === targetSelectionModes.RANGE && !parseLooseNumberRange(parsed.range).ids.size) {
+                toastr.warning('请填写可识别的楼层范围，例如 0-20 或 0-20, 35-50。');
+                return;
+            }
+            state.generationTargets[kind] = parsed;
+            $(`#bakemono-memory-${kind}-target-mode`).val(parsed.mode);
+            $(`#bakemono-memory-${kind}-target-count`).val(parsed.count);
+            $(`#bakemono-memory-${kind}-target-range`).val(parsed.range);
+            saveState();
+            close(parsed);
+        });
+        modeInput.addEventListener('change', syncHint);
+        syncHint();
+
+        document.body.append(overlay);
+        modeInput.focus();
+    });
 }
 
 function confirmGenerationTargets(kind, targets, totalLength) {
@@ -1906,7 +1977,7 @@ async function generateStageDraft(options = {}) {
     let targetConfig = state.generationTargets.stage;
     if (!options.automatic) {
         readGenerationTargetSettings();
-        targetConfig = promptGenerationTargetSelection('stage', allTargets.length);
+        targetConfig = await promptGenerationTargetSelection('stage', allTargets.length);
         if (!targetConfig) {
             renderAll('已取消阶段总结生成。');
             return;
@@ -1985,7 +2056,7 @@ async function generateEpicDraft(options = {}) {
     let targetConfig = state.generationTargets.epic;
     if (!options.automatic) {
         readGenerationTargetSettings();
-        targetConfig = promptGenerationTargetSelection('epic', allStageTargets.length || allStoryFallback.length);
+        targetConfig = await promptGenerationTargetSelection('epic', allStageTargets.length || allStoryFallback.length);
         if (!targetConfig) {
             renderAll('已取消史诗简史生成。');
             return;
@@ -3804,7 +3875,13 @@ function bindSettingsEvents() {
         switchWorkbenchTab(this.dataset.bakemonoNav);
     });
     $('#bakemono-workbench-root').off('click.bakemonoAction').on('click.bakemonoAction', '[data-bakemono-action]', async function () {
-        await runWorkbenchAction(this.dataset.bakemonoAction);
+        try {
+            await runWorkbenchAction(this.dataset.bakemonoAction);
+        } catch (error) {
+            console.error('[BakemonoMemory] action failed', error);
+            toastr.error(error?.message || String(error), '剧情剪辑台');
+            renderAll(`操作失败：${error?.message || error}`);
+        }
     });
     $('#bakemono-workbench-root').off('click.bakemonoWorkflow').on('click.bakemonoWorkflow', '[data-bakemono-workflow-preset]', function () {
         applyWorkflowPreset(this.dataset.bakemonoWorkflowPreset);
