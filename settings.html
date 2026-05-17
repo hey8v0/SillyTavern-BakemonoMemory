@@ -402,6 +402,10 @@
               <span>旧正文每批楼数</span>
               <input id="bakemono-memory-backfill-batch-size" class="text_pole" type="number" min="1" step="1">
             </label>
+            <label class="bakemono-memory-field">
+              <span>自动隐藏保留最近几楼</span>
+              <input id="bakemono-memory-auto-hide-preserve-recent" class="text_pole" type="number" min="0" step="1">
+            </label>
           </div>
 
           <div class="bakemono-memory-card-panel">
@@ -440,7 +444,7 @@
 
         <div class="bakemono-memory-prompt-hint">
           <i class="fa-solid fa-shield-heart"></i>
-          <span>“自动保存并隐藏”会先生成阶段总结草稿，再自动写入长期记忆，并隐藏已覆盖楼层但保留最近 2 楼。自定义 API Key 会保存在当前聊天元数据里。</span>
+          <span>“自动保存并隐藏”会先生成阶段总结草稿，再自动写入长期记忆，并按上方设置保留最近几楼。自定义 API Key 会保存在当前聊天元数据里。</span>
         </div>
 
         <div class="bakemono-memory-inline-actions">

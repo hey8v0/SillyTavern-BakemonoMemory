@@ -417,6 +417,7 @@ const defaultAutomation = {
     charInterval: 12000,
     summaryKind: 'stage',
     backfillBatchSize: 10,
+    autoHidePreserveRecent: 2,
     apiProvider: 'tavern',
     customApi: {
         baseUrl: '',
@@ -1464,6 +1465,113 @@ function getTargetSelectionLabel(kind, selectedLength, totalLength) {
     return `${modeLabels[config.mode] || '全部'}：${selectedLength}/${totalLength} 个`;
 }
 
+function inferNextRange(range) {
+    const match = String(range || '').trim().match(/^(\d+)\s*-\s*(\d+)$/);
+    if (!match) {
+        return '';
+    }
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) {
+        return '';
+    }
+    const left = Math.min(start, end);
+    const right = Math.max(start, end);
+    const nextStart = right + 1;
+    const nextEnd = right + Math.max(1, right - left);
+    return `${nextStart}-${nextEnd}`;
+}
+
+function parseGenerationTargetInput(input, fallbackConfig = {}) {
+    const text = String(input || '').trim();
+    if (!text) {
+        return null;
+    }
+    if (/^(all|全部)$/i.test(text)) {
+        return {
+            ...fallbackConfig,
+            mode: targetSelectionModes.ALL,
+        };
+    }
+    const oldest = text.match(/^(?:oldest|前|最早|n)\s*[:：]?\s*(\d+)$/i);
+    if (oldest) {
+        return {
+            ...fallbackConfig,
+            mode: targetSelectionModes.OLDEST,
+            count: Math.max(1, Number(oldest[1])),
+        };
+    }
+    const range = text.match(/^(?:range|楼层|范围)?\s*[:：]?\s*(\d+(?:\s*-\s*\d+)?(?:[,\s，]+\d+(?:\s*-\s*\d+)?)*)$/i);
+    if (range) {
+        return {
+            ...fallbackConfig,
+            mode: targetSelectionModes.RANGE,
+            range: range[1].trim(),
+        };
+    }
+    return null;
+}
+
+function promptGenerationTargetSelection(kind, totalLength) {
+    const state = ensureState();
+    const defaults = defaultGenerationTargets[kind] || defaultGenerationTargets.stage;
+    const current = {
+        ...defaults,
+        ...(state.generationTargets?.[kind] || {}),
+    };
+    const kindLabel = kind === 'epic' ? '史诗简史' : '阶段总结';
+    const suggestedRange = current.mode === targetSelectionModes.RANGE
+        ? (inferNextRange(current.range) || current.range || defaults.range)
+        : (current.range || defaults.range);
+    const defaultInput = current.mode === targetSelectionModes.OLDEST
+        ? `oldest:${current.count || defaults.count}`
+        : current.mode === targetSelectionModes.RANGE
+            ? `range:${suggestedRange || '0-20'}`
+            : 'all';
+    const input = window.prompt([
+        `选择本次【${kindLabel}】要合并的范围。`,
+        '',
+        `可用材料：${totalLength} 个`,
+        '输入 all = 全部',
+        '输入 oldest:20 = 最早 20 个',
+        '输入 range:0-20 = 来源楼层 0-20',
+        '',
+        current.mode === targetSelectionModes.RANGE && current.range
+            ? `上次范围：${current.range}，已推导下次：${suggestedRange || '无法推导'}`
+            : '',
+    ].filter(Boolean).join('\n'), defaultInput);
+    if (input === null) {
+        return null;
+    }
+    const parsed = parseGenerationTargetInput(input, current);
+    if (!parsed) {
+        toastr.warning('范围格式没识别到。可以填 all、oldest:20 或 range:0-20。');
+        return null;
+    }
+    state.generationTargets[kind] = parsed;
+    saveState();
+    return parsed;
+}
+
+function confirmGenerationTargets(kind, targets, totalLength) {
+    const state = ensureState();
+    const kindLabel = kind === 'epic' ? '史诗简史' : '阶段总结';
+    const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
+    const confirmed = confirmDanger(
+        `生成【${kindLabel}】草稿？`,
+        [
+            `本次范围：${getTargetSelectionLabel(kind, targets.length, totalLength)}`,
+            `来源：${formatSourceRange(sourceMessageIds)}`,
+            '生成结果会先进入草稿箱，确认保存后才会写入长期记忆。',
+        ],
+        '确认生成吗？',
+    );
+    if (!confirmed) {
+        renderAll(`已取消${kindLabel}生成。`);
+    }
+    return confirmed;
+}
+
 function summaryToBlock(summary) {
     const sourceSortKey = getSummarySortKey(summary);
     return {
@@ -1674,13 +1782,14 @@ async function processTaskQueue() {
                 if (task.trigger === 'auto' && state.automation.mode === 'commit_hide' && task.kind === blockTypes.STAGE) {
                     commitDraft(draft.id, draft.content, { silent: true });
                     autoCommitted += 1;
+                    const preserveRecent = Math.max(0, Number(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent));
                     task.metadata = {
                         ...(task.metadata || {}),
                         autoCommitted: true,
-                        autoHiddenPreserveRecent: 2,
+                        autoHiddenPreserveRecent: preserveRecent,
                     };
-                    await hideCoveredMessages({ confirm: false, preserveRecent: 2, silent: true });
-                    toastr.info('自动阶段总结已保存进长期记忆，并已隐藏被覆盖楼层（保留最近 2 楼）。', '剧情剪辑台');
+                    await hideCoveredMessages({ confirm: false, preserveRecent, silent: true });
+                    toastr.info(`自动阶段总结已保存进长期记忆，并已隐藏被覆盖楼层（保留最近 ${preserveRecent} 楼）。`, '剧情剪辑台');
                 } else {
                     createdDrafts += 1;
                 }
@@ -1788,21 +1897,30 @@ async function generateStageDraft(options = {}) {
 
     scanBakemonoBlocks({ persist: false });
     const state = ensureState();
-    if (!options.automatic) {
-        readGenerationTargetSettings();
-    }
     const allTargets = getUnsummarizedStoryBlocks();
-    const targets = options.automatic
-        ? getAutoStageTargets(allTargets)
-        : selectGenerationTargets(allTargets, state.generationTargets.stage);
     if (!allTargets.length) {
         renderAll('没有新的剧情摘要需要生成阶段总结。');
         toastr.info('没有新的剧情摘要需要生成阶段总结。');
         return;
     }
+    let targetConfig = state.generationTargets.stage;
+    if (!options.automatic) {
+        readGenerationTargetSettings();
+        targetConfig = promptGenerationTargetSelection('stage', allTargets.length);
+        if (!targetConfig) {
+            renderAll('已取消阶段总结生成。');
+            return;
+        }
+    }
+    const targets = options.automatic
+        ? getAutoStageTargets(allTargets)
+        : selectGenerationTargets(allTargets, targetConfig);
     if (!targets.length) {
         renderAll('当前生成范围没有匹配到可总结摘要。');
         toastr.warning('当前生成范围没有匹配到可总结摘要。');
+        return;
+    }
+    if (!options.automatic && !confirmGenerationTargets('stage', targets, allTargets.length)) {
         return;
     }
 
@@ -1857,20 +1975,26 @@ async function generateEpicDraft(options = {}) {
 
     scanBakemonoBlocks({ persist: false });
     const state = ensureState();
-    if (!options.automatic) {
-        readGenerationTargetSettings();
-    }
     const allStageTargets = getUnsummarizedStageBlocks();
     const allStoryFallback = getStoryMaterialBlocks().filter(block => !state.coveredBlockHashes.includes(block.hash));
-    const stageTargets = selectGenerationTargets(allStageTargets, state.generationTargets.epic);
-    const storyFallback = selectGenerationTargets(allStoryFallback, state.generationTargets.epic);
-    const targets = stageTargets.length ? stageTargets : storyFallback;
-
     if (!allStageTargets.length && !allStoryFallback.length) {
         renderAll('没有可用于生成史诗简史的总结内容。');
         toastr.info('没有可用于生成史诗简史的总结内容。');
         return;
     }
+    let targetConfig = state.generationTargets.epic;
+    if (!options.automatic) {
+        readGenerationTargetSettings();
+        targetConfig = promptGenerationTargetSelection('epic', allStageTargets.length || allStoryFallback.length);
+        if (!targetConfig) {
+            renderAll('已取消史诗简史生成。');
+            return;
+        }
+    }
+    const stageTargets = selectGenerationTargets(allStageTargets, targetConfig);
+    const storyFallback = selectGenerationTargets(allStoryFallback, targetConfig);
+    const targets = stageTargets.length ? stageTargets : storyFallback;
+
     if (!targets.length) {
         renderAll('当前生成范围没有匹配到可用于史诗简史的内容。');
         toastr.warning('当前生成范围没有匹配到可用于史诗简史的内容。');
@@ -2110,7 +2234,7 @@ async function maybeRunAutoSummary() {
     saveState();
     if (state.automation.mode === 'draft' || state.automation.mode === 'commit_hide') {
         const modeLabel = state.automation.mode === 'commit_hide'
-            ? '自动总结：正在生成草稿，完成后会自动保存长期记忆并隐藏已覆盖楼层。'
+            ? `自动总结：正在生成草稿，完成后会自动保存长期记忆并隐藏已覆盖楼层，保留最近 ${state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent} 楼。`
             : '自动总结：正在生成阶段总结草稿。';
         toastr.info(modeLabel, '剧情剪辑台');
         renderAll(modeLabel);
@@ -3074,6 +3198,7 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-auto-floor-interval').val(state.automation.floorInterval ?? defaultAutomation.floorInterval);
     $('#bakemono-memory-auto-char-interval').val(state.automation.charInterval ?? defaultAutomation.charInterval);
     $('#bakemono-memory-backfill-batch-size').val(state.automation.backfillBatchSize ?? defaultAutomation.backfillBatchSize);
+    $('#bakemono-memory-auto-hide-preserve-recent').val(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent);
     $('#bakemono-memory-stage-target-mode').val(state.generationTargets.stage.mode || defaultGenerationTargets.stage.mode);
     $('#bakemono-memory-stage-target-count').val(state.generationTargets.stage.count ?? defaultGenerationTargets.stage.count);
     $('#bakemono-memory-stage-target-range').val(state.generationTargets.stage.range || '');
@@ -3888,6 +4013,7 @@ function bindSettingsEvents() {
             floorInterval: Math.max(1, Number($('#bakemono-memory-auto-floor-interval').val() || defaultAutomation.floorInterval)),
             charInterval: Math.max(100, Number($('#bakemono-memory-auto-char-interval').val() || defaultAutomation.charInterval)),
             backfillBatchSize: Math.max(1, Number($('#bakemono-memory-backfill-batch-size').val() || defaultAutomation.backfillBatchSize)),
+            autoHidePreserveRecent: Math.max(0, Number($('#bakemono-memory-auto-hide-preserve-recent').val() || 0)),
             apiProvider: String($('#bakemono-memory-api-provider').val() || defaultAutomation.apiProvider),
             customApi: {
                 baseUrl: String($('#bakemono-memory-custom-base-url').val() || '').trim(),
