@@ -1,0 +1,558 @@
+<div id="bakemono-workbench-root" class="bakemono-workbench-root bakemono-workbench-hidden" aria-hidden="true">
+  <div class="bakemono-workbench-backdrop" data-bakemono-close></div>
+  <section class="bakemono-workbench" role="dialog" aria-modal="true" aria-labelledby="bakemono-workbench-title">
+    <header class="bakemono-workbench-header">
+      <div class="bakemono-workbench-title-wrap">
+        <div class="bakemono-workbench-kicker">通用摘要 / 长期记忆 / 楼层剪辑</div>
+        <h2 id="bakemono-workbench-title">剧情剪辑台</h2>
+      </div>
+      <div class="bakemono-workbench-header-actions">
+        <span id="bakemono-memory-injection-badge" class="bakemono-memory-badge">等待扫描</span>
+        <button class="menu_button bakemono-icon-button" id="bakemono-memory-close" title="关闭">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+    </header>
+
+    <nav class="bakemono-workbench-tabs" aria-label="剧情剪辑台功能">
+      <button type="button" class="bakemono-workbench-tab is-active" data-bakemono-tab="overview">
+        <i class="fa-solid fa-table-cells-large"></i>
+        <span>总览</span>
+      </button>
+      <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="preview">
+        <i class="fa-solid fa-book-open"></i>
+        <span>查看总结</span>
+      </button>
+      <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="timeline">
+        <i class="fa-solid fa-diagram-project"></i>
+        <span>摘要树</span>
+      </button>
+      <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="drafts">
+        <i class="fa-solid fa-inbox"></i>
+        <span>草稿箱</span>
+      </button>
+      <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="automation">
+        <i class="fa-solid fa-clock"></i>
+        <span>自动总结</span>
+      </button>
+      <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="scan">
+        <i class="fa-solid fa-filter"></i>
+        <span>扫描规则</span>
+      </button>
+      <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="injection">
+        <i class="fa-solid fa-plug-circle-bolt"></i>
+        <span>注入内容</span>
+      </button>
+      <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="prompts">
+        <i class="fa-solid fa-pen-nib"></i>
+        <span>生成提示词</span>
+      </button>
+    </nav>
+
+    <main class="bakemono-workbench-main">
+      <section class="bakemono-workbench-panel is-active" data-bakemono-panel="overview">
+        <div class="bakemono-memory-status-grid">
+          <div class="bakemono-memory-stat">
+            <span>剧情摘要</span>
+            <strong id="bakemono-memory-count-story">0</strong>
+          </div>
+          <div class="bakemono-memory-stat">
+            <span>阶段总结</span>
+            <strong id="bakemono-memory-count-stage">0</strong>
+          </div>
+          <div class="bakemono-memory-stat">
+            <span>史诗简史</span>
+            <strong id="bakemono-memory-count-epic">0</strong>
+          </div>
+          <div class="bakemono-memory-stat">
+            <span>待确认草稿</span>
+            <strong id="bakemono-memory-count-drafts">0</strong>
+          </div>
+          <div class="bakemono-memory-stat">
+            <span>隐藏楼层</span>
+            <strong id="bakemono-memory-count-hidden">0</strong>
+          </div>
+        </div>
+
+        <div class="bakemono-memory-control-deck">
+          <button class="menu_button" data-bakemono-action="scan" id="bakemono-memory-scan">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <span>扫描摘要</span>
+          </button>
+          <button class="menu_button" data-bakemono-action="generate-stage" id="bakemono-memory-generate-stage">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <span>生成阶段总结</span>
+          </button>
+          <button class="menu_button danger_button" data-bakemono-action="generate-epic" id="bakemono-memory-generate-epic">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span>生成史诗简史</span>
+          </button>
+          <button class="menu_button" data-bakemono-action="backfill" id="bakemono-memory-backfill">
+            <i class="fa-solid fa-box-archive"></i>
+            <span>旧正文补课</span>
+          </button>
+          <button class="menu_button" data-bakemono-action="undo" id="bakemono-memory-undo">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            <span>撤回上次保存</span>
+          </button>
+          <button class="menu_button" data-bakemono-action="hide" id="bakemono-memory-hide">
+            <i class="fa-solid fa-eye-slash"></i>
+            <span>隐藏已总结楼层</span>
+          </button>
+          <button class="menu_button" data-bakemono-action="restore" id="bakemono-memory-restore">
+            <i class="fa-solid fa-eye"></i>
+            <span>恢复隐藏楼层</span>
+          </button>
+        </div>
+
+        <div class="bakemono-memory-options">
+          <label class="checkbox_label bakemono-memory-switch">
+            <input type="checkbox" id="bakemono-memory-injection-enabled">
+            <span>注入剧情记忆</span>
+          </label>
+          <label class="bakemono-memory-field">
+            <span>深度</span>
+            <input id="bakemono-memory-depth" class="text_pole" type="number" min="0" max="10000" step="1">
+          </label>
+          <label class="bakemono-memory-field">
+            <span>角色</span>
+            <select id="bakemono-memory-role" class="text_pole">
+              <option value="0">System</option>
+              <option value="1">User</option>
+              <option value="2">Assistant</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="bakemono-memory-status-line" class="bakemono-memory-status-line">等待扫描。</div>
+      </section>
+
+      <section class="bakemono-workbench-panel" data-bakemono-panel="preview">
+        <div class="bakemono-memory-preview-type-tabs" aria-label="总结类别">
+          <button type="button" class="bakemono-preview-type-button is-active" data-bakemono-preview-type="story">
+            <i class="fa-solid fa-scroll"></i>
+            <span>剧情摘要</span>
+            <strong id="bakemono-memory-tab-count-story">0</strong>
+          </button>
+          <button type="button" class="bakemono-preview-type-button" data-bakemono-preview-type="stage">
+            <i class="fa-solid fa-film"></i>
+            <span>阶段总结</span>
+            <strong id="bakemono-memory-tab-count-stage">0</strong>
+          </button>
+          <button type="button" class="bakemono-preview-type-button" data-bakemono-preview-type="epic">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            <span>史诗简史</span>
+            <strong id="bakemono-memory-tab-count-epic">0</strong>
+          </button>
+        </div>
+
+        <div class="bakemono-memory-preview-toolbar">
+          <label class="bakemono-memory-field">
+            <span>筛选</span>
+            <input id="bakemono-memory-preview-filter" class="text_pole" type="search" placeholder="可搜第1章、标题、正文">
+          </label>
+          <label class="bakemono-memory-field">
+            <span>排序</span>
+            <select id="bakemono-memory-preview-order" class="text_pole">
+              <option value="desc">最新在前</option>
+              <option value="asc">旧的在前</option>
+            </select>
+          </label>
+          <button class="menu_button" id="bakemono-memory-clear-preview-filter">
+            <i class="fa-solid fa-xmark"></i>
+            <span>清空筛选</span>
+          </button>
+        </div>
+        <div class="bakemono-memory-preview-grid" data-bakemono-active-preview="story">
+          <section class="bakemono-memory-preview-column is-active" data-bakemono-preview-column="story">
+            <h4><i class="fa-solid fa-scroll"></i> 剧情摘要</h4>
+            <div id="bakemono-memory-preview-story" class="bakemono-memory-preview-list"></div>
+          </section>
+          <section class="bakemono-memory-preview-column" data-bakemono-preview-column="stage">
+            <h4><i class="fa-solid fa-film"></i> 阶段总结</h4>
+            <div id="bakemono-memory-preview-stage" class="bakemono-memory-preview-list"></div>
+          </section>
+          <section class="bakemono-memory-preview-column" data-bakemono-preview-column="epic">
+            <h4><i class="fa-solid fa-clock-rotate-left"></i> 史诗简史</h4>
+            <div id="bakemono-memory-preview-epic" class="bakemono-memory-preview-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="bakemono-workbench-panel" data-bakemono-panel="timeline">
+        <div class="bakemono-memory-card-panel">
+          <h4><i class="fa-solid fa-diagram-project"></i> 摘要树 / 时间线</h4>
+          <div class="bakemono-memory-prompt-hint">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>这里按“史诗简史 → 阶段总结 → 剧情摘要”的覆盖关系展示，方便确认哪些内容已经被压缩进长期记忆。</span>
+          </div>
+          <div id="bakemono-memory-timeline" class="bakemono-memory-timeline"></div>
+        </div>
+      </section>
+
+      <section class="bakemono-workbench-panel" data-bakemono-panel="drafts">
+        <div class="bakemono-memory-card-panel">
+          <h4><i class="fa-solid fa-list-check"></i> 任务队列</h4>
+          <div class="bakemono-memory-inline-actions">
+            <button class="menu_button" data-bakemono-action="clear-queue">
+              <i class="fa-solid fa-broom"></i>
+              <span>清理完成任务</span>
+            </button>
+          </div>
+          <div id="bakemono-memory-task-list" class="bakemono-memory-task-list"></div>
+        </div>
+
+        <div class="bakemono-memory-card-panel">
+          <h4><i class="fa-solid fa-inbox"></i> 待确认草稿</h4>
+          <div class="bakemono-memory-prompt-hint">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>自动总结、手动总结和旧正文补课都会先进入这里。你可以编辑后保存、重新总结，或者直接丢弃。</span>
+          </div>
+          <div id="bakemono-memory-draft-list" class="bakemono-memory-draft-list"></div>
+        </div>
+
+        <div class="bakemono-memory-card-panel bakemono-memory-history-panel">
+          <h4><i class="fa-solid fa-clock-rotate-left"></i> 保存记录</h4>
+          <div class="bakemono-memory-inline-actions">
+            <button class="menu_button" data-bakemono-action="undo">
+              <i class="fa-solid fa-rotate-left"></i>
+              <span>撤回上次保存</span>
+            </button>
+            <button class="menu_button" data-bakemono-action="clear-history">
+              <i class="fa-solid fa-broom"></i>
+              <span>清理保存记录</span>
+            </button>
+          </div>
+          <div id="bakemono-memory-history-list" class="bakemono-memory-history-list"></div>
+        </div>
+      </section>
+
+      <section class="bakemono-workbench-panel" data-bakemono-panel="automation">
+        <div class="bakemono-memory-editor-grid">
+          <div class="bakemono-memory-card-panel">
+            <h4><i class="fa-solid fa-clock"></i> 自动总结</h4>
+            <label class="checkbox_label bakemono-memory-switch">
+              <input type="checkbox" id="bakemono-memory-auto-enabled">
+              <span>启用自动总结</span>
+            </label>
+            <label class="bakemono-memory-field">
+              <span>自动模式</span>
+              <select id="bakemono-memory-auto-mode" class="text_pole">
+                <option value="remind">仅提醒</option>
+                <option value="draft">自动生成草稿</option>
+              </select>
+            </label>
+            <label class="bakemono-memory-field">
+              <span>触发方式</span>
+              <select id="bakemono-memory-auto-trigger" class="text_pole">
+                <option value="floors">未总结片段数</option>
+                <option value="chars">未总结字数</option>
+              </select>
+            </label>
+            <label class="bakemono-memory-field">
+              <span>每多少片段</span>
+              <input id="bakemono-memory-auto-floor-interval" class="text_pole" type="number" min="1" step="1">
+            </label>
+            <label class="bakemono-memory-field">
+              <span>每多少字</span>
+              <input id="bakemono-memory-auto-char-interval" class="text_pole" type="number" min="100" step="100">
+            </label>
+            <label class="bakemono-memory-field">
+              <span>旧正文每批楼数</span>
+              <input id="bakemono-memory-backfill-batch-size" class="text_pole" type="number" min="1" step="1">
+            </label>
+          </div>
+
+          <div class="bakemono-memory-card-panel">
+            <h4><i class="fa-solid fa-network-wired"></i> 生成 API</h4>
+            <label class="bakemono-memory-field">
+              <span>API 来源</span>
+              <select id="bakemono-memory-api-provider" class="text_pole">
+                <option value="tavern">酒馆主模型</option>
+                <option value="custom">自定义 OpenAI-compatible API</option>
+              </select>
+            </label>
+            <label class="bakemono-memory-field">
+              <span>Base URL</span>
+              <input id="bakemono-memory-custom-base-url" class="text_pole" type="text" placeholder="https://api.example.com/v1">
+            </label>
+            <label class="bakemono-memory-field">
+              <span>API Key</span>
+              <input id="bakemono-memory-custom-api-key" class="text_pole" type="password" autocomplete="off">
+            </label>
+            <label class="bakemono-memory-field">
+              <span>Model</span>
+              <input id="bakemono-memory-custom-model" class="text_pole" type="text" placeholder="gpt-4.1-mini">
+            </label>
+            <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
+              <label class="bakemono-memory-field">
+                <span>Temperature</span>
+                <input id="bakemono-memory-custom-temperature" class="text_pole" type="number" min="0" max="2" step="0.1">
+              </label>
+              <label class="bakemono-memory-field">
+                <span>Max tokens</span>
+                <input id="bakemono-memory-custom-max-tokens" class="text_pole" type="number" min="100" step="100">
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="bakemono-memory-prompt-hint">
+          <i class="fa-solid fa-shield-heart"></i>
+          <span>自动模式只会生成草稿，不会自动写入长期记忆。自定义 API Key 会保存在当前聊天元数据里，建议只填你本机可用的密钥。</span>
+        </div>
+
+        <div class="bakemono-memory-inline-actions">
+          <button class="menu_button" id="bakemono-memory-apply-automation">
+            <i class="fa-solid fa-floppy-disk"></i>
+            <span>应用自动设置</span>
+          </button>
+          <button class="menu_button" data-bakemono-action="backfill">
+            <i class="fa-solid fa-box-archive"></i>
+            <span>分批补课旧正文</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="bakemono-workbench-panel" data-bakemono-panel="scan">
+        <div class="bakemono-memory-editor-grid">
+          <div class="bakemono-memory-card-panel">
+            <h4><i class="fa-solid fa-tags"></i> 扫描过滤</h4>
+            <label class="bakemono-memory-field">
+              <span>扫描模式</span>
+              <select id="bakemono-memory-scan-mode" class="text_pole">
+                <option value="tag">标签块模式</option>
+                <option value="full">全文管线模式</option>
+              </select>
+            </label>
+            <label class="bakemono-memory-editor">
+              <span>读取标签</span>
+              <textarea id="bakemono-memory-include-tags" class="text_pole textarea_compact" rows="3" spellcheck="false"></textarea>
+            </label>
+            <label class="bakemono-memory-editor">
+              <span>排除标签</span>
+              <textarea id="bakemono-memory-exclude-tags" class="text_pole textarea_compact" rows="3" spellcheck="false"></textarea>
+            </label>
+            <label class="bakemono-memory-field">
+              <span>全文最短长度</span>
+              <input id="bakemono-memory-full-min-length" class="text_pole" type="number" min="0" step="1">
+            </label>
+          </div>
+
+          <div class="bakemono-memory-card-panel">
+            <h4><i class="fa-solid fa-layer-group"></i> 分类关键词</h4>
+            <label class="bakemono-memory-editor">
+              <span>普通摘要关键词</span>
+              <textarea id="bakemono-memory-class-story" class="text_pole textarea_compact" rows="3" spellcheck="false"></textarea>
+            </label>
+            <label class="bakemono-memory-editor">
+              <span>阶段总结关键词</span>
+              <textarea id="bakemono-memory-class-stage" class="text_pole textarea_compact" rows="3" spellcheck="false"></textarea>
+            </label>
+            <label class="bakemono-memory-editor">
+              <span>史诗简史关键词</span>
+              <textarea id="bakemono-memory-class-epic" class="text_pole textarea_compact" rows="3" spellcheck="false"></textarea>
+            </label>
+          </div>
+        </div>
+
+        <div class="bakemono-memory-editor-grid bakemono-memory-layout-grid">
+          <label class="bakemono-memory-editor">
+            <span>普通摘要分段</span>
+            <textarea id="bakemono-memory-layout-story" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
+          </label>
+          <label class="bakemono-memory-editor">
+            <span>阶段总结分段</span>
+            <textarea id="bakemono-memory-layout-stage" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
+          </label>
+          <label class="bakemono-memory-editor">
+            <span>史诗简史分段</span>
+            <textarea id="bakemono-memory-layout-epic" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
+          </label>
+        </div>
+
+        <div class="bakemono-memory-prompt-hint">
+          <i class="fa-solid fa-circle-info"></i>
+          <span>分段格式：<code>标签名|正文标题关键词|样式</code>，样式可填 <code>normal</code>、<code>tag</code>、<code>bubble</code>。多个标签或关键词用逗号或换行分隔。</span>
+        </div>
+
+        <div class="bakemono-memory-inline-actions">
+          <button class="menu_button" id="bakemono-memory-apply-rules">
+            <i class="fa-solid fa-floppy-disk"></i>
+            <span>应用扫描规则</span>
+          </button>
+          <button class="menu_button" id="bakemono-memory-reset-rules">
+            <i class="fa-solid fa-rotate-left"></i>
+            <span>恢复默认规则</span>
+          </button>
+          <button class="menu_button" data-bakemono-action="scan">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <span>扫描预览</span>
+          </button>
+        </div>
+
+        <section class="bakemono-memory-debug">
+          <h4><i class="fa-solid fa-bug"></i> 扫描预览 / 调试</h4>
+          <div id="bakemono-memory-scan-preview" class="bakemono-memory-debug-list"></div>
+        </section>
+      </section>
+
+      <section class="bakemono-workbench-panel" data-bakemono-panel="injection">
+        <div class="bakemono-memory-editor-grid">
+          <label class="bakemono-memory-editor">
+            <span>记忆正文</span>
+            <textarea id="bakemono-memory-source-content" class="text_pole textarea_compact" rows="10" spellcheck="false"></textarea>
+          </label>
+          <label class="bakemono-memory-editor">
+            <span>注入模板</span>
+            <textarea id="bakemono-memory-injection-template" class="text_pole textarea_compact" rows="10" spellcheck="false"></textarea>
+          </label>
+        </div>
+
+        <label class="bakemono-memory-editor bakemono-memory-preview-editor">
+          <span>最终注入预览</span>
+          <textarea id="bakemono-memory-injection-content" class="text_pole textarea_compact" rows="7" spellcheck="false" readonly></textarea>
+        </label>
+
+        <div class="bakemono-memory-inline-actions">
+          <button class="menu_button" id="bakemono-memory-apply-injection">
+            <i class="fa-solid fa-floppy-disk"></i>
+            <span>应用编辑</span>
+          </button>
+          <button class="menu_button" id="bakemono-memory-copy-injection">
+            <i class="fa-solid fa-copy"></i>
+            <span>复制注入内容</span>
+          </button>
+          <button class="menu_button" id="bakemono-memory-reset-template">
+            <i class="fa-solid fa-rotate-left"></i>
+            <span>恢复默认模板</span>
+          </button>
+          <button class="menu_button" id="bakemono-memory-clear-injection">
+            <i class="fa-solid fa-eraser"></i>
+            <span>清空记忆正文</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="bakemono-workbench-panel" data-bakemono-panel="prompts">
+        <div class="bakemono-memory-card-panel bakemono-memory-preset-panel">
+          <h4><i class="fa-solid fa-box-archive"></i> 工作流预设</h4>
+          <div class="bakemono-memory-preset-controls">
+            <label class="bakemono-memory-field">
+              <span>预设</span>
+              <select id="bakemono-memory-preset-select" class="text_pole"></select>
+            </label>
+            <label class="bakemono-memory-field bakemono-memory-preset-name">
+              <span>名称</span>
+              <input id="bakemono-memory-preset-name" class="text_pole" type="text" placeholder="我的摘要工作流">
+            </label>
+            <button class="menu_button" id="bakemono-memory-load-preset">
+              <i class="fa-solid fa-download"></i>
+              <span>载入</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-save-preset">
+              <i class="fa-solid fa-floppy-disk"></i>
+              <span>保存工作流</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-delete-preset">
+              <i class="fa-solid fa-trash"></i>
+              <span>删除</span>
+            </button>
+          </div>
+          <label class="bakemono-memory-editor">
+            <span>工作流导入 / 导出 JSON</span>
+            <textarea id="bakemono-memory-preset-json" class="text_pole textarea_compact" rows="4" spellcheck="false"></textarea>
+          </label>
+          <div class="bakemono-memory-inline-actions">
+            <button class="menu_button" id="bakemono-memory-export-preset">
+              <i class="fa-solid fa-file-export"></i>
+              <span>导出当前工作流</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-copy-preset">
+              <i class="fa-solid fa-copy"></i>
+              <span>复制导出</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-import-preset">
+              <i class="fa-solid fa-file-import"></i>
+              <span>从 JSON 导入</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="bakemono-memory-editor-grid">
+          <label class="bakemono-memory-editor">
+            <span>旧正文批次摘要提示词</span>
+            <textarea id="bakemono-memory-story-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
+          </label>
+          <label class="bakemono-memory-editor">
+            <span>阶段总结提示词</span>
+            <textarea id="bakemono-memory-stage-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
+          </label>
+          <label class="bakemono-memory-editor">
+            <span>史诗简史提示词</span>
+            <textarea id="bakemono-memory-epic-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
+          </label>
+        </div>
+
+        <div class="bakemono-memory-prompt-hint">
+          <i class="fa-solid fa-circle-info"></i>
+          <span>在提示词中使用 <code>{{blocks}}</code> 放置待总结内容；没有写占位符时，插件会自动把内容追加到末尾。</span>
+        </div>
+
+        <div class="bakemono-memory-inline-actions">
+          <button class="menu_button" id="bakemono-memory-apply-prompts">
+            <i class="fa-solid fa-floppy-disk"></i>
+            <span>应用提示词</span>
+          </button>
+          <button class="menu_button" id="bakemono-memory-reset-story-prompt">
+            <i class="fa-solid fa-rotate-left"></i>
+            <span>恢复旧正文默认</span>
+          </button>
+          <button class="menu_button" id="bakemono-memory-reset-stage-prompt">
+            <i class="fa-solid fa-rotate-left"></i>
+            <span>恢复阶段默认</span>
+          </button>
+          <button class="menu_button" id="bakemono-memory-reset-epic-prompt">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            <span>恢复史诗默认</span>
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bakemono-mobile-actions" aria-label="移动端导航">
+      <button type="button" data-bakemono-nav="overview" title="总览">
+        <i class="fa-solid fa-table-cells-large"></i>
+        <span>总览</span>
+      </button>
+      <button type="button" data-bakemono-nav="preview" title="查看">
+        <i class="fa-solid fa-book-open"></i>
+        <span>查看</span>
+      </button>
+      <button type="button" data-bakemono-nav="timeline" title="摘要树">
+        <i class="fa-solid fa-diagram-project"></i>
+        <span>树</span>
+      </button>
+      <button type="button" data-bakemono-nav="drafts" title="草稿">
+        <i class="fa-solid fa-inbox"></i>
+        <span>草稿</span>
+      </button>
+      <button type="button" data-bakemono-nav="automation" title="自动">
+        <i class="fa-solid fa-clock"></i>
+        <span>自动</span>
+      </button>
+      <button type="button" data-bakemono-nav="scan" title="规则">
+        <i class="fa-solid fa-filter"></i>
+        <span>规则</span>
+      </button>
+      <button type="button" data-bakemono-nav="injection" title="注入">
+        <i class="fa-solid fa-plug-circle-bolt"></i>
+        <span>注入</span>
+      </button>
+      <button type="button" data-bakemono-nav="prompts" title="提示词">
+        <i class="fa-solid fa-pen-nib"></i>
+        <span>提示</span>
+      </button>
+    </nav>
+  </section>
+</div>

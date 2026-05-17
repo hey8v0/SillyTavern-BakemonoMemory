@@ -1,0 +1,12 @@
+{
+  "display_name": "剧情剪辑台",
+  "loading_order": 100,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Codex",
+  "version": "1.0.0",
+  "homePage": "https://github.com/SillyTavern/SillyTavern",
+  "auto_update": false
+}
