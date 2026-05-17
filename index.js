@@ -1619,7 +1619,8 @@ function promptGenerationTargetSelection(kind, totalLength) {
         modeInput.addEventListener('change', syncHint);
         syncHint();
 
-        document.body.append(overlay);
+        const host = document.getElementById('bakemono-workbench-root') || document.body;
+        host.append(overlay);
         modeInput.focus();
     });
 }
@@ -3836,6 +3837,9 @@ function switchWorkbenchTab(tabName) {
     root.querySelectorAll('.bakemono-workbench-panel').forEach(panel => {
         panel.classList.toggle('is-active', panel.dataset.bakemonoPanel === tabName);
     });
+    root.querySelectorAll('.bakemono-mobile-actions [data-bakemono-nav]').forEach(button => {
+        button.classList.toggle('is-active', button.dataset.bakemonoNav === tabName);
+    });
 }
 
 async function runWorkbenchAction(action) {
@@ -4373,6 +4377,7 @@ async function initWorkbench() {
     $('body').append(await response.text());
     await addWandButton();
     bindSettingsEvents();
+    switchWorkbenchTab('overview');
     renderAll();
 }
 
