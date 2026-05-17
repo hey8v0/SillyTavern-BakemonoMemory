@@ -2549,11 +2549,11 @@ async function setMessageRangeHidden(unhide = false) {
     toastr.success(text);
 }
 
-function getMemoryStrategyLabel(strategy = ensureState().memoryStrategy) {
+function getMemoryStrategyLabelLegacy(strategy = ensureState().memoryStrategy) {
     return strategy === memoryStrategies.GENERIC ? '通用全文补课模式' : 'Bakemono 摘要块模式';
 }
 
-function getWorkflowModeLabel(mode = ensureState().workflowMode) {
+function getWorkflowModeLabelLegacy(mode = ensureState().workflowMode) {
     if (mode === workflowModes.GENERIC) {
         return '通用插件补课';
     }
@@ -2563,7 +2563,7 @@ function getWorkflowModeLabel(mode = ensureState().workflowMode) {
     return 'Bakemono 摘要块';
 }
 
-function getStageSourceModeLabel(mode = getStageSourceMode()) {
+function getStageSourceModeLabelLegacy(mode = getStageSourceMode()) {
     const labels = {
         [stageSourceModes.SUMMARIES]: '摘要总结模式',
         [stageSourceModes.BACKFILL]: '插件补课摘要',
@@ -2572,6 +2572,118 @@ function getStageSourceModeLabel(mode = getStageSourceMode()) {
         [stageSourceModes.AUTO]: '自动选择',
     };
     return labels[mode] || labels[stageSourceModes.SUMMARIES];
+}
+
+function getMemoryStrategyLabel(strategy = ensureState().memoryStrategy) {
+    return strategy === memoryStrategies.GENERIC ? '补课摘要会临时注入' : '普通摘要不重复注入';
+}
+
+function getWorkflowModeLabel(mode = ensureState().workflowMode) {
+    if (mode === workflowModes.GENERIC) {
+        return '补课旧聊天';
+    }
+    if (mode === workflowModes.MIXED) {
+        return '高级自定义';
+    }
+    return '已有摘要';
+}
+
+function getStageSourceModeLabel(mode = getStageSourceMode()) {
+    const labels = {
+        [stageSourceModes.SUMMARIES]: '读取已有摘要',
+        [stageSourceModes.BACKFILL]: '读取补课摘要',
+        [stageSourceModes.RAW]: '直接读取正文',
+        [stageSourceModes.MIXED]: '摘要和正文都读',
+        [stageSourceModes.AUTO]: '自动选择',
+    };
+    return labels[mode] || labels[stageSourceModes.SUMMARIES];
+}
+
+function getWorkflowInfo(state = ensureState()) {
+    const mode = state.workflowMode || workflowModes.BAKEMONO;
+    if (mode === workflowModes.GENERIC) {
+        return {
+            title: '补课旧聊天',
+            description: '适合以前没有写摘要的聊天。插件会先把旧楼层分批压缩成补课摘要，再继续做阶段总结。',
+            steps: ['设置“旧正文每批楼数”', '点击“分批补课旧正文”', '到草稿箱检查并确认保存', '积累几批后生成阶段总结'],
+            actions: ['backfill', 'generate-stage', 'generate-epic', 'undo'],
+        };
+    }
+    if (mode === workflowModes.MIXED) {
+        return {
+            title: '高级自定义',
+            description: '适合想自己控制标签、排除规则、正文来源、输出格式和注入方式的用户。',
+            steps: ['打开高级设置或扫描规则', '确认扫描预览没有读错内容', '按你的材料来源生成总结', '必要时再调整提示词预设'],
+            actions: ['scan', 'backfill', 'generate-stage', 'generate-epic', 'hide', 'restore', 'undo'],
+        };
+    }
+    return {
+        title: '已有摘要',
+        description: '适合正文里已经有摘要块的聊天。插件只扫描摘要，普通摘要不重复注入，避免浪费 token。',
+        steps: ['点击“扫描摘要”', '确认查看总结里识别正确', '生成阶段总结', '阶段总结确认后再隐藏已覆盖楼层'],
+        actions: ['scan', 'generate-stage', 'generate-epic', 'hide', 'restore', 'undo'],
+    };
+}
+
+function applyWorkflowPreset(mode) {
+    const state = ensureState();
+    const preset = mode === workflowModes.GENERIC ? defaultGenericPromptPreset : defaultPromptPreset;
+
+    if (mode === workflowModes.MIXED) {
+        state.workflowMode = workflowModes.MIXED;
+        state.stageSourceMode = stageSourceModes.AUTO;
+        state.outputMode = 'custom';
+    } else {
+        state.workflowMode = preset.workflowMode;
+        state.memoryStrategy = preset.memoryStrategy;
+        state.stageSourceMode = preset.stageSourceMode;
+        state.outputMode = preset.outputMode;
+        state.generationPrompts.story = preset.story;
+        state.generationPrompts.stage = preset.stage;
+        state.generationPrompts.epic = preset.epic;
+        state.scanRules = { ...structuredClone(defaultScanRules), ...structuredClone(preset.scanRules) };
+        state.classificationRules = { ...structuredClone(defaultClassificationRules), ...structuredClone(preset.classificationRules) };
+        state.previewLayouts = { ...structuredClone(defaultPreviewLayouts), ...structuredClone(preset.previewLayouts) };
+    }
+
+    scanBakemonoBlocks({ persist: false });
+    updateInjectionFromSummaries();
+    saveState();
+    renderAll(`已切换到：${getWorkflowModeLabel(state.workflowMode)}`);
+}
+
+function renderWorkflowGuide(state = ensureState()) {
+    const info = getWorkflowInfo(state);
+    $('#bakemono-memory-workflow-title').text(info.title);
+    $('#bakemono-memory-workflow-description').text(info.description);
+    const list = document.querySelector('#bakemono-memory-next-steps');
+    if (list) {
+        list.innerHTML = '';
+        for (const step of info.steps) {
+            const item = document.createElement('li');
+            item.textContent = step;
+            list.append(item);
+        }
+    }
+    document.querySelectorAll('[data-bakemono-workflow-preset]').forEach(card => {
+        card.classList.toggle('is-active', card.dataset.bakemonoWorkflowPreset === (state.workflowMode || workflowModes.BAKEMONO));
+    });
+    const visibleActions = new Set(info.actions);
+    document.querySelectorAll('.bakemono-memory-control-deck [data-bakemono-action]').forEach(button => {
+        button.hidden = !visibleActions.has(button.dataset.bakemonoAction);
+    });
+}
+
+function getWorkflowStatusText(state = ensureState(), stats = getInjectionMemoryParts(state).stats, uncoveredStory = 0) {
+    if (state.workflowMode === workflowModes.GENERIC) {
+        return `补课模式：未被阶段总结覆盖的补课摘要会临时注入。当前注入普通摘要 ${stats.story} 个，待压缩摘要 ${uncoveredStory} 个。`;
+    }
+    if (state.workflowMode === workflowModes.MIXED) {
+        return '高级模式：请先确认扫描预览和阶段材料来源，再生成总结。';
+    }
+    return uncoveredStory
+        ? `已有摘要模式：普通摘要不会重复注入。当前有 ${uncoveredStory} 个摘要可用于生成阶段总结。`
+        : '已有摘要模式：适合配合正文摘要正则使用，普通摘要不重复占用 token。';
 }
 
 function renderAll(statusText = '') {
@@ -2602,6 +2714,7 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-output-mode').val(state.outputMode || 'bakemono');
     $('#bakemono-memory-strategy-label').text(getMemoryStrategyLabel(state.memoryStrategy));
     $('#bakemono-memory-workflow-label').text(`${getWorkflowModeLabel(state.workflowMode)} / ${getStageSourceModeLabel(getStageSourceMode(state))}`);
+    renderWorkflowGuide(state);
     const injectionParts = getInjectionMemoryParts(state);
     $('#bakemono-memory-injection-stats').text(`注入：史诗 ${injectionParts.stats.epic} / 阶段 ${injectionParts.stats.stage} / 普通 ${injectionParts.stats.story}`);
     const uncoveredStory = state.storySummaries.filter(item => !(state.coveredBlockHashes || []).includes(item.hash)).length;
@@ -2611,6 +2724,7 @@ function renderAll(statusText = '') {
             ? '通用模式下未被阶段总结覆盖的普通补课摘要会进入注入，阶段总结后会自动退出。'
             : 'Bakemono 模式适合配合酒馆正则使用，避免普通摘要和正文摘要重复占 token。');
     $('#bakemono-memory-injection-enabled').prop('checked', !!state.injection.enabled);
+    $('#bakemono-memory-memory-warning').text(getWorkflowStatusText(state, injectionParts.stats, uncoveredStory));
     $('#bakemono-memory-depth').val(state.injection.depth);
     $('#bakemono-memory-role').val(String(state.injection.role));
     $('#bakemono-memory-source-content').val(state.generatedMemory || '');
@@ -3234,6 +3348,9 @@ function bindSettingsEvents() {
     });
     $('#bakemono-workbench-root').off('click.bakemonoAction').on('click.bakemonoAction', '[data-bakemono-action]', async function () {
         await runWorkbenchAction(this.dataset.bakemonoAction);
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoWorkflow').on('click.bakemonoWorkflow', '[data-bakemono-workflow-preset]', function () {
+        applyWorkflowPreset(this.dataset.bakemonoWorkflowPreset);
     });
     $('#bakemono-workbench-root').off('click.bakemonoDraftAction').on('click.bakemonoDraftAction', '[data-bakemono-draft-action]', async function () {
         if (isBusy) {

@@ -74,6 +74,33 @@
           </div>
         </div>
 
+        <div class="bakemono-memory-workflow-picker" aria-label="工作流选择">
+          <button type="button" class="bakemono-memory-workflow-card" data-bakemono-workflow-preset="bakemono">
+            <i class="fa-solid fa-scroll"></i>
+            <strong>已有摘要</strong>
+            <span>正文里已经有摘要块，插件只负责汇总和收纳。</span>
+          </button>
+          <button type="button" class="bakemono-memory-workflow-card" data-bakemono-workflow-preset="generic">
+            <i class="fa-solid fa-box-archive"></i>
+            <strong>补课旧聊天</strong>
+            <span>以前没写摘要，把旧楼层分批压缩成长期记忆。</span>
+          </button>
+          <button type="button" class="bakemono-memory-workflow-card" data-bakemono-workflow-preset="mixed">
+            <i class="fa-solid fa-sliders"></i>
+            <strong>高级自定义</strong>
+            <span>自己设置扫描标签、排除规则、材料来源和输出风格。</span>
+          </button>
+        </div>
+
+        <div class="bakemono-memory-next-panel">
+          <div>
+            <span class="bakemono-memory-next-kicker">当前流程</span>
+            <h3 id="bakemono-memory-workflow-title">已有摘要</h3>
+            <p id="bakemono-memory-workflow-description">扫描正文里的摘要块，再生成阶段总结。</p>
+          </div>
+          <ol id="bakemono-memory-next-steps" class="bakemono-memory-next-steps"></ol>
+        </div>
+
         <div class="bakemono-memory-control-deck">
           <button class="menu_button" data-bakemono-action="scan" id="bakemono-memory-scan">
             <i class="fa-solid fa-magnifying-glass"></i>
@@ -105,6 +132,8 @@
           </button>
         </div>
 
+        <details class="bakemono-memory-advanced-options">
+          <summary><i class="fa-solid fa-gear"></i><span>高级设置</span></summary>
         <div class="bakemono-memory-options">
           <label class="bakemono-memory-field">
             <span>记忆策略</span>
@@ -156,6 +185,7 @@
             </select>
           </label>
         </div>
+        </details>
 
         <div class="bakemono-memory-prompt-hint">
           <i class="fa-solid fa-brain"></i>
@@ -167,8 +197,8 @@
         </div>
         <div id="bakemono-memory-memory-warning" class="bakemono-memory-status-line">等待扫描。</div>
 
-        <div class="bakemono-memory-card-panel bakemono-memory-range-panel">
-          <h4><i class="fa-solid fa-box-archive"></i> 楼层收纳</h4>
+        <details class="bakemono-memory-card-panel bakemono-memory-range-panel">
+          <summary><i class="fa-solid fa-box-archive"></i><span>楼层收纳（高级）</span></summary>
           <label class="bakemono-memory-editor">
             <span>楼层范围</span>
             <textarea id="bakemono-memory-range-input" class="text_pole textarea_compact" rows="2" placeholder="例如：1-700, 720, 735-760" spellcheck="false"></textarea>
@@ -188,7 +218,7 @@
             </button>
           </div>
           <div id="bakemono-memory-range-preview" class="bakemono-memory-status-line">输入范围后可先预览。</div>
-        </div>
+        </details>
 
         <div id="bakemono-memory-status-line" class="bakemono-memory-status-line">等待扫描。</div>
       </section>
