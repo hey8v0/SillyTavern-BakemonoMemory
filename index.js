@@ -5,7 +5,37 @@ import { hideChatMessageRange } from '../../../chats.js';
 const EXT_ID = 'BakemonoMemory';
 const STORAGE_KEY = 'bakemonoMemory';
 const INJECTION_KEY = 'bakemono_memory';
-const extensionFolderPath = `scripts/extensions/third-party/${EXT_ID}`;
+
+const extensionFolderPath = (() => {
+    const fallback = `scripts/extensions/third-party/${EXT_ID}`;
+
+    try {
+        if (typeof import.meta !== 'undefined' && import.meta.url) {
+            const url = new URL('.', import.meta.url);
+            const pathname = decodeURIComponent(url.pathname);
+            const match = pathname.match(/(scripts\/extensions\/third-party\/[^/]+)/);
+            if (match) return match[1];
+        }
+    } catch (error) {
+        // ignore
+    }
+
+    if (typeof document !== 'undefined') {
+        const script = document.currentScript;
+        if (script?.src) {
+            try {
+                const url = new URL(script.src, window.location.href);
+                const pathname = decodeURIComponent(url.pathname);
+                const match = pathname.match(/(scripts\/extensions\/third-party\/[^/]+)/);
+                if (match) return match[1];
+            } catch (error) {
+                // ignore
+            }
+        }
+    }
+
+    return fallback;
+})();
 
 const blockTypes = {
     STORY: 'story',
