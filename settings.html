@@ -106,6 +106,39 @@
         </div>
 
         <div class="bakemono-memory-options">
+          <label class="bakemono-memory-field">
+            <span>记忆策略</span>
+            <select id="bakemono-memory-memory-strategy" class="text_pole">
+              <option value="bakemono">Bakemono 摘要块模式</option>
+              <option value="generic">通用全文补课模式</option>
+            </select>
+          </label>
+          <label class="bakemono-memory-field">
+            <span>工作流模式</span>
+            <select id="bakemono-memory-workflow-mode" class="text_pole">
+              <option value="bakemono">Bakemono 摘要块</option>
+              <option value="generic">通用插件补课</option>
+              <option value="mixed">混合工作流</option>
+            </select>
+          </label>
+          <label class="bakemono-memory-field">
+            <span>阶段材料</span>
+            <select id="bakemono-memory-stage-source-mode" class="text_pole">
+              <option value="summaries">摘要总结模式</option>
+              <option value="backfill">插件补课摘要</option>
+              <option value="raw">普通正文总结</option>
+              <option value="mixed">混合材料</option>
+              <option value="auto">自动选择</option>
+            </select>
+          </label>
+          <label class="bakemono-memory-field">
+            <span>输出风格</span>
+            <select id="bakemono-memory-output-mode" class="text_pole">
+              <option value="bakemono">Bakemono 手账</option>
+              <option value="plain">通用纯文本</option>
+              <option value="custom">自定义模板</option>
+            </select>
+          </label>
           <label class="checkbox_label bakemono-memory-switch">
             <input type="checkbox" id="bakemono-memory-injection-enabled">
             <span>注入剧情记忆</span>
@@ -122,6 +155,39 @@
               <option value="2">Assistant</option>
             </select>
           </label>
+        </div>
+
+        <div class="bakemono-memory-prompt-hint">
+          <i class="fa-solid fa-brain"></i>
+          <span><strong id="bakemono-memory-strategy-label">Bakemono 摘要块模式</strong> · <span id="bakemono-memory-injection-stats">注入：史诗 0 / 阶段 0 / 普通 0</span></span>
+        </div>
+        <div class="bakemono-memory-prompt-hint">
+          <i class="fa-solid fa-route"></i>
+          <span id="bakemono-memory-workflow-label">Bakemono 摘要块 / 摘要总结模式</span>
+        </div>
+        <div id="bakemono-memory-memory-warning" class="bakemono-memory-status-line">等待扫描。</div>
+
+        <div class="bakemono-memory-card-panel bakemono-memory-range-panel">
+          <h4><i class="fa-solid fa-box-archive"></i> 楼层收纳</h4>
+          <label class="bakemono-memory-editor">
+            <span>楼层范围</span>
+            <textarea id="bakemono-memory-range-input" class="text_pole textarea_compact" rows="2" placeholder="例如：1-700, 720, 735-760" spellcheck="false"></textarea>
+          </label>
+          <div class="bakemono-memory-inline-actions">
+            <button class="menu_button" data-bakemono-action="preview-range">
+              <i class="fa-solid fa-list-check"></i>
+              <span>预览范围</span>
+            </button>
+            <button class="menu_button danger_button" data-bakemono-action="hide-range">
+              <i class="fa-solid fa-eye-slash"></i>
+              <span>隐藏范围</span>
+            </button>
+            <button class="menu_button" data-bakemono-action="restore-range">
+              <i class="fa-solid fa-eye"></i>
+              <span>恢复范围</span>
+            </button>
+          </div>
+          <div id="bakemono-memory-range-preview" class="bakemono-memory-status-line">输入范围后可先预览。</div>
         </div>
 
         <div id="bakemono-memory-status-line" class="bakemono-memory-status-line">等待扫描。</div>
@@ -336,6 +402,10 @@
             <label class="bakemono-memory-field">
               <span>全文最短长度</span>
               <input id="bakemono-memory-full-min-length" class="text_pole" type="number" min="0" step="1">
+            </label>
+            <label class="checkbox_label bakemono-memory-switch">
+              <input type="checkbox" id="bakemono-memory-include-hidden">
+              <span>扫描已隐藏楼层</span>
             </label>
           </div>
 
