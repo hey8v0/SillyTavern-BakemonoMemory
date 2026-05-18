@@ -1267,7 +1267,7 @@
     display: flex;
     overflow-x: auto;
     gap: 8px;
-    padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+    padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--SmartThemeBorderColor);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
     -webkit-overflow-scrolling: touch;
@@ -1288,28 +1288,25 @@
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
     color: inherit;
     font-size: 11px;
-    transition: transform 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    transition: background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
   }
 
   .bakemono-mobile-actions button.is-active {
-    transform: translateY(-10px);
     border-style: solid;
-    border-color: var(--SmartThemeQuoteColor);
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 72%, var(--SmartThemeBorderColor) 28%);
     border-top-color: transparent;
-    border-radius: 0 0 14px 14px;
+    border-radius: 0 0 12px 12px;
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeQuoteColor) 6%);
-    color: var(--SmartThemeBodyColor);
-    box-shadow: 0 -8px 0 color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent), 0 7px 18px rgba(0, 0, 0, 0.22);
+    box-shadow: inset 0 8px 0 color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeQuoteColor) 6%);
   }
 
   .bakemono-mobile-actions button.is-active::before {
     content: "";
     position: absolute;
-    left: -1px;
-    right: -1px;
+    left: 0;
+    right: 0;
     top: -9px;
     height: 10px;
-    border-inline: 1px solid var(--SmartThemeQuoteColor);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeQuoteColor) 6%);
     pointer-events: none;
   }
@@ -1330,6 +1327,9 @@
   }
 
   .bakemono-memory-target-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 50000;
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -1339,6 +1339,7 @@
   .bakemono-memory-target-box {
     width: 100%;
     max-height: min(78dvh, 560px);
+    margin-top: auto;
     border-radius: 16px 16px 8px 8px;
     overflow-y: auto;
   }
