@@ -101,6 +101,57 @@
           <ol id="bakemono-memory-next-steps" class="bakemono-memory-next-steps"></ol>
         </div>
 
+        <div class="bakemono-memory-card-panel bakemono-memory-preset-panel">
+          <h4><i class="fa-solid fa-box-archive"></i> 整套配置</h4>
+          <div class="bakemono-memory-prompt-hint">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>这里保存/导出所有配置：工作流、扫描规则、自动总结、生成提示词和注入模板。</span>
+          </div>
+          <div class="bakemono-memory-preset-controls">
+            <label class="bakemono-memory-field">
+              <span>配置</span>
+              <select id="bakemono-memory-preset-select" class="text_pole"></select>
+            </label>
+            <label class="bakemono-memory-field bakemono-memory-preset-name">
+              <span>名称</span>
+              <input id="bakemono-memory-preset-name" class="text_pole" type="text" placeholder="我的完整工作流">
+            </label>
+            <button class="menu_button" id="bakemono-memory-load-preset">
+              <i class="fa-solid fa-download"></i>
+              <span>载入整套</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-save-preset">
+              <i class="fa-solid fa-floppy-disk"></i>
+              <span>另存整套</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-delete-preset">
+              <i class="fa-solid fa-trash"></i>
+              <span>删除整套</span>
+            </button>
+          </div>
+          <details class="bakemono-memory-advanced-options">
+            <summary><i class="fa-solid fa-file-code"></i><span>导入 / 导出整套配置 JSON</span></summary>
+            <label class="bakemono-memory-editor">
+              <span>整套配置 JSON</span>
+              <textarea id="bakemono-memory-preset-json" class="text_pole textarea_compact" rows="4" spellcheck="false"></textarea>
+            </label>
+            <div class="bakemono-memory-inline-actions">
+              <button class="menu_button" id="bakemono-memory-export-preset">
+                <i class="fa-solid fa-file-export"></i>
+                <span>导出整套</span>
+              </button>
+              <button class="menu_button" id="bakemono-memory-copy-preset">
+                <i class="fa-solid fa-copy"></i>
+                <span>复制导出</span>
+              </button>
+              <button class="menu_button" id="bakemono-memory-import-preset">
+                <i class="fa-solid fa-file-import"></i>
+                <span>从 JSON 导入</span>
+              </button>
+            </div>
+          </details>
+        </div>
+
         <div class="bakemono-memory-control-deck">
           <button class="menu_button" data-bakemono-action="scan" id="bakemono-memory-scan">
             <i class="fa-solid fa-magnifying-glass"></i>
@@ -324,6 +375,36 @@
       </section>
 
       <section class="bakemono-workbench-panel" data-bakemono-panel="automation">
+        <div class="bakemono-memory-card-panel bakemono-memory-config-panel">
+          <h4><i class="fa-solid fa-clock-rotate-left"></i> 自动配置</h4>
+          <div class="bakemono-memory-preset-controls">
+            <label class="bakemono-memory-field">
+              <span>配置</span>
+              <select id="bakemono-memory-automation-preset-select" class="text_pole"></select>
+            </label>
+            <label class="bakemono-memory-field bakemono-memory-preset-name">
+              <span>名称</span>
+              <input id="bakemono-memory-automation-preset-name" class="text_pole" type="text" placeholder="我的自动总结配置">
+            </label>
+            <button class="menu_button" id="bakemono-memory-load-automation-preset">
+              <i class="fa-solid fa-download"></i>
+              <span>载入</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-save-automation-preset">
+              <i class="fa-solid fa-floppy-disk"></i>
+              <span>另存</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-update-automation-preset">
+              <i class="fa-solid fa-pen-to-square"></i>
+              <span>覆盖</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-delete-automation-preset">
+              <i class="fa-solid fa-trash"></i>
+              <span>删除</span>
+            </button>
+          </div>
+        </div>
+
         <div class="bakemono-memory-editor-grid">
           <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
             <h4><i class="fa-solid fa-clock"></i> 自动总结</h4>
@@ -416,6 +497,40 @@
       </section>
 
       <section class="bakemono-workbench-panel" data-bakemono-panel="scan">
+        <div class="bakemono-memory-card-panel bakemono-memory-config-panel">
+          <h4><i class="fa-solid fa-box-archive"></i> 扫描配置</h4>
+          <div class="bakemono-memory-prompt-hint">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>这里只保存扫描过滤、分类关键词和手账分段。</span>
+          </div>
+          <div class="bakemono-memory-preset-controls">
+            <label class="bakemono-memory-field">
+              <span>配置</span>
+              <select id="bakemono-memory-scan-preset-select" class="text_pole"></select>
+            </label>
+            <label class="bakemono-memory-field bakemono-memory-preset-name">
+              <span>名称</span>
+              <input id="bakemono-memory-scan-preset-name" class="text_pole" type="text" placeholder="我的扫描配置">
+            </label>
+            <button class="menu_button" id="bakemono-memory-load-scan-preset">
+              <i class="fa-solid fa-download"></i>
+              <span>载入配置</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-save-scan-preset">
+              <i class="fa-solid fa-floppy-disk"></i>
+              <span>另存配置</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-update-scan-preset">
+              <i class="fa-solid fa-pen-to-square"></i>
+              <span>覆盖选中</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-delete-scan-preset">
+              <i class="fa-solid fa-trash"></i>
+              <span>删除配置</span>
+            </button>
+          </div>
+        </div>
+
         <div class="bakemono-memory-editor-grid">
           <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
             <h4><i class="fa-solid fa-tags"></i> 扫描过滤</h4>
@@ -506,6 +621,36 @@
       </section>
 
       <section class="bakemono-workbench-panel" data-bakemono-panel="injection">
+        <div class="bakemono-memory-card-panel bakemono-memory-config-panel">
+          <h4><i class="fa-solid fa-syringe"></i> 注入配置</h4>
+          <div class="bakemono-memory-preset-controls">
+            <label class="bakemono-memory-field">
+              <span>配置</span>
+              <select id="bakemono-memory-injection-preset-select" class="text_pole"></select>
+            </label>
+            <label class="bakemono-memory-field bakemono-memory-preset-name">
+              <span>名称</span>
+              <input id="bakemono-memory-injection-preset-name" class="text_pole" type="text" placeholder="我的注入模板配置">
+            </label>
+            <button class="menu_button" id="bakemono-memory-load-injection-preset">
+              <i class="fa-solid fa-download"></i>
+              <span>载入</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-save-injection-preset">
+              <i class="fa-solid fa-floppy-disk"></i>
+              <span>另存</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-update-injection-preset">
+              <i class="fa-solid fa-pen-to-square"></i>
+              <span>覆盖</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-delete-injection-preset">
+              <i class="fa-solid fa-trash"></i>
+              <span>删除</span>
+            </button>
+          </div>
+        </div>
+
         <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
           <h4><i class="fa-solid fa-pen-to-square"></i> 注入编辑</h4>
           <div class="bakemono-memory-editor-grid">
@@ -550,49 +695,32 @@
 
       <section class="bakemono-workbench-panel" data-bakemono-panel="prompts">
         <div class="bakemono-memory-card-panel bakemono-memory-preset-panel">
-          <h4><i class="fa-solid fa-box-archive"></i> 工作流预设</h4>
+          <h4><i class="fa-solid fa-box-archive"></i> 提示词配置</h4>
           <div class="bakemono-memory-preset-controls">
             <label class="bakemono-memory-field">
-              <span>预设</span>
-              <select id="bakemono-memory-preset-select" class="text_pole"></select>
+              <span>配置</span>
+              <select id="bakemono-memory-prompts-preset-select" class="text_pole"></select>
             </label>
             <label class="bakemono-memory-field bakemono-memory-preset-name">
               <span>名称</span>
-              <input id="bakemono-memory-preset-name" class="text_pole" type="text" placeholder="我的摘要工作流">
+              <input id="bakemono-memory-prompts-preset-name" class="text_pole" type="text" placeholder="我的提示词配置">
             </label>
-            <button class="menu_button" id="bakemono-memory-load-preset">
+            <button class="menu_button" id="bakemono-memory-load-prompts-preset">
               <i class="fa-solid fa-download"></i>
               <span>载入</span>
             </button>
-            <button class="menu_button" id="bakemono-memory-save-preset">
+            <button class="menu_button" id="bakemono-memory-save-prompts-preset">
               <i class="fa-solid fa-floppy-disk"></i>
-              <span>保存工作流</span>
+              <span>另存</span>
             </button>
-            <button class="menu_button" id="bakemono-memory-delete-preset">
+            <button class="menu_button" id="bakemono-memory-update-prompts-preset">
+              <i class="fa-solid fa-pen-to-square"></i>
+              <span>覆盖</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-delete-prompts-preset">
               <i class="fa-solid fa-trash"></i>
               <span>删除</span>
             </button>
-          </div>
-          <div class="bakemono-memory-mobile-json bakemono-mobile-collapsible">
-            <h4><i class="fa-solid fa-file-code"></i> 工作流导入 / 导出 JSON</h4>
-            <label class="bakemono-memory-editor">
-              <span>工作流导入 / 导出 JSON</span>
-              <textarea id="bakemono-memory-preset-json" class="text_pole textarea_compact" rows="4" spellcheck="false"></textarea>
-            </label>
-            <div class="bakemono-memory-inline-actions">
-              <button class="menu_button" id="bakemono-memory-export-preset">
-                <i class="fa-solid fa-file-export"></i>
-                <span>导出当前工作流</span>
-              </button>
-              <button class="menu_button" id="bakemono-memory-copy-preset">
-                <i class="fa-solid fa-copy"></i>
-                <span>复制导出</span>
-              </button>
-              <button class="menu_button" id="bakemono-memory-import-preset">
-                <i class="fa-solid fa-file-import"></i>
-                <span>从 JSON 导入</span>
-              </button>
-            </div>
           </div>
         </div>
 

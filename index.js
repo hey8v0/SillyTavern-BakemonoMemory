@@ -68,6 +68,13 @@ const targetSelectionModes = {
     RANGE: 'range',
 };
 
+const areaPresetScopes = {
+    SCAN: 'scan',
+    AUTOMATION: 'automation',
+    PROMPTS: 'prompts',
+    INJECTION: 'injection',
+};
+
 const defaultInjectionTemplate = `【剧情剪辑台：长期剧情记忆】
 以下内容是已经压缩整理过的剧情记忆。请把它当作已发生事实与长期线索参考，不要复述给用户，也不要替代当前回合正文。
 
@@ -547,6 +554,17 @@ function ensureGlobalSettings() {
     if (!extension_settings[STORAGE_KEY].selectedPromptPresetId) {
         extension_settings[STORAGE_KEY].selectedPromptPresetId = defaultPromptPreset.id;
     }
+    if (!extension_settings[STORAGE_KEY].areaPresets || typeof extension_settings[STORAGE_KEY].areaPresets !== 'object') {
+        extension_settings[STORAGE_KEY].areaPresets = {};
+    }
+    for (const scope of Object.values(areaPresetScopes)) {
+        if (!Array.isArray(extension_settings[STORAGE_KEY].areaPresets[scope])) {
+            extension_settings[STORAGE_KEY].areaPresets[scope] = [];
+        }
+    }
+    if (!extension_settings[STORAGE_KEY].selectedAreaPresetIds || typeof extension_settings[STORAGE_KEY].selectedAreaPresetIds !== 'object') {
+        extension_settings[STORAGE_KEY].selectedAreaPresetIds = {};
+    }
 }
 
 function ensureState() {
@@ -746,8 +764,32 @@ function setSelectedPromptPresetId(id) {
     saveGlobalSettings();
 }
 
+function getAreaPresets(scope) {
+    ensureGlobalSettings();
+    return extension_settings[STORAGE_KEY].areaPresets[scope] || [];
+}
+
+function getSelectedAreaPresetId(scope) {
+    ensureGlobalSettings();
+    return extension_settings[STORAGE_KEY].selectedAreaPresetIds[scope] || '';
+}
+
+function setSelectedAreaPresetId(scope, id) {
+    ensureGlobalSettings();
+    extension_settings[STORAGE_KEY].selectedAreaPresetIds[scope] = id || '';
+    saveGlobalSettings();
+}
+
+function isBuiltInPresetId(id) {
+    return id === defaultPromptPreset.id || id === defaultGenericPromptPreset.id;
+}
+
 function makePresetId(name) {
     return `preset-${getHash(`${Date.now()}|${name || 'prompt'}`)}`;
+}
+
+function makeAreaPresetId(scope, name) {
+    return `${scope}-${getHash(`${Date.now()}|${scope}|${name || 'preset'}`)}`;
 }
 
 function getHash(text) {
@@ -3150,37 +3192,26 @@ function getWorkflowInfo(state = ensureState()) {
 
 function applyWorkflowPreset(mode) {
     const state = ensureState();
-    const preset = mode === workflowModes.GENERIC ? defaultGenericPromptPreset : defaultPromptPreset;
-    const confirmed = confirmDanger(
-        `切换到「${getWorkflowModeLabel(mode)}」工作流？`,
-        ['这会覆盖当前聊天的扫描规则、分类规则、预览布局和生成提示词。'],
-    );
-    if (!confirmed) {
-        return;
-    }
-
     if (mode === workflowModes.MIXED) {
         state.workflowMode = workflowModes.MIXED;
         state.stageSourceMode = stageSourceModes.AUTO;
         state.outputMode = 'custom';
+    } else if (mode === workflowModes.GENERIC) {
+        state.workflowMode = workflowModes.GENERIC;
+        state.memoryStrategy = memoryStrategies.GENERIC;
+        state.stageSourceMode = stageSourceModes.BACKFILL;
+        state.outputMode = 'plain';
     } else {
-        state.workflowMode = preset.workflowMode;
-        state.memoryStrategy = preset.memoryStrategy;
-        state.stageSourceMode = preset.stageSourceMode;
-        state.outputMode = preset.outputMode;
-        state.generationPrompts.story = preset.story;
-        state.generationPrompts.stage = preset.stage;
-        state.generationPrompts.epic = preset.epic;
-        state.scanRules = { ...structuredClone(defaultScanRules), ...structuredClone(preset.scanRules) };
-        state.classificationRules = { ...structuredClone(defaultClassificationRules), ...structuredClone(preset.classificationRules) };
-        state.previewLayouts = { ...structuredClone(defaultPreviewLayouts), ...structuredClone(preset.previewLayouts) };
-        state.generationTargets = structuredClone(defaultGenerationTargets);
+        state.workflowMode = workflowModes.BAKEMONO;
+        state.memoryStrategy = memoryStrategies.BAKEMONO;
+        state.stageSourceMode = stageSourceModes.SUMMARIES;
+        state.outputMode = 'bakemono';
     }
 
     scanBakemonoBlocks({ persist: false });
     updateInjectionFromSummaries();
     saveState();
-    renderAll(`已切换到：${getWorkflowModeLabel(state.workflowMode)}`);
+    renderAll(`已切换到：${getWorkflowModeLabel(state.workflowMode)}。扫描、自动总结和提示词配置已保留。`);
 }
 
 function renderWorkflowGuide(state = ensureState()) {
@@ -3703,7 +3734,15 @@ function getKindLabel(kind) {
 }
 
 function renderPromptPresetControls() {
-    const select = document.querySelector('#bakemono-memory-preset-select');
+    renderPresetControlPair('#bakemono-memory-preset-select', '#bakemono-memory-preset-name');
+    renderAreaPresetControl(areaPresetScopes.SCAN, '#bakemono-memory-scan-preset-select', '#bakemono-memory-scan-preset-name');
+    renderAreaPresetControl(areaPresetScopes.AUTOMATION, '#bakemono-memory-automation-preset-select', '#bakemono-memory-automation-preset-name');
+    renderAreaPresetControl(areaPresetScopes.PROMPTS, '#bakemono-memory-prompts-preset-select', '#bakemono-memory-prompts-preset-name');
+    renderAreaPresetControl(areaPresetScopes.INJECTION, '#bakemono-memory-injection-preset-select', '#bakemono-memory-injection-preset-name');
+}
+
+function renderPresetControlPair(selectSelector, nameSelector) {
+    const select = document.querySelector(selectSelector);
     if (!select) {
         return;
     }
@@ -3719,17 +3758,123 @@ function renderPromptPresetControls() {
     select.value = selectedId;
 
     const selected = getPromptPresets().find(preset => preset.id === select.value);
-    $('#bakemono-memory-preset-name').val(selected?.name || '');
+    $(nameSelector).val(selected?.name || '');
+}
+
+function renderAreaPresetControl(scope, selectSelector, nameSelector) {
+    const select = document.querySelector(selectSelector);
+    if (!select) {
+        return;
+    }
+
+    const selectedId = getSelectedAreaPresetId(scope);
+    select.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '选择已保存配置';
+    select.append(placeholder);
+    for (const preset of getAreaPresets(scope)) {
+        const option = document.createElement('option');
+        option.value = preset.id;
+        option.textContent = preset.name || '未命名配置';
+        select.append(option);
+    }
+    select.value = selectedId;
+
+    const selected = getAreaPresets(scope).find(preset => preset.id === select.value);
+    $(nameSelector).val(selected?.name || '');
+}
+
+function readRuleFieldsFromUi(state = ensureState()) {
+    if (!$('#bakemono-memory-scan-mode').length) {
+        return state;
+    }
+    state.scanRules = {
+        mode: String($('#bakemono-memory-scan-mode').val() || defaultScanRules.mode),
+        includeTags: String($('#bakemono-memory-include-tags').val() || ''),
+        excludeTags: String($('#bakemono-memory-exclude-tags').val() || ''),
+        fullTextMinLength: Math.max(0, Number($('#bakemono-memory-full-min-length').val() || defaultScanRules.fullTextMinLength)),
+        includeHidden: $('#bakemono-memory-include-hidden').prop('checked'),
+    };
+    state.classificationRules = {
+        story: String($('#bakemono-memory-class-story').val() || defaultClassificationRules.story),
+        stage: String($('#bakemono-memory-class-stage').val() || defaultClassificationRules.stage),
+        epic: String($('#bakemono-memory-class-epic').val() || defaultClassificationRules.epic),
+    };
+    state.previewLayouts = {
+        story: String($('#bakemono-memory-layout-story').val() || defaultPreviewLayouts.story),
+        stage: String($('#bakemono-memory-layout-stage').val() || defaultPreviewLayouts.stage),
+        epic: String($('#bakemono-memory-layout-epic').val() || defaultPreviewLayouts.epic),
+    };
+    return state;
+}
+
+function readAutomationFieldsFromUi(state = ensureState()) {
+    if (!$('#bakemono-memory-auto-mode').length) {
+        return state;
+    }
+    state.automation = {
+        ...state.automation,
+        enabled: $('#bakemono-memory-auto-enabled').prop('checked'),
+        mode: String($('#bakemono-memory-auto-mode').val() || defaultAutomation.mode),
+        triggerType: String($('#bakemono-memory-auto-trigger').val() || defaultAutomation.triggerType),
+        floorInterval: Math.max(1, Number($('#bakemono-memory-auto-floor-interval').val() || defaultAutomation.floorInterval)),
+        charInterval: Math.max(100, Number($('#bakemono-memory-auto-char-interval').val() || defaultAutomation.charInterval)),
+        backfillBatchSize: Math.max(1, Number($('#bakemono-memory-backfill-batch-size').val() || defaultAutomation.backfillBatchSize)),
+        autoHidePreserveRecent: Math.max(0, Number($('#bakemono-memory-auto-hide-preserve-recent').val() || defaultAutomation.autoHidePreserveRecent)),
+        apiProvider: String($('#bakemono-memory-api-provider').val() || defaultAutomation.apiProvider),
+        customApi: {
+            ...state.automation.customApi,
+            baseUrl: String($('#bakemono-memory-custom-base-url').val() || '').trim(),
+            apiKey: String($('#bakemono-memory-custom-api-key').val() || '').trim(),
+            model: String($('#bakemono-memory-custom-model').val() || '').trim(),
+            temperature: Number($('#bakemono-memory-custom-temperature').val() || defaultAutomation.customApi.temperature),
+            maxTokens: Number($('#bakemono-memory-custom-max-tokens').val() || defaultAutomation.customApi.maxTokens),
+        },
+    };
+    return state;
+}
+
+function readPromptFieldsFromUi(state = ensureState()) {
+    if (!$('#bakemono-memory-stage-prompt').length) {
+        return state;
+    }
+    state.generationPrompts.story = String($('#bakemono-memory-story-prompt').val() || defaultStoryGenerationPrompt);
+    state.generationPrompts.stage = String($('#bakemono-memory-stage-prompt').val() || defaultStageGenerationPrompt);
+    state.generationPrompts.epic = String($('#bakemono-memory-epic-prompt').val() || defaultEpicGenerationPrompt);
+    return state;
+}
+
+function readInjectionFieldsFromUi(state = ensureState()) {
+    if (!$('#bakemono-memory-injection-template').length) {
+        return state;
+    }
+    state.injection = {
+        ...state.injection,
+        enabled: $('#bakemono-memory-injection-enabled').prop('checked'),
+        depth: Math.max(0, Number($('#bakemono-memory-depth').val() || defaultState.injection.depth)),
+        role: Number($('#bakemono-memory-role').val() || extension_prompt_roles.SYSTEM),
+        template: String($('#bakemono-memory-injection-template').val() || defaultInjectionTemplate),
+    };
+    return state;
+}
+
+function readConfigFieldsFromUi(state = ensureState()) {
+    readRuleFieldsFromUi(state);
+    readAutomationFieldsFromUi(state);
+    readPromptFieldsFromUi(state);
+    readInjectionFieldsFromUi(state);
+    return state;
 }
 
 function getCurrentPromptPresetPayload(name = '') {
-    const state = ensureState();
+    const state = readConfigFieldsFromUi(ensureState());
     return {
         id: makePresetId(name),
         name: name || '未命名预设',
-        story: String($('#bakemono-memory-story-prompt').val() || defaultStoryGenerationPrompt),
-        stage: String($('#bakemono-memory-stage-prompt').val() || defaultStageGenerationPrompt),
-        epic: String($('#bakemono-memory-epic-prompt').val() || defaultEpicGenerationPrompt),
+        story: String(state.generationPrompts.story || defaultStoryGenerationPrompt),
+        stage: String(state.generationPrompts.stage || defaultStageGenerationPrompt),
+        epic: String(state.generationPrompts.epic || defaultEpicGenerationPrompt),
         scanRules: structuredClone(state.scanRules),
         classificationRules: structuredClone(state.classificationRules),
         previewLayouts: structuredClone(state.previewLayouts),
@@ -3738,6 +3883,12 @@ function getCurrentPromptPresetPayload(name = '') {
         stageSourceMode: getStageSourceMode(state),
         outputMode: state.outputMode || 'bakemono',
         generationTargets: structuredClone(state.generationTargets || defaultGenerationTargets),
+        injection: {
+            enabled: !!state.injection.enabled,
+            depth: Math.max(0, Number(state.injection.depth ?? defaultState.injection.depth)),
+            role: Number(state.injection.role ?? extension_prompt_roles.SYSTEM),
+            template: String(state.injection.template || defaultInjectionTemplate),
+        },
         automation: {
             ...structuredClone(state.automation),
             lastSignature: '',
@@ -3772,10 +3923,280 @@ function normalizeImportedPreset(value) {
         stageSourceMode: Object.values(stageSourceModes).includes(preset.stageSourceMode) ? preset.stageSourceMode : stageSourceModes.SUMMARIES,
         outputMode: ['bakemono', 'plain', 'custom'].includes(preset.outputMode) ? preset.outputMode : 'bakemono',
         generationTargets: preset.generationTargets && typeof preset.generationTargets === 'object' ? preset.generationTargets : null,
+        injection: preset.injection && typeof preset.injection === 'object' ? preset.injection : null,
         automation: preset.automation && typeof preset.automation === 'object' ? preset.automation : null,
         createdAt: preset.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
     };
+}
+
+function applyPromptPresetToState(preset) {
+    const state = ensureState();
+    state.generationPrompts.story = preset.story || defaultStoryGenerationPrompt;
+    state.generationPrompts.stage = preset.stage || defaultStageGenerationPrompt;
+    state.generationPrompts.epic = preset.epic || defaultEpicGenerationPrompt;
+    if (preset.scanRules) {
+        state.scanRules = { ...structuredClone(defaultScanRules), ...structuredClone(preset.scanRules) };
+    }
+    if (preset.classificationRules) {
+        state.classificationRules = { ...structuredClone(defaultClassificationRules), ...structuredClone(preset.classificationRules) };
+    }
+    if (preset.previewLayouts) {
+        state.previewLayouts = { ...structuredClone(defaultPreviewLayouts), ...structuredClone(preset.previewLayouts) };
+    }
+    if (Object.values(memoryStrategies).includes(preset.memoryStrategy)) {
+        state.memoryStrategy = preset.memoryStrategy;
+    } else if (preset.id === defaultGenericPromptPreset.id) {
+        state.memoryStrategy = memoryStrategies.GENERIC;
+    } else if (preset.id === defaultPromptPreset.id) {
+        state.memoryStrategy = memoryStrategies.BAKEMONO;
+    }
+    if (Object.values(workflowModes).includes(preset.workflowMode)) {
+        state.workflowMode = preset.workflowMode;
+    } else if (preset.id === defaultGenericPromptPreset.id) {
+        state.workflowMode = workflowModes.GENERIC;
+    } else if (preset.id === defaultPromptPreset.id) {
+        state.workflowMode = workflowModes.BAKEMONO;
+    }
+    if (Object.values(stageSourceModes).includes(preset.stageSourceMode)) {
+        state.stageSourceMode = preset.stageSourceMode;
+    } else {
+        state.stageSourceMode = state.workflowMode === workflowModes.GENERIC ? stageSourceModes.BACKFILL : stageSourceModes.SUMMARIES;
+    }
+    state.outputMode = ['bakemono', 'plain', 'custom'].includes(preset.outputMode) ? preset.outputMode : (state.workflowMode === workflowModes.GENERIC ? 'plain' : 'bakemono');
+    if (preset.generationTargets) {
+        state.generationTargets = {
+            ...structuredClone(defaultGenerationTargets),
+            ...structuredClone(preset.generationTargets),
+        };
+    }
+    if (preset.injection) {
+        state.injection = {
+            ...state.injection,
+            enabled: preset.injection.enabled ?? state.injection.enabled,
+            depth: Math.max(0, Number(preset.injection.depth ?? state.injection.depth)),
+            role: Number(preset.injection.role ?? state.injection.role),
+            template: String(preset.injection.template || state.injection.template || defaultInjectionTemplate),
+        };
+    }
+    if (preset.automation) {
+        state.automation = {
+            ...structuredClone(defaultAutomation),
+            ...structuredClone(preset.automation),
+            lastSignature: state.automation.lastSignature || '',
+            lastAutoAt: state.automation.lastAutoAt || null,
+        };
+    }
+    scanBakemonoBlocks({ persist: false });
+    updateInjectionFromSummaries();
+    saveState();
+    renderAll(`已载入配置：${preset.name || '未命名预设'}`);
+    toastr.success('配置预设已载入。');
+}
+
+function saveCurrentConfigPreset(name, options = {}) {
+    const presets = getPromptPresets();
+    const replaceId = options.replaceId || '';
+    const existing = replaceId ? presets.find(preset => preset.id === replaceId) : null;
+    const preset = getCurrentPromptPresetPayload(name);
+    if (existing) {
+        preset.id = existing.id;
+        preset.createdAt = existing.createdAt || preset.createdAt;
+        const index = presets.findIndex(item => item.id === existing.id);
+        presets[index] = preset;
+    } else {
+        presets.push(preset);
+    }
+    setSelectedPromptPresetId(preset.id);
+    saveGlobalSettings();
+    saveState();
+    renderAll(existing ? `已覆盖配置：${preset.name}` : `已保存配置：${preset.name}`);
+    toastr.success(existing ? '配置预设已覆盖。' : '配置预设已保存。');
+    return preset;
+}
+
+function getAreaPresetPayload(scope, name) {
+    const state = ensureState();
+    const base = {
+        id: makeAreaPresetId(scope, name),
+        scope,
+        name: name || '未命名配置',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    };
+    if (scope === areaPresetScopes.SCAN) {
+        readRuleFieldsFromUi(state);
+        return {
+            ...base,
+            scanRules: structuredClone(state.scanRules),
+            classificationRules: structuredClone(state.classificationRules),
+            previewLayouts: structuredClone(state.previewLayouts),
+        };
+    }
+    if (scope === areaPresetScopes.AUTOMATION) {
+        readAutomationFieldsFromUi(state);
+        return {
+            ...base,
+            automation: {
+                ...structuredClone(state.automation),
+                lastSignature: '',
+                lastAutoAt: null,
+            },
+        };
+    }
+    if (scope === areaPresetScopes.PROMPTS) {
+        readPromptFieldsFromUi(state);
+        return {
+            ...base,
+            story: String(state.generationPrompts.story || defaultStoryGenerationPrompt),
+            stage: String(state.generationPrompts.stage || defaultStageGenerationPrompt),
+            epic: String(state.generationPrompts.epic || defaultEpicGenerationPrompt),
+        };
+    }
+    if (scope === areaPresetScopes.INJECTION) {
+        readInjectionFieldsFromUi(state);
+        return {
+            ...base,
+            injection: {
+                enabled: !!state.injection.enabled,
+                depth: Math.max(0, Number(state.injection.depth ?? defaultState.injection.depth)),
+                role: Number(state.injection.role ?? extension_prompt_roles.SYSTEM),
+                template: String(state.injection.template || defaultInjectionTemplate),
+            },
+        };
+    }
+    return base;
+}
+
+function applyAreaPresetToState(scope, preset) {
+    const state = ensureState();
+    if (scope === areaPresetScopes.SCAN) {
+        if (preset.scanRules) {
+            state.scanRules = { ...structuredClone(defaultScanRules), ...structuredClone(preset.scanRules) };
+        }
+        if (preset.classificationRules) {
+            state.classificationRules = { ...structuredClone(defaultClassificationRules), ...structuredClone(preset.classificationRules) };
+        }
+        if (preset.previewLayouts) {
+            state.previewLayouts = { ...structuredClone(defaultPreviewLayouts), ...structuredClone(preset.previewLayouts) };
+        }
+        scanBakemonoBlocks({ persist: false });
+    } else if (scope === areaPresetScopes.AUTOMATION && preset.automation) {
+        state.automation = {
+            ...structuredClone(defaultAutomation),
+            ...structuredClone(preset.automation),
+            lastSignature: state.automation.lastSignature || '',
+            lastAutoAt: state.automation.lastAutoAt || null,
+        };
+    } else if (scope === areaPresetScopes.PROMPTS) {
+        state.generationPrompts.story = preset.story || defaultStoryGenerationPrompt;
+        state.generationPrompts.stage = preset.stage || defaultStageGenerationPrompt;
+        state.generationPrompts.epic = preset.epic || defaultEpicGenerationPrompt;
+    } else if (scope === areaPresetScopes.INJECTION && preset.injection) {
+        state.injection = {
+            ...state.injection,
+            enabled: preset.injection.enabled ?? state.injection.enabled,
+            depth: Math.max(0, Number(preset.injection.depth ?? state.injection.depth)),
+            role: Number(preset.injection.role ?? state.injection.role),
+            template: String(preset.injection.template || state.injection.template || defaultInjectionTemplate),
+        };
+        syncInjection();
+    }
+    saveState();
+    renderAll(`已载入配置：${preset.name || '未命名配置'}`);
+    toastr.success('配置已载入。');
+}
+
+function saveAreaPreset(scope, name, options = {}) {
+    const presets = getAreaPresets(scope);
+    const replaceId = options.replaceId || '';
+    const existing = replaceId ? presets.find(preset => preset.id === replaceId) : null;
+    const preset = getAreaPresetPayload(scope, name);
+    if (existing) {
+        preset.id = existing.id;
+        preset.createdAt = existing.createdAt || preset.createdAt;
+        const index = presets.findIndex(item => item.id === existing.id);
+        presets[index] = preset;
+    } else {
+        presets.push(preset);
+    }
+    setSelectedAreaPresetId(scope, preset.id);
+    saveGlobalSettings();
+    saveState();
+    renderAll(existing ? `已覆盖配置：${preset.name}` : `已保存配置：${preset.name}`);
+    toastr.success(existing ? '配置已覆盖。' : '配置已保存。');
+    return preset;
+}
+
+function bindAreaPresetControls(scope, ids) {
+    $(ids.select).off('change').on('change', function () {
+        setSelectedAreaPresetId(scope, String(this.value || ''));
+        renderPromptPresetControls();
+    });
+    $(ids.load).off('click').on('click', () => {
+        const selectedId = getSelectedAreaPresetId(scope);
+        const preset = getAreaPresets(scope).find(item => item.id === selectedId);
+        if (!preset) {
+            toastr.warning('请先选择已保存的配置。');
+            return;
+        }
+        const confirmed = confirmDanger(
+            `载入配置「${preset.name || '未命名配置'}」？`,
+            ['这只会覆盖当前区域的设置，不会影响其他区域。'],
+        );
+        if (!confirmed) {
+            return;
+        }
+        applyAreaPresetToState(scope, preset);
+    });
+    $(ids.save).off('click').on('click', () => {
+        const name = String($(ids.name).val() || '').trim();
+        if (!name) {
+            toastr.warning('请先填写配置名称。');
+            return;
+        }
+        saveAreaPreset(scope, name);
+    });
+    $(ids.update).off('click').on('click', () => {
+        const selectedId = getSelectedAreaPresetId(scope);
+        const selected = getAreaPresets(scope).find(item => item.id === selectedId);
+        if (!selected) {
+            toastr.warning('请先选择要覆盖的配置。');
+            return;
+        }
+        const name = String($(ids.name).val() || selected.name || '').trim();
+        if (!name) {
+            toastr.warning('请先填写配置名称。');
+            return;
+        }
+        const confirmed = confirmDanger(
+            `覆盖配置「${selected.name || '未命名配置'}」？`,
+            ['会用当前区域界面里的设置覆盖它。'],
+        );
+        if (!confirmed) {
+            return;
+        }
+        saveAreaPreset(scope, name, { replaceId: selectedId });
+    });
+    $(ids.delete).off('click').on('click', () => {
+        const selectedId = getSelectedAreaPresetId(scope);
+        const selected = getAreaPresets(scope).find(item => item.id === selectedId);
+        if (!selected) {
+            toastr.warning('请先选择要删除的配置。');
+            return;
+        }
+        const confirmed = confirmDanger(
+            `删除配置「${selected.name || '未命名配置'}」？`,
+            ['删除后无法从列表里恢复，但不会影响当前聊天已经应用的设置。'],
+        );
+        if (!confirmed) {
+            return;
+        }
+        extension_settings[STORAGE_KEY].areaPresets[scope] = getAreaPresets(scope).filter(item => item.id !== selectedId);
+        setSelectedAreaPresetId(scope, '');
+        saveGlobalSettings();
+        renderAll('配置已删除。');
+    });
 }
 
 function dedupeByHash(blocks) {
@@ -4084,9 +4505,7 @@ function bindSettingsEvents() {
     });
     $('#bakemono-memory-apply-prompts').off('click').on('click', () => {
         const state = ensureState();
-        state.generationPrompts.story = String($('#bakemono-memory-story-prompt').val() || defaultStoryGenerationPrompt);
-        state.generationPrompts.stage = String($('#bakemono-memory-stage-prompt').val() || defaultStageGenerationPrompt);
-        state.generationPrompts.epic = String($('#bakemono-memory-epic-prompt').val() || defaultEpicGenerationPrompt);
+        readPromptFieldsFromUi(state);
         saveState();
         renderAll('生成提示词已应用。');
         toastr.success('生成提示词已应用。');
@@ -4132,24 +4551,7 @@ function bindSettingsEvents() {
     });
     $('#bakemono-memory-apply-automation').off('click').on('click', () => {
         const state = ensureState();
-        state.automation = {
-            ...state.automation,
-            enabled: $('#bakemono-memory-auto-enabled').prop('checked'),
-            mode: String($('#bakemono-memory-auto-mode').val() || defaultAutomation.mode),
-            triggerType: String($('#bakemono-memory-auto-trigger').val() || defaultAutomation.triggerType),
-            floorInterval: Math.max(1, Number($('#bakemono-memory-auto-floor-interval').val() || defaultAutomation.floorInterval)),
-            charInterval: Math.max(100, Number($('#bakemono-memory-auto-char-interval').val() || defaultAutomation.charInterval)),
-            backfillBatchSize: Math.max(1, Number($('#bakemono-memory-backfill-batch-size').val() || defaultAutomation.backfillBatchSize)),
-            autoHidePreserveRecent: Math.max(0, Number($('#bakemono-memory-auto-hide-preserve-recent').val() || 0)),
-            apiProvider: String($('#bakemono-memory-api-provider').val() || defaultAutomation.apiProvider),
-            customApi: {
-                baseUrl: String($('#bakemono-memory-custom-base-url').val() || '').trim(),
-                apiKey: String($('#bakemono-memory-custom-api-key').val() || '').trim(),
-                model: String($('#bakemono-memory-custom-model').val() || '').trim(),
-                temperature: Number($('#bakemono-memory-custom-temperature').val() || defaultAutomation.customApi.temperature),
-                maxTokens: Number($('#bakemono-memory-custom-max-tokens').val() || defaultAutomation.customApi.maxTokens),
-            },
-        };
+        readAutomationFieldsFromUi(state);
         readGenerationTargetSettings();
         saveState();
         renderAll('自动总结设置已应用。');
@@ -4190,56 +4592,7 @@ function bindSettingsEvents() {
         if (!confirmed) {
             return;
         }
-        const state = ensureState();
-        state.generationPrompts.story = preset.story || defaultStoryGenerationPrompt;
-        state.generationPrompts.stage = preset.stage;
-        state.generationPrompts.epic = preset.epic;
-        if (preset.scanRules) {
-            state.scanRules = { ...structuredClone(defaultScanRules), ...structuredClone(preset.scanRules) };
-        }
-        if (preset.classificationRules) {
-            state.classificationRules = { ...structuredClone(defaultClassificationRules), ...structuredClone(preset.classificationRules) };
-        }
-        if (preset.previewLayouts) {
-            state.previewLayouts = { ...structuredClone(defaultPreviewLayouts), ...structuredClone(preset.previewLayouts) };
-        }
-        if (Object.values(memoryStrategies).includes(preset.memoryStrategy)) {
-            state.memoryStrategy = preset.memoryStrategy;
-        } else if (preset.id === defaultGenericPromptPreset.id) {
-            state.memoryStrategy = memoryStrategies.GENERIC;
-        } else if (preset.id === defaultPromptPreset.id) {
-            state.memoryStrategy = memoryStrategies.BAKEMONO;
-        }
-        if (Object.values(workflowModes).includes(preset.workflowMode)) {
-            state.workflowMode = preset.workflowMode;
-        } else if (preset.id === defaultGenericPromptPreset.id) {
-            state.workflowMode = workflowModes.GENERIC;
-        } else if (preset.id === defaultPromptPreset.id) {
-            state.workflowMode = workflowModes.BAKEMONO;
-        }
-        if (Object.values(stageSourceModes).includes(preset.stageSourceMode)) {
-            state.stageSourceMode = preset.stageSourceMode;
-        } else {
-            state.stageSourceMode = state.workflowMode === workflowModes.GENERIC ? stageSourceModes.BACKFILL : stageSourceModes.SUMMARIES;
-        }
-        state.outputMode = ['bakemono', 'plain', 'custom'].includes(preset.outputMode) ? preset.outputMode : (state.workflowMode === workflowModes.GENERIC ? 'plain' : 'bakemono');
-        if (preset.generationTargets) {
-            state.generationTargets = {
-                ...structuredClone(defaultGenerationTargets),
-                ...structuredClone(preset.generationTargets),
-            };
-        }
-        if (preset.automation) {
-            state.automation = {
-                ...structuredClone(defaultAutomation),
-                ...structuredClone(preset.automation),
-                lastSignature: state.automation.lastSignature || '',
-                lastAutoAt: state.automation.lastAutoAt || null,
-            };
-        }
-        saveState();
-        renderAll(`已载入预设：${preset.name}`);
-        toastr.success('提示词预设已载入。');
+        applyPromptPresetToState(preset);
     });
     $('#bakemono-memory-save-preset').off('click').on('click', () => {
         const name = String($('#bakemono-memory-preset-name').val() || '').trim();
@@ -4247,17 +4600,11 @@ function bindSettingsEvents() {
             toastr.warning('请先填写预设名称。');
             return;
         }
-        const presets = getPromptPresets();
-        const preset = getCurrentPromptPresetPayload(name);
-        presets.push(preset);
-        setSelectedPromptPresetId(preset.id);
-        saveGlobalSettings();
-        renderAll(`已保存预设：${preset.name}`);
-        toastr.success('提示词预设已保存。');
+        saveCurrentConfigPreset(name);
     });
     $('#bakemono-memory-delete-preset').off('click').on('click', () => {
         const selectedId = getSelectedPromptPresetId();
-        if (selectedId === defaultPromptPreset.id) {
+        if (isBuiltInPresetId(selectedId)) {
             toastr.warning('默认预设不能删除。');
             return;
         }
@@ -4303,25 +4650,41 @@ function bindSettingsEvents() {
             toastr.error(error?.message || String(error), '导入失败');
         }
     });
+    bindAreaPresetControls(areaPresetScopes.SCAN, {
+        select: '#bakemono-memory-scan-preset-select',
+        name: '#bakemono-memory-scan-preset-name',
+        load: '#bakemono-memory-load-scan-preset',
+        save: '#bakemono-memory-save-scan-preset',
+        update: '#bakemono-memory-update-scan-preset',
+        delete: '#bakemono-memory-delete-scan-preset',
+    });
+    bindAreaPresetControls(areaPresetScopes.AUTOMATION, {
+        select: '#bakemono-memory-automation-preset-select',
+        name: '#bakemono-memory-automation-preset-name',
+        load: '#bakemono-memory-load-automation-preset',
+        save: '#bakemono-memory-save-automation-preset',
+        update: '#bakemono-memory-update-automation-preset',
+        delete: '#bakemono-memory-delete-automation-preset',
+    });
+    bindAreaPresetControls(areaPresetScopes.PROMPTS, {
+        select: '#bakemono-memory-prompts-preset-select',
+        name: '#bakemono-memory-prompts-preset-name',
+        load: '#bakemono-memory-load-prompts-preset',
+        save: '#bakemono-memory-save-prompts-preset',
+        update: '#bakemono-memory-update-prompts-preset',
+        delete: '#bakemono-memory-delete-prompts-preset',
+    });
+    bindAreaPresetControls(areaPresetScopes.INJECTION, {
+        select: '#bakemono-memory-injection-preset-select',
+        name: '#bakemono-memory-injection-preset-name',
+        load: '#bakemono-memory-load-injection-preset',
+        save: '#bakemono-memory-save-injection-preset',
+        update: '#bakemono-memory-update-injection-preset',
+        delete: '#bakemono-memory-delete-injection-preset',
+    });
     $('#bakemono-memory-apply-rules').off('click').on('click', () => {
         const state = ensureState();
-        state.scanRules = {
-            mode: String($('#bakemono-memory-scan-mode').val() || defaultScanRules.mode),
-            includeTags: String($('#bakemono-memory-include-tags').val() || ''),
-            excludeTags: String($('#bakemono-memory-exclude-tags').val() || ''),
-            fullTextMinLength: Math.max(0, Number($('#bakemono-memory-full-min-length').val() || defaultScanRules.fullTextMinLength)),
-            includeHidden: $('#bakemono-memory-include-hidden').prop('checked'),
-        };
-        state.classificationRules = {
-            story: String($('#bakemono-memory-class-story').val() || defaultClassificationRules.story),
-            stage: String($('#bakemono-memory-class-stage').val() || defaultClassificationRules.stage),
-            epic: String($('#bakemono-memory-class-epic').val() || defaultClassificationRules.epic),
-        };
-        state.previewLayouts = {
-            story: String($('#bakemono-memory-layout-story').val() || defaultPreviewLayouts.story),
-            stage: String($('#bakemono-memory-layout-stage').val() || defaultPreviewLayouts.stage),
-            epic: String($('#bakemono-memory-layout-epic').val() || defaultPreviewLayouts.epic),
-        };
+        readRuleFieldsFromUi(state);
         scanBakemonoBlocks({ persist: false });
         saveState();
         renderAll('扫描规则已应用，并已刷新扫描预览。');
@@ -4372,7 +4735,7 @@ function bindSettingsEvents() {
         scanBakemonoBlocks({ persist: false });
         updateInjectionFromSummaries();
         saveState();
-        renderAll('工作流模式已切换。');
+        renderAll('工作流模式已切换，已有扫描和自动总结配置已保留。');
     });
     $('#bakemono-memory-stage-source-mode').off('change').on('change', function () {
         const state = ensureState();
