@@ -1441,11 +1441,22 @@ function getAutoStageTargets(targets = []) {
 
 function readGenerationTargetSettings() {
     const state = ensureState();
-    const readKind = kind => ({
-        mode: String($(`#bakemono-memory-${kind}-target-mode`).val() || state.generationTargets[kind]?.mode || defaultGenerationTargets[kind].mode),
-        count: Math.max(1, Number($(`#bakemono-memory-${kind}-target-count`).val() || state.generationTargets[kind]?.count || defaultGenerationTargets[kind].count)),
-        range: String($(`#bakemono-memory-${kind}-target-range`).val() || '').trim(),
-    });
+    const readKind = kind => {
+        const modeInput = $(`#bakemono-memory-${kind}-target-mode`);
+        const countInput = $(`#bakemono-memory-${kind}-target-count`);
+        const rangeInput = $(`#bakemono-memory-${kind}-target-range`);
+        if (!modeInput.length && !countInput.length && !rangeInput.length) {
+            return {
+                ...defaultGenerationTargets[kind],
+                ...(state.generationTargets?.[kind] || {}),
+            };
+        }
+        return {
+            mode: String(modeInput.val() || state.generationTargets[kind]?.mode || defaultGenerationTargets[kind].mode),
+            count: Math.max(1, Number(countInput.val() || state.generationTargets[kind]?.count || defaultGenerationTargets[kind].count)),
+            range: String(rangeInput.val() || state.generationTargets[kind]?.range || '').trim(),
+        };
+    };
     state.generationTargets = {
         stage: readKind('stage'),
         epic: readKind('epic'),
@@ -3840,6 +3851,27 @@ function switchWorkbenchTab(tabName) {
     root.querySelectorAll('.bakemono-mobile-actions [data-bakemono-nav]').forEach(button => {
         button.classList.toggle('is-active', button.dataset.bakemonoNav === tabName);
     });
+    syncMobileCollapsibles();
+}
+
+function syncMobileCollapsibles() {
+    const root = document.getElementById('bakemono-workbench-root');
+    if (!root) {
+        return;
+    }
+    const isMobile = window.matchMedia?.('(max-width: 900px)').matches ?? false;
+    root.querySelectorAll('.bakemono-mobile-collapsible').forEach(panel => {
+        if (!isMobile) {
+            panel.classList.remove('is-mobile-collapsed', 'is-mobile-expanded');
+            delete panel.dataset.bakemonoMobileReady;
+            return;
+        }
+        if (!panel.dataset.bakemonoMobileReady) {
+            panel.classList.add('is-mobile-collapsed');
+            panel.classList.remove('is-mobile-expanded');
+            panel.dataset.bakemonoMobileReady = '1';
+        }
+    });
 }
 
 async function runWorkbenchAction(action) {
@@ -3871,12 +3903,26 @@ async function runWorkbenchAction(action) {
 }
 
 function bindSettingsEvents() {
+    window.removeEventListener('resize', syncMobileCollapsibles);
+    window.addEventListener('resize', syncMobileCollapsibles);
     $('#bakemono-memory-close, [data-bakemono-close]').off('click').on('click', () => closeWorkbench());
     $('.bakemono-workbench-tab').off('click').on('click', function () {
         switchWorkbenchTab(this.dataset.bakemonoTab);
     });
     $('#bakemono-workbench-root').off('click.bakemonoNav').on('click.bakemonoNav', '[data-bakemono-nav]', function () {
         switchWorkbenchTab(this.dataset.bakemonoNav);
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoMobileFold').on('click.bakemonoMobileFold', '.bakemono-mobile-collapsible > h4', function () {
+        if (!(window.matchMedia?.('(max-width: 900px)').matches ?? false)) {
+            return;
+        }
+        const panel = this.closest('.bakemono-mobile-collapsible');
+        if (!panel) {
+            return;
+        }
+        const expand = panel.classList.contains('is-mobile-collapsed');
+        panel.classList.toggle('is-mobile-collapsed', !expand);
+        panel.classList.toggle('is-mobile-expanded', expand);
     });
     $('#bakemono-workbench-root').off('click.bakemonoAction').on('click.bakemonoAction', '[data-bakemono-action]', async function () {
         try {

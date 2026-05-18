@@ -133,50 +133,6 @@
         </div>
 
         <details class="bakemono-memory-advanced-options">
-          <summary><i class="fa-solid fa-filter"></i><span>生成范围</span></summary>
-          <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
-            <div class="bakemono-memory-card-panel">
-              <h4><i class="fa-solid fa-layer-group"></i> 阶段总结读取哪些摘要</h4>
-              <label class="bakemono-memory-field">
-                <span>范围</span>
-                <select id="bakemono-memory-stage-target-mode" class="text_pole">
-                  <option value="all">全部未总结摘要</option>
-                  <option value="oldest">最早 N 个摘要</option>
-                  <option value="range">指定来源楼层</option>
-                </select>
-              </label>
-              <label class="bakemono-memory-field">
-                <span>N 个摘要</span>
-                <input id="bakemono-memory-stage-target-count" class="text_pole" type="number" min="1" step="1">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>楼层范围</span>
-                <input id="bakemono-memory-stage-target-range" class="text_pole" type="text" placeholder="例如 1-50, 80-120">
-              </label>
-            </div>
-            <div class="bakemono-memory-card-panel">
-              <h4><i class="fa-solid fa-timeline"></i> 史诗简史读取哪些总结</h4>
-              <label class="bakemono-memory-field">
-                <span>范围</span>
-                <select id="bakemono-memory-epic-target-mode" class="text_pole">
-                  <option value="all">全部未收束总结</option>
-                  <option value="oldest">最早 N 个总结</option>
-                  <option value="range">指定来源楼层</option>
-                </select>
-              </label>
-              <label class="bakemono-memory-field">
-                <span>N 个总结</span>
-                <input id="bakemono-memory-epic-target-count" class="text_pole" type="number" min="1" step="1">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>楼层范围</span>
-                <input id="bakemono-memory-epic-target-range" class="text_pole" type="text" placeholder="例如 1-300">
-              </label>
-            </div>
-          </div>
-        </details>
-
-        <details class="bakemono-memory-advanced-options">
           <summary><i class="fa-solid fa-gear"></i><span>高级设置</span></summary>
         <div class="bakemono-memory-options">
           <label class="bakemono-memory-field">
@@ -320,7 +276,7 @@
       </section>
 
       <section class="bakemono-workbench-panel" data-bakemono-panel="timeline">
-        <div class="bakemono-memory-card-panel">
+        <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
           <h4><i class="fa-solid fa-diagram-project"></i> 摘要树 / 时间线</h4>
           <div class="bakemono-memory-prompt-hint">
             <i class="fa-solid fa-circle-info"></i>
@@ -331,7 +287,7 @@
       </section>
 
       <section class="bakemono-workbench-panel" data-bakemono-panel="drafts">
-        <div class="bakemono-memory-card-panel">
+        <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
           <h4><i class="fa-solid fa-list-check"></i> 任务队列</h4>
           <div class="bakemono-memory-inline-actions">
             <button class="menu_button" data-bakemono-action="clear-queue">
@@ -342,7 +298,7 @@
           <div id="bakemono-memory-task-list" class="bakemono-memory-task-list"></div>
         </div>
 
-        <div class="bakemono-memory-card-panel">
+        <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
           <h4><i class="fa-solid fa-inbox"></i> 待确认草稿</h4>
           <div class="bakemono-memory-prompt-hint">
             <i class="fa-solid fa-circle-info"></i>
@@ -351,7 +307,7 @@
           <div id="bakemono-memory-draft-list" class="bakemono-memory-draft-list"></div>
         </div>
 
-        <div class="bakemono-memory-card-panel bakemono-memory-history-panel">
+        <div class="bakemono-memory-card-panel bakemono-memory-history-panel bakemono-mobile-collapsible">
           <h4><i class="fa-solid fa-clock-rotate-left"></i> 保存记录</h4>
           <div class="bakemono-memory-inline-actions">
             <button class="menu_button" data-bakemono-action="undo">
@@ -369,7 +325,7 @@
 
       <section class="bakemono-workbench-panel" data-bakemono-panel="automation">
         <div class="bakemono-memory-editor-grid">
-          <div class="bakemono-memory-card-panel">
+          <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
             <h4><i class="fa-solid fa-clock"></i> 自动总结</h4>
             <label class="checkbox_label bakemono-memory-switch">
               <input type="checkbox" id="bakemono-memory-auto-enabled">
@@ -408,7 +364,7 @@
             </label>
           </div>
 
-          <div class="bakemono-memory-card-panel">
+          <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
             <h4><i class="fa-solid fa-network-wired"></i> 生成 API</h4>
             <label class="bakemono-memory-field">
               <span>API 来源</span>
@@ -461,7 +417,7 @@
 
       <section class="bakemono-workbench-panel" data-bakemono-panel="scan">
         <div class="bakemono-memory-editor-grid">
-          <div class="bakemono-memory-card-panel">
+          <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
             <h4><i class="fa-solid fa-tags"></i> 扫描过滤</h4>
             <label class="bakemono-memory-field">
               <span>扫描模式</span>
@@ -488,7 +444,7 @@
             </label>
           </div>
 
-          <div class="bakemono-memory-card-panel">
+          <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
             <h4><i class="fa-solid fa-layer-group"></i> 分类关键词</h4>
             <label class="bakemono-memory-editor">
               <span>普通摘要关键词</span>
@@ -505,19 +461,22 @@
           </div>
         </div>
 
-        <div class="bakemono-memory-editor-grid bakemono-memory-layout-grid">
-          <label class="bakemono-memory-editor">
-            <span>普通摘要分段</span>
-            <textarea id="bakemono-memory-layout-story" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
-          </label>
-          <label class="bakemono-memory-editor">
-            <span>阶段总结分段</span>
-            <textarea id="bakemono-memory-layout-stage" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
-          </label>
-          <label class="bakemono-memory-editor">
-            <span>史诗简史分段</span>
-            <textarea id="bakemono-memory-layout-epic" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
-          </label>
+        <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
+          <h4><i class="fa-solid fa-notes-medical"></i> 手账分段</h4>
+          <div class="bakemono-memory-editor-grid bakemono-memory-layout-grid">
+            <label class="bakemono-memory-editor">
+              <span>普通摘要分段</span>
+              <textarea id="bakemono-memory-layout-story" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
+            </label>
+            <label class="bakemono-memory-editor">
+              <span>阶段总结分段</span>
+              <textarea id="bakemono-memory-layout-stage" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
+            </label>
+            <label class="bakemono-memory-editor">
+              <span>史诗简史分段</span>
+              <textarea id="bakemono-memory-layout-epic" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
+            </label>
+          </div>
         </div>
 
         <div class="bakemono-memory-prompt-hint">
@@ -540,28 +499,34 @@
           </button>
         </div>
 
-        <section class="bakemono-memory-debug">
+        <section class="bakemono-memory-debug bakemono-mobile-collapsible">
           <h4><i class="fa-solid fa-bug"></i> 扫描预览 / 调试</h4>
           <div id="bakemono-memory-scan-preview" class="bakemono-memory-debug-list"></div>
         </section>
       </section>
 
       <section class="bakemono-workbench-panel" data-bakemono-panel="injection">
-        <div class="bakemono-memory-editor-grid">
-          <label class="bakemono-memory-editor">
-            <span>记忆正文</span>
-            <textarea id="bakemono-memory-source-content" class="text_pole textarea_compact" rows="10" spellcheck="false"></textarea>
-          </label>
-          <label class="bakemono-memory-editor">
-            <span>注入模板</span>
-            <textarea id="bakemono-memory-injection-template" class="text_pole textarea_compact" rows="10" spellcheck="false"></textarea>
-          </label>
+        <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
+          <h4><i class="fa-solid fa-pen-to-square"></i> 注入编辑</h4>
+          <div class="bakemono-memory-editor-grid">
+            <label class="bakemono-memory-editor">
+              <span>记忆正文</span>
+              <textarea id="bakemono-memory-source-content" class="text_pole textarea_compact" rows="10" spellcheck="false"></textarea>
+            </label>
+            <label class="bakemono-memory-editor">
+              <span>注入模板</span>
+              <textarea id="bakemono-memory-injection-template" class="text_pole textarea_compact" rows="10" spellcheck="false"></textarea>
+            </label>
+          </div>
         </div>
 
-        <label class="bakemono-memory-editor bakemono-memory-preview-editor">
-          <span>最终注入预览</span>
-          <textarea id="bakemono-memory-injection-content" class="text_pole textarea_compact" rows="7" spellcheck="false" readonly></textarea>
-        </label>
+        <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
+          <h4><i class="fa-solid fa-eye"></i> 最终注入预览</h4>
+          <label class="bakemono-memory-editor bakemono-memory-preview-editor">
+            <span>最终注入预览</span>
+            <textarea id="bakemono-memory-injection-content" class="text_pole textarea_compact" rows="7" spellcheck="false" readonly></textarea>
+          </label>
+        </div>
 
         <div class="bakemono-memory-inline-actions">
           <button class="menu_button" id="bakemono-memory-apply-injection">
@@ -608,39 +573,45 @@
               <span>删除</span>
             </button>
           </div>
-          <label class="bakemono-memory-editor">
-            <span>工作流导入 / 导出 JSON</span>
-            <textarea id="bakemono-memory-preset-json" class="text_pole textarea_compact" rows="4" spellcheck="false"></textarea>
-          </label>
-          <div class="bakemono-memory-inline-actions">
-            <button class="menu_button" id="bakemono-memory-export-preset">
-              <i class="fa-solid fa-file-export"></i>
-              <span>导出当前工作流</span>
-            </button>
-            <button class="menu_button" id="bakemono-memory-copy-preset">
-              <i class="fa-solid fa-copy"></i>
-              <span>复制导出</span>
-            </button>
-            <button class="menu_button" id="bakemono-memory-import-preset">
-              <i class="fa-solid fa-file-import"></i>
-              <span>从 JSON 导入</span>
-            </button>
+          <div class="bakemono-memory-mobile-json bakemono-mobile-collapsible">
+            <h4><i class="fa-solid fa-file-code"></i> 工作流导入 / 导出 JSON</h4>
+            <label class="bakemono-memory-editor">
+              <span>工作流导入 / 导出 JSON</span>
+              <textarea id="bakemono-memory-preset-json" class="text_pole textarea_compact" rows="4" spellcheck="false"></textarea>
+            </label>
+            <div class="bakemono-memory-inline-actions">
+              <button class="menu_button" id="bakemono-memory-export-preset">
+                <i class="fa-solid fa-file-export"></i>
+                <span>导出当前工作流</span>
+              </button>
+              <button class="menu_button" id="bakemono-memory-copy-preset">
+                <i class="fa-solid fa-copy"></i>
+                <span>复制导出</span>
+              </button>
+              <button class="menu_button" id="bakemono-memory-import-preset">
+                <i class="fa-solid fa-file-import"></i>
+                <span>从 JSON 导入</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        <div class="bakemono-memory-editor-grid">
-          <label class="bakemono-memory-editor">
-            <span>旧正文批次摘要提示词</span>
-            <textarea id="bakemono-memory-story-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
-          </label>
-          <label class="bakemono-memory-editor">
-            <span>阶段总结提示词</span>
-            <textarea id="bakemono-memory-stage-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
-          </label>
-          <label class="bakemono-memory-editor">
-            <span>史诗简史提示词</span>
-            <textarea id="bakemono-memory-epic-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
-          </label>
+        <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
+          <h4><i class="fa-solid fa-feather-pointed"></i> 生成提示词编辑</h4>
+          <div class="bakemono-memory-editor-grid">
+            <label class="bakemono-memory-editor">
+              <span>旧正文批次摘要提示词</span>
+              <textarea id="bakemono-memory-story-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
+            </label>
+            <label class="bakemono-memory-editor">
+              <span>阶段总结提示词</span>
+              <textarea id="bakemono-memory-stage-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
+            </label>
+            <label class="bakemono-memory-editor">
+              <span>史诗简史提示词</span>
+              <textarea id="bakemono-memory-epic-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
+            </label>
+          </div>
         </div>
 
         <div class="bakemono-memory-prompt-hint">

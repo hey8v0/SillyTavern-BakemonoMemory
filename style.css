@@ -1144,6 +1144,14 @@
   display: none;
 }
 
+.bakemono-mobile-json {
+  margin-top: 12px;
+}
+
+.bakemono-mobile-json > h4 {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .bakemono-workbench {
     width: 100vw;
@@ -1246,6 +1254,73 @@
 
   .bakemono-memory-field {
     min-width: 0;
+  }
+
+  .bakemono-mobile-collapsible {
+    position: relative;
+  }
+
+  .bakemono-mobile-collapsible > h4 {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    margin: 0;
+    padding: 11px 42px 11px 12px;
+    border: 1px dashed var(--bk-line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .bakemono-mobile-collapsible > h4::after {
+    content: "\f078";
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%) rotate(0deg);
+    font: var(--fa-font-solid);
+    color: var(--SmartThemeQuoteColor);
+    transition: transform 160ms ease;
+  }
+
+  .bakemono-mobile-collapsible.is-mobile-expanded > h4 {
+    border-style: solid;
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 55%, var(--SmartThemeBorderColor) 45%);
+    border-radius: 14px 14px 8px 8px;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 9%, transparent);
+  }
+
+  .bakemono-mobile-collapsible.is-mobile-expanded > h4::after {
+    transform: translateY(-50%) rotate(180deg);
+  }
+
+  .bakemono-mobile-collapsible.is-mobile-collapsed > :not(h4) {
+    display: none !important;
+  }
+
+  .bakemono-mobile-collapsible.is-mobile-expanded > :not(h4) {
+    margin-top: 10px;
+  }
+
+  .bakemono-memory-card-panel.bakemono-mobile-collapsible {
+    padding: 8px;
+  }
+
+  .bakemono-memory-card-panel.bakemono-mobile-collapsible.is-mobile-expanded {
+    padding: 8px 8px 12px;
+  }
+
+  .bakemono-memory-debug.bakemono-mobile-collapsible {
+    padding: 8px;
+  }
+
+  .bakemono-mobile-json.bakemono-mobile-collapsible {
+    padding: 0;
+    border: 0;
+    background: transparent;
   }
 
   .bakemono-memory-preview-list {
