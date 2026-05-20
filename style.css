@@ -810,6 +810,20 @@
   margin-bottom: 12px;
 }
 
+.bakemono-memory-model-row,
+.bakemono-memory-secret-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.bakemono-memory-model-row .menu_button,
+.bakemono-memory-secret-row .menu_button {
+  min-height: 38px;
+  white-space: nowrap;
+}
+
 .bakemono-memory-preview-column {
   min-width: 0;
   display: none;
@@ -1235,6 +1249,11 @@
   .bakemono-memory-preview-toolbar .bakemono-memory-field:first-child,
   .bakemono-memory-preset-name {
     grid-column: 1 / -1;
+  }
+
+  .bakemono-memory-model-row,
+  .bakemono-memory-secret-row {
+    grid-template-columns: 1fr;
   }
 
   .bakemono-memory-inline-actions {

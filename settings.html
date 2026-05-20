@@ -447,6 +447,32 @@
 
           <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
             <h4><i class="fa-solid fa-network-wired"></i> 生成 API</h4>
+            <div class="bakemono-memory-preset-controls">
+              <label class="bakemono-memory-field">
+                <span>模型配置</span>
+                <select id="bakemono-memory-api-preset-select" class="text_pole"></select>
+              </label>
+              <label class="bakemono-memory-field bakemono-memory-preset-name">
+                <span>名称</span>
+                <input id="bakemono-memory-api-preset-name" class="text_pole" type="text" placeholder="备用 API / 快速模型">
+              </label>
+              <button class="menu_button" id="bakemono-memory-load-api-preset">
+                <i class="fa-solid fa-download"></i>
+                <span>载入</span>
+              </button>
+              <button class="menu_button" id="bakemono-memory-save-api-preset">
+                <i class="fa-solid fa-floppy-disk"></i>
+                <span>另存</span>
+              </button>
+              <button class="menu_button" id="bakemono-memory-update-api-preset">
+                <i class="fa-solid fa-pen-to-square"></i>
+                <span>覆盖</span>
+              </button>
+              <button class="menu_button" id="bakemono-memory-delete-api-preset">
+                <i class="fa-solid fa-trash"></i>
+                <span>删除</span>
+              </button>
+            </div>
             <label class="bakemono-memory-field">
               <span>API 来源</span>
               <select id="bakemono-memory-api-provider" class="text_pole">
@@ -460,11 +486,24 @@
             </label>
             <label class="bakemono-memory-field">
               <span>API Key</span>
-              <input id="bakemono-memory-custom-api-key" class="text_pole" type="password" autocomplete="off">
+              <div class="bakemono-memory-secret-row">
+                <input id="bakemono-memory-custom-api-key" class="text_pole" type="password" autocomplete="off">
+                <button class="menu_button bakemono-memory-icon-action" id="bakemono-memory-toggle-api-key" type="button" title="显示 API Key" aria-label="显示 API Key">
+                  <i class="fa-solid fa-eye"></i>
+                  <span>显示</span>
+                </button>
+              </div>
             </label>
             <label class="bakemono-memory-field">
               <span>Model</span>
-              <input id="bakemono-memory-custom-model" class="text_pole" type="text" placeholder="gpt-4.1-mini">
+              <div class="bakemono-memory-model-row">
+                <input id="bakemono-memory-custom-model" class="text_pole" type="text" list="bakemono-memory-custom-model-options" placeholder="gpt-4.1-mini">
+                <datalist id="bakemono-memory-custom-model-options"></datalist>
+                <button class="menu_button" id="bakemono-memory-fetch-models" type="button">
+                  <i class="fa-solid fa-cloud-arrow-down"></i>
+                  <span>拉取模型</span>
+                </button>
+              </div>
             </label>
             <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
               <label class="bakemono-memory-field">
@@ -476,6 +515,13 @@
                 <input id="bakemono-memory-custom-max-tokens" class="text_pole" type="number" min="100" step="100">
               </label>
             </div>
+            <label class="bakemono-memory-field">
+              <span>请求方式</span>
+              <select id="bakemono-memory-custom-stream" class="text_pole">
+                <option value="false">非流式（兼容性最好）</option>
+                <option value="true">流式（部分中转更稳定）</option>
+              </select>
+            </label>
           </div>
         </div>
 

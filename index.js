@@ -71,6 +71,7 @@ const targetSelectionModes = {
 const areaPresetScopes = {
     SCAN: 'scan',
     AUTOMATION: 'automation',
+    API: 'api',
     PROMPTS: 'prompts',
     INJECTION: 'injection',
 };
@@ -404,6 +405,8 @@ const defaultGenericPromptPreset = {
             model: '',
             temperature: 0.7,
             maxTokens: 3000,
+            stream: false,
+            models: [],
         },
         lastSignature: '',
         lastAutoAt: null,
@@ -432,6 +435,8 @@ const defaultAutomation = {
         model: '',
         temperature: 0.7,
         maxTokens: 3000,
+        stream: false,
+        models: [],
     },
     lastSignature: '',
     lastAutoAt: null,
@@ -2407,14 +2412,15 @@ async function callGenerationModel({ prompt, systemPrompt }) {
     }
 
     const config = state.automation.customApi || {};
-    const baseUrl = String(config.baseUrl || '').replace(/\/+$/, '');
+    const baseUrl = normalizeCustomApiBaseUrl(config.baseUrl);
     const model = String(config.model || '').trim();
     const apiKey = String(config.apiKey || '').trim();
     if (!baseUrl || !model) {
         throw new Error('自定义 API 需要填写 Base URL 和 Model。');
     }
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const stream = !!config.stream;
+    const response = await fetch(getCustomChatCompletionsUrl(baseUrl), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -2428,10 +2434,14 @@ async function callGenerationModel({ prompt, systemPrompt }) {
             ],
             temperature: Number(config.temperature ?? defaultAutomation.customApi.temperature),
             max_tokens: Number(config.maxTokens ?? defaultAutomation.customApi.maxTokens),
+            stream,
         }),
     });
     if (!response.ok) {
         throw new Error(`自定义 API 请求失败：${response.status} ${response.statusText}`);
+    }
+    if (stream) {
+        return await readOpenAIStream(response);
     }
     const data = await response.json();
     const content = data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text;
@@ -2439,6 +2449,109 @@ async function callGenerationModel({ prompt, systemPrompt }) {
         throw new Error('自定义 API 没有返回可用内容。');
     }
     return content;
+}
+
+function normalizeCustomApiBaseUrl(value) {
+    return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function getCustomChatCompletionsUrl(baseUrl) {
+    const clean = normalizeCustomApiBaseUrl(baseUrl);
+    if (/\/chat\/completions$/i.test(clean)) {
+        return clean;
+    }
+    return `${clean}/chat/completions`;
+}
+
+function getCustomModelsUrl(baseUrl) {
+    let clean = normalizeCustomApiBaseUrl(baseUrl);
+    clean = clean.replace(/\/chat\/completions$/i, '');
+    return `${clean}/models`;
+}
+
+async function readOpenAIStream(response) {
+    if (!response.body?.getReader) {
+        throw new Error('当前浏览器无法读取自定义 API 的流式响应，请改用非流式。');
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let content = '';
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+            break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data:')) {
+                continue;
+            }
+            const payload = trimmed.slice(5).trim();
+            if (!payload || payload === '[DONE]') {
+                continue;
+            }
+            try {
+                const data = JSON.parse(payload);
+                content += data?.choices?.[0]?.delta?.content
+                    || data?.choices?.[0]?.message?.content
+                    || data?.choices?.[0]?.text
+                    || '';
+            } catch {
+                // Some proxies send keep-alive chunks that are not JSON.
+            }
+        }
+    }
+    if (!content.trim()) {
+        throw new Error('自定义 API 流式响应没有返回可用内容。');
+    }
+    return content;
+}
+
+async function fetchCustomApiModels() {
+    const state = ensureState();
+    readCustomApiFieldsFromUi(state);
+    const config = state.automation.customApi || {};
+    const baseUrl = normalizeCustomApiBaseUrl(config.baseUrl);
+    const apiKey = String(config.apiKey || '').trim();
+    if (!baseUrl) {
+        toastr.warning('请先填写自定义 API 的 Base URL。');
+        return;
+    }
+    const toast = toastr.info('正在拉取模型列表...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
+    try {
+        const response = await fetch(getCustomModelsUrl(baseUrl), {
+            method: 'GET',
+            headers: {
+                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+            },
+        });
+        if (!response.ok) {
+            throw new Error(`拉取模型失败：${response.status} ${response.statusText}`);
+        }
+        const data = await response.json();
+        const models = Array.isArray(data?.data)
+            ? data.data.map(item => item?.id || item?.name).filter(Boolean)
+            : [];
+        if (!models.length) {
+            throw new Error('接口返回里没有找到模型 ID。');
+        }
+        state.automation.customApi.models = unique(models.map(item => String(item).trim()).filter(Boolean)).sort();
+        if (!String(state.automation.customApi.model || '').trim()) {
+            state.automation.customApi.model = state.automation.customApi.models[0];
+            $('#bakemono-memory-custom-model').val(state.automation.customApi.model);
+        }
+        renderCustomModelOptions(state.automation.customApi.models);
+        saveState();
+        toastr.success(`已拉取 ${state.automation.customApi.models.length} 个模型。`);
+    } catch (error) {
+        toastr.error(error?.message || String(error), '模型拉取失败');
+    } finally {
+        toastr.clear(toast);
+    }
 }
 
 function createDraft({ kind, content, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], prompt = '', trigger = 'manual', metadata = {} }) {
@@ -3325,6 +3438,8 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-custom-model').val(state.automation.customApi?.model || '');
     $('#bakemono-memory-custom-temperature').val(state.automation.customApi?.temperature ?? defaultAutomation.customApi.temperature);
     $('#bakemono-memory-custom-max-tokens').val(state.automation.customApi?.maxTokens ?? defaultAutomation.customApi.maxTokens);
+    $('#bakemono-memory-custom-stream').val(String(!!state.automation.customApi?.stream));
+    renderCustomModelOptions(state.automation.customApi?.models || []);
     renderPromptPresetControls();
 
     renderPreviewSections(storyBlocks, dedupedStageBlocks, dedupedEpicBlocks);
@@ -3737,6 +3852,7 @@ function renderPromptPresetControls() {
     renderPresetControlPair('#bakemono-memory-preset-select', '#bakemono-memory-preset-name');
     renderAreaPresetControl(areaPresetScopes.SCAN, '#bakemono-memory-scan-preset-select', '#bakemono-memory-scan-preset-name');
     renderAreaPresetControl(areaPresetScopes.AUTOMATION, '#bakemono-memory-automation-preset-select', '#bakemono-memory-automation-preset-name');
+    renderAreaPresetControl(areaPresetScopes.API, '#bakemono-memory-api-preset-select', '#bakemono-memory-api-preset-name');
     renderAreaPresetControl(areaPresetScopes.PROMPTS, '#bakemono-memory-prompts-preset-select', '#bakemono-memory-prompts-preset-name');
     renderAreaPresetControl(areaPresetScopes.INJECTION, '#bakemono-memory-injection-preset-select', '#bakemono-memory-injection-preset-name');
 }
@@ -3785,6 +3901,19 @@ function renderAreaPresetControl(scope, selectSelector, nameSelector) {
     $(nameSelector).val(selected?.name || '');
 }
 
+function renderCustomModelOptions(models = []) {
+    const list = document.querySelector('#bakemono-memory-custom-model-options');
+    if (!list) {
+        return;
+    }
+    list.innerHTML = '';
+    for (const model of unique(models.map(item => String(item || '').trim()).filter(Boolean)).sort()) {
+        const option = document.createElement('option');
+        option.value = model;
+        list.append(option);
+    }
+}
+
 function readRuleFieldsFromUi(state = ensureState()) {
     if (!$('#bakemono-memory-scan-mode').length) {
         return state;
@@ -3813,6 +3942,7 @@ function readAutomationFieldsFromUi(state = ensureState()) {
     if (!$('#bakemono-memory-auto-mode').length) {
         return state;
     }
+    readCustomApiFieldsFromUi(state);
     state.automation = {
         ...state.automation,
         enabled: $('#bakemono-memory-auto-enabled').prop('checked'),
@@ -3822,15 +3952,31 @@ function readAutomationFieldsFromUi(state = ensureState()) {
         charInterval: Math.max(100, Number($('#bakemono-memory-auto-char-interval').val() || defaultAutomation.charInterval)),
         backfillBatchSize: Math.max(1, Number($('#bakemono-memory-backfill-batch-size').val() || defaultAutomation.backfillBatchSize)),
         autoHidePreserveRecent: Math.max(0, Number($('#bakemono-memory-auto-hide-preserve-recent').val() || defaultAutomation.autoHidePreserveRecent)),
-        apiProvider: String($('#bakemono-memory-api-provider').val() || defaultAutomation.apiProvider),
-        customApi: {
-            ...state.automation.customApi,
-            baseUrl: String($('#bakemono-memory-custom-base-url').val() || '').trim(),
-            apiKey: String($('#bakemono-memory-custom-api-key').val() || '').trim(),
-            model: String($('#bakemono-memory-custom-model').val() || '').trim(),
-            temperature: Number($('#bakemono-memory-custom-temperature').val() || defaultAutomation.customApi.temperature),
-            maxTokens: Number($('#bakemono-memory-custom-max-tokens').val() || defaultAutomation.customApi.maxTokens),
-        },
+    };
+    return state;
+}
+
+function readCustomApiFieldsFromUi(state = ensureState()) {
+    if (!$('#bakemono-memory-api-provider').length) {
+        return state;
+    }
+    state.automation = state.automation && typeof state.automation === 'object'
+        ? state.automation
+        : structuredClone(defaultAutomation);
+    const currentModels = Array.isArray(state.automation.customApi?.models)
+        ? state.automation.customApi.models
+        : [];
+    state.automation.apiProvider = String($('#bakemono-memory-api-provider').val() || defaultAutomation.apiProvider);
+    state.automation.customApi = {
+        ...structuredClone(defaultAutomation.customApi),
+        ...(state.automation.customApi || {}),
+        baseUrl: String($('#bakemono-memory-custom-base-url').val() || '').trim(),
+        apiKey: String($('#bakemono-memory-custom-api-key').val() || '').trim(),
+        model: String($('#bakemono-memory-custom-model').val() || '').trim(),
+        temperature: Number($('#bakemono-memory-custom-temperature').val() || defaultAutomation.customApi.temperature),
+        maxTokens: Number($('#bakemono-memory-custom-max-tokens').val() || defaultAutomation.customApi.maxTokens),
+        stream: String($('#bakemono-memory-custom-stream').val() || 'false') === 'true',
+        models: currentModels,
     };
     return state;
 }
@@ -4044,6 +4190,14 @@ function getAreaPresetPayload(scope, name) {
             },
         };
     }
+    if (scope === areaPresetScopes.API) {
+        readCustomApiFieldsFromUi(state);
+        return {
+            ...base,
+            apiProvider: state.automation.apiProvider || defaultAutomation.apiProvider,
+            customApi: structuredClone(state.automation.customApi || defaultAutomation.customApi),
+        };
+    }
     if (scope === areaPresetScopes.PROMPTS) {
         readPromptFieldsFromUi(state);
         return {
@@ -4087,6 +4241,16 @@ function applyAreaPresetToState(scope, preset) {
             ...structuredClone(preset.automation),
             lastSignature: state.automation.lastSignature || '',
             lastAutoAt: state.automation.lastAutoAt || null,
+        };
+    } else if (scope === areaPresetScopes.API) {
+        state.automation = {
+            ...structuredClone(defaultAutomation),
+            ...state.automation,
+            apiProvider: preset.apiProvider || state.automation.apiProvider || defaultAutomation.apiProvider,
+            customApi: {
+                ...structuredClone(defaultAutomation.customApi),
+                ...(preset.customApi || {}),
+            },
         };
     } else if (scope === areaPresetScopes.PROMPTS) {
         state.generationPrompts.story = preset.story || defaultStoryGenerationPrompt;
@@ -4557,6 +4721,25 @@ function bindSettingsEvents() {
         renderAll('自动总结设置已应用。');
         toastr.success('自动总结设置已应用。');
     });
+    $('#bakemono-memory-fetch-models').off('click').on('click', async () => {
+        await fetchCustomApiModels();
+    });
+    $('#bakemono-memory-toggle-api-key').off('click').on('click', function () {
+        const input = document.querySelector('#bakemono-memory-custom-api-key');
+        if (!input) {
+            return;
+        }
+        const shouldShow = input.type === 'password';
+        input.type = shouldShow ? 'text' : 'password';
+        this.title = shouldShow ? '隐藏 API Key' : '显示 API Key';
+        this.setAttribute('aria-label', this.title);
+        this.querySelector('i')?.classList.toggle('fa-eye', !shouldShow);
+        this.querySelector('i')?.classList.toggle('fa-eye-slash', shouldShow);
+        const label = this.querySelector('span');
+        if (label) {
+            label.textContent = shouldShow ? '隐藏' : '显示';
+        }
+    });
     $('#bakemono-memory-stage-target-mode, #bakemono-memory-stage-target-count, #bakemono-memory-stage-target-range, #bakemono-memory-epic-target-mode, #bakemono-memory-epic-target-count, #bakemono-memory-epic-target-range')
         .off('change input')
         .on('change input', () => {
@@ -4665,6 +4848,14 @@ function bindSettingsEvents() {
         save: '#bakemono-memory-save-automation-preset',
         update: '#bakemono-memory-update-automation-preset',
         delete: '#bakemono-memory-delete-automation-preset',
+    });
+    bindAreaPresetControls(areaPresetScopes.API, {
+        select: '#bakemono-memory-api-preset-select',
+        name: '#bakemono-memory-api-preset-name',
+        load: '#bakemono-memory-load-api-preset',
+        save: '#bakemono-memory-save-api-preset',
+        update: '#bakemono-memory-update-api-preset',
+        delete: '#bakemono-memory-delete-api-preset',
     });
     bindAreaPresetControls(areaPresetScopes.PROMPTS, {
         select: '#bakemono-memory-prompts-preset-select',
