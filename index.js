@@ -726,6 +726,10 @@ const memoryRecordPageSize = 18;
 const memoryRecordState = {
     page: 0,
 };
+const tableUiState = {
+    openTableIndex: '',
+    focusCell: null,
+};
 
 function cloneDefaultState() {
     return structuredClone(defaultState);
@@ -5513,6 +5517,13 @@ function renderTableList(state = ensureState()) {
     if (!container) {
         return;
     }
+    const openTableIndexes = new Set(
+        [...container.querySelectorAll('.bakemono-memory-table-item[open]')]
+            .map(item => String(item.dataset.tableIndex || '')),
+    );
+    if (tableUiState.openTableIndex !== '') {
+        openTableIndexes.add(String(tableUiState.openTableIndex));
+    }
     container.innerHTML = '';
     const tables = state.tableDatabase.tables || [];
     if (!tables.length) {
@@ -5528,6 +5539,7 @@ function renderTableList(state = ensureState()) {
         const row = document.createElement('details');
         row.className = 'bakemono-memory-table-item';
         row.dataset.tableIndex = String(table.tableIndex);
+        row.open = openTableIndexes.has(String(table.tableIndex));
         const summary = document.createElement('summary');
         summary.innerHTML = `<strong>${escapeHtml(table.tableIndex)} · ${escapeHtml(table.name)}</strong><span>${table.columns.length} 列 / ${(table.rows || []).length} 行${table.inject ? ' / 注入' : ''}${table.readOnly ? ' / 只读' : ''}</span>`;
         const body = document.createElement('div');
@@ -5543,7 +5555,7 @@ function renderTableList(state = ensureState()) {
                     <span>字段提示词</span>
                     <textarea class="text_pole textarea_compact" data-table-column-prompt="${index}" rows="3" spellcheck="false" placeholder="告诉 AI 这一栏应该记录什么、什么时候更新、不要写什么。">${escapeHtml(table.columnPrompts?.[index] || '')}</textarea>
                 </label>
-                <button class="menu_button danger_button" data-bakemono-table-action="delete-column" data-table-col="${index}"><i class="fa-solid fa-trash"></i><span>删除字段</span></button>
+                <button type="button" class="menu_button danger_button" data-bakemono-table-action="delete-column" data-table-col="${index}"><i class="fa-solid fa-trash"></i><span>删除字段</span></button>
             </div>
         `).join('');
         const headerCells = table.columns.map((col, index) => `<th>${escapeHtml(index)} · ${escapeHtml(col)}</th>`).join('');
@@ -5551,7 +5563,7 @@ function renderTableList(state = ensureState()) {
             ? rows.map((cells, rowIndex) => `
                 <tr data-table-row="${rowIndex}">
                     ${table.columns.map((_, colIndex) => `<td><textarea class="text_pole textarea_compact bakemono-memory-table-cell" data-table-col="${colIndex}" rows="2" spellcheck="false">${escapeHtml(cells?.[colIndex] ?? '')}</textarea></td>`).join('')}
-                    <td class="bakemono-memory-table-row-tools"><button class="menu_button danger_button" data-bakemono-table-action="delete-row"><i class="fa-solid fa-trash"></i><span>删行</span></button></td>
+                    <td class="bakemono-memory-table-row-tools"><button type="button" class="menu_button danger_button" data-bakemono-table-action="delete-row"><i class="fa-solid fa-trash"></i><span>删行</span></button></td>
                 </tr>`).join('')
             : `<tr class="bakemono-memory-table-empty-row"><td colspan="${Math.max(1, table.columns.length + 1)}">暂无数据行。点“新增一行”开始编辑。</td></tr>`;
         body.innerHTML = `
@@ -5585,7 +5597,7 @@ function renderTableList(state = ensureState()) {
                 </div>
                 <div class="bakemono-memory-table-fields">${fieldEditors}</div>
                 <div class="bakemono-memory-inline-actions">
-                    <button class="menu_button" data-bakemono-table-action="add-column"><i class="fa-solid fa-plus"></i><span>新增字段</span></button>
+                    <button type="button" class="menu_button" data-bakemono-table-action="add-column"><i class="fa-solid fa-plus"></i><span>新增字段</span></button>
                 </div>
             </details>
             <details class="bakemono-memory-table-section" open>
@@ -5598,15 +5610,26 @@ function renderTableList(state = ensureState()) {
                 </div>
             </details>
             <div class="bakemono-memory-inline-actions">
-                <button class="menu_button" data-bakemono-table-action="add-row"><i class="fa-solid fa-plus"></i><span>新增一行</span></button>
-                <button class="menu_button" data-bakemono-table-action="save-table"><i class="fa-solid fa-floppy-disk"></i><span>保存表格</span></button>
-                <button class="menu_button danger_button" data-bakemono-table-action="delete-table"><i class="fa-solid fa-trash"></i><span>删除表格</span></button>
+                <button type="button" class="menu_button" data-bakemono-table-action="add-row"><i class="fa-solid fa-plus"></i><span>新增一行</span></button>
+                <button type="button" class="menu_button" data-bakemono-table-action="save-table"><i class="fa-solid fa-floppy-disk"></i><span>保存表格</span></button>
+                <button type="button" class="menu_button danger_button" data-bakemono-table-action="delete-table"><i class="fa-solid fa-trash"></i><span>删除表格</span></button>
             </div>
         `;
         row.append(summary, body);
         fragment.append(row);
     });
     container.append(fragment);
+    if (tableUiState.focusCell) {
+        const { tableIndex, rowIndex, colIndex } = tableUiState.focusCell;
+        tableUiState.focusCell = null;
+        requestAnimationFrame(() => {
+            const tableItem = container.querySelector(`.bakemono-memory-table-item[data-table-index="${tableIndex}"]`);
+            tableItem?.setAttribute('open', '');
+            const cell = tableItem?.querySelector(`tr[data-table-row="${rowIndex}"] [data-table-col="${colIndex}"]`);
+            cell?.focus();
+            cell?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        });
+    }
 }
 
 function renderTableEditDrafts(state = ensureState()) {
@@ -5643,9 +5666,9 @@ function renderTableEditDrafts(state = ensureState()) {
         const actions = document.createElement('div');
         actions.className = 'bakemono-memory-inline-actions';
         actions.innerHTML = `
-            <button class="menu_button" data-bakemono-table-draft-action="apply"><i class="fa-solid fa-check"></i><span>应用修改</span></button>
-            <button class="menu_button" data-bakemono-table-draft-action="reparse"><i class="fa-solid fa-code"></i><span>重新解析</span></button>
-            <button class="menu_button danger_button" data-bakemono-table-draft-action="discard"><i class="fa-solid fa-trash"></i><span>丢弃</span></button>
+            <button type="button" class="menu_button" data-bakemono-table-draft-action="apply"><i class="fa-solid fa-check"></i><span>应用修改</span></button>
+            <button type="button" class="menu_button" data-bakemono-table-draft-action="reparse"><i class="fa-solid fa-code"></i><span>重新解析</span></button>
+            <button type="button" class="menu_button danger_button" data-bakemono-table-draft-action="discard"><i class="fa-solid fa-trash"></i><span>丢弃</span></button>
         `;
         card.append(header, textarea, actions);
         fragment.append(card);
@@ -7520,7 +7543,9 @@ function bindSettingsEvents() {
             deleteSavedSummary(hash);
         }
     });
-    $('#bakemono-workbench-root').off('click.bakemonoTableDraftAction').on('click.bakemonoTableDraftAction', '[data-bakemono-table-draft-action]', function () {
+    $('#bakemono-workbench-root').off('click.bakemonoTableDraftAction').on('click.bakemonoTableDraftAction', '[data-bakemono-table-draft-action]', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
         const card = this.closest('.bakemono-memory-table-draft-card');
         const draftId = card?.dataset.tableDraftId;
         const state = ensureState();
@@ -7573,19 +7598,27 @@ function bindSettingsEvents() {
             }
         }
     });
-    $('#bakemono-workbench-root').off('click.bakemonoTableAction').on('click.bakemonoTableAction', '[data-bakemono-table-action]', function () {
+    $('#bakemono-workbench-root').off('click.bakemonoTableAction').on('click.bakemonoTableAction', '[data-bakemono-table-action]', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
         const details = this.closest('.bakemono-memory-table-item');
         const action = this.dataset.bakemonoTableAction;
         if (!details) {
             return;
         }
+        tableUiState.openTableIndex = String(details.dataset.tableIndex || '');
         if (action === 'add-row') {
             const table = saveEditedTableFromElement(details, { render: false });
             if (!table) {
                 return;
             }
             table.rows = Array.isArray(table.rows) ? table.rows : [];
+            const newRowIndex = table.rows.length;
             table.rows.push(table.columns.map(() => ''));
+            tableUiState.openTableIndex = String(table.tableIndex);
+            tableUiState.focusCell = { tableIndex: String(table.tableIndex), rowIndex: String(newRowIndex), colIndex: '0' };
+            syncCurrentTableSchemas(ensureState());
+            updateInjectionFromSummaries();
             saveState();
             renderAll(`已新增一行：${table.name}`);
         } else if (action === 'add-column') {
@@ -7593,11 +7626,14 @@ function bindSettingsEvents() {
             if (!table) {
                 return;
             }
+            tableUiState.openTableIndex = String(table.tableIndex);
             const index = table.columns.length;
             table.columns.push(`字段 ${index}`);
             table.columnPrompts = Array.isArray(table.columnPrompts) ? table.columnPrompts : [];
             table.columnPrompts.push('');
             table.rows = (table.rows || []).map(row => [...row, '']);
+            syncCurrentTableSchemas(ensureState());
+            updateInjectionFromSummaries();
             saveState();
             renderAll(`已新增字段：${table.name}`);
         } else if (action === 'delete-column') {
@@ -7619,6 +7655,8 @@ function bindSettingsEvents() {
             table.columnPrompts = Array.isArray(table.columnPrompts) ? table.columnPrompts : [];
             table.columnPrompts.splice(colIndex, 1);
             table.rows = (table.rows || []).map(row => row.filter((_, index) => index !== colIndex));
+            syncCurrentTableSchemas(ensureState());
+            updateInjectionFromSummaries();
             saveState();
             renderAll(`已删除字段：${colName}`);
         } else if (action === 'delete-row') {
