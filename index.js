@@ -87,6 +87,12 @@ const areaPresetScopes = {
     VECTOR: 'vectorMemory',
 };
 
+const tableSchemaScopes = {
+    CHAT: 'chat',
+    CHARACTER: 'character',
+    GLOBAL: 'global',
+};
+
 const defaultInjectionTemplate = `【剧情剪辑台：长期剧情记忆】
 以下内容是已经压缩整理过的剧情记忆。请把它当作已发生事实与长期线索参考，不要复述给用户，也不要替代当前回合正文。
 
@@ -595,6 +601,7 @@ const defaultState = {
     tableDatabase: {
         enabled: false,
         autoApply: false,
+        schemaScope: tableSchemaScopes.CHAT,
         tables: [],
         editDrafts: [],
         history: [],
@@ -640,6 +647,7 @@ function ensureGlobalSettings() {
     if (!extension_settings[STORAGE_KEY]) {
         extension_settings[STORAGE_KEY] = {};
     }
+    const settings = extension_settings[STORAGE_KEY];
     if (!Array.isArray(extension_settings[STORAGE_KEY].promptPresets)) {
         extension_settings[STORAGE_KEY].promptPresets = [structuredClone(defaultPromptPreset), structuredClone(defaultGenericPromptPreset)];
     }
@@ -687,6 +695,18 @@ function ensureGlobalSettings() {
     }
     if (!extension_settings[STORAGE_KEY].selectedAreaPresetIds || typeof extension_settings[STORAGE_KEY].selectedAreaPresetIds !== 'object') {
         extension_settings[STORAGE_KEY].selectedAreaPresetIds = {};
+    }
+    if (!Object.values(tableSchemaScopes).includes(settings.defaultTableSchemaScope)) {
+        settings.defaultTableSchemaScope = tableSchemaScopes.CHAT;
+    }
+    if (!settings.tableSchemaLibrary || typeof settings.tableSchemaLibrary !== 'object') {
+        settings.tableSchemaLibrary = { global: [], characters: {} };
+    }
+    if (!Array.isArray(settings.tableSchemaLibrary.global)) {
+        settings.tableSchemaLibrary.global = [];
+    }
+    if (!settings.tableSchemaLibrary.characters || typeof settings.tableSchemaLibrary.characters !== 'object') {
+        settings.tableSchemaLibrary.characters = {};
     }
 }
 
@@ -817,9 +837,14 @@ function ensureState() {
             state.tableDatabase[key] = structuredClone(value);
         }
     }
+    if (!Object.values(tableSchemaScopes).includes(state.tableDatabase.schemaScope)) {
+        ensureGlobalSettings();
+        state.tableDatabase.schemaScope = extension_settings[STORAGE_KEY].defaultTableSchemaScope || tableSchemaScopes.CHAT;
+    }
     state.tableDatabase.tables = Array.isArray(state.tableDatabase.tables) ? state.tableDatabase.tables : [];
     state.tableDatabase.editDrafts = Array.isArray(state.tableDatabase.editDrafts) ? state.tableDatabase.editDrafts : [];
     state.tableDatabase.history = Array.isArray(state.tableDatabase.history) ? state.tableDatabase.history : [];
+    mergeScopedTableSchemasIntoState(state);
     state.vectorMemory = state.vectorMemory && typeof state.vectorMemory === 'object'
         ? state.vectorMemory
         : structuredClone(defaultVectorMemory);
@@ -914,6 +939,137 @@ function saveState() {
 
 function saveGlobalSettings() {
     saveSettingsDebounced();
+}
+
+function getTableSchemaScopeLabel(scope) {
+    if (scope === tableSchemaScopes.GLOBAL) return '全局表格框架';
+    if (scope === tableSchemaScopes.CHARACTER) return '当前角色表格框架';
+    return '当前聊天表格';
+}
+
+function getCurrentCharacterSchemaKey() {
+    const context = getContext();
+    const character = context.characters?.[context.characterId] || {};
+    return String(character.avatar || character.name || context.characterId || context.name2 || 'unknown-character');
+}
+
+function getCurrentCharacterSchemaLabel() {
+    const context = getContext();
+    const character = context.characters?.[context.characterId] || {};
+    return String(character.name || context.name2 || getCurrentCharacterSchemaKey());
+}
+
+function getTableSchemaLibrary() {
+    ensureGlobalSettings();
+    return extension_settings[STORAGE_KEY].tableSchemaLibrary;
+}
+
+function toTableSchema(table, fallbackIndex = 0) {
+    const columns = Array.isArray(table?.columns) ? table.columns.map(col => String(col || '')) : [];
+    const tableIndex = Number.isFinite(Number(table?.tableIndex)) ? Number(table.tableIndex) : fallbackIndex;
+    return {
+        id: table?.id || `table-${getHash(`${table?.name || tableIndex}|${tableIndex}`)}`,
+        tableIndex,
+        name: String(table?.name || `表格 ${tableIndex}`),
+        columns,
+        columnPrompts: Array.isArray(table?.columnPrompts)
+            ? table.columnPrompts.map(text => String(text || '')).slice(0, columns.length)
+            : columns.map(() => ''),
+        note: String(table?.note || ''),
+        initNode: String(table?.initNode || ''),
+        insertNode: String(table?.insertNode || ''),
+        updateNode: String(table?.updateNode || ''),
+        deleteNode: String(table?.deleteNode || ''),
+        rows: [],
+        required: !!table?.required,
+    };
+}
+
+function normalizeTableSchemas(tables = []) {
+    return (Array.isArray(tables) ? tables : [])
+        .map((table, index) => toTableSchema(table, index))
+        .filter(table => table.columns.length || table.name.trim());
+}
+
+function getScopedTableSchemas(scope = tableSchemaScopes.CHAT) {
+    const library = getTableSchemaLibrary();
+    if (scope === tableSchemaScopes.GLOBAL) {
+        return normalizeTableSchemas(library.global);
+    }
+    if (scope === tableSchemaScopes.CHARACTER) {
+        const key = getCurrentCharacterSchemaKey();
+        return normalizeTableSchemas(library.characters?.[key] || []);
+    }
+    return [];
+}
+
+function saveScopedTableSchemas(tables = [], scope = tableSchemaScopes.CHAT) {
+    if (scope === tableSchemaScopes.CHAT) {
+        return;
+    }
+    const library = getTableSchemaLibrary();
+    const schemas = normalizeTableSchemas(tables);
+    if (scope === tableSchemaScopes.GLOBAL) {
+        library.global = schemas;
+    } else if (scope === tableSchemaScopes.CHARACTER) {
+        const key = getCurrentCharacterSchemaKey();
+        library.characters[key] = schemas;
+    }
+    saveGlobalSettings();
+}
+
+function findMatchingTable(schema, tables = []) {
+    return tables.find(table => schema.id && table.id === schema.id)
+        || tables.find(table => Number(table.tableIndex) === Number(schema.tableIndex))
+        || tables.find(table => String(table.name || '') === String(schema.name || ''));
+}
+
+function mergeTableSchemaWithRows(schema, existing) {
+    const rows = Array.isArray(existing?.rows)
+        ? existing.rows.map(row => schema.columns.map((_, index) => String(row?.[index] ?? '')))
+        : [];
+    return {
+        ...schema,
+        rows,
+    };
+}
+
+function mergeScopedTableSchemasIntoState(state) {
+    const scope = state?.tableDatabase?.schemaScope || tableSchemaScopes.CHAT;
+    if (scope === tableSchemaScopes.CHAT) {
+        return;
+    }
+    const schemas = getScopedTableSchemas(scope);
+    if (!schemas.length) {
+        return;
+    }
+    const currentTables = Array.isArray(state.tableDatabase.tables) ? state.tableDatabase.tables : [];
+    const merged = schemas.map(schema => mergeTableSchemaWithRows(schema, findMatchingTable(schema, currentTables)));
+    const extraLocalTables = currentTables.filter(table => !schemas.some(schema => findMatchingTable(schema, [table])));
+    state.tableDatabase.tables = [...merged, ...extraLocalTables];
+}
+
+function setTableSchemaScope(scope, state = ensureState()) {
+    const nextScope = Object.values(tableSchemaScopes).includes(scope) ? scope : tableSchemaScopes.CHAT;
+    const previousScope = state.tableDatabase.schemaScope || tableSchemaScopes.CHAT;
+    state.tableDatabase.schemaScope = nextScope;
+    ensureGlobalSettings();
+    extension_settings[STORAGE_KEY].defaultTableSchemaScope = nextScope;
+    if (nextScope !== tableSchemaScopes.CHAT) {
+        const existingSchemas = getScopedTableSchemas(nextScope);
+        if (!existingSchemas.length && Array.isArray(state.tableDatabase.tables) && state.tableDatabase.tables.length) {
+            saveScopedTableSchemas(state.tableDatabase.tables, nextScope);
+        }
+        mergeScopedTableSchemasIntoState(state);
+    }
+    if (previousScope !== nextScope) {
+        saveGlobalSettings();
+    }
+}
+
+function syncCurrentTableSchemas(state = ensureState()) {
+    const scope = state.tableDatabase?.schemaScope || tableSchemaScopes.CHAT;
+    saveScopedTableSchemas(state.tableDatabase?.tables || [], scope);
 }
 
 function getPromptPresets() {
@@ -4623,6 +4779,8 @@ function renderTurnSummaryPanel(state = ensureState()) {
     $('#bakemono-memory-turn-world-max-context').val(state.turnSummary.worldInfoMaxContext ?? defaultState.turnSummary.worldInfoMaxContext);
     $('#bakemono-memory-turn-reference').val(state.turnSummary.referenceContext || '');
     $('#bakemono-memory-table-enabled').prop('checked', !!state.tableDatabase.enabled);
+    $('#bakemono-memory-table-schema-scope').val(state.tableDatabase.schemaScope || tableSchemaScopes.CHAT);
+    $('#bakemono-memory-table-schema-status').text(`${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)} · ${state.tableDatabase.tables.length} tables · ${getCurrentCharacterSchemaLabel()}`);
     $('#bakemono-memory-turn-prompt').val(state.turnSummary.prompt || defaultTurnSummaryPrompt);
     $('#bakemono-memory-table-prompt').val(state.turnSummary.tablePrompt || defaultTableEditPrompt);
     const lastId = state.turnSummary.lastProcessedMessageId;
@@ -4777,6 +4935,7 @@ function saveEditedTableFromElement(details, options = {}) {
         table.columns.map((_, colIndex) => String(row.querySelector(`[data-table-col="${colIndex}"]`)?.value || '').trim())
     ));
     table.rows = rows;
+    syncCurrentTableSchemas(state);
     saveState();
     if (options.render !== false) {
         renderAll(`已保存表格：${table.name}`);
@@ -4812,6 +4971,7 @@ function importTablesFromText(raw, sourceLabel = 'JSON') {
     state.tableDatabase.tables = tables;
     state.tableDatabase.lastImportAt = new Date().toISOString();
     state.tableDatabase.enabled = true;
+    syncCurrentTableSchemas(state);
     saveState();
     renderAll(`已导入 ${tables.length} 张表格。`);
     toastr.success(`已导入 ${tables.length} 张表格。`);
@@ -4846,6 +5006,7 @@ function createCustomTableFromUi() {
     };
     state.tableDatabase.tables.push(table);
     state.tableDatabase.enabled = true;
+    syncCurrentTableSchemas(state);
     $('#bakemono-memory-new-table-name').val('');
     $('#bakemono-memory-new-table-columns').val('');
     saveState();
@@ -5587,7 +5748,9 @@ function readTurnSummaryFieldsFromUi(state = ensureState()) {
     state.tableDatabase = {
         ...state.tableDatabase,
         enabled: $('#bakemono-memory-table-enabled').prop('checked'),
+        schemaScope: String($('#bakemono-memory-table-schema-scope').val() || state.tableDatabase.schemaScope || tableSchemaScopes.CHAT),
     };
+    setTableSchemaScope(state.tableDatabase.schemaScope, state);
     return state;
 }
 
@@ -5689,6 +5852,7 @@ function getCurrentPromptPresetPayload(name = '') {
         tableDatabase: {
             enabled: !!state.tableDatabase.enabled,
             autoApply: !!state.tableDatabase.autoApply,
+            schemaScope: state.tableDatabase.schemaScope || tableSchemaScopes.CHAT,
             tables: getTableSchemasForPreset(state),
         },
         createdAt: new Date().toISOString(),
@@ -5806,12 +5970,14 @@ function applyPromptPresetToState(preset) {
             ...state.tableDatabase,
             enabled: !!preset.tableDatabase.enabled,
             autoApply: !!preset.tableDatabase.autoApply,
+            schemaScope: Object.values(tableSchemaScopes).includes(preset.tableDatabase.schemaScope) ? preset.tableDatabase.schemaScope : state.tableDatabase.schemaScope,
             tables: Array.isArray(preset.tableDatabase.tables)
                 ? normalizeImportedTablesFromJson({ tables: preset.tableDatabase.tables })
                 : state.tableDatabase.tables,
             editDrafts: [],
             history: state.tableDatabase.history || [],
         };
+        setTableSchemaScope(state.tableDatabase.schemaScope, state);
     }
     scanBakemonoBlocks({ persist: false });
     updateInjectionFromSummaries();
@@ -6589,12 +6755,34 @@ function bindSettingsEvents() {
                 return;
             }
             state.tableDatabase.tables = (state.tableDatabase.tables || []).filter(item => Number(item.tableIndex) !== tableIndex);
+            syncCurrentTableSchemas(state);
             saveState();
             renderAll('表格已删除。');
         }
     });
     $('#bakemono-memory-create-table').off('click').on('click', () => {
         createCustomTableFromUi();
+    });
+    $('#bakemono-memory-table-schema-scope').off('change').on('change', function () {
+        const state = ensureState();
+        setTableSchemaScope(String(this.value || tableSchemaScopes.CHAT), state);
+        saveState();
+        renderAll(`Table schema scope: ${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
+        toastr.success(`已切换表格框架：${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
+    });
+    $('#bakemono-memory-save-table-schema').off('click').on('click', () => {
+        const state = ensureState();
+        syncCurrentTableSchemas(state);
+        saveState();
+        renderAll(`Saved table schema: ${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
+        toastr.success(`已保存表格框架：${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
+    });
+    $('#bakemono-memory-load-table-schema').off('click').on('click', () => {
+        const state = ensureState();
+        mergeScopedTableSchemasIntoState(state);
+        saveState();
+        renderAll(`Loaded table schema: ${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
+        toastr.success(`已拉取表格框架：${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
     });
     $('#bakemono-memory-apply-injection').off('click').on('click', () => {
         const state = ensureState();
@@ -6763,6 +6951,9 @@ function bindSettingsEvents() {
         state.tableDatabase.tables = [];
         state.tableDatabase.editDrafts = [];
         state.tableDatabase.history = [];
+        if ((state.tableDatabase.schemaScope || tableSchemaScopes.CHAT) !== tableSchemaScopes.CHAT) {
+            state.tableDatabase.tables = getScopedTableSchemas(state.tableDatabase.schemaScope).map(schema => ({ ...schema, rows: [] }));
+        }
         saveState();
         renderAll('表格数据库已清空。');
     });

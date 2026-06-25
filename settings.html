@@ -481,6 +481,27 @@
               <i class="fa-solid fa-circle-info"></i>
               <span>表格可以单独处理最新正文，不必同时生成正文摘要。生成后会进入表格修改草稿，确认应用后才改表。</span>
             </div>
+            <div class="bakemono-memory-table-scope">
+              <label class="bakemono-memory-field">
+                <span>表格框架作用域</span>
+                <select id="bakemono-memory-table-schema-scope" class="text_pole">
+                  <option value="chat">当前聊天</option>
+                  <option value="character">当前角色</option>
+                  <option value="global">全局</option>
+                </select>
+              </label>
+              <div class="bakemono-memory-table-scope-actions">
+                <button class="menu_button" id="bakemono-memory-save-table-schema">
+                  <i class="fa-solid fa-floppy-disk"></i>
+                  <span>保存框架</span>
+                </button>
+                <button class="menu_button" id="bakemono-memory-load-table-schema">
+                  <i class="fa-solid fa-download"></i>
+                  <span>拉取框架</span>
+                </button>
+              </div>
+              <div id="bakemono-memory-table-schema-status" class="bakemono-memory-status-line">当前聊天表格</div>
+            </div>
             <div class="bakemono-memory-inline-actions">
               <button class="menu_button" data-bakemono-action="process-latest-table">
                 <i class="fa-solid fa-table-list"></i>
