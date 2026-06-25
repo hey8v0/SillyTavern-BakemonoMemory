@@ -919,6 +919,30 @@
   margin: 0;
 }
 
+.bakemono-memory-table-profile {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(180px, 1fr);
+  gap: 10px;
+  align-items: end;
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px dashed var(--bk-line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.bakemono-memory-table-profile .bakemono-memory-table-scope-actions {
+  grid-column: 1 / -1;
+  justify-content: flex-start;
+}
+
+.bakemono-memory-table-flags {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+
 .bakemono-memory-table-import {
   margin: 10px 0;
   border: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
@@ -1701,6 +1725,11 @@
   }
 
   .bakemono-memory-table-scope {
+    grid-template-columns: 1fr;
+  }
+
+  .bakemono-memory-table-profile,
+  .bakemono-memory-table-flags {
     grid-template-columns: 1fr;
   }
 

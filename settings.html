@@ -404,6 +404,14 @@
               <input type="checkbox" id="bakemono-memory-table-enabled">
               <span>同时生成表格修改</span>
             </label>
+            <label class="bakemono-memory-field">
+              <span>回复后处理模式</span>
+              <select id="bakemono-memory-turn-processing-mode" class="text_pole">
+                <option value="both">摘要 + 填表</option>
+                <option value="summary">只摘要</option>
+                <option value="table">只填表</option>
+              </select>
+            </label>
           </div>
           <div class="bakemono-memory-inline-actions">
             <button class="menu_button" data-bakemono-action="process-latest-turn">
@@ -475,6 +483,82 @@
             </div>
           </div>
 
+          <div class="bakemono-memory-card-panel bakemono-mobile-collapsible bakemono-turn-panel-card">
+            <h4><i class="fa-solid fa-pen-to-square"></i> 随正文生成</h4>
+            <div class="bakemono-memory-prompt-hint">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              <span>随正文生成会把摘要/填表规则放进主回复提示词，响应更快，但可能分散 AI 写正文的注意力。</span>
+            </div>
+            <div class="bakemono-memory-options">
+              <label class="checkbox_label bakemono-memory-switch">
+                <input type="checkbox" id="bakemono-memory-inline-summary-enabled">
+                <span>随正文写摘要</span>
+              </label>
+              <label class="checkbox_label bakemono-memory-switch">
+                <input type="checkbox" id="bakemono-memory-inline-table-enabled">
+                <span>随正文写表格修改</span>
+              </label>
+              <label class="checkbox_label bakemono-memory-switch">
+                <input type="checkbox" id="bakemono-memory-inline-hide-table" checked>
+                <span>捕获后隐藏 tableEdit</span>
+              </label>
+            </div>
+            <details class="bakemono-memory-table-import">
+              <summary><i class="fa-solid fa-scroll"></i><span>随正文摘要提示词</span></summary>
+              <div class="bakemono-memory-preset-controls">
+                <label class="bakemono-memory-field">
+                  <span>摘要提示词预设</span>
+                  <select id="bakemono-memory-inline-summary-preset-select" class="text_pole"></select>
+                </label>
+                <input id="bakemono-memory-inline-summary-preset-name" class="text_pole bakemono-memory-preset-name" type="text" placeholder="我的随正文摘要提示词">
+                <button class="menu_button" id="bakemono-memory-load-inline-summary-preset">
+                  <i class="fa-solid fa-download"></i>
+                  <span>载入</span>
+                </button>
+                <button class="menu_button" id="bakemono-memory-save-inline-summary-preset">
+                  <i class="fa-solid fa-floppy-disk"></i>
+                  <span>保存</span>
+                </button>
+                <button class="menu_button" id="bakemono-memory-update-inline-summary-preset">
+                  <i class="fa-solid fa-pen"></i>
+                  <span>覆盖</span>
+                </button>
+                <button class="menu_button danger_button" id="bakemono-memory-delete-inline-summary-preset">
+                  <i class="fa-solid fa-trash"></i>
+                  <span>删除</span>
+                </button>
+              </div>
+              <textarea id="bakemono-memory-inline-summary-prompt" class="text_pole textarea_compact" rows="8" spellcheck="false"></textarea>
+            </details>
+            <details class="bakemono-memory-table-import">
+              <summary><i class="fa-solid fa-table-list"></i><span>随正文填表提示词</span></summary>
+              <div class="bakemono-memory-preset-controls">
+                <label class="bakemono-memory-field">
+                  <span>填表提示词预设</span>
+                  <select id="bakemono-memory-inline-table-preset-select" class="text_pole"></select>
+                </label>
+                <input id="bakemono-memory-inline-table-preset-name" class="text_pole bakemono-memory-preset-name" type="text" placeholder="我的随正文填表提示词">
+                <button class="menu_button" id="bakemono-memory-load-inline-table-preset">
+                  <i class="fa-solid fa-download"></i>
+                  <span>载入</span>
+                </button>
+                <button class="menu_button" id="bakemono-memory-save-inline-table-preset">
+                  <i class="fa-solid fa-floppy-disk"></i>
+                  <span>保存</span>
+                </button>
+                <button class="menu_button" id="bakemono-memory-update-inline-table-preset">
+                  <i class="fa-solid fa-pen"></i>
+                  <span>覆盖</span>
+                </button>
+                <button class="menu_button danger_button" id="bakemono-memory-delete-inline-table-preset">
+                  <i class="fa-solid fa-trash"></i>
+                  <span>删除</span>
+                </button>
+              </div>
+              <textarea id="bakemono-memory-inline-table-prompt" class="text_pole textarea_compact" rows="8" spellcheck="false"></textarea>
+            </details>
+          </div>
+
           <div class="bakemono-memory-card-panel bakemono-mobile-collapsible bakemono-table-panel-card">
             <h4><i class="fa-solid fa-table"></i> 表格数据库</h4>
             <div class="bakemono-memory-prompt-hint">
@@ -501,6 +585,34 @@
                 </button>
               </div>
               <div id="bakemono-memory-table-schema-status" class="bakemono-memory-status-line">当前聊天表格</div>
+            </div>
+            <div class="bakemono-memory-table-profile">
+              <label class="bakemono-memory-field">
+                <span>表格组</span>
+                <select id="bakemono-memory-table-profile-select" class="text_pole"></select>
+              </label>
+              <label class="bakemono-memory-field">
+                <span>表格组名称</span>
+                <input id="bakemono-memory-table-profile-name" class="text_pole" type="text" placeholder="例如：剧情指导表组">
+              </label>
+              <div class="bakemono-memory-table-scope-actions">
+                <button class="menu_button" id="bakemono-memory-switch-table-profile">
+                  <i class="fa-solid fa-right-left"></i>
+                  <span>切换</span>
+                </button>
+                <button class="menu_button" id="bakemono-memory-new-table-profile">
+                  <i class="fa-solid fa-plus"></i>
+                  <span>新建组</span>
+                </button>
+                <button class="menu_button" id="bakemono-memory-save-table-profile">
+                  <i class="fa-solid fa-floppy-disk"></i>
+                  <span>保存组</span>
+                </button>
+                <button class="menu_button danger_button" id="bakemono-memory-delete-table-profile">
+                  <i class="fa-solid fa-trash"></i>
+                  <span>删除组</span>
+                </button>
+              </div>
             </div>
             <div class="bakemono-memory-inline-actions">
               <button class="menu_button" data-bakemono-action="process-latest-table">
@@ -556,6 +668,29 @@
 
         <div class="bakemono-memory-card-panel bakemono-mobile-collapsible bakemono-table-panel-card">
           <h4><i class="fa-solid fa-code"></i> 表格修改提示词</h4>
+          <div class="bakemono-memory-preset-controls">
+            <label class="bakemono-memory-field">
+              <span>表格提示词预设</span>
+              <select id="bakemono-memory-table-preset-select" class="text_pole"></select>
+            </label>
+            <input id="bakemono-memory-table-preset-name" class="text_pole bakemono-memory-preset-name" type="text" placeholder="我的表格提示词">
+            <button class="menu_button" id="bakemono-memory-load-table-preset">
+              <i class="fa-solid fa-download"></i>
+              <span>载入</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-save-table-preset">
+              <i class="fa-solid fa-floppy-disk"></i>
+              <span>保存</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-update-table-preset">
+              <i class="fa-solid fa-pen"></i>
+              <span>覆盖</span>
+            </button>
+            <button class="menu_button danger_button" id="bakemono-memory-delete-table-preset">
+              <i class="fa-solid fa-trash"></i>
+              <span>删除</span>
+            </button>
+          </div>
           <label class="bakemono-memory-editor">
             <span>表格提示词</span>
             <textarea id="bakemono-memory-table-prompt" class="text_pole textarea_compact" rows="10" spellcheck="false"></textarea>
@@ -1028,6 +1163,29 @@
             </button>
           </div>
           <div id="bakemono-memory-vector-stats" class="bakemono-memory-prompt-hint">索引 0 个片段 / 召回 0 个</div>
+          <div class="bakemono-memory-preset-controls">
+            <label class="bakemono-memory-field">
+              <span>向量配置预设</span>
+              <select id="bakemono-memory-vector-preset-select" class="text_pole"></select>
+            </label>
+            <input id="bakemono-memory-vector-preset-name" class="text_pole bakemono-memory-preset-name" type="text" placeholder="我的 embedding 配置">
+            <button class="menu_button" id="bakemono-memory-load-vector-preset">
+              <i class="fa-solid fa-download"></i>
+              <span>载入</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-save-vector-preset">
+              <i class="fa-solid fa-floppy-disk"></i>
+              <span>保存</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-update-vector-preset">
+              <i class="fa-solid fa-pen"></i>
+              <span>覆盖</span>
+            </button>
+            <button class="menu_button danger_button" id="bakemono-memory-delete-vector-preset">
+              <i class="fa-solid fa-trash"></i>
+              <span>删除</span>
+            </button>
+          </div>
         </div>
 
         <div class="bakemono-memory-editor-grid">
@@ -1036,6 +1194,10 @@
             <label class="checkbox_label bakemono-memory-switch">
               <input type="checkbox" id="bakemono-memory-vector-enabled">
               <span>启用向量原文召回注入</span>
+            </label>
+            <label class="checkbox_label bakemono-memory-switch">
+              <input type="checkbox" id="bakemono-memory-vector-auto-index" checked>
+              <span>启用后自动建立/刷新索引</span>
             </label>
             <label class="checkbox_label bakemono-memory-switch">
               <input type="checkbox" id="bakemono-memory-vector-include-hidden" checked>
@@ -1070,6 +1232,10 @@
               <label class="bakemono-memory-field">
                 <span>召回数量 topK</span>
                 <input id="bakemono-memory-vector-top-k" class="text_pole" type="number" min="1" step="1">
+              </label>
+              <label class="bakemono-memory-field">
+                <span>每楼层最多片段</span>
+                <input id="bakemono-memory-vector-max-per-message" class="text_pole" type="number" min="1" step="1">
               </label>
               <label class="bakemono-memory-field">
                 <span>最低分数</span>
@@ -1107,13 +1273,13 @@
           <h4><i class="fa-solid fa-network-wired"></i> Embedding API 预留</h4>
           <div class="bakemono-memory-prompt-hint">
             <i class="fa-solid fa-circle-info"></i>
-            <span>当前默认使用本地哈希向量，不消耗 API。这里先预留自定义 OpenAI embedding 配置，后续可切换成真实 embedding。</span>
+            <span>默认使用本地哈希向量，不消耗 API；选择自定义 OpenAI Embedding 后会请求兼容的 /embeddings 接口，失败会自动回退本地向量。</span>
           </div>
           <label class="bakemono-memory-field">
             <span>Embedding 提供方</span>
             <select id="bakemono-memory-vector-provider" class="text_pole">
               <option value="local">本地哈希向量（默认）</option>
-              <option value="custom-openai">自定义 OpenAI Embedding（预留）</option>
+              <option value="custom-openai">自定义 OpenAI Embedding</option>
             </select>
           </label>
           <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
