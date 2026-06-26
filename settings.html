@@ -103,7 +103,7 @@
             <strong id="bakemono-memory-count-stage">0</strong>
           </div>
           <div class="bakemono-memory-stat">
-            <span>史诗简史</span>
+            <span>多次总结</span>
             <strong id="bakemono-memory-count-epic">0</strong>
           </div>
           <div class="bakemono-memory-stat">
@@ -234,9 +234,9 @@
             <i class="fa-solid fa-wand-magic-sparkles"></i>
             <span>生成阶段总结</span>
           </button>
-          <button class="menu_button danger_button" data-bakemono-action="generate-epic" id="bakemono-memory-generate-epic">
-            <i class="fa-solid fa-triangle-exclamation"></i>
-            <span>生成史诗简史</span>
+          <button class="menu_button" data-bakemono-action="generate-epic" id="bakemono-memory-generate-epic">
+            <i class="fa-solid fa-layer-group"></i>
+            <span>生成多次总结</span>
           </button>
           <button class="menu_button" data-bakemono-action="backfill" id="bakemono-memory-backfill">
             <i class="fa-solid fa-box-archive"></i>
@@ -313,7 +313,7 @@
 
         <div class="bakemono-memory-prompt-hint">
           <i class="fa-solid fa-brain"></i>
-          <span><strong id="bakemono-memory-strategy-label">Bakemono 摘要块模式</strong> · <span id="bakemono-memory-injection-stats">注入：史诗 0 / 阶段 0 / 普通 0</span></span>
+          <span><strong id="bakemono-memory-strategy-label">Bakemono 摘要块模式</strong> · <span id="bakemono-memory-injection-stats">注入：多次 0 / 阶段 0 / 普通 0</span></span>
         </div>
         <div class="bakemono-memory-prompt-hint">
           <i class="fa-solid fa-route"></i>
@@ -366,7 +366,7 @@
           <h4><i class="fa-solid fa-database"></i> 记忆库</h4>
           <div class="bakemono-memory-prompt-hint">
             <i class="fa-solid fa-circle-info"></i>
-            <span>这里把扫描片段、补课摘要、阶段总结、史诗简史和草稿统一成数据库记录。后续做索引召回和断点任务时，会从这张表继续往下接。</span>
+            <span>这里把扫描片段、补课摘要、阶段总结、多次总结和草稿统一成数据库记录。后续做索引召回和断点任务时，会从这张表继续往下接。</span>
           </div>
           <div class="bakemono-memory-preview-toolbar">
             <label class="bakemono-memory-field">
@@ -379,7 +379,7 @@
                 <option value="all">全部类型</option>
                 <option value="story">剧情摘要</option>
                 <option value="stage">阶段总结</option>
-                <option value="epic">史诗简史</option>
+                <option value="epic">多次总结</option>
               </select>
             </label>
             <label class="bakemono-memory-field">
@@ -769,8 +769,8 @@
             <strong id="bakemono-memory-tab-count-stage">0</strong>
           </button>
           <button type="button" class="bakemono-preview-type-button" data-bakemono-preview-type="epic">
-            <i class="fa-solid fa-clock-rotate-left"></i>
-            <span>史诗简史</span>
+            <i class="fa-solid fa-layer-group"></i>
+            <span>多次总结</span>
             <strong id="bakemono-memory-tab-count-epic">0</strong>
           </button>
         </div>
@@ -802,7 +802,7 @@
             <div id="bakemono-memory-preview-stage" class="bakemono-memory-preview-list"></div>
           </section>
           <section class="bakemono-memory-preview-column" data-bakemono-preview-column="epic">
-            <h4><i class="fa-solid fa-clock-rotate-left"></i> 史诗简史</h4>
+            <h4><i class="fa-solid fa-layer-group"></i> 多次总结</h4>
             <div id="bakemono-memory-preview-epic" class="bakemono-memory-preview-list"></div>
           </section>
         </div>
@@ -813,7 +813,7 @@
           <h4><i class="fa-solid fa-diagram-project"></i> 摘要树 / 时间线</h4>
           <div class="bakemono-memory-prompt-hint">
             <i class="fa-solid fa-circle-info"></i>
-            <span>这里按“史诗简史 → 阶段总结 → 剧情摘要”的覆盖关系展示，方便确认哪些内容已经被压缩进长期记忆。</span>
+            <span>这里按“多次总结 → 阶段总结 → 剧情摘要”的覆盖关系展示，方便确认哪些内容已经被压缩进长期记忆。</span>
           </div>
           <div id="bakemono-memory-timeline" class="bakemono-memory-timeline"></div>
         </div>
@@ -1098,7 +1098,7 @@
               <textarea id="bakemono-memory-class-stage" class="text_pole textarea_compact" rows="3" spellcheck="false"></textarea>
             </label>
             <label class="bakemono-memory-editor">
-              <span>史诗简史关键词</span>
+              <span>多次总结关键词</span>
               <textarea id="bakemono-memory-class-epic" class="text_pole textarea_compact" rows="3" spellcheck="false"></textarea>
             </label>
           </div>
@@ -1116,7 +1116,7 @@
               <textarea id="bakemono-memory-layout-stage" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
             </label>
             <label class="bakemono-memory-editor">
-              <span>史诗简史分段</span>
+              <span>多次总结分段</span>
               <textarea id="bakemono-memory-layout-epic" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
             </label>
           </div>
@@ -1475,7 +1475,7 @@
               <textarea id="bakemono-memory-stage-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
             </label>
             <label class="bakemono-memory-editor">
-              <span>史诗简史提示词</span>
+              <span>多次总结提示词</span>
               <textarea id="bakemono-memory-epic-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
             </label>
           </div>
@@ -1500,8 +1500,8 @@
             <span>恢复阶段默认</span>
           </button>
           <button class="menu_button" id="bakemono-memory-reset-epic-prompt">
-            <i class="fa-solid fa-clock-rotate-left"></i>
-            <span>恢复史诗默认</span>
+            <i class="fa-solid fa-layer-group"></i>
+            <span>恢复多次默认</span>
           </button>
         </div>
       </section>

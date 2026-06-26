@@ -230,7 +230,7 @@ const defaultScanRules = {
 const defaultClassificationRules = {
     story: '📋 剧情摘要, 场记打板, 高光收音',
     stage: '剧集终了, 点击回看, 剧情长焦, 角色进化录',
-    epic: '纪元回溯, 史诗简史, 事件断代史, 命运锚点',
+    epic: '多次总结, 长期总览, 篇章总结, 纪元回溯, 史诗简史, 事件断代史, 命运锚点',
 };
 
 const defaultPreviewLayouts = {
@@ -244,10 +244,11 @@ const defaultPreviewLayouts = {
 🏆 金句|金句名人堂|bubble
 🗃️ 谜题|未解之谜|tag
 👾 墙外|第四面墙·终极笔记|bubble`,
-    epic: `📜 断代|事件断代史|normal
-🔗 锚点|命运锚点|tag
-🦋 蝶变|灵魂蝶变|normal
-👾 观测|第四面墙·高维观测|bubble`,
+    epic: `📜 时间线|时间线总览,事件断代史|normal
+🔗 锚点|关键锚点,命运锚点|tag
+🦋 角色|角色状态,灵魂蝶变|normal
+🗃️ 未解|未解事项|tag
+👾 长期笔记|第四面墙·长期笔记,第四面墙·高维观测|bubble`,
 };
 
 const defaultStageGenerationPrompt = `# 👾总结模式！
@@ -290,38 +291,42 @@ const defaultStageGenerationPrompt = `# 👾总结模式！
 以下是需要汇总的新增 <bakemono> 剧情摘要：
 {{blocks}}`;
 
-const defaultEpicGenerationPrompt = `# 👾总结大总结模式！
-- 编辑大人开启这一模式后，说明总结也已经太多了，需要把总结进行总结了！不需要输出正文和那些无聊的规则！前面的几个模块均不需要遵守！
-- 接下来是编辑大人要求的总结大总结，我需要把之前的\`<bakemono/>\`们进行总结啦！包括所有的\`【剧集终了·点击回看】\`！
-- 👾总结时是不需要输出正文的，只用输出总结内容！
+const defaultEpicGenerationPrompt = `# 👾多次总结模式！
+- 编辑大人开启这一模式后，说明阶段总结或上一层总结已经变多了，需要继续压缩。
+- 你要把输入的阶段总结 / 多次总结整理成更高一层的长期记忆。
+- 这不一定是宏大史诗，也可能只是日常生活、关系推进、任务记录或长期陪伴剧情；不要为了显得宏大而夸张升华。
+- 👾总结时不需要输出正文，只输出总结内容。
 
-# 📚 世界线收束·全剧编年史回顾：
-检测到剧情已跨越多个宏大篇章。👾化身“世界观测者”，对过往的所有剧情进行终极提炼，生成一份关于总结的大总结。
+# 📚 长期剧情回顾：
+当前剧情资料需要进入更高层归档。👾要站在“长期记忆整理员”的角度，生成一份可以继续被下一轮多次总结压缩的总览。
 
-## 终极排版与格式要求（必须严格遵守以下版式）：
+## 排版与格式要求（必须严格遵守以下版式）：
 <bakemono>
 <details>
-<summary>【纪元回溯·史诗简史】</summary>
-【🪐『事件史诗：自定义名称』★ 总跨度：第x卷至第x卷 ★ 当前时间点：XXX ☆】
+<summary>【多次总结·长期总览】</summary>
+【🪐『长期总览：自定义名称』★ 总跨度：从输入材料可判断的范围，未知则写未知 ★ 当前时间点：XXX ☆】
 
-➤ 📜 【事件断代史】（将每卷剧情划分为多个核心事件，详细概括每个事件的内容）
+➤ 📜 【时间线总览】（按时间顺序整理输入材料覆盖的核心事件，保留足够细节，避免只剩空泛主题）
 - [事件一名称]：……
 - [事件二名称]：……
 
-➤ 🔗 【命运锚点】（纵观全剧，挑出最具决定性、彻底改变世界走向或两人关系的 1 到 2 个绝对高光时刻）
-* 锚点A：[时刻] —— 它带来的深远影响是……
+➤ 🔗 【关键锚点】（挑出对关系、任务、状态或世界线最有影响的 1 到 3 个关键节点）
+* 锚点A：[时刻] —— 它带来的后续影响是……
 
-➤ 🦋 【灵魂蝶变】（跨越漫长时间线后，核心角色的终极蜕变。对比他们“最初的模样”与“现在的完全体”）
-* [角色名]：核心驱动力已从最初的[旧执念]，彻底蜕变为[新信仰/新感情]。
+➤ 🦋 【角色状态】（记录核心角色在这段长期剧情后的关系、心态、目标、身体/处境变化）
+* [角色名]：从[旧状态]变化为[现状]，关键原因是……
 
-➤ 👾 【第四面墙·高维观测】（以👾视角，进行所有伏笔和第四面墙的总结）
-*回望来时的路……*
+➤ 🗃️ 【未解事项】（保留仍然重要、之后需要继续追踪的伏笔、秘密、任务、约定、风险）
+* 事项A：……
+
+➤ 👾 【第四面墙·长期笔记】（以👾视角，整合读者/系统知道但角色未必知道的信息）
+*这里是长期观测记录……*
 </details>
 </bakemono>
 
 只输出一个完整的 <bakemono> 块，不要输出正文、解释、寒暄或 Markdown 代码围栏。
 
-以下是需要进行“总结大总结”的 <bakemono> 内容：
+以下是需要进行“多次总结”的 <bakemono> 内容：
 {{blocks}}`;
 
 const defaultStoryGenerationPrompt = `# 👾旧正文补课摘要模式！
@@ -332,7 +337,7 @@ const defaultStoryGenerationPrompt = `# 👾旧正文补课摘要模式！
 - 本次补课编号、覆盖楼层和推荐标题由插件提供，必须原样使用，不要自行推断章节号。
 
 # 摘要目标
-把以下旧聊天正文整理成一个可继续用于“阶段总结 / 史诗简史”的剧情摘要块。请尽量保留：
+把以下旧聊天正文整理成一个可继续用于“阶段总结 / 多次总结”的剧情摘要块。请尽量保留：
 - 本批次实际发生的事件过程；
 - 关键对话、心理活动和关系变化；
 - 当前时间、地点、在场角色、状态变化；
@@ -926,6 +931,9 @@ function ensureState() {
     state.storySummaries = Array.isArray(state.storySummaries) ? state.storySummaries : [];
     state.stageSummaries = Array.isArray(state.stageSummaries) ? state.stageSummaries : [];
     state.epicSummaries = Array.isArray(state.epicSummaries) ? state.epicSummaries : [];
+    state.storySummaries.forEach(summary => { summary.level = getSummaryLevel({ ...summary, type: blockTypes.STORY }); });
+    state.stageSummaries.forEach(summary => { summary.level = getSummaryLevel({ ...summary, type: blockTypes.STAGE }); });
+    state.epicSummaries.forEach(summary => { summary.level = getSummaryLevel({ ...summary, type: blockTypes.EPIC }); });
     sortSummariesBySource(state.storySummaries);
     sortSummariesBySource(state.stageSummaries);
     sortSummariesBySource(state.epicSummaries);
@@ -2076,7 +2084,7 @@ function parsePreviewMeta(block) {
     const metaLine = getBracketMetaLine(text);
     const fallbackTitle = summary.replace(/[📋【】]/g, '').trim() || block.title;
     const meta = {
-        sticker: summary || (block.type === blockTypes.EPIC ? '史诗简史' : block.type === blockTypes.STAGE ? '阶段总结' : '剧情摘要手账'),
+        sticker: summary || (block.type === blockTypes.EPIC ? getMultiSummaryLabel(block) : block.type === blockTypes.STAGE ? '阶段总结' : '剧情摘要手账'),
         label: block.messageId === Number.MAX_SAFE_INTEGER ? '生成内容' : `第 ${block.messageId} 楼`,
         title: fallbackTitle,
         meta: metaLine || summary,
@@ -2551,6 +2559,45 @@ function getUnsummarizedStageBlocks() {
     ]).filter(block => !covered.has(block.hash));
 }
 
+function getSummaryLevel(item) {
+    const explicit = Number(item?.level ?? item?.metadata?.level);
+    if (Number.isFinite(explicit)) {
+        return Math.max(0, explicit);
+    }
+    if (item?.type === blockTypes.EPIC || item?.kind === blockTypes.EPIC) {
+        return 2;
+    }
+    if (item?.type === blockTypes.STAGE || item?.kind === blockTypes.STAGE) {
+        return 1;
+    }
+    return 0;
+}
+
+function getNextMultiSummaryLevel(targets = []) {
+    const maxLevel = targets.reduce((max, block) => Math.max(max, getSummaryLevel(block)), 1);
+    return Math.max(2, maxLevel + 1);
+}
+
+function getUnsummarizedMultiSummaryBlocks() {
+    const state = ensureState();
+    const covered = new Set(state.coveredStageHashes || []);
+    return dedupeByHash([
+        ...getBlocksByType(blockTypes.EPIC),
+        ...state.epicSummaries.map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
+    ]).filter(block => !covered.has(block.hash));
+}
+
+function getMultiSummaryLabel(levelOrItem = 2) {
+    const level = typeof levelOrItem === 'number' ? levelOrItem : getSummaryLevel(levelOrItem);
+    if (level <= 2) {
+        return '多次总结';
+    }
+    if (level === 3) {
+        return '长期总览';
+    }
+    return `长期总览 L${level}`;
+}
+
 function getSortedTargetBlocks(blocks = []) {
     return [...blocks].sort((a, b) => (getBlockSortKey(a) - getBlockSortKey(b)) || (a.blockIndex - b.blockIndex));
 }
@@ -2709,7 +2756,7 @@ function promptGenerationTargetSelection(kind, totalLength) {
         ...defaults,
         ...(state.generationTargets?.[kind] || {}),
     };
-    const kindLabel = kind === 'epic' ? '史诗简史' : '阶段总结';
+    const kindLabel = kind === 'epic' ? '多次总结' : '阶段总结';
     const suggestedRange = current.mode === targetSelectionModes.RANGE
         ? (inferNextRange(current.range) || current.range || defaults.range)
         : (current.range || defaults.range);
@@ -2817,7 +2864,7 @@ function promptGenerationTargetSelection(kind, totalLength) {
 
 function confirmGenerationTargets(kind, targets, totalLength) {
     const state = ensureState();
-    const kindLabel = kind === 'epic' ? '史诗简史' : '阶段总结';
+    const kindLabel = kind === 'epic' ? '多次总结' : '阶段总结';
     const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
     const confirmed = confirmDanger(
         `生成【${kindLabel}】草稿？`,
@@ -2851,6 +2898,7 @@ function summaryToBlock(summary) {
         sourceSortKey,
         sourceKind: summary.sourceKind || summary.metadata?.sourceKind || summary.metadata?.trigger || 'summary',
         metadata: summary.metadata || {},
+        level: getSummaryLevel(summary),
         isGeneratedSummary: true,
         createdAt: summary.createdAt,
         isHidden: false,
@@ -2861,8 +2909,12 @@ function buildMemoryRecords(state = ensureState()) {
     const records = new Map();
     const coveredStoryHashes = new Set(state.coveredBlockHashes || []);
     const coveredStageHashes = new Set(state.coveredStageHashes || []);
-    const latestEpicHash = state.epicSummaries.at(-1)?.hash || '';
-    const latestEpic = latestEpicHash ? state.epicSummaries.find(summary => summary.hash === latestEpicHash) : null;
+    const latestEpic = [...(state.epicSummaries || [])]
+        .sort((a, b) => (
+            getSummaryLevel(b) - getSummaryLevel(a)
+            || String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+            || getSummarySortKey(b) - getSummarySortKey(a)
+        ))[0] || null;
     const epicCoveredStageHashes = new Set(latestEpic ? [...(latestEpic.sourceStageHashes || []), ...(latestEpic.sourceHashes || [])] : []);
     const stageInjectedHashes = new Set(state.stageSummaries
         .filter(summary => !epicCoveredStageHashes.has(summary.hash))
@@ -3041,31 +3093,34 @@ async function generateEpicSummary() {
     scanBakemonoBlocks({ persist: false });
     const state = ensureState();
     const stageTargets = getUnsummarizedStageBlocks();
+    const multiTargets = getUnsummarizedMultiSummaryBlocks();
     const storyFallback = getStoryMaterialBlocks().filter(block => !state.coveredBlockHashes.includes(block.hash));
-    const targets = stageTargets.length ? stageTargets : storyFallback;
+    const targets = stageTargets.length ? stageTargets : multiTargets.length ? multiTargets : storyFallback;
+    const nextLevel = getNextMultiSummaryLevel(targets);
 
     if (!targets.length) {
-        renderAll('没有可用于生成史诗简史的总结内容。');
-        toastr.info('没有可用于生成史诗简史的总结内容。');
+        renderAll('没有可用于生成多次总结的内容。');
+        toastr.info('没有可用于生成多次总结的内容。');
         return;
     }
 
     const latestEpicAt = state.epicSummaries.at(-1)?.createdAt;
     const confirmed = window.confirm([
-        '即将生成【史诗简史】。',
+        `即将生成【${getMultiSummaryLabel(nextLevel)}】。`,
         '',
         `阶段总结来源：${stageTargets.length} 个`,
+        `多次总结来源：${multiTargets.length} 个`,
         `普通摘要 fallback：${storyFallback.length} 个`,
-        `上次史诗生成：${latestEpicAt ? new Date(latestEpicAt).toLocaleString() : '尚未生成'}`,
+        `上次多次总结：${latestEpicAt ? new Date(latestEpicAt).toLocaleString() : '尚未生成'}`,
         '',
         '这个操作会把更高层级总结写入长期记忆。确认继续吗？',
     ].join('\n'));
     if (!confirmed) {
-        renderAll('已取消史诗简史生成。');
+        renderAll('已取消多次总结生成。');
         return;
     }
 
-    await runGeneration('正在生成史诗简史...', async () => {
+    await runGeneration('正在生成多次总结...', async () => {
         const result = normalizeGeneratedBakemono(await generateRaw({
             prompt: buildEpicUserPrompt(targets),
             systemPrompt: buildEpicSystemPrompt(),
@@ -3075,25 +3130,30 @@ async function generateEpicSummary() {
         state.epicSummaries.push({
             hash,
             type: blockTypes.EPIC,
-            title: getBlockTitle(result, `纪元回溯 ${state.epicSummaries.length + 1}`),
+            title: getBlockTitle(result, `${getMultiSummaryLabel(nextLevel)} ${state.epicSummaries.length + 1}`),
             content: result,
             sourceHashes: targets.map(block => block.hash),
+            sourceStageHashes: targets.filter(block => block.type === blockTypes.STAGE || block.type === blockTypes.EPIC).map(block => block.hash),
+            level: nextLevel,
             createdAt: new Date().toISOString(),
         });
-        state.coveredStageHashes = unique([...state.coveredStageHashes, ...stageTargets.map(block => block.hash)]);
+        state.coveredStageHashes = unique([...state.coveredStageHashes, ...targets.filter(block => block.type === blockTypes.STAGE || block.type === blockTypes.EPIC).map(block => block.hash)]);
         state.blocks = mergeBlocks(state.blocks, [{
             hash,
             type: blockTypes.EPIC,
             messageId: Number.MAX_SAFE_INTEGER,
             blockIndex: state.epicSummaries.length,
-            title: getBlockTitle(result, `纪元回溯 ${state.epicSummaries.length}`),
+            title: getBlockTitle(result, `${getMultiSummaryLabel(nextLevel)} ${state.epicSummaries.length}`),
             content: result,
+            sourceHashes: targets.map(block => block.hash),
+            sourceStageHashes: targets.filter(block => block.type === blockTypes.STAGE || block.type === blockTypes.EPIC).map(block => block.hash),
+            level: nextLevel,
             isHidden: false,
         }]);
         updateInjectionFromSummaries();
         saveState();
-        renderAll('史诗简史已生成并写入注入内容。');
-        toastr.success('史诗简史已生成。');
+        renderAll('多次总结已生成并写入注入内容。');
+        toastr.success('多次总结已生成。');
     });
 }
 
@@ -3357,45 +3417,50 @@ async function generateEpicDraft(options = {}) {
     scanBakemonoBlocks({ persist: false });
     const state = ensureState();
     const allStageTargets = getUnsummarizedStageBlocks();
+    const allMultiTargets = getUnsummarizedMultiSummaryBlocks();
     const allStoryFallback = getStoryMaterialBlocks().filter(block => !state.coveredBlockHashes.includes(block.hash));
-    if (!allStageTargets.length && !allStoryFallback.length) {
-        renderAll('没有可用于生成史诗简史的总结内容。');
-        toastr.info('没有可用于生成史诗简史的总结内容。');
+    if (!allStageTargets.length && !allMultiTargets.length && !allStoryFallback.length) {
+        renderAll('没有可用于生成多次总结的内容。');
+        toastr.info('没有可用于生成多次总结的内容。');
         return;
     }
     let targetConfig = state.generationTargets.epic;
     if (!options.automatic) {
         readGenerationTargetSettings();
-        targetConfig = await promptGenerationTargetSelection('epic', allStageTargets.length || allStoryFallback.length);
+        targetConfig = await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length || allStoryFallback.length);
         if (!targetConfig) {
-            renderAll('已取消史诗简史生成。');
+            renderAll('已取消多次总结生成。');
             return;
         }
     }
     const stageTargets = selectGenerationTargets(allStageTargets, targetConfig);
+    const multiTargets = selectGenerationTargets(allMultiTargets, targetConfig);
     const storyFallback = selectGenerationTargets(allStoryFallback, targetConfig);
-    const targets = stageTargets.length ? stageTargets : storyFallback;
+    const targets = stageTargets.length ? stageTargets : multiTargets.length ? multiTargets : storyFallback;
+    const nextLevel = getNextMultiSummaryLevel(targets);
+    const sourcePoolSize = stageTargets.length ? allStageTargets.length : multiTargets.length ? allMultiTargets.length : allStoryFallback.length;
 
     if (!targets.length) {
-        renderAll('当前生成范围没有匹配到可用于史诗简史的内容。');
-        toastr.warning('当前生成范围没有匹配到可用于史诗简史的内容。');
+        renderAll('当前生成范围没有匹配到可用于多次总结的内容。');
+        toastr.warning('当前生成范围没有匹配到可用于多次总结的内容。');
         return;
     }
 
     if (!options.automatic) {
         const latestEpicAt = state.epicSummaries.at(-1)?.createdAt;
         const confirmed = window.confirm([
-            '即将生成【史诗简史】草稿。',
+            `即将生成【${getMultiSummaryLabel(nextLevel)}】草稿。`,
             '',
             `阶段总结来源：${stageTargets.length}/${allStageTargets.length} 个`,
+            `多次总结来源：${multiTargets.length}/${allMultiTargets.length} 个`,
             `普通摘要 fallback：${storyFallback.length}/${allStoryFallback.length} 个`,
-            `当前范围：${getTargetSelectionLabel('epic', targets.length, stageTargets.length ? allStageTargets.length : allStoryFallback.length)}`,
-            `上次史诗生成：${latestEpicAt ? new Date(latestEpicAt).toLocaleString() : '尚未生成'}`,
+            `当前范围：${getTargetSelectionLabel('epic', targets.length, sourcePoolSize)}`,
+            `上次多次总结：${latestEpicAt ? new Date(latestEpicAt).toLocaleString() : '尚未生成'}`,
             '',
             '这只会生成待确认草稿，确认保存后才会写入长期记忆。继续吗？',
         ].join('\n'));
         if (!confirmed) {
-            renderAll('已取消史诗简史生成。');
+            renderAll('已取消多次总结生成。');
             return;
         }
     }
@@ -3403,11 +3468,11 @@ async function generateEpicDraft(options = {}) {
     const prompt = buildEpicUserPrompt(targets);
     enqueueSummaryTask({
         kind: blockTypes.EPIC,
-        label: `史诗简史 · ${targets.length} 个片段`,
+        label: `${getMultiSummaryLabel(nextLevel)} · ${targets.length} 个片段`,
         prompt,
         systemPrompt: buildEpicSystemPrompt(),
         sourceHashes: targets.map(block => block.hash),
-        sourceStageHashes: stageTargets.map(block => block.hash),
+        sourceStageHashes: targets.filter(block => block.type === blockTypes.STAGE || block.type === blockTypes.EPIC).map(block => block.hash),
         sourceMessageIds: unique(targets.map(block => block.messageId).filter(Number.isFinite)),
         trigger: options.automatic ? 'auto' : 'manual',
         metadata: {
@@ -3415,30 +3480,9 @@ async function generateEpicDraft(options = {}) {
             sourceStart: getSourceStart(targets.map(block => block.messageId)),
             sourceEnd: getSourceEnd(targets.map(block => block.messageId)),
             sourceSortKey: getSourceStart(targets.map(block => block.messageId)),
-            selectionLabel: getTargetSelectionLabel('epic', targets.length, stageTargets.length ? allStageTargets.length : allStoryFallback.length),
+            level: nextLevel,
+            selectionLabel: getTargetSelectionLabel('epic', targets.length, sourcePoolSize),
         },
-    });
-    return;
-    await runGeneration(options.automatic ? '正在自动生成史诗简史草稿...' : '正在生成史诗简史草稿...', async () => {
-        const result = normalizeGeneratedBakemono(await callGenerationModel({
-            prompt,
-            systemPrompt: buildEpicSystemPrompt(),
-        }));
-
-        createDraft({
-            kind: blockTypes.EPIC,
-            content: result,
-            sourceHashes: targets.map(block => block.hash),
-            sourceStageHashes: stageTargets.map(block => block.hash),
-            sourceMessageIds: unique(targets.map(block => block.messageId).filter(Number.isFinite)),
-            prompt,
-            trigger: options.automatic ? 'auto' : 'manual',
-        });
-        ensureState().automation.lastAutoAt = options.automatic ? new Date().toISOString() : ensureState().automation.lastAutoAt;
-        saveState();
-        switchWorkbenchTab('drafts');
-        renderAll('史诗简史草稿已生成，确认后才会写入长期记忆。');
-        toastr.success('史诗简史草稿已生成，请到草稿箱确认。');
     });
 }
 
@@ -3894,7 +3938,7 @@ function getDefaultDraftTitle(kind, state = ensureState()) {
         return `剧情摘要草稿 ${state.storySummaries.length + 1}`;
     }
     if (kind === blockTypes.EPIC) {
-        return `纪元回溯草稿 ${state.epicSummaries.length + 1}`;
+        return `多次总结草稿 ${state.epicSummaries.length + 1}`;
     }
     return `剧集终了草稿 ${state.stageSummaries.length + 1}`;
 }
@@ -3929,6 +3973,7 @@ function commitDraft(draftId, editedContent = null, options = {}) {
         sourceSortKey,
         sourceKind: draft.metadata?.sourceKind || draft.trigger || 'manual',
         metadata: draft.metadata || {},
+        level: draft.kind === blockTypes.EPIC ? getSummaryLevel(draft) : getSummaryLevel({ ...draft, type: draft.kind }),
         createdAt: new Date().toISOString(),
         draftId: draft.id,
     };
@@ -3945,6 +3990,7 @@ function commitDraft(draftId, editedContent = null, options = {}) {
         sourceMessageIds: summary.sourceMessageIds,
         sourceSortKey,
         sourceKind: summary.sourceKind,
+        level: summary.level,
         isGeneratedSummary: true,
         isHidden: false,
     };
@@ -4151,7 +4197,14 @@ function deleteSavedSummary(hash) {
 
 function recomputeCoveredHashes(state = ensureState()) {
     state.coveredBlockHashes = unique(state.stageSummaries.flatMap(summary => summary.sourceHashes || []));
-    state.coveredStageHashes = unique(state.epicSummaries.flatMap(summary => summary.sourceStageHashes || []));
+    const summaryHashes = new Set([
+        ...state.stageSummaries.map(summary => summary.hash),
+        ...state.epicSummaries.map(summary => summary.hash),
+    ]);
+    state.coveredStageHashes = unique(state.epicSummaries.flatMap(summary => [
+        ...(summary.sourceStageHashes || []),
+        ...(summary.sourceHashes || []).filter(hash => summaryHashes.has(hash)),
+    ]));
 }
 
 function normalizeGeneratedBakemono(result) {
@@ -4874,7 +4927,12 @@ function updateInjectionFromSummaries() {
 }
 
 function getInjectionMemoryParts(state = ensureState()) {
-    const latestEpic = state.epicSummaries.at(-1) || null;
+    const latestEpic = [...(state.epicSummaries || [])]
+        .sort((a, b) => (
+            getSummaryLevel(b) - getSummaryLevel(a)
+            || String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+            || getSummarySortKey(b) - getSummarySortKey(a)
+        ))[0] || null;
     const epicCoveredStageHashes = new Set(state.coveredStageHashes || []);
     const stageContents = state.stageSummaries
         .filter(item => !epicCoveredStageHashes.has(item.hash))
@@ -4887,7 +4945,7 @@ function getInjectionMemoryParts(state = ensureState()) {
         : [];
 
     const sections = [
-        latestEpic?.content ? '## 纪元回溯\n' + latestEpic.content : '',
+        latestEpic?.content ? `## ${getMultiSummaryLabel(latestEpic)}\n` + latestEpic.content : '',
         stageContents.length ? '## 阶段总结\n' + stageContents.join('\n\n') : '',
         storyContents.length ? '## 普通剧情摘要\n' + storyContents.join('\n\n') : '',
         renderInjectedTablesSection(state),
@@ -5448,7 +5506,7 @@ function renderMemoryDatabaseSummary(state = ensureState()) {
     const description = [
         `剧情摘要 ${stats.byKind[blockTypes.STORY] || 0}`,
         `阶段总结 ${stats.byKind[blockTypes.STAGE] || 0}`,
-        `史诗简史 ${stats.byKind[blockTypes.EPIC] || 0}`,
+        `多次总结 ${stats.byKind[blockTypes.EPIC] || 0}`,
         `已覆盖 ${stats.byStatus[memoryRecordStatuses.COVERED] || 0}`,
         `已归档 ${stats.byStatus[memoryRecordStatuses.ARCHIVED] || 0}`,
     ].join(' · ');
@@ -5971,7 +6029,7 @@ function renderAll(statusText = '') {
     renderWorkflowGuide(state);
     renderMemoryDatabaseSummary(state);
     const injectionParts = getInjectionMemoryParts(state);
-    $('#bakemono-memory-injection-stats').text(`注入：史诗 ${injectionParts.stats.epic} / 阶段 ${injectionParts.stats.stage} / 普通 ${injectionParts.stats.story} / 表格 ${injectionParts.stats.table || 0} / 向量 ${injectionParts.stats.vector || 0}`);
+    $('#bakemono-memory-injection-stats').text(`注入：多次 ${injectionParts.stats.epic} / 阶段 ${injectionParts.stats.stage} / 普通 ${injectionParts.stats.story} / 表格 ${injectionParts.stats.table || 0} / 向量 ${injectionParts.stats.vector || 0}`);
     const uncoveredStory = state.storySummaries.filter(item => !(state.coveredBlockHashes || []).includes(item.hash)).length;
     $('#bakemono-memory-memory-warning').text(state.memoryStrategy === memoryStrategies.BAKEMONO && uncoveredStory
         ? `Bakemono 模式下普通摘要不注入：当前有 ${uncoveredStory} 个普通摘要仍只是阶段总结材料。`
@@ -6345,7 +6403,7 @@ function renderTaskQueue() {
     if (!state.taskQueue.length) {
         const empty = document.createElement('div');
         empty.className = 'bakemono-memory-empty';
-        empty.textContent = '暂无任务。生成阶段总结、史诗简史或旧正文补课时，会先进入这里排队。';
+        empty.textContent = '暂无任务。生成阶段总结、多次总结或旧正文补课时，会先进入这里排队。';
         container.append(empty);
         return;
     }
@@ -6419,19 +6477,49 @@ function renderTimeline() {
         return;
     }
 
+    const makeStoryNode = story => createTimelineNode(story, 'story');
+    const makeStageNode = stage => createTimelineNode(
+        stage,
+        'stage',
+        (stage.sourceHashes || []).map(hash => byHash.get(hash)).filter(Boolean).map(makeStoryNode),
+    );
+    const makeEpicNode = epic => {
+        const sourceHashes = unique([...(epic.sourceStageHashes || []), ...(epic.sourceHashes || [])]);
+        const children = sourceHashes
+            .map(hash => {
+                const block = byHash.get(hash);
+                if (!block) {
+                    return null;
+                }
+                if (block.type === blockTypes.EPIC || block.kind === blockTypes.EPIC) {
+                    return makeEpicNode(block);
+                }
+                if (block.type === blockTypes.STAGE || block.kind === blockTypes.STAGE) {
+                    return makeStageNode(block);
+                }
+                return makeStoryNode(block);
+            })
+            .filter(Boolean);
+        return createTimelineNode(epic, 'epic', children);
+    };
+
     const roots = [];
-    for (const epic of state.epicSummaries) {
-        roots.push(createTimelineNode(epic, 'epic', state.stageSummaries
-            .filter(stage => (epic.sourceStageHashes || epic.sourceHashes || []).includes(stage.hash))
-            .map(stage => createTimelineNode(stage, 'stage', (stage.sourceHashes || []).map(hash => byHash.get(hash)).filter(Boolean).map(story => createTimelineNode(story, 'story'))))));
+    const epicCoveredStage = new Set(state.epicSummaries.flatMap(summary => [
+        ...(summary.sourceStageHashes || []),
+        ...(summary.sourceHashes || []),
+    ]));
+    for (const epic of state.epicSummaries.filter(summary => !epicCoveredStage.has(summary.hash))) {
+        roots.push(makeEpicNode({ ...summaryToBlock(epic), type: blockTypes.EPIC }));
     }
 
-    const epicCoveredStage = new Set(state.epicSummaries.flatMap(summary => summary.sourceStageHashes || summary.sourceHashes || []));
     for (const stage of state.stageSummaries.filter(summary => !epicCoveredStage.has(summary.hash))) {
-        roots.push(createTimelineNode(stage, 'stage', (stage.sourceHashes || []).map(hash => byHash.get(hash)).filter(Boolean).map(story => createTimelineNode(story, 'story'))));
+        roots.push(makeStageNode(stage));
     }
 
-    const coveredStory = new Set(state.stageSummaries.flatMap(summary => summary.sourceHashes || []));
+    const coveredStory = new Set([
+        ...state.stageSummaries.flatMap(summary => summary.sourceHashes || []),
+        ...state.epicSummaries.flatMap(summary => (summary.sourceHashes || []).filter(hash => byHash.get(hash)?.type === blockTypes.STORY)),
+    ]);
     for (const story of storyBlocks.filter(block => !coveredStory.has(block.hash))) {
         roots.push(createTimelineNode(story, 'story'));
     }
@@ -6475,7 +6563,8 @@ function createTimelineNode(item, kind, children = []) {
 
     const summary = document.createElement('summary');
     const label = document.createElement('strong');
-    label.textContent = `${getKindLabel(kind)} · ${item.title || getBlockTitle(item.content, '未命名')}`;
+    const kindText = kind === blockTypes.EPIC || kind === 'epic' ? getMultiSummaryLabel(item) : getKindLabel(kind);
+    label.textContent = `${kindText} · ${item.title || getBlockTitle(item.content, '未命名')}`;
     const meta = document.createElement('span');
     const sourceCount = Array.isArray(item.sourceHashes) ? item.sourceHashes.length : 0;
     meta.textContent = getTimelineMetaText(item, sourceCount);
@@ -6525,7 +6614,7 @@ function getKindLabel(kind) {
         return '剧情摘要';
     }
     if (kind === blockTypes.EPIC) {
-        return '史诗简史';
+        return '多次总结';
     }
     return '阶段总结';
 }
@@ -8058,8 +8147,8 @@ function bindSettingsEvents() {
     });
     $('#bakemono-memory-reset-epic-prompt').off('click').on('click', () => {
         const confirmed = confirmDanger(
-            '恢复默认史诗简史提示词？',
-            ['当前史诗简史提示词会被默认 Bakemono 模板覆盖。'],
+            '恢复默认多次总结提示词？',
+            ['当前多次总结提示词会被默认 Bakemono 模板覆盖。'],
         );
         if (!confirmed) {
             return;
@@ -8067,7 +8156,7 @@ function bindSettingsEvents() {
         const state = ensureState();
         state.generationPrompts.epic = defaultEpicGenerationPrompt;
         saveState();
-        renderAll('史诗简史提示词已恢复默认。');
+        renderAll('多次总结提示词已恢复默认。');
     });
     $('#bakemono-memory-reset-story-prompt').off('click').on('click', () => {
         const confirmed = confirmDanger(
