@@ -604,6 +604,7 @@ const defaultVectorMemory = {
     keywordBoost: 0.18,
     maxInjectChars: 2600,
     keywordTriggers: '',
+    excludeTags: 'thinking, think, reasoning',
     queryMode: 'local',
     rerankMode: 'hybrid',
     embeddingProvider: 'local',
@@ -617,6 +618,7 @@ const defaultVectorMemory = {
         baseUrl: '',
         apiKey: '',
         model: 'text-embedding-3-small',
+        models: [],
     },
     records: [],
     embeddingCache: {},
@@ -1149,6 +1151,7 @@ function createTableProfile(name = '未命名表格组', tables = []) {
 function toTableSchema(table, fallbackIndex = 0) {
     const columns = Array.isArray(table?.columns) ? table.columns.map(col => String(col || '')) : [];
     const tableIndex = Number.isFinite(Number(table?.tableIndex)) ? Number(table.tableIndex) : fallbackIndex;
+    const readOnly = !!table?.readOnly;
     return {
         id: table?.id || `table-${getHash(`${table?.name || tableIndex}|${tableIndex}`)}`,
         tableIndex,
@@ -1164,10 +1167,10 @@ function toTableSchema(table, fallbackIndex = 0) {
         deleteNode: String(table?.deleteNode || ''),
         rows: [],
         required: !!table?.required,
-        readOnly: !!table?.readOnly,
-        inject: table?.inject !== undefined ? !!table.inject : !!table?.readOnly,
+        readOnly,
+        inject: table?.inject !== undefined ? !!table.inject : readOnly,
         injectLimit: Math.max(0, Number(table?.injectLimit ?? 1200)),
-        allowAiEdit: table?.allowAiEdit !== undefined ? !!table.allowAiEdit : !table?.readOnly,
+        allowAiEdit: !readOnly && (table?.allowAiEdit !== undefined ? !!table.allowAiEdit : true),
     };
 }
 
@@ -1333,6 +1336,15 @@ function syncCurrentTableSchemas(state = ensureState()) {
     const scope = state.tableDatabase?.schemaScope || tableSchemaScopes.CHAT;
     saveCurrentTableProfileRows(state);
     saveScopedTableSchemas(state.tableDatabase?.tables || [], scope);
+}
+
+function persistCurrentTableDatabase(state = ensureState()) {
+    syncCurrentTableSchemas(state);
+    updateInjectionFromSummaries();
+    saveState();
+    if ([tableSchemaScopes.GLOBAL, tableSchemaScopes.CHARACTER].includes(state.tableDatabase?.schemaScope)) {
+        saveGlobalSettings();
+    }
 }
 
 function switchTableProfile(scope, profileId, state = ensureState(), options = {}) {
@@ -1721,8 +1733,13 @@ function splitTextIntoChunks(text, chunkSize = defaultVectorMemory.chunkSize, ov
 function getVectorSourceMessages(state = ensureState()) {
     const context = getContext();
     const sourceChat = context.chat || chat || [];
+    const excludeTags = parseList(state.vectorMemory.excludeTags || defaultVectorMemory.excludeTags);
     return sourceChat
-        .map((message, messageId) => ({ message, messageId }))
+        .map((message, messageId) => ({
+            message,
+            messageId,
+            cleanedText: stripConfiguredTags(message?.mes || '', excludeTags).trim(),
+        }))
         .filter(({ message }) => message?.mes && (state.vectorMemory.includeHidden !== false || !message.is_system));
 }
 
@@ -1757,7 +1774,7 @@ function countKeywordHits(text, keywords = []) {
 
 function getVectorSourceSignature(state = ensureState()) {
     return getVectorSourceMessages(state)
-        .map(({ message, messageId }) => `${messageId}:${getMessageVariantKey(message)}:${getHash(message.mes || '')}`)
+        .map(({ message, messageId, cleanedText }) => `${messageId}:${getMessageVariantKey(message)}:${getHash(cleanedText || '')}`)
         .join('|');
 }
 
@@ -1849,10 +1866,10 @@ async function buildVectorMemoryIndex({ silent = false } = {}) {
     const chunkSize = Math.max(240, Number(state.vectorMemory.chunkSize || defaultVectorMemory.chunkSize));
     const overlap = Math.max(0, Number(state.vectorMemory.overlap || defaultVectorMemory.overlap));
 
-    for (const { message, messageId } of getVectorSourceMessages(state)) {
+    for (const { message, messageId, cleanedText } of getVectorSourceMessages(state)) {
         const role = message.is_user ? 'user' : message.is_system ? 'hidden' : 'assistant';
         const variantKey = getMessageVariantKey(message);
-        for (const [chunkIndex, chunk] of splitTextIntoChunks(message.mes || '', chunkSize, overlap).entries()) {
+        for (const [chunkIndex, chunk] of splitTextIntoChunks(cleanedText || '', chunkSize, overlap).entries()) {
             const text = chunk.text.trim();
             if (!text) {
                 continue;
@@ -3575,7 +3592,7 @@ async function runGeneration(message, action) {
 
 function setBusy(value) {
     isBusy = value;
-    $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-epic"], [data-bakemono-action="backfill"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-table-draft-action]').prop('disabled', value);
+    $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-epic"], [data-bakemono-action="backfill"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-table-draft-action]').prop('disabled', value);
 }
 
 async function callGenerationModel({ prompt, systemPrompt }) {
@@ -3722,6 +3739,49 @@ async function fetchCustomApiModels() {
         toastr.success(`已拉取 ${state.automation.customApi.models.length} 个模型。`);
     } catch (error) {
         toastr.error(error?.message || String(error), '模型拉取失败');
+    } finally {
+        toastr.clear(toast);
+    }
+}
+
+async function fetchVectorEmbeddingModels() {
+    const state = ensureState();
+    readVectorMemoryFieldsFromUi(state);
+    const config = state.vectorMemory.customApi || {};
+    const baseUrl = normalizeCustomApiBaseUrl(config.baseUrl);
+    const apiKey = String(config.apiKey || '').trim();
+    if (!baseUrl) {
+        toastr.warning('请先填写 Embedding API 的 Base URL。');
+        return;
+    }
+    const toast = toastr.info('正在拉取 Embedding 模型列表...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
+    try {
+        const response = await fetch(getCustomModelsUrl(baseUrl), {
+            method: 'GET',
+            headers: {
+                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+            },
+        });
+        if (!response.ok) {
+            throw new Error(`拉取模型失败：${response.status} ${response.statusText}`);
+        }
+        const data = await response.json();
+        const models = Array.isArray(data?.data)
+            ? data.data.map(item => item?.id || item?.name).filter(Boolean)
+            : [];
+        if (!models.length) {
+            throw new Error('接口返回里没有找到模型 ID。');
+        }
+        state.vectorMemory.customApi.models = unique(models.map(item => String(item).trim()).filter(Boolean)).sort();
+        if (!String(state.vectorMemory.customApi.model || '').trim()) {
+            state.vectorMemory.customApi.model = state.vectorMemory.customApi.models[0];
+            $('#bakemono-memory-vector-model').val(state.vectorMemory.customApi.model);
+        }
+        renderVectorModelOptions(state.vectorMemory.customApi.models);
+        saveState();
+        toastr.success(`已拉取 ${state.vectorMemory.customApi.models.length} 个 Embedding 模型。`);
+    } catch (error) {
+        toastr.error(error?.message || String(error), 'Embedding 模型拉取失败');
     } finally {
         toastr.clear(toast);
     }
@@ -5583,7 +5643,7 @@ function renderTableList(state = ensureState()) {
                         <span>只读，禁止 AI 修改</span>
                     </label>
                     <label class="checkbox_label bakemono-memory-switch">
-                        <input type="checkbox" data-table-allow-ai ${!table.readOnly && table.allowAiEdit !== false ? 'checked' : ''}>
+                        <input type="checkbox" data-table-allow-ai ${!table.readOnly && table.allowAiEdit !== false ? 'checked' : ''} ${table.readOnly ? 'disabled' : ''}>
                         <span>允许 AI 修改</span>
                     </label>
                     <label class="checkbox_label bakemono-memory-switch">
@@ -5697,8 +5757,9 @@ function saveEditedTableFromElement(details, options = {}) {
         table.columns.map((_, colIndex) => String(row.querySelector(`[data-table-col="${colIndex}"]`)?.value || '').trim())
     ));
     table.rows = rows;
-    syncCurrentTableSchemas(state);
-    updateInjectionFromSummaries();
+    if (options.persist !== false) {
+        persistCurrentTableDatabase(state);
+    }
     if (options.render !== false) {
         renderAll(`已保存表格：${table.name}`);
     }
@@ -5965,12 +6026,14 @@ function renderVectorMemoryPanel(state = ensureState()) {
     $('#bakemono-memory-vector-keyword-boost').val(state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost);
     $('#bakemono-memory-vector-max-chars').val(state.vectorMemory.maxInjectChars ?? defaultVectorMemory.maxInjectChars);
     $('#bakemono-memory-vector-keywords').val(state.vectorMemory.keywordTriggers || '');
+    $('#bakemono-memory-vector-exclude-tags').val(state.vectorMemory.excludeTags || defaultVectorMemory.excludeTags);
     $('#bakemono-memory-vector-query-mode').val(state.vectorMemory.queryMode || defaultVectorMemory.queryMode);
     $('#bakemono-memory-vector-rerank-mode').val(state.vectorMemory.rerankMode || defaultVectorMemory.rerankMode);
     $('#bakemono-memory-vector-provider').val(state.vectorMemory.embeddingProvider || defaultVectorMemory.embeddingProvider);
     $('#bakemono-memory-vector-base-url').val(state.vectorMemory.customApi?.baseUrl || '');
     $('#bakemono-memory-vector-api-key').val(state.vectorMemory.customApi?.apiKey || '');
     $('#bakemono-memory-vector-model').val(state.vectorMemory.customApi?.model || defaultVectorMemory.customApi.model);
+    renderVectorModelOptions(state.vectorMemory.customApi?.models || []);
     $('#bakemono-memory-vector-stats').text(`索引 ${state.vectorMemory.records.length} 个片段 / 召回 ${state.vectorMemory.lastHits.length} 个 / 预计 ${state.vectorMemory.estimatedChars || 0} 字 / 裁剪 ${state.vectorMemory.trimmedHitCount || 0} 个 / ${state.vectorMemory.dirty ? `待刷新：${state.vectorMemory.dirtyReason || '有变更'}` : state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '尚未建索引'}`);
     $('#bakemono-memory-vector-query-preview').val(state.vectorMemory.lastQuery || getVectorQueryText(state));
     renderVectorHitList();
@@ -6420,6 +6483,19 @@ function renderCustomModelOptions(models = []) {
     }
 }
 
+function renderVectorModelOptions(models = []) {
+    const list = document.querySelector('#bakemono-memory-vector-model-options');
+    if (!list) {
+        return;
+    }
+    list.innerHTML = '';
+    for (const model of unique(models.map(item => String(item || '').trim()).filter(Boolean)).sort()) {
+        const option = document.createElement('option');
+        option.value = model;
+        list.append(option);
+    }
+}
+
 function readRuleFieldsFromUi(state = ensureState()) {
     if (!$('#bakemono-memory-scan-mode').length) {
         return state;
@@ -6567,6 +6643,7 @@ function readVectorMemoryFieldsFromUi(state = ensureState()) {
         keywordBoost: Math.max(0, Number($('#bakemono-memory-vector-keyword-boost').val() || defaultVectorMemory.keywordBoost)),
         maxInjectChars: Math.max(200, Number($('#bakemono-memory-vector-max-chars').val() || defaultVectorMemory.maxInjectChars)),
         keywordTriggers: String($('#bakemono-memory-vector-keywords').val() || ''),
+        excludeTags: String($('#bakemono-memory-vector-exclude-tags').val() || defaultVectorMemory.excludeTags),
         queryMode: String($('#bakemono-memory-vector-query-mode').val() || defaultVectorMemory.queryMode),
         rerankMode: String($('#bakemono-memory-vector-rerank-mode').val() || defaultVectorMemory.rerankMode),
         embeddingProvider: String($('#bakemono-memory-vector-provider').val() || defaultVectorMemory.embeddingProvider),
@@ -6574,6 +6651,7 @@ function readVectorMemoryFieldsFromUi(state = ensureState()) {
             baseUrl: String($('#bakemono-memory-vector-base-url').val() || '').trim(),
             apiKey: String($('#bakemono-memory-vector-api-key').val() || '').trim(),
             model: String($('#bakemono-memory-vector-model').val() || defaultVectorMemory.customApi.model).trim(),
+            models: Array.isArray(state.vectorMemory?.customApi?.models) ? state.vectorMemory.customApi.models : [],
         },
         records: previousRecords,
         embeddingCache: previousCache,
@@ -7389,6 +7467,8 @@ async function runWorkbenchAction(action) {
         await buildVectorMemoryIndex();
     } else if (action === 'vector-test') {
         testVectorMemoryRetrieval();
+    } else if (action === 'vector-fetch-models') {
+        await fetchVectorEmbeddingModels();
     } else if (action === 'vector-clear') {
         clearVectorMemoryIndex();
     }
@@ -7608,7 +7688,7 @@ function bindSettingsEvents() {
         }
         tableUiState.openTableIndex = String(details.dataset.tableIndex || '');
         if (action === 'add-row') {
-            const table = saveEditedTableFromElement(details, { render: false });
+            const table = saveEditedTableFromElement(details, { render: false, persist: false });
             if (!table) {
                 return;
             }
@@ -7617,12 +7697,10 @@ function bindSettingsEvents() {
             table.rows.push(table.columns.map(() => ''));
             tableUiState.openTableIndex = String(table.tableIndex);
             tableUiState.focusCell = { tableIndex: String(table.tableIndex), rowIndex: String(newRowIndex), colIndex: '0' };
-            syncCurrentTableSchemas(ensureState());
-            updateInjectionFromSummaries();
-            saveState();
+            persistCurrentTableDatabase(ensureState());
             renderAll(`已新增一行：${table.name}`);
         } else if (action === 'add-column') {
-            const table = saveEditedTableFromElement(details, { render: false });
+            const table = saveEditedTableFromElement(details, { render: false, persist: false });
             if (!table) {
                 return;
             }
@@ -7632,12 +7710,10 @@ function bindSettingsEvents() {
             table.columnPrompts = Array.isArray(table.columnPrompts) ? table.columnPrompts : [];
             table.columnPrompts.push('');
             table.rows = (table.rows || []).map(row => [...row, '']);
-            syncCurrentTableSchemas(ensureState());
-            updateInjectionFromSummaries();
-            saveState();
+            persistCurrentTableDatabase(ensureState());
             renderAll(`已新增字段：${table.name}`);
         } else if (action === 'delete-column') {
-            const table = saveEditedTableFromElement(details, { render: false });
+            const table = saveEditedTableFromElement(details, { render: false, persist: false });
             if (!table) {
                 return;
             }
@@ -7655,9 +7731,7 @@ function bindSettingsEvents() {
             table.columnPrompts = Array.isArray(table.columnPrompts) ? table.columnPrompts : [];
             table.columnPrompts.splice(colIndex, 1);
             table.rows = (table.rows || []).map(row => row.filter((_, index) => index !== colIndex));
-            syncCurrentTableSchemas(ensureState());
-            updateInjectionFromSummaries();
-            saveState();
+            persistCurrentTableDatabase(ensureState());
             renderAll(`已删除字段：${colName}`);
         } else if (action === 'delete-row') {
             const row = this.closest('tr[data-table-row]');
@@ -7680,10 +7754,32 @@ function bindSettingsEvents() {
                 return;
             }
             state.tableDatabase.tables = (state.tableDatabase.tables || []).filter(item => Number(item.tableIndex) !== tableIndex);
-            syncCurrentTableSchemas(state);
-            updateInjectionFromSummaries();
+            if (String(tableUiState.openTableIndex) === String(tableIndex)) {
+                tableUiState.openTableIndex = '';
+            }
+            details.remove();
+            persistCurrentTableDatabase(state);
             renderAll('表格已删除。');
         }
+    });
+    $('#bakemono-workbench-root').off('change.bakemonoTableFlags').on('change.bakemonoTableFlags', '[data-table-readonly], [data-table-allow-ai]', function () {
+        const details = this.closest('.bakemono-memory-table-item');
+        if (!details) {
+            return;
+        }
+        const readOnly = details.querySelector('[data-table-readonly]');
+        const allowAi = details.querySelector('[data-table-allow-ai]');
+        if (this.matches('[data-table-readonly]') && this.checked) {
+            allowAi.checked = false;
+            allowAi.disabled = true;
+        } else if (this.matches('[data-table-readonly]')) {
+            allowAi.disabled = false;
+        } else if (this.matches('[data-table-allow-ai]') && this.checked) {
+            readOnly.checked = false;
+            allowAi.disabled = false;
+        }
+        saveEditedTableFromElement(details, { render: false });
+        toastr.info('表格权限已更新。');
     });
     $('#bakemono-memory-create-table').off('click').on('click', () => {
         createCustomTableFromUi();

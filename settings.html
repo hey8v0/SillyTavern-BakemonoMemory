@@ -1260,6 +1260,10 @@
             <textarea id="bakemono-memory-vector-keywords" class="text_pole textarea_compact" rows="4" spellcheck="false" placeholder="例如：戒指, 地下室, Seraphina"></textarea>
           </label>
           <label class="bakemono-memory-editor">
+            <span>排除标签（建索引前剔除这些标签块，避免召回文生图 tag / thinking）</span>
+            <textarea id="bakemono-memory-vector-exclude-tags" class="text_pole textarea_compact" rows="3" spellcheck="false" placeholder="thinking, think, reasoning, tag"></textarea>
+          </label>
+          <label class="bakemono-memory-editor">
             <span>测试查询（为空则使用最近对话）</span>
             <textarea id="bakemono-memory-vector-test-query" class="text_pole textarea_compact" rows="4" spellcheck="false"></textarea>
           </label>
@@ -1289,12 +1293,19 @@
             </label>
             <label class="bakemono-memory-field">
               <span>Model</span>
-              <input id="bakemono-memory-vector-model" class="text_pole" type="text" placeholder="text-embedding-3-small">
+              <input id="bakemono-memory-vector-model" class="text_pole" type="text" list="bakemono-memory-vector-model-options" placeholder="text-embedding-3-small">
+              <datalist id="bakemono-memory-vector-model-options"></datalist>
             </label>
             <label class="bakemono-memory-field">
               <span>API Key</span>
               <input id="bakemono-memory-vector-api-key" class="text_pole" type="password" autocomplete="off">
             </label>
+          </div>
+          <div class="bakemono-memory-inline-actions">
+            <button type="button" class="menu_button" data-bakemono-action="vector-fetch-models">
+              <i class="fa-solid fa-cloud-arrow-down"></i>
+              <span>拉取模型</span>
+            </button>
           </div>
         </div>
 
