@@ -596,10 +596,15 @@ const defaultGenerationTargets = {
 const defaultVectorMemory = {
     enabled: false,
     includeHidden: true,
+    indexMode: 'hybrid',
+    injectMode: 'message',
     chunkSize: 900,
     overlap: 120,
+    longMessageThreshold: 1800,
     topK: 5,
+    maxRecallMessages: 3,
     maxPerMessage: 1,
+    perMessageMaxChars: 1600,
     minScore: 0.22,
     keywordBoost: 0.18,
     maxInjectChars: 2600,
@@ -1745,6 +1750,11 @@ function getVectorSourceMessages(state = ensureState()) {
         .filter(({ message }) => message?.mes && (state.vectorMemory.includeHidden !== false || !message.is_system));
 }
 
+function getVectorCleanedMessageText(messageId, state = ensureState()) {
+    const match = getVectorSourceMessages(state).find(item => Number(item.messageId) === Number(messageId));
+    return String(match?.cleanedText || '').trim();
+}
+
 function getRecentConversationQuery(maxMessages = 8) {
     const context = getContext();
     const sourceChat = context.chat || chat || [];
@@ -1865,19 +1875,43 @@ async function buildVectorMemoryIndex({ silent = false } = {}) {
         return state.vectorMemory.records || [];
     }
     const records = [];
+    const indexMode = String(state.vectorMemory.indexMode || defaultVectorMemory.indexMode);
     const chunkSize = Math.max(240, Number(state.vectorMemory.chunkSize || defaultVectorMemory.chunkSize));
     const overlap = Math.max(0, Number(state.vectorMemory.overlap || defaultVectorMemory.overlap));
+    const longMessageThreshold = Math.max(240, Number(state.vectorMemory.longMessageThreshold || defaultVectorMemory.longMessageThreshold));
 
     for (const { message, messageId, cleanedText } of getVectorSourceMessages(state)) {
+        const fullText = String(cleanedText || '').trim();
+        if (!fullText) {
+            continue;
+        }
         const role = message.is_user ? 'user' : message.is_system ? 'hidden' : 'assistant';
         const variantKey = getMessageVariantKey(message);
-        for (const [chunkIndex, chunk] of splitTextIntoChunks(cleanedText || '', chunkSize, overlap).entries()) {
+        const shouldChunk = indexMode === 'chunk' || (indexMode === 'hybrid' && fullText.length > longMessageThreshold);
+        if (!shouldChunk) {
+            records.push({
+                id: `vec-${getHash(`${messageId}|${variantKey}|message|${fullText}`)}`,
+                kind: 'message',
+                messageId,
+                chunkIndex: 0,
+                role,
+                isHidden: !!message.is_system,
+                title: `${message.is_user ? 'User' : message.is_system ? '隐藏楼层' : 'Assistant'} #${messageId}`,
+                text: fullText,
+                preview: toPlainPreview(fullText, 180),
+                embedding: await getEmbeddingForText(fullText, state),
+                createdAt: new Date().toISOString(),
+            });
+            continue;
+        }
+        for (const [chunkIndex, chunk] of splitTextIntoChunks(fullText, chunkSize, overlap).entries()) {
             const text = chunk.text.trim();
             if (!text) {
                 continue;
             }
             records.push({
                 id: `vec-${getHash(`${messageId}|${variantKey}|${chunkIndex}|${text}`)}`,
+                kind: 'chunk',
                 messageId,
                 chunkIndex,
                 role,
@@ -1920,6 +1954,8 @@ function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState()) {
     const minScore = Number(state.vectorMemory.minScore ?? defaultVectorMemory.minScore);
     const topK = Math.max(1, Number(state.vectorMemory.topK || defaultVectorMemory.topK));
     const maxPerMessage = Math.max(1, Number(state.vectorMemory.maxPerMessage || defaultVectorMemory.maxPerMessage));
+    const maxRecallMessages = Math.max(1, Number(state.vectorMemory.maxRecallMessages || defaultVectorMemory.maxRecallMessages));
+    const injectMode = String(state.vectorMemory.injectMode || defaultVectorMemory.injectMode);
     const scored = state.vectorMemory.records.map(record => {
         const similarity = cosineSimilarity(queryEmbedding, record.embedding || []);
         const keywordHits = countKeywordHits(`${record.title}\n${record.text}`, keywords);
@@ -1934,45 +1970,86 @@ function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState()) {
     });
 
     scored.sort((a, b) => (b.score - a.score) || (b.keywordHits - a.keywordHits) || (Number(b.messageId) - Number(a.messageId)));
-    const perMessageCounts = new Map();
-    const hits = [];
-    for (const item of scored.filter(item => item.score >= minScore || item.keywordHits > 0)) {
-        const count = perMessageCounts.get(item.messageId) || 0;
-        if (count >= maxPerMessage) {
-            continue;
+    const candidates = scored.filter(item => item.score >= minScore || item.keywordHits > 0);
+    let hits = [];
+    if (injectMode === 'chunk') {
+        const perMessageCounts = new Map();
+        for (const item of candidates) {
+            const count = perMessageCounts.get(item.messageId) || 0;
+            if (count >= maxPerMessage) {
+                continue;
+            }
+            perMessageCounts.set(item.messageId, count + 1);
+            hits.push(item);
+            if (hits.length >= topK) {
+                break;
+            }
         }
-        perMessageCounts.set(item.messageId, count + 1);
-        hits.push(item);
-        if (hits.length >= topK) {
-            break;
+    } else {
+        const byMessage = new Map();
+        for (const item of candidates) {
+            const key = String(item.messageId);
+            const existing = byMessage.get(key);
+            if (!existing || item.score > existing.score) {
+                byMessage.set(key, {
+                    ...item,
+                    matchedChunks: existing?.matchedChunks || 0,
+                    keywordHitsTotal: existing?.keywordHitsTotal || 0,
+                });
+            }
+            const grouped = byMessage.get(key);
+            grouped.matchedChunks = (grouped.matchedChunks || 0) + 1;
+            grouped.keywordHitsTotal = (grouped.keywordHitsTotal || 0) + item.keywordHits;
         }
+        hits = [...byMessage.values()]
+            .sort((a, b) => (b.score - a.score) || (b.keywordHitsTotal - a.keywordHitsTotal) || (Number(b.messageId) - Number(a.messageId)))
+            .slice(0, maxRecallMessages)
+            .map(item => {
+                const fullText = getVectorCleanedMessageText(item.messageId, state) || item.text || '';
+                return {
+                    ...item,
+                    kind: 'message',
+                    text: fullText,
+                    matchedText: item.text,
+                    title: `${item.role === 'user' ? 'User' : item.isHidden ? '隐藏楼层' : 'Assistant'} #${item.messageId}`,
+                    preview: toPlainPreview(fullText, 220),
+                    keywordHits: item.keywordHitsTotal || item.keywordHits,
+                };
+            });
     }
     state.vectorMemory.lastQuery = queryText;
     state.vectorMemory.lastHits = hits.map(hit => ({
         id: hit.id,
+        kind: hit.kind || 'chunk',
         messageId: hit.messageId,
         chunkIndex: hit.chunkIndex,
         role: hit.role,
         isHidden: hit.isHidden,
         title: hit.title,
         text: hit.text,
+        matchedText: hit.matchedText || '',
+        matchedChunks: hit.matchedChunks || 1,
         preview: hit.preview,
         score: Number(hit.score.toFixed(4)),
         similarity: Number(hit.similarity.toFixed(4)),
         keywordHits: hit.keywordHits,
     }));
     state.vectorMemory.estimatedChars = state.vectorMemory.lastHits.reduce((sum, hit) => sum + String(hit.text || '').length, 0);
-    state.vectorMemory.trimmedHitCount = Math.max(0, scored.filter(item => item.score >= minScore || item.keywordHits > 0).length - hits.length);
+    state.vectorMemory.trimmedHitCount = Math.max(0, candidates.length - hits.length);
     return state.vectorMemory.lastHits;
 }
 
 function renderVectorMemorySection(state = ensureState()) {
     const hits = retrieveVectorMemoryHits('', state);
     const maxChars = Math.max(200, Number(state.vectorMemory.maxInjectChars || defaultVectorMemory.maxInjectChars));
+    const perMessageMaxChars = Math.max(200, Number(state.vectorMemory.perMessageMaxChars || defaultVectorMemory.perMessageMaxChars));
     let used = 0;
     const lines = [];
     for (const hit of hits) {
-        const snippet = String(hit.text || '').trim();
+        const source = String(hit.text || '').trim();
+        const snippet = hit.kind === 'message' && source.length > perMessageMaxChars
+            ? `${source.slice(0, perMessageMaxChars)}...`
+            : source;
         if (!snippet) {
             continue;
         }
@@ -1982,7 +2059,7 @@ function renderVectorMemorySection(state = ensureState()) {
         }
         const clipped = snippet.length > remaining ? `${snippet.slice(0, remaining)}...` : snippet;
         used += clipped.length;
-        lines.push(`- 来源：${hit.title}（score ${hit.score ?? 0}${hit.keywordHits ? `，关键词命中 ${hit.keywordHits}` : ''}）\n${clipped}`);
+        lines.push(`- 来源：${hit.title}（score ${hit.score ?? 0}${hit.keywordHits ? `，关键词命中 ${hit.keywordHits}` : ''}${hit.kind === 'message' && hit.matchedChunks > 1 ? `，命中片段 ${hit.matchedChunks}` : ''}）\n${clipped}`);
     }
     state.vectorMemory.estimatedChars = used;
     state.vectorMemory.trimmedHitCount = Math.max(0, (state.vectorMemory.lastHits?.length || 0) - lines.length);
@@ -5502,6 +5579,7 @@ function renderTurnSummaryPanel(state = ensureState()) {
     $('#bakemono-memory-turn-world-max-context').val(state.turnSummary.worldInfoMaxContext ?? defaultState.turnSummary.worldInfoMaxContext);
     $('#bakemono-memory-turn-reference').val(state.turnSummary.referenceContext || '');
     $('#bakemono-memory-table-enabled').prop('checked', !!state.tableDatabase.enabled);
+    $('#bakemono-memory-table-auto-apply').prop('checked', !!state.tableDatabase.autoApply);
     $('#bakemono-memory-table-schema-scope').val(state.tableDatabase.schemaScope || tableSchemaScopes.CHAT);
     $('#bakemono-memory-table-schema-status').text(`${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)} · ${state.tableDatabase.tables.length} tables · ${getCurrentCharacterSchemaLabel()}`);
     renderTableProfileControls(state);
@@ -6039,10 +6117,15 @@ function renderVectorMemoryPanel(state = ensureState()) {
     $('#bakemono-memory-vector-enabled').prop('checked', !!state.vectorMemory.enabled);
     $('#bakemono-memory-vector-auto-index').prop('checked', state.vectorMemory.autoIndex !== false);
     $('#bakemono-memory-vector-include-hidden').prop('checked', state.vectorMemory.includeHidden !== false);
+    $('#bakemono-memory-vector-index-mode').val(state.vectorMemory.indexMode || defaultVectorMemory.indexMode);
+    $('#bakemono-memory-vector-inject-mode').val(state.vectorMemory.injectMode || defaultVectorMemory.injectMode);
     $('#bakemono-memory-vector-chunk-size').val(state.vectorMemory.chunkSize ?? defaultVectorMemory.chunkSize);
     $('#bakemono-memory-vector-overlap').val(state.vectorMemory.overlap ?? defaultVectorMemory.overlap);
+    $('#bakemono-memory-vector-long-message-threshold').val(state.vectorMemory.longMessageThreshold ?? defaultVectorMemory.longMessageThreshold);
     $('#bakemono-memory-vector-top-k').val(state.vectorMemory.topK ?? defaultVectorMemory.topK);
+    $('#bakemono-memory-vector-max-recall-messages').val(state.vectorMemory.maxRecallMessages ?? defaultVectorMemory.maxRecallMessages);
     $('#bakemono-memory-vector-max-per-message').val(state.vectorMemory.maxPerMessage ?? defaultVectorMemory.maxPerMessage);
+    $('#bakemono-memory-vector-per-message-max-chars').val(state.vectorMemory.perMessageMaxChars ?? defaultVectorMemory.perMessageMaxChars);
     $('#bakemono-memory-vector-min-score').val(state.vectorMemory.minScore ?? defaultVectorMemory.minScore);
     $('#bakemono-memory-vector-keyword-boost').val(state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost);
     $('#bakemono-memory-vector-max-chars').val(state.vectorMemory.maxInjectChars ?? defaultVectorMemory.maxInjectChars);
@@ -6055,7 +6138,8 @@ function renderVectorMemoryPanel(state = ensureState()) {
     $('#bakemono-memory-vector-api-key').val(state.vectorMemory.customApi?.apiKey || '');
     $('#bakemono-memory-vector-model').val(state.vectorMemory.customApi?.model || defaultVectorMemory.customApi.model);
     renderVectorModelOptions(state.vectorMemory.customApi?.models || []);
-    $('#bakemono-memory-vector-stats').text(`索引 ${state.vectorMemory.records.length} 个片段 / 召回 ${state.vectorMemory.lastHits.length} 个 / 预计 ${state.vectorMemory.estimatedChars || 0} 字 / 裁剪 ${state.vectorMemory.trimmedHitCount || 0} 个 / ${state.vectorMemory.dirty ? `待刷新：${state.vectorMemory.dirtyReason || '有变更'}` : state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '尚未建索引'}`);
+    const messageRecordCount = unique((state.vectorMemory.records || []).map(record => String(record.messageId))).length;
+    $('#bakemono-memory-vector-stats').text(`索引 ${messageRecordCount} 楼 / ${state.vectorMemory.records.length} 条记录 / 召回 ${state.vectorMemory.lastHits.length} 楼或片段 / 预计 ${state.vectorMemory.estimatedChars || 0} 字 / 裁剪 ${state.vectorMemory.trimmedHitCount || 0} 个 / ${state.vectorMemory.dirty ? `待刷新：${state.vectorMemory.dirtyReason || '有变更'}` : state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '尚未建索引'}`);
     $('#bakemono-memory-vector-query-preview').val(state.vectorMemory.lastQuery || getVectorQueryText(state));
     renderVectorHitList();
     renderVectorRecordList();
@@ -6082,7 +6166,7 @@ function renderVectorHitList(state = ensureState()) {
         item.innerHTML = `
             <div class="bakemono-memory-vector-hit-head">
                 <strong>${escapeHtml(hit.title || `楼层 ${hit.messageId}`)}</strong>
-                <span>score ${escapeHtml(hit.score ?? 0)} · sim ${escapeHtml(hit.similarity ?? 0)}${hit.keywordHits ? ` · 关键词 ${escapeHtml(hit.keywordHits)}` : ''}</span>
+                <span>${hit.kind === 'message' ? '楼层' : '片段'} · score ${escapeHtml(hit.score ?? 0)} · sim ${escapeHtml(hit.similarity ?? 0)}${hit.keywordHits ? ` · 关键词 ${escapeHtml(hit.keywordHits)}` : ''}${hit.matchedChunks > 1 ? ` · 命中片段 ${escapeHtml(hit.matchedChunks)}` : ''}</span>
             </div>
             <div class="bakemono-memory-vector-snippet">${escapeHtml(hit.preview || hit.text || '')}</div>
         `;
@@ -6110,7 +6194,7 @@ function renderVectorRecordList(state = ensureState()) {
         const item = document.createElement('div');
         item.className = 'bakemono-memory-debug-item';
         item.innerHTML = `
-            <div class="bakemono-memory-debug-meta">${escapeHtml(record.title)} · ${record.isHidden ? '隐藏' : '可见'}</div>
+            <div class="bakemono-memory-debug-meta">${escapeHtml(record.title)} · ${record.kind === 'message' ? '楼层索引' : '片段索引'} · ${record.isHidden ? '隐藏' : '可见'}</div>
             <div class="bakemono-memory-debug-text">${escapeHtml(record.preview || record.text || '')}</div>
         `;
         fragment.append(item);
@@ -6615,6 +6699,7 @@ function readTurnSummaryFieldsFromUi(state = ensureState()) {
     state.tableDatabase = {
         ...state.tableDatabase,
         enabled: $('#bakemono-memory-table-enabled').prop('checked'),
+        autoApply: $('#bakemono-memory-table-auto-apply').prop('checked'),
         schemaScope: String($('#bakemono-memory-table-schema-scope').val() || state.tableDatabase.schemaScope || tableSchemaScopes.CHAT),
     };
     state.inlineGeneration = {
@@ -6656,10 +6741,15 @@ function readVectorMemoryFieldsFromUi(state = ensureState()) {
         enabled: $('#bakemono-memory-vector-enabled').prop('checked'),
         autoIndex: $('#bakemono-memory-vector-auto-index').length ? $('#bakemono-memory-vector-auto-index').prop('checked') : state.vectorMemory?.autoIndex !== false,
         includeHidden: $('#bakemono-memory-vector-include-hidden').prop('checked'),
+        indexMode: String($('#bakemono-memory-vector-index-mode').val() || defaultVectorMemory.indexMode),
+        injectMode: String($('#bakemono-memory-vector-inject-mode').val() || defaultVectorMemory.injectMode),
         chunkSize: Math.max(240, Number($('#bakemono-memory-vector-chunk-size').val() || defaultVectorMemory.chunkSize)),
         overlap: Math.max(0, Number($('#bakemono-memory-vector-overlap').val() || defaultVectorMemory.overlap)),
+        longMessageThreshold: Math.max(240, Number($('#bakemono-memory-vector-long-message-threshold').val() || defaultVectorMemory.longMessageThreshold)),
         topK: Math.max(1, Number($('#bakemono-memory-vector-top-k').val() || defaultVectorMemory.topK)),
+        maxRecallMessages: Math.max(1, Number($('#bakemono-memory-vector-max-recall-messages').val() || defaultVectorMemory.maxRecallMessages)),
         maxPerMessage: Math.max(1, Number($('#bakemono-memory-vector-max-per-message').val() || defaultVectorMemory.maxPerMessage)),
+        perMessageMaxChars: Math.max(200, Number($('#bakemono-memory-vector-per-message-max-chars').val() || defaultVectorMemory.perMessageMaxChars)),
         minScore: Math.max(0, Number($('#bakemono-memory-vector-min-score').val() || defaultVectorMemory.minScore)),
         keywordBoost: Math.max(0, Number($('#bakemono-memory-vector-keyword-boost').val() || defaultVectorMemory.keywordBoost)),
         maxInjectChars: Math.max(200, Number($('#bakemono-memory-vector-max-chars').val() || defaultVectorMemory.maxInjectChars)),
@@ -7250,7 +7340,6 @@ function getWorkbenchPanelTitle(tabName) {
         tables: '表格',
         'turn-summary': '自动记忆',
         drafts: '待确认',
-        'settings-hub': '设置',
         timeline: '摘要树',
         automation: '自动总结',
         scan: '扫描规则',
@@ -7268,9 +7357,9 @@ function switchWorkbenchTab(tabName) {
     }
     const panelName = tabName === 'tables' ? 'turn-summary' : tabName;
     root.dataset.activeTab = tabName;
-    const title = document.getElementById('bakemono-workbench-title');
-    if (title) {
-        title.textContent = getWorkbenchPanelTitle(tabName);
+    const sectionTitle = document.getElementById('bakemono-workbench-section-title');
+    if (sectionTitle) {
+        sectionTitle.textContent = getWorkbenchPanelTitle(tabName);
     }
     root.querySelectorAll('.bakemono-workbench-tab').forEach(tab => {
         tab.classList.toggle('is-active', tab.dataset.bakemonoTab === tabName);
