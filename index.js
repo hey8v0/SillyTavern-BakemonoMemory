@@ -731,6 +731,8 @@ const memoryRecordState = {
 const tableUiState = {
     openTableIndex: '',
     focusCell: null,
+    openSection: '',
+    focusField: null,
 };
 
 function cloneDefaultState() {
@@ -5581,8 +5583,15 @@ function renderTableList(state = ensureState()) {
         [...container.querySelectorAll('.bakemono-memory-table-item[open]')]
             .map(item => String(item.dataset.tableIndex || '')),
     );
+    const openSections = new Set(
+        [...container.querySelectorAll('.bakemono-memory-table-section[open]')]
+            .map(item => `${item.closest('.bakemono-memory-table-item')?.dataset.tableIndex || ''}:${item.dataset.tableSection || ''}`),
+    );
     if (tableUiState.openTableIndex !== '') {
         openTableIndexes.add(String(tableUiState.openTableIndex));
+    }
+    if (tableUiState.openTableIndex !== '' && tableUiState.openSection) {
+        openSections.add(`${tableUiState.openTableIndex}:${tableUiState.openSection}`);
     }
     container.innerHTML = '';
     const tables = state.tableDatabase.tables || [];
@@ -5627,7 +5636,7 @@ function renderTableList(state = ensureState()) {
                 </tr>`).join('')
             : `<tr class="bakemono-memory-table-empty-row"><td colspan="${Math.max(1, table.columns.length + 1)}">暂无数据行。点“新增一行”开始编辑。</td></tr>`;
         body.innerHTML = `
-            <details class="bakemono-memory-table-section">
+            <details class="bakemono-memory-table-section" data-table-section="fields" ${openSections.has(`${table.tableIndex}:fields`) ? 'open' : ''}>
                 <summary><i class="fa-solid fa-wand-magic-sparkles"></i><span>字段提示词</span><small>${table.columns.length} 栏</small></summary>
                 <label class="bakemono-memory-editor">
                     <span>表格名称</span>
@@ -5660,7 +5669,7 @@ function renderTableList(state = ensureState()) {
                     <button type="button" class="menu_button" data-bakemono-table-action="add-column"><i class="fa-solid fa-plus"></i><span>新增字段</span></button>
                 </div>
             </details>
-            <details class="bakemono-memory-table-section" open>
+            <details class="bakemono-memory-table-section" data-table-section="rows" ${openSections.has(`${table.tableIndex}:rows`) || !openSections.has(`${table.tableIndex}:fields`) ? 'open' : ''}>
                 <summary><i class="fa-solid fa-table"></i><span>数据行</span><small>${rows.length} 行</small></summary>
                 <div class="bakemono-memory-table-scroll">
                     <table class="bakemono-memory-edit-table">
@@ -5688,6 +5697,18 @@ function renderTableList(state = ensureState()) {
             const cell = tableItem?.querySelector(`tr[data-table-row="${rowIndex}"] [data-table-col="${colIndex}"]`);
             cell?.focus();
             cell?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        });
+    }
+    if (tableUiState.focusField) {
+        const { tableIndex, colIndex } = tableUiState.focusField;
+        tableUiState.focusField = null;
+        requestAnimationFrame(() => {
+            const tableItem = container.querySelector(`.bakemono-memory-table-item[data-table-index="${tableIndex}"]`);
+            tableItem?.setAttribute('open', '');
+            tableItem?.querySelector('[data-table-section="fields"]')?.setAttribute('open', '');
+            const field = tableItem?.querySelector(`[data-table-column-name="${colIndex}"]`);
+            field?.focus();
+            field?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         });
     }
 }
@@ -5737,7 +5758,7 @@ function renderTableEditDrafts(state = ensureState()) {
 }
 
 function saveEditedTableFromElement(details, options = {}) {
-    const state = ensureState();
+    const state = options.state || ensureState();
     const tableIndex = Number(details?.dataset.tableIndex);
     const table = (state.tableDatabase.tables || []).find(item => Number(item.tableIndex) === tableIndex);
     if (!table) {
@@ -7688,7 +7709,8 @@ function bindSettingsEvents() {
         }
         tableUiState.openTableIndex = String(details.dataset.tableIndex || '');
         if (action === 'add-row') {
-            const table = saveEditedTableFromElement(details, { render: false, persist: false });
+            const state = ensureState();
+            const table = saveEditedTableFromElement(details, { render: false, persist: false, state });
             if (!table) {
                 return;
             }
@@ -7696,27 +7718,33 @@ function bindSettingsEvents() {
             const newRowIndex = table.rows.length;
             table.rows.push(table.columns.map(() => ''));
             tableUiState.openTableIndex = String(table.tableIndex);
+            tableUiState.openSection = 'rows';
             tableUiState.focusCell = { tableIndex: String(table.tableIndex), rowIndex: String(newRowIndex), colIndex: '0' };
-            persistCurrentTableDatabase(ensureState());
+            persistCurrentTableDatabase(state);
             renderAll(`已新增一行：${table.name}`);
         } else if (action === 'add-column') {
-            const table = saveEditedTableFromElement(details, { render: false, persist: false });
+            const state = ensureState();
+            const table = saveEditedTableFromElement(details, { render: false, persist: false, state });
             if (!table) {
                 return;
             }
             tableUiState.openTableIndex = String(table.tableIndex);
+            tableUiState.openSection = 'fields';
             const index = table.columns.length;
             table.columns.push(`字段 ${index}`);
             table.columnPrompts = Array.isArray(table.columnPrompts) ? table.columnPrompts : [];
             table.columnPrompts.push('');
             table.rows = (table.rows || []).map(row => [...row, '']);
-            persistCurrentTableDatabase(ensureState());
+            tableUiState.focusField = { tableIndex: String(table.tableIndex), colIndex: String(index) };
+            persistCurrentTableDatabase(state);
             renderAll(`已新增字段：${table.name}`);
         } else if (action === 'delete-column') {
-            const table = saveEditedTableFromElement(details, { render: false, persist: false });
+            const state = ensureState();
+            const table = saveEditedTableFromElement(details, { render: false, persist: false, state });
             if (!table) {
                 return;
             }
+            tableUiState.openSection = 'fields';
             const colIndex = Number(this.dataset.tableCol);
             const colName = table.columns[colIndex] || `字段 ${colIndex}`;
             const confirmed = confirmDanger(
@@ -7731,7 +7759,8 @@ function bindSettingsEvents() {
             table.columnPrompts = Array.isArray(table.columnPrompts) ? table.columnPrompts : [];
             table.columnPrompts.splice(colIndex, 1);
             table.rows = (table.rows || []).map(row => row.filter((_, index) => index !== colIndex));
-            persistCurrentTableDatabase(ensureState());
+            tableUiState.focusField = { tableIndex: String(table.tableIndex), colIndex: String(Math.max(0, colIndex - 1)) };
+            persistCurrentTableDatabase(state);
             renderAll(`已删除字段：${colName}`);
         } else if (action === 'delete-row') {
             const row = this.closest('tr[data-table-row]');
