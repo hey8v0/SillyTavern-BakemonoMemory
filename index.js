@@ -6035,6 +6035,16 @@ function renderAll(statusText = '') {
     const injected = state.injection.enabled && renderInjectionContent(state) ? '注入开启' : '注入为空或关闭';
     $('#bakemono-memory-status-line').text(statusText || `${injected}。上次扫描：${state.lastScanAt ? new Date(state.lastScanAt).toLocaleString() : '尚未扫描'}。`);
     $('#bakemono-memory-injection-badge').text(statusText || injected);
+    syncPromptHintButtons();
+}
+
+function syncPromptHintButtons() {
+    document.querySelectorAll('.bakemono-memory-card-panel > h4 + .bakemono-memory-prompt-hint').forEach(hint => {
+        const title = hint.previousElementSibling;
+        if (title?.matches('h4')) {
+            title.append(hint);
+        }
+    });
 }
 
 function renderPreviewSections(storyBlocks = getStoryBlocks(), stageBlocks = null, epicBlocks = null) {
@@ -7357,9 +7367,9 @@ function switchWorkbenchTab(tabName) {
     }
     const panelName = tabName === 'tables' ? 'turn-summary' : tabName;
     root.dataset.activeTab = tabName;
-    const sectionTitle = document.getElementById('bakemono-workbench-section-title');
-    if (sectionTitle) {
-        sectionTitle.textContent = getWorkbenchPanelTitle(tabName);
+    const title = document.getElementById('bakemono-workbench-title');
+    if (title) {
+        title.textContent = getWorkbenchPanelTitle(tabName);
     }
     root.querySelectorAll('.bakemono-workbench-tab').forEach(tab => {
         tab.classList.toggle('is-active', tab.dataset.bakemonoTab === tabName);
@@ -7600,6 +7610,22 @@ function bindSettingsEvents() {
     });
     $('#bakemono-workbench-root').off('click.bakemonoNav').on('click.bakemonoNav', '[data-bakemono-nav]', function () {
         switchWorkbenchTab(this.dataset.bakemonoNav);
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoHintToggle').on('click.bakemonoHintToggle', '.bakemono-memory-card-panel > h4 + .bakemono-memory-prompt-hint, .bakemono-memory-card-panel > h4 > .bakemono-memory-prompt-hint', function (event) {
+        event.stopImmediatePropagation();
+        const root = document.getElementById('bakemono-workbench-root');
+        root?.querySelectorAll('.bakemono-memory-prompt-hint.is-open').forEach(hint => {
+            if (hint !== this) {
+                hint.classList.remove('is-open');
+            }
+        });
+        this.classList.toggle('is-open');
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoHintClose').on('click.bakemonoHintClose', function (event) {
+        if (event.target.closest('.bakemono-memory-card-panel > h4 + .bakemono-memory-prompt-hint, .bakemono-memory-card-panel > h4 > .bakemono-memory-prompt-hint')) {
+            return;
+        }
+        this.querySelectorAll('.bakemono-memory-prompt-hint.is-open').forEach(hint => hint.classList.remove('is-open'));
     });
     $('#bakemono-workbench-root').off('click.bakemonoMobileFold').on('click.bakemonoMobileFold', '.bakemono-mobile-collapsible > h4', function () {
         if (!(window.matchMedia?.('(max-width: 900px)').matches ?? false)) {
