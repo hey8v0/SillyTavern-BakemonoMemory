@@ -696,6 +696,7 @@ const defaultState = {
         tables: [],
         editDrafts: [],
         history: [],
+        undoStack: [],
         lastImportAt: null,
     },
     inlineGeneration: {
@@ -707,6 +708,7 @@ const defaultState = {
         depth: 1,
         role: extension_prompt_roles.SYSTEM,
         lastProcessedMessageId: null,
+        lastProcessedSignature: '',
     },
     vectorMemory: defaultVectorMemory,
     scanRules: defaultScanRules,
@@ -719,6 +721,7 @@ const defaultState = {
 let isBusy = false;
 let isQueueRunning = false;
 let vectorIndexTimer = null;
+let inlineCaptureTimer = null;
 const previewPageSize = 8;
 const historyPageSize = 10;
 const timelinePageSize = 25;
@@ -1032,6 +1035,7 @@ function ensureState() {
     state.tableDatabase.tables = Array.isArray(state.tableDatabase.tables) ? state.tableDatabase.tables : [];
     state.tableDatabase.editDrafts = Array.isArray(state.tableDatabase.editDrafts) ? state.tableDatabase.editDrafts : [];
     state.tableDatabase.history = Array.isArray(state.tableDatabase.history) ? state.tableDatabase.history : [];
+    state.tableDatabase.undoStack = Array.isArray(state.tableDatabase.undoStack) ? state.tableDatabase.undoStack : [];
     state.tableDatabase.chatProfiles = Array.isArray(state.tableDatabase.chatProfiles) ? state.tableDatabase.chatProfiles : [];
     state.tableDatabase.profileRows = state.tableDatabase.profileRows && typeof state.tableDatabase.profileRows === 'object' ? state.tableDatabase.profileRows : {};
     ensureTableProfileForScope(state.tableDatabase.schemaScope, state);
@@ -1201,7 +1205,7 @@ function toTableSchema(table, fallbackIndex = 0) {
         rows: [],
         required: !!table?.required,
         readOnly,
-        inject: table?.inject !== undefined ? !!table.inject : readOnly,
+        inject: table?.inject !== undefined ? !!table.inject : true,
         injectLimit: Math.max(0, Number(table?.injectLimit ?? 1200)),
         allowAiEdit: !readOnly && (table?.allowAiEdit !== undefined ? !!table.allowAiEdit : true),
     };
@@ -1378,6 +1382,45 @@ function persistCurrentTableDatabase(state = ensureState()) {
     if ([tableSchemaScopes.GLOBAL, tableSchemaScopes.CHARACTER].includes(state.tableDatabase?.schemaScope)) {
         saveGlobalSettings();
     }
+}
+
+function pushTableUndoSnapshot(label = '表格操作', state = ensureState()) {
+    state.tableDatabase.undoStack = Array.isArray(state.tableDatabase.undoStack) ? state.tableDatabase.undoStack : [];
+    state.tableDatabase.undoStack.unshift({
+        id: `table-undo-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        label: String(label || '表格操作'),
+        createdAt: new Date().toISOString(),
+        schemaScope: state.tableDatabase.schemaScope || tableSchemaScopes.CHAT,
+        activeProfileId: state.tableDatabase.activeProfileId || '',
+        profileKey: getActiveTableProfileKey(state),
+        tables: structuredClone(state.tableDatabase.tables || []),
+    });
+    state.tableDatabase.undoStack = state.tableDatabase.undoStack.slice(0, 20);
+}
+
+function undoLastTableOperation(state = ensureState()) {
+    state.tableDatabase.undoStack = Array.isArray(state.tableDatabase.undoStack) ? state.tableDatabase.undoStack : [];
+    const snapshot = state.tableDatabase.undoStack[0];
+    if (!snapshot) {
+        toastr.info('没有可撤销的表格操作。');
+        return false;
+    }
+    const confirmed = confirmDanger(
+        `撤销上次表格操作「${snapshot.label || '表格操作'}」？`,
+        [
+            snapshot.createdAt ? `记录时间：${new Date(snapshot.createdAt).toLocaleString()}` : '',
+            '这会把当前表格恢复到该操作之前的状态。',
+        ],
+    );
+    if (!confirmed) {
+        return false;
+    }
+    state.tableDatabase.undoStack.shift();
+    state.tableDatabase.tables = structuredClone(snapshot.tables || []);
+    persistCurrentTableDatabase(state);
+    renderAll(`已撤销表格操作：${snapshot.label || '表格操作'}`);
+    toastr.success('已撤销上次表格操作。');
+    return true;
 }
 
 function switchTableProfile(scope, profileId, state = ensureState(), options = {}) {
@@ -4431,19 +4474,24 @@ function stripTableEditTags(text) {
 async function captureInlineGenerationFromLatestMessage() {
     const state = ensureState();
     if (!state.inlineGeneration?.summaryEnabled && !state.inlineGeneration?.tableEnabled) {
-        return;
+        return false;
     }
     const turn = findLatestAssistantTurn();
-    if (!turn || state.inlineGeneration.lastProcessedMessageId === turn.assistantMessage.messageId) {
-        return;
+    if (!turn) {
+        return false;
     }
     const message = chat[turn.assistantMessage.messageId];
     const text = String(message?.mes || '');
     if (!text.trim()) {
-        return;
+        return false;
+    }
+    const signature = getHash(`inline|${turn.assistantMessage.messageId}|${text}`);
+    if (state.inlineGeneration.lastProcessedSignature === signature) {
+        return false;
     }
     const sourceMessageIds = turn.sourceMessageIds || [turn.assistantMessage.messageId];
     let changedMessage = false;
+    let capturedSomething = false;
 
     if (state.inlineGeneration.summaryEnabled) {
         for (const content of extractAllTaggedBlocks(text, 'bakemono')) {
@@ -4461,6 +4509,7 @@ async function captureInlineGenerationFromLatestMessage() {
                 },
             });
             commitDraft(draft.id, draft.content, { silent: true });
+            capturedSomething = true;
         }
     }
 
@@ -4472,7 +4521,11 @@ async function captureInlineGenerationFromLatestMessage() {
                 applyTableOperations(draft.operations, state);
                 state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString() });
                 state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draft.id);
+                toastr.success(`已自动应用 ${draft.operations.length} 项随正文表格修改。`);
+            } else if (draft) {
+                toastr.info(`已捕获 ${draft.operations.length} 项随正文表格修改，请到草稿确认。`);
             }
+            capturedSomething = capturedSomething || !!draft;
             if (state.inlineGeneration.hideTableEdit !== false && message) {
                 message.mes = stripTableEditTags(message.mes || '');
                 changedMessage = true;
@@ -4483,11 +4536,36 @@ async function captureInlineGenerationFromLatestMessage() {
     }
 
     state.inlineGeneration.lastProcessedMessageId = turn.assistantMessage.messageId;
+    state.inlineGeneration.lastProcessedSignature = signature;
     saveState();
     updateInjectionFromSummaries();
     if (changedMessage) {
         await saveChatConditional();
     }
+    if (capturedSomething) {
+        renderAll();
+    }
+    return capturedSomething;
+}
+
+function scheduleInlineGenerationCapture(reason = '') {
+    clearTimeout(inlineCaptureTimer);
+    inlineCaptureTimer = setTimeout(async () => {
+        try {
+            const captured = await captureInlineGenerationFromLatestMessage();
+            if (!captured) {
+                return;
+            }
+            syncInjection();
+            if (reason) {
+                renderAll(`已复查随正文输出：${reason}`);
+            } else {
+                renderAll();
+            }
+        } catch (error) {
+            console.warn('[BakemonoMemory] delayed inline capture failed', error);
+        }
+    }, 1200);
 }
 
 function buildTurnSummaryPrompt(blocks, state = ensureState()) {
@@ -4817,7 +4895,10 @@ function createTableEditDraft(raw, blocks, state = ensureState()) {
     return draft;
 }
 
-function applyTableOperations(operations = [], state = ensureState()) {
+function applyTableOperations(operations = [], state = ensureState(), options = {}) {
+    if (options.recordUndo !== false && operations.length) {
+        pushTableUndoSnapshot(options.undoLabel || `AI 表格修改 ${operations.length} 项`, state);
+    }
     const tablesByIndex = new Map((state.tableDatabase.tables || []).map(table => [Number(table.tableIndex), table]));
     const deletes = [];
     for (const operation of operations) {
@@ -5770,6 +5851,29 @@ function renderTablePromptPresetControls() {
     select.value = getSelectedTablePromptPresetId();
 }
 
+function renderTablePreviewMarkup(table) {
+    const columns = Array.isArray(table.columns) ? table.columns : [];
+    const rows = Array.isArray(table.rows) ? table.rows : [];
+    const headerCells = columns.length
+        ? columns.map((column, index) => `<th>${escapeHtml(column || `字段 ${index}`)}</th>`).join('')
+        : '<th>暂无字段</th>';
+    const rowCells = rows.length
+        ? rows.map((row, rowIndex) => `
+            <tr>
+                ${columns.map((_, colIndex) => `<td>${escapeHtml(row?.[colIndex] ?? '') || '<span class="bakemono-memory-table-muted">空</span>'}</td>`).join('')}
+            </tr>
+        `).join('')
+        : `<tr><td colspan="${Math.max(1, columns.length)}" class="bakemono-memory-table-preview-empty">暂无数据行</td></tr>`;
+    return `
+        <div class="bakemono-memory-table-preview-scroll" aria-label="${escapeHtml(table.name || '表格')}预览">
+            <table class="bakemono-memory-table-preview">
+                <thead><tr>${headerCells}</tr></thead>
+                <tbody>${rowCells}</tbody>
+            </table>
+        </div>
+    `;
+}
+
 function renderTableList(state = ensureState()) {
     const container = document.querySelector('#bakemono-memory-table-list');
     if (!container) {
@@ -5806,7 +5910,25 @@ function renderTableList(state = ensureState()) {
         row.dataset.tableIndex = String(table.tableIndex);
         row.open = openTableIndexes.has(String(table.tableIndex));
         const summary = document.createElement('summary');
-        summary.innerHTML = `<strong>${escapeHtml(table.tableIndex)} · ${escapeHtml(table.name)}</strong><span>${table.columns.length} 列 / ${(table.rows || []).length} 行${table.inject ? ' / 注入' : ''}${table.readOnly ? ' / 只读' : ''}</span>`;
+        const statusChips = [
+            `${table.columns.length} 列`,
+            `${(table.rows || []).length} 行`,
+            table.inject ? '注入' : '未注入',
+            table.readOnly ? '只读' : (table.allowAiEdit === false ? '禁止 AI 修改' : 'AI 可改'),
+        ];
+        summary.innerHTML = `
+            <div class="bakemono-memory-table-summary-main">
+                <div class="bakemono-memory-table-summary-head">
+                    <strong>#${escapeHtml(table.tableIndex)} ${escapeHtml(table.name)}</strong>
+                    <span>${statusChips.map(chip => escapeHtml(chip)).join(' / ')}</span>
+                </div>
+                ${renderTablePreviewMarkup(table)}
+                <div class="bakemono-memory-table-summary-hint">
+                    <i class="fa-solid fa-hand-pointer"></i>
+                    <span>点开后编辑字段、数据行和操作</span>
+                </div>
+            </div>
+        `;
         const body = document.createElement('div');
         body.className = 'bakemono-memory-table-body';
         const rows = Array.isArray(table.rows) ? table.rows : [];
@@ -6044,7 +6166,7 @@ function createCustomTableFromUi() {
         rows: [],
         required: false,
         readOnly: false,
-        inject: false,
+        inject: true,
         injectLimit: 1200,
         allowAiEdit: true,
     };
@@ -8095,6 +8217,7 @@ function bindSettingsEvents() {
             if (!table) {
                 return;
             }
+            pushTableUndoSnapshot(`新增数据行：${table.name || table.tableIndex}`, state);
             table.rows = Array.isArray(table.rows) ? table.rows : [];
             const newRowIndex = table.rows.length;
             table.rows.push(table.columns.map(() => ''));
@@ -8111,6 +8234,7 @@ function bindSettingsEvents() {
             }
             tableUiState.openTableIndex = String(table.tableIndex);
             tableUiState.openSection = 'fields';
+            pushTableUndoSnapshot(`新增字段：${table.name || table.tableIndex}`, state);
             const index = table.columns.length;
             table.columns.push(`字段 ${index}`);
             table.columnPrompts = Array.isArray(table.columnPrompts) ? table.columnPrompts : [];
@@ -8136,6 +8260,7 @@ function bindSettingsEvents() {
                 renderAll();
                 return;
             }
+            pushTableUndoSnapshot(`删除字段：${table.name || table.tableIndex} / ${colName}`, state);
             table.columns.splice(colIndex, 1);
             table.columnPrompts = Array.isArray(table.columnPrompts) ? table.columnPrompts : [];
             table.columnPrompts.splice(colIndex, 1);
@@ -8144,10 +8269,30 @@ function bindSettingsEvents() {
             persistCurrentTableDatabase(state);
             renderAll(`已删除字段：${colName}`);
         } else if (action === 'delete-row') {
+            const state = ensureState();
+            const table = saveEditedTableFromElement(details, { render: false, persist: false, state });
             const row = this.closest('tr[data-table-row]');
-            if (row) {
-                row.remove();
-                saveEditedTableFromElement(details);
+            if (row && table) {
+                const rowIndex = Number(row.dataset.tableRow);
+                const rowData = table.rows?.[rowIndex] || [];
+                const preview = rowData.map(value => String(value || '').trim()).filter(Boolean).slice(0, 3).join(' / ') || `第 ${rowIndex + 1} 行`;
+                const confirmed = confirmDanger(
+                    `删除「${table.name || table.tableIndex}」的第 ${rowIndex + 1} 行？`,
+                    [
+                        `内容预览：${preview}`,
+                        '删除后可以用“撤销表格操作”恢复上一版表格。',
+                    ],
+                );
+                if (!confirmed) {
+                    renderAll();
+                    return;
+                }
+                pushTableUndoSnapshot(`删除数据行：${table.name || table.tableIndex} #${rowIndex + 1}`, state);
+                table.rows.splice(rowIndex, 1);
+                tableUiState.openTableIndex = String(table.tableIndex);
+                tableUiState.openSection = 'rows';
+                persistCurrentTableDatabase(state);
+                renderAll(`已删除数据行：${table.name || table.tableIndex}`);
             }
         } else if (action === 'save-table') {
             saveEditedTableFromElement(details);
@@ -8163,6 +8308,7 @@ function bindSettingsEvents() {
             if (!confirmed) {
                 return;
             }
+            pushTableUndoSnapshot(`删除表格：${table?.name || tableIndex}`, state);
             state.tableDatabase.tables = (state.tableDatabase.tables || []).filter(item => Number(item.tableIndex) !== tableIndex);
             if (String(tableUiState.openTableIndex) === String(tableIndex)) {
                 tableUiState.openTableIndex = '';
@@ -8190,6 +8336,29 @@ function bindSettingsEvents() {
         }
         saveEditedTableFromElement(details, { render: false });
         toastr.info('表格权限已更新。');
+    });
+    $('#bakemono-memory-undo-table-operation').off('click').on('click', () => {
+        undoLastTableOperation(ensureState());
+    });
+    $('#bakemono-memory-recapture-inline-table').off('click').on('click', async () => {
+        const state = ensureState();
+        const previousSummaryEnabled = !!state.inlineGeneration.summaryEnabled;
+        const previousTableEnabled = !!state.inlineGeneration.tableEnabled;
+        state.inlineGeneration.summaryEnabled = false;
+        state.inlineGeneration.tableEnabled = true;
+        state.inlineGeneration.lastProcessedMessageId = null;
+        state.inlineGeneration.lastProcessedSignature = '';
+        const captured = await captureInlineGenerationFromLatestMessage();
+        state.inlineGeneration.summaryEnabled = previousSummaryEnabled;
+        state.inlineGeneration.tableEnabled = previousTableEnabled;
+        saveState();
+        if (captured) {
+            renderAll('已重新捕获最后一条回复里的 tableEdit。');
+            toastr.success('已重新捕获 tableEdit。');
+        } else {
+            renderAll();
+            toastr.info('最后一条回复里没有可重新捕获的 tableEdit，或内容已被隐藏清理。');
+        }
     });
     $('#bakemono-memory-create-table').off('click').on('click', () => {
         createCustomTableFromUi();
@@ -8955,6 +9124,7 @@ async function init() {
     });
     eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
         await captureInlineGenerationFromLatestMessage();
+        scheduleInlineGenerationCapture('收到新回复');
         await maybeRunTurnSummary();
         await maybeRunAutoSummary();
         markVectorIndexDirty('收到新消息');
@@ -8963,6 +9133,9 @@ async function init() {
     });
     for (const event of [event_types.MESSAGE_UPDATED, event_types.MESSAGE_DELETED, event_types.MESSAGE_SWIPED]) {
         eventSource.on(event, () => {
+            if (event !== event_types.MESSAGE_DELETED) {
+                scheduleInlineGenerationCapture('消息更新');
+            }
             markVectorIndexDirty('消息变更');
             syncInjection();
             renderAll();
