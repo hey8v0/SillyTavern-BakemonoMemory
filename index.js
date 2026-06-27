@@ -639,6 +639,8 @@ const defaultVectorMemory = {
 
 const defaultState = {
     version: 1,
+    configInitialized: false,
+    activeConfigId: '',
     blocks: [],
     storySummaries: [],
     stageSummaries: [],
@@ -791,6 +793,16 @@ function ensureGlobalSettings() {
     if (!extension_settings[STORAGE_KEY].selectedPromptPresetId) {
         extension_settings[STORAGE_KEY].selectedPromptPresetId = defaultPromptPreset.id;
     }
+    if (!settings.activeConfig || typeof settings.activeConfig !== 'object') {
+        const selectedPreset = extension_settings[STORAGE_KEY].promptPresets.find(preset => preset.id === extension_settings[STORAGE_KEY].selectedPromptPresetId)
+            || structuredClone(defaultPromptPreset);
+        settings.activeConfig = {
+            ...structuredClone(selectedPreset),
+            id: selectedPreset.id || defaultPromptPreset.id,
+            name: selectedPreset.name || '默认 Bakemono 手账',
+            updatedAt: new Date().toISOString(),
+        };
+    }
     if (!extension_settings[STORAGE_KEY].areaPresets || typeof extension_settings[STORAGE_KEY].areaPresets !== 'object') {
         extension_settings[STORAGE_KEY].areaPresets = {};
     }
@@ -878,11 +890,17 @@ function ensureGlobalSettings() {
 }
 
 function ensureState() {
+    const isNewChatState = !chat_metadata[STORAGE_KEY];
     if (!chat_metadata[STORAGE_KEY]) {
         chat_metadata[STORAGE_KEY] = cloneDefaultState();
     }
 
     const state = chat_metadata[STORAGE_KEY];
+    if (isNewChatState) {
+        applyGlobalActiveConfigToState(state);
+    } else if (state.configInitialized === undefined) {
+        state.configInitialized = true;
+    }
     for (const [key, value] of Object.entries(defaultState)) {
         if (state[key] === undefined) {
             state[key] = structuredClone(value);
@@ -1532,6 +1550,46 @@ function isBuiltInPresetId(id) {
 
 function makePresetId(name) {
     return `preset-${getHash(`${Date.now()}|${name || 'prompt'}`)}`;
+}
+
+function getActiveGlobalConfig() {
+    ensureGlobalSettings();
+    return extension_settings[STORAGE_KEY].activeConfig || null;
+}
+
+function setActiveGlobalConfig(preset) {
+    ensureGlobalSettings();
+    const presets = extension_settings[STORAGE_KEY].promptPresets || [];
+    const config = {
+        ...structuredClone(preset),
+        id: preset.id || makePresetId(preset.name || 'active'),
+        name: preset.name || '未命名全局配置',
+        updatedAt: new Date().toISOString(),
+    };
+    extension_settings[STORAGE_KEY].activeConfig = config;
+    if (config.id && presets.some(item => item.id === config.id)) {
+        extension_settings[STORAGE_KEY].selectedPromptPresetId = config.id;
+    }
+    saveGlobalSettings();
+    return config;
+}
+
+function applyGlobalActiveConfigToState(state) {
+    const config = getActiveGlobalConfig();
+    if (!config) {
+        state.configInitialized = true;
+        return;
+    }
+    applyPromptPresetToState(config, {
+        state,
+        silent: true,
+        skipScan: true,
+        skipInjection: true,
+        skipRender: true,
+        skipSave: true,
+    });
+    state.configInitialized = true;
+    state.activeConfigId = config.id || '';
 }
 
 function makeAreaPresetId(scope, name) {
@@ -4020,7 +4078,9 @@ function commitDraft(draftId, editedContent = null, options = {}) {
         coveredStageHashes: draft.kind === blockTypes.EPIC ? (draft.sourceStageHashes || []) : [],
         createdAt: summary.createdAt,
     });
-    updateInjectionFromSummaries();
+    if (!options.skipInjection) {
+        updateInjectionFromSummaries();
+    }
     saveState();
     if (!options.silent) {
         renderAll('草稿已确认保存。');
@@ -6637,17 +6697,22 @@ function renderPresetControlPair(selectSelector, nameSelector) {
     }
 
     const selectedId = getSelectedPromptPresetId();
+    const presets = getPromptPresets();
     select.innerHTML = '';
-    for (const preset of getPromptPresets()) {
+    for (const preset of presets) {
         const option = document.createElement('option');
         option.value = preset.id;
         option.textContent = preset.name || '未命名预设';
         select.append(option);
     }
-    select.value = selectedId;
+    select.value = presets.some(preset => preset.id === selectedId) ? selectedId : (presets[0]?.id || '');
 
-    const selected = getPromptPresets().find(preset => preset.id === select.value);
+    const selected = presets.find(preset => preset.id === select.value);
     $(nameSelector).val(selected?.name || '');
+    const active = getActiveGlobalConfig();
+    $('#bakemono-memory-active-config-status').text(
+        `当前全局默认：${active?.name || '未设置'}。新聊天会自动使用这套配置；剧情摘要、草稿、表格行数据仍按聊天单独保存。`,
+    );
 }
 
 function renderAreaPresetControl(scope, selectSelector, nameSelector) {
@@ -6910,6 +6975,7 @@ function getCurrentPromptPresetPayload(name = '') {
         turnSummary: {
             enabled: !!state.turnSummary.enabled,
             auto: !!state.turnSummary.auto,
+            processingMode: state.turnSummary.processingMode || turnProcessingModes.BOTH,
             saveMode: state.turnSummary.saveMode === 'commit' ? 'commit' : 'draft',
             includeUserMessage: state.turnSummary.includeUserMessage !== false,
             includeCharacterContext: state.turnSummary.includeCharacterContext !== false,
@@ -6918,6 +6984,18 @@ function getCurrentPromptPresetPayload(name = '') {
             referenceContext: String(state.turnSummary.referenceContext || ''),
             prompt: String(state.turnSummary.prompt || defaultTurnSummaryPrompt),
             tablePrompt: String(state.turnSummary.tablePrompt || defaultTableEditPrompt),
+        },
+        inlineGeneration: structuredClone(state.inlineGeneration || defaultState.inlineGeneration),
+        vectorMemory: {
+            ...structuredClone(state.vectorMemory || defaultVectorMemory),
+            records: [],
+            lastHits: [],
+            embeddingCache: {},
+            lastQuery: '',
+            lastIndexAt: null,
+            lastIndexedSignature: '',
+            dirty: true,
+            dirtyReason: '',
         },
         tableDatabase: {
             enabled: !!state.tableDatabase.enabled,
@@ -6957,14 +7035,16 @@ function normalizeImportedPreset(value) {
         injection: preset.injection && typeof preset.injection === 'object' ? preset.injection : null,
         automation: preset.automation && typeof preset.automation === 'object' ? preset.automation : null,
         turnSummary: preset.turnSummary && typeof preset.turnSummary === 'object' ? preset.turnSummary : null,
+        inlineGeneration: preset.inlineGeneration && typeof preset.inlineGeneration === 'object' ? preset.inlineGeneration : null,
+        vectorMemory: preset.vectorMemory && typeof preset.vectorMemory === 'object' ? preset.vectorMemory : null,
         tableDatabase: preset.tableDatabase && typeof preset.tableDatabase === 'object' ? preset.tableDatabase : null,
         createdAt: preset.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
     };
 }
 
-function applyPromptPresetToState(preset) {
-    const state = ensureState();
+function applyPromptPresetToState(preset, options = {}) {
+    const state = options.state || ensureState();
     state.generationPrompts.story = preset.story || defaultStoryGenerationPrompt;
     state.generationPrompts.stage = preset.stage || defaultStageGenerationPrompt;
     state.generationPrompts.epic = preset.epic || defaultEpicGenerationPrompt;
@@ -7025,6 +7105,7 @@ function applyPromptPresetToState(preset) {
             ...state.turnSummary,
             enabled: !!preset.turnSummary.enabled,
             auto: !!preset.turnSummary.auto,
+            processingMode: preset.turnSummary.processingMode || state.turnSummary.processingMode || turnProcessingModes.BOTH,
             saveMode: preset.turnSummary.saveMode === 'commit' ? 'commit' : 'draft',
             includeUserMessage: preset.turnSummary.includeUserMessage !== false,
             includeCharacterContext: preset.turnSummary.includeCharacterContext !== false,
@@ -7034,6 +7115,27 @@ function applyPromptPresetToState(preset) {
             prompt: String(preset.turnSummary.prompt || state.turnSummary.prompt || defaultTurnSummaryPrompt),
             tablePrompt: String(preset.turnSummary.tablePrompt || state.turnSummary.tablePrompt || defaultTableEditPrompt),
         };
+    }
+    if (preset.inlineGeneration) {
+        state.inlineGeneration = {
+            ...structuredClone(defaultState.inlineGeneration),
+            ...structuredClone(preset.inlineGeneration),
+        };
+        syncInlineGenerationPrompts(state);
+    }
+    if (preset.vectorMemory) {
+        state.vectorMemory = {
+            ...structuredClone(defaultVectorMemory),
+            ...structuredClone(preset.vectorMemory),
+            records: state.vectorMemory?.records || [],
+            lastHits: state.vectorMemory?.lastHits || [],
+            embeddingCache: state.vectorMemory?.embeddingCache || {},
+            dirty: true,
+            dirtyReason: '载入全局配置',
+        };
+        if (!options.skipVectorSchedule) {
+            scheduleVectorAutoIndex('载入全局配置');
+        }
     }
     if (preset.tableDatabase) {
         state.tableDatabase = {
@@ -7049,11 +7151,19 @@ function applyPromptPresetToState(preset) {
         };
         setTableSchemaScope(state.tableDatabase.schemaScope, state);
     }
-    scanBakemonoBlocks({ persist: false });
+    state.activeConfigId = preset.id || state.activeConfigId || '';
+    state.configInitialized = true;
+    if (!options.skipScan) {
+        scanBakemonoBlocks({ persist: false });
+    }
     updateInjectionFromSummaries();
-    saveState();
-    renderAll(`已载入配置：${preset.name || '未命名预设'}`);
-    toastr.success('配置预设已载入。');
+    if (!options.skipSave) {
+        saveState();
+    }
+    if (!options.silent && !options.skipRender) {
+        renderAll(`已使用配置：${preset.name || '未命名预设'}`);
+        toastr.success('配置已使用。');
+    }
 }
 
 function saveCurrentConfigPreset(name, options = {}) {
@@ -7075,6 +7185,20 @@ function saveCurrentConfigPreset(name, options = {}) {
     renderAll(existing ? `已覆盖配置：${preset.name}` : `已保存配置：${preset.name}`);
     toastr.success(existing ? '配置预设已覆盖。' : '配置预设已保存。');
     return preset;
+}
+
+function usePromptPresetAsGlobalDefault(preset, options = {}) {
+    if (!preset) {
+        toastr.warning('请先选择配置。');
+        return false;
+    }
+    const state = ensureState();
+    applyPromptPresetToState(preset, { state, silent: true });
+    setActiveGlobalConfig(preset);
+    saveState();
+    renderAll(options.message || `已使用并设为全局默认：${preset.name || '未命名配置'}`);
+    toastr.success('已切换配置，并设为新聊天默认。');
+    return true;
 }
 
 function getAreaPresetPayload(scope, name) {
@@ -7303,8 +7427,27 @@ function saveAreaPreset(scope, name, options = {}) {
 
 function bindAreaPresetControls(scope, ids) {
     $(ids.select).off('change').on('change', function () {
-        setSelectedAreaPresetId(scope, String(this.value || ''));
+        const previousId = getSelectedAreaPresetId(scope);
+        const selectedId = String(this.value || '');
+        setSelectedAreaPresetId(scope, selectedId);
         renderPromptPresetControls();
+        if (!selectedId) {
+            return;
+        }
+        const preset = getAreaPresets(scope).find(item => item.id === selectedId);
+        if (!preset) {
+            return;
+        }
+        const confirmed = confirmDanger(
+            `使用配置「${preset.name || '未命名配置'}」？`,
+            ['会立即应用到当前聊天的这个区域设置。需要让以后新聊天也使用它时，请在总览里点“使用并设为默认”。'],
+        );
+        if (!confirmed) {
+            setSelectedAreaPresetId(scope, previousId);
+            renderPromptPresetControls();
+            return;
+        }
+        applyAreaPresetToState(scope, preset);
     });
     $(ids.load).off('click').on('click', () => {
         const selectedId = getSelectedAreaPresetId(scope);
@@ -7328,7 +7471,13 @@ function bindAreaPresetControls(scope, ids) {
             toastr.warning('请先填写配置名称。');
             return;
         }
-        saveAreaPreset(scope, name);
+        const selectedId = getSelectedAreaPresetId(scope);
+        const selected = getAreaPresets(scope).find(item => item.id === selectedId);
+        if (selected) {
+            saveAreaPreset(scope, name, { replaceId: selectedId });
+        } else {
+            saveAreaPreset(scope, name);
+        }
     });
     $(ids.update).off('click').on('click', () => {
         const selectedId = getSelectedAreaPresetId(scope);
@@ -7565,8 +7714,29 @@ function bindInlinePromptPresetControls(type, ids) {
     const label = type === 'summary' ? '随正文摘要提示词' : '随正文填表提示词';
 
     $(ids.select).off('change').on('change', function () {
-        setSelectedInlinePromptPresetId(type, String(this.value || ''));
+        const previousId = getSelectedInlinePromptPresetId(type);
+        const selectedId = String(this.value || '');
+        setSelectedInlinePromptPresetId(type, selectedId);
         renderInlinePromptPresetControls(type, ids.select, ids.name);
+        const preset = getInlinePromptPresets(type).find(item => item.id === selectedId);
+        if (!preset) {
+            return;
+        }
+        const confirmed = confirmDanger(`使用「${preset.name || '未命名'}」？`, ['当前编辑框里的提示词会被覆盖。']);
+        if (!confirmed) {
+            setSelectedInlinePromptPresetId(type, previousId);
+            renderInlinePromptPresetControls(type, ids.select, ids.name);
+            return;
+        }
+        const state = ensureState();
+        if (type === 'summary') {
+            state.inlineGeneration.summaryPrompt = preset.prompt || defaultPrompt;
+        } else {
+            state.inlineGeneration.tablePrompt = preset.prompt || defaultPrompt;
+        }
+        syncInlineGenerationPrompts(state);
+        saveState();
+        renderAll(`已使用${label}：${preset.name}`);
     });
     $(ids.load).off('click').on('click', () => {
         const preset = getInlinePromptPresets(type).find(item => item.id === getSelectedInlinePromptPresetId(type));
@@ -7592,9 +7762,16 @@ function bindInlinePromptPresetControls(type, ids) {
             toastr.warning('请先填写预设名称。');
             return;
         }
-        const preset = makeInlinePromptPreset(type, name, $(promptSelector).val());
-        extension_settings[STORAGE_KEY].inlinePromptPresets.push(preset);
-        setSelectedInlinePromptPresetId(type, preset.id);
+        let preset = getInlinePromptPresets(type).find(item => item.id === getSelectedInlinePromptPresetId(type));
+        if (preset && preset.id !== defaultId) {
+            preset.name = name;
+            preset.prompt = String($(promptSelector).val() || defaultPrompt);
+            preset.updatedAt = new Date().toISOString();
+        } else {
+            preset = makeInlinePromptPreset(type, name, $(promptSelector).val());
+            extension_settings[STORAGE_KEY].inlinePromptPresets.push(preset);
+            setSelectedInlinePromptPresetId(type, preset.id);
+        }
         saveGlobalSettings();
         renderAll(`已保存${label}：${preset.name}`);
     });
@@ -8206,7 +8383,23 @@ function bindSettingsEvents() {
         renderAll('表格修改提示词已恢复默认。');
     });
     $('#bakemono-memory-table-preset-select').off('change').on('change', function () {
-        setSelectedTablePromptPresetId(String(this.value || ''));
+        const previousId = getSelectedTablePromptPresetId();
+        const selectedId = String(this.value || '');
+        setSelectedTablePromptPresetId(selectedId);
+        const preset = getTablePromptPresets().find(item => item.id === selectedId);
+        if (!preset) {
+            return;
+        }
+        const confirmed = confirmDanger(`使用表格提示词「${preset.name}」？`, ['当前编辑框里的表格提示词会被覆盖。']);
+        if (!confirmed) {
+            setSelectedTablePromptPresetId(previousId);
+            renderPromptPresetControls();
+            return;
+        }
+        const state = ensureState();
+        state.turnSummary.tablePrompt = preset.prompt || defaultTableEditPrompt;
+        saveState();
+        renderAll(`已使用表格提示词：${preset.name}`);
     });
     $('#bakemono-memory-load-table-preset').off('click').on('click', () => {
         const preset = getTablePromptPresets().find(item => item.id === getSelectedTablePromptPresetId());
@@ -8227,9 +8420,16 @@ function bindSettingsEvents() {
             toastr.warning('请先填写表格提示词预设名称。');
             return;
         }
-        const preset = makeTablePromptPreset(name, $('#bakemono-memory-table-prompt').val());
-        getTablePromptPresets().push(preset);
-        setSelectedTablePromptPresetId(preset.id);
+        let preset = getTablePromptPresets().find(item => item.id === getSelectedTablePromptPresetId());
+        if (preset && preset.id !== 'default-table-prompt') {
+            preset.name = name;
+            preset.prompt = String($('#bakemono-memory-table-prompt').val() || defaultTableEditPrompt);
+            preset.updatedAt = new Date().toISOString();
+        } else {
+            preset = makeTablePromptPreset(name, $('#bakemono-memory-table-prompt').val());
+            getTablePromptPresets().push(preset);
+            setSelectedTablePromptPresetId(preset.id);
+        }
         saveGlobalSettings();
         renderAll(`已保存表格提示词：${preset.name}`);
     });
@@ -8380,8 +8580,24 @@ function bindSettingsEvents() {
         renderMemoryRecordList();
     });
     $('#bakemono-memory-preset-select').off('change').on('change', function () {
-        setSelectedPromptPresetId(String(this.value || defaultPromptPreset.id));
+        const previousId = getSelectedPromptPresetId();
+        const selectedId = String(this.value || defaultPromptPreset.id);
+        setSelectedPromptPresetId(selectedId);
         renderPromptPresetControls();
+        const preset = getPromptPresets().find(item => item.id === selectedId);
+        if (!preset) {
+            return;
+        }
+        const confirmed = confirmDanger(
+            `使用配置「${preset.name || '未命名配置'}」？`,
+            ['会立即覆盖当前聊天的工作流、扫描、自动、提示词、注入、向量等配置。', '也会设为全局默认，新聊天会自动使用它。'],
+        );
+        if (!confirmed) {
+            setSelectedPromptPresetId(previousId);
+            renderPromptPresetControls();
+            return;
+        }
+        usePromptPresetAsGlobalDefault(preset);
     });
     $('#bakemono-memory-load-preset').off('click').on('click', () => {
         const preset = getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
@@ -8390,13 +8606,13 @@ function bindSettingsEvents() {
             return;
         }
         const confirmed = confirmDanger(
-            `载入预设「${preset.name || '未命名预设'}」？`,
-            ['这会覆盖当前聊天的生成提示词、扫描规则和工作流设置。'],
+            `使用并设为全局默认「${preset.name || '未命名预设'}」？`,
+            ['会覆盖当前聊天的配置，并让之后打开的新聊天自动使用这套配置。'],
         );
         if (!confirmed) {
             return;
         }
-        applyPromptPresetToState(preset);
+        usePromptPresetAsGlobalDefault(preset);
     });
     $('#bakemono-memory-save-preset').off('click').on('click', () => {
         const name = String($('#bakemono-memory-preset-name').val() || '').trim();
@@ -8404,7 +8620,23 @@ function bindSettingsEvents() {
             toastr.warning('请先填写预设名称。');
             return;
         }
-        saveCurrentConfigPreset(name);
+        const selectedId = getSelectedPromptPresetId();
+        const selected = getPromptPresets().find(preset => preset.id === selectedId);
+        const preset = isBuiltInPresetId(selectedId) || !selected
+            ? saveCurrentConfigPreset(name)
+            : saveCurrentConfigPreset(name, { replaceId: selectedId });
+        setActiveGlobalConfig(preset);
+        renderAll(isBuiltInPresetId(selectedId) || !selected ? `已另存并设为全局默认：${preset.name}` : `已覆盖并设为全局默认：${preset.name}`);
+    });
+    $('#bakemono-memory-save-as-preset').off('click').on('click', () => {
+        const name = String($('#bakemono-memory-preset-name').val() || '').trim();
+        if (!name) {
+            toastr.warning('请先填写预设名称。');
+            return;
+        }
+        const preset = saveCurrentConfigPreset(name);
+        setActiveGlobalConfig(preset);
+        renderAll(`已另存并设为全局默认：${preset.name}`);
     });
     $('#bakemono-memory-delete-preset').off('click').on('click', () => {
         const selectedId = getSelectedPromptPresetId();
@@ -8421,6 +8653,12 @@ function bindSettingsEvents() {
             return;
         }
         extension_settings[STORAGE_KEY].promptPresets = getPromptPresets().filter(preset => preset.id !== selectedId);
+        if (getActiveGlobalConfig()?.id === selectedId) {
+            const fallback = extension_settings[STORAGE_KEY].promptPresets.find(preset => preset.id === defaultPromptPreset.id)
+                || extension_settings[STORAGE_KEY].promptPresets[0]
+                || structuredClone(defaultPromptPreset);
+            setActiveGlobalConfig(fallback);
+        }
         setSelectedPromptPresetId(defaultPromptPreset.id);
         saveGlobalSettings();
         renderAll('预设已删除。');
