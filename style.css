@@ -1115,9 +1115,10 @@
 .bakemono-memory-table-advanced > .bakemono-memory-prompt-hint > span {
   position: absolute;
   top: calc(100% + 8px);
-  right: -34px;
+  right: 0;
   display: none;
   width: min(360px, calc(100vw - 54px));
+  max-width: calc(100vw - 54px);
   padding: 11px 12px;
   border: 1px dashed var(--bk-line);
   border-radius: 12px;
@@ -1129,9 +1130,21 @@
   box-shadow: 0 18px 38px rgba(0, 0, 0, 0.28);
 }
 
-.bakemono-memory-table-advanced > .bakemono-memory-prompt-hint:hover > span,
 .bakemono-memory-table-advanced > .bakemono-memory-prompt-hint.is-open > span {
   display: block;
+}
+
+@media (max-width: 900px) {
+  .bakemono-memory-table-advanced > .bakemono-memory-prompt-hint > span {
+    position: fixed;
+    top: 84px;
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-width: none;
+    max-height: min(42dvh, 320px);
+    overflow: auto;
+  }
 }
 
 .bakemono-memory-table-scope {

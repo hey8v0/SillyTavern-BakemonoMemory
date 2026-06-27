@@ -8196,6 +8196,9 @@ function bindSettingsEvents() {
         }
         this.querySelectorAll('.bakemono-memory-prompt-hint.is-open').forEach(hint => hint.classList.remove('is-open'));
     });
+    $('#bakemono-workbench-root').off('click.bakemonoTableAdvancedSummary').on('click.bakemonoTableAdvancedSummary', '.bakemono-memory-table-advanced > summary', function () {
+        this.parentElement?.querySelector('.bakemono-memory-prompt-hint.is-open')?.classList.remove('is-open');
+    });
     $('#bakemono-workbench-root').off('click.bakemonoMobileFold').on('click.bakemonoMobileFold', '.bakemono-mobile-collapsible > h4', function () {
         if (!(window.matchMedia?.('(max-width: 900px)').matches ?? false)) {
             return;
