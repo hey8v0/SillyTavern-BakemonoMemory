@@ -706,7 +706,6 @@ const defaultState = {
         tableEnabled: false,
         hideTableEdit: false,
         hideTableEditMigratedToRegex: false,
-        includeTableData: false,
         summaryPrompt: defaultInlineSummaryPrompt,
         tablePrompt: defaultInlineTablePrompt,
         depth: 1,
@@ -1215,7 +1214,7 @@ function toTableSchema(table, fallbackIndex = 0) {
         rows: [],
         required: !!table?.required,
         readOnly,
-        inject: table?.inject !== undefined ? !!table.inject : true,
+        inject: true,
         injectLimit: Math.max(0, Number(table?.injectLimit ?? 1200)),
         allowAiEdit: !readOnly && (table?.allowAiEdit !== undefined ? !!table.allowAiEdit : true),
     };
@@ -4898,7 +4897,7 @@ function formatTableGuideForPrompt(state = ensureState()) {
     }
     return tables.map(table => [
         `${table.tableIndex}: ${table.name} (${table.columns.map((col, index) => `${index}:${col}`).join(', ')})`,
-        `权限：${table.readOnly ? '只读' : '可写'} / ${table.allowAiEdit === false || table.readOnly ? '禁止 AI 修改' : '允许 AI 修改'} / ${table.inject ? '注入上下文' : '不注入上下文'}`,
+        `权限：${table.readOnly ? '只读' : '可写'} / ${table.allowAiEdit === false || table.readOnly ? '禁止 AI 修改' : '允许 AI 修改'}`,
         table.columnPrompts?.some(Boolean)
             ? `columns:\n${table.columns.map((col, index) => `${index}:${col}${table.columnPrompts?.[index] ? ` -> ${table.columnPrompts[index]}` : ''}`).join('\n')}`
             : '',
@@ -4948,7 +4947,7 @@ function formatSpecificTablesForPrompt(tables = [], options = {}) {
 }
 
 function renderInjectedTablesSection(state = ensureState()) {
-    const tables = (state.tableDatabase.tables || []).filter(table => table.inject);
+    const tables = state.tableDatabase.tables || [];
     if (!tables.length) {
         return '';
     }
@@ -4970,7 +4969,7 @@ function renderInjectedTablesSection(state = ensureState()) {
         }
         let text = lines.join('\n');
         if (text.length > limit) {
-            text = `${text.slice(0, limit)}\n...（已按本表注入上限裁剪）`;
+            text = `${text.slice(0, limit)}\n...（已按表格记忆安全上限裁剪）`;
         }
         sections.push(text);
     }
@@ -5282,7 +5281,7 @@ function getInjectionMemoryParts(state = ensureState()) {
             epic: latestEpic?.content ? 1 : 0,
             stage: stageContents.length,
             story: storyContents.length,
-            table: (state.tableDatabase.tables || []).filter(table => table.inject).length,
+            table: (state.tableDatabase.tables || []).length,
             vector: state.vectorMemory?.lastHits?.length || 0,
         },
     };
@@ -5304,11 +5303,9 @@ function syncInjection() {
     syncInlineGenerationPrompts(state);
 }
 
-function renderInlinePrompt(template, state = ensureState(), options = {}) {
-    const includeRows = options.includeTableData !== false;
-    const tableData = includeRows
-        ? formatTableDataForPrompt(state)
-        : '当前表格数据已由“表格记忆”按注入设置进入上下文；此处不重复粘贴完整行数据。若没有看到表格记忆，请在表格页勾选表格注入，或开启“随正文填表携带当前表格数据”。';
+function renderInlinePrompt(template, state = ensureState()) {
+    const includeRows = true;
+    const tableData = formatTableDataForPrompt(state);
     return String(template || '')
         .replaceAll('{{tableData}}', tableData)
         .replaceAll('{{tableGuide}}', formatTableGuideForPrompt(state))
@@ -5320,12 +5317,10 @@ function syncInlineGenerationPrompts(state = ensureState()) {
     const depth = Math.max(0, Number(state.inlineGeneration?.depth ?? 1));
     const role = Number(state.inlineGeneration?.role ?? extension_prompt_roles.SYSTEM);
     const summaryValue = state.inlineGeneration?.summaryEnabled
-        ? renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state, { includeTableData: false })
+        ? renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state)
         : '';
     const tableValue = state.inlineGeneration?.tableEnabled
-        ? renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state, {
-            includeTableData: state.inlineGeneration?.includeTableData === true,
-        })
+        ? renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state)
         : '';
     setExtensionPrompt(inlinePromptKeys.SUMMARY, summaryValue, extension_prompt_types.IN_CHAT, depth, false, role);
     setExtensionPrompt(inlinePromptKeys.TABLE, tableValue, extension_prompt_types.IN_CHAT, depth, false, role);
@@ -5975,7 +5970,6 @@ function renderTurnSummaryPanel(state = ensureState()) {
     $('#bakemono-memory-table-prompt').val(state.turnSummary.tablePrompt || defaultTableEditPrompt);
     $('#bakemono-memory-inline-summary-enabled').prop('checked', !!state.inlineGeneration.summaryEnabled);
     $('#bakemono-memory-inline-table-enabled').prop('checked', !!state.inlineGeneration.tableEnabled);
-    $('#bakemono-memory-inline-include-table-data').prop('checked', state.inlineGeneration.includeTableData === true);
     $('#bakemono-memory-inline-hide-table').prop('checked', state.inlineGeneration.hideTableEdit !== false);
     $('#bakemono-memory-inline-summary-prompt').val(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt);
     $('#bakemono-memory-inline-table-prompt').val(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt);
@@ -6103,7 +6097,6 @@ function renderTableList(state = ensureState()) {
         const statusChips = [
             `${table.columns.length} 列`,
             `${(table.rows || []).length} 行`,
-            table.inject ? '注入' : '未注入',
             table.readOnly ? '只读' : (table.allowAiEdit === false ? '禁止 AI 修改' : 'AI 可改'),
         ];
         summary.innerHTML = `
@@ -6162,14 +6155,6 @@ function renderTableList(state = ensureState()) {
                     <label class="checkbox_label bakemono-memory-switch">
                         <input type="checkbox" data-table-allow-ai ${!table.readOnly && table.allowAiEdit !== false ? 'checked' : ''} ${table.readOnly ? 'disabled' : ''}>
                         <span>允许 AI 修改</span>
-                    </label>
-                    <label class="checkbox_label bakemono-memory-switch">
-                        <input type="checkbox" data-table-inject ${table.inject ? 'checked' : ''}>
-                        <span>注入上下文</span>
-                    </label>
-                    <label class="bakemono-memory-field">
-                        <span>注入上限字数</span>
-                        <input class="text_pole" data-table-inject-limit type="number" min="120" step="100" value="${escapeHtml(table.injectLimit ?? 1200)}">
                     </label>
                 </div>
                 <div class="bakemono-memory-table-fields">${fieldEditors}</div>
@@ -6280,8 +6265,8 @@ function saveEditedTableFromElement(details, options = {}) {
     table.note = String(details.querySelector('[data-table-note]')?.value || '').trim();
     table.readOnly = !!details.querySelector('[data-table-readonly]')?.checked;
     table.allowAiEdit = table.readOnly ? false : !!details.querySelector('[data-table-allow-ai]')?.checked;
-    table.inject = !!details.querySelector('[data-table-inject]')?.checked;
-    table.injectLimit = Math.max(120, Number(details.querySelector('[data-table-inject-limit]')?.value || table.injectLimit || 1200));
+    table.inject = true;
+    table.injectLimit = Math.max(120, Number(table.injectLimit || 1200));
     const rows = [...details.querySelectorAll('tbody tr[data-table-row]')].map(row => (
         table.columns.map((_, colIndex) => String(row.querySelector(`[data-table-col="${colIndex}"]`)?.value || '').trim())
     ));
@@ -7182,7 +7167,6 @@ function readTurnSummaryFieldsFromUi(state = ensureState()) {
         ...state.inlineGeneration,
         summaryEnabled: $('#bakemono-memory-inline-summary-enabled').prop('checked'),
         tableEnabled: $('#bakemono-memory-inline-table-enabled').prop('checked'),
-        includeTableData: $('#bakemono-memory-inline-include-table-data').prop('checked'),
         hideTableEdit: $('#bakemono-memory-inline-hide-table').prop('checked'),
         summaryPrompt: String($('#bakemono-memory-inline-summary-prompt').val() || defaultInlineSummaryPrompt),
         tablePrompt: String($('#bakemono-memory-inline-table-prompt').val() || defaultInlineTablePrompt),
