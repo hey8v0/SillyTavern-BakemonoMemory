@@ -1034,6 +1034,50 @@
   background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
 }
 
+.bakemono-memory-table-hero {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(220px, auto);
+  gap: 12px;
+  align-items: start;
+  margin: 8px 0 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 34%, var(--SmartThemeBorderColor));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, var(--SmartThemeBlurTintColor) 72%);
+}
+
+.bakemono-memory-table-hero strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--bk-ink);
+  font-size: 15px;
+}
+
+.bakemono-memory-table-hero .bakemono-memory-status-line {
+  margin: 0;
+}
+
+.bakemono-memory-table-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: stretch;
+}
+
+.bakemono-memory-table-quick-actions .menu_button {
+  min-height: 38px;
+  width: 100%;
+}
+
+.bakemono-memory-table-list-primary {
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+
+.bakemono-memory-table-advanced {
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+}
+
 .bakemono-memory-table-scope {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto;
@@ -1974,6 +2018,21 @@
 
   .bakemono-memory-table-create {
     grid-template-columns: 1fr;
+  }
+
+  .bakemono-memory-table-hero {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .bakemono-memory-table-quick-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bakemono-memory-table-quick-actions .menu_button {
+    min-width: 0;
+    padding-inline: 8px;
   }
 
   .bakemono-memory-table-scope {

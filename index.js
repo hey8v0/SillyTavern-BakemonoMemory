@@ -697,12 +697,15 @@ const defaultState = {
         editDrafts: [],
         history: [],
         undoStack: [],
+        redoStack: [],
+        lastAppliedSourceMessageIds: [],
         lastImportAt: null,
     },
     inlineGeneration: {
         summaryEnabled: false,
         tableEnabled: false,
-        hideTableEdit: true,
+        hideTableEdit: false,
+        hideTableEditMigratedToRegex: false,
         summaryPrompt: defaultInlineSummaryPrompt,
         tablePrompt: defaultInlineTablePrompt,
         depth: 1,
@@ -1036,6 +1039,8 @@ function ensureState() {
     state.tableDatabase.editDrafts = Array.isArray(state.tableDatabase.editDrafts) ? state.tableDatabase.editDrafts : [];
     state.tableDatabase.history = Array.isArray(state.tableDatabase.history) ? state.tableDatabase.history : [];
     state.tableDatabase.undoStack = Array.isArray(state.tableDatabase.undoStack) ? state.tableDatabase.undoStack : [];
+    state.tableDatabase.redoStack = Array.isArray(state.tableDatabase.redoStack) ? state.tableDatabase.redoStack : [];
+    state.tableDatabase.lastAppliedSourceMessageIds = getFiniteMessageIds(state.tableDatabase.lastAppliedSourceMessageIds || []);
     state.tableDatabase.chatProfiles = Array.isArray(state.tableDatabase.chatProfiles) ? state.tableDatabase.chatProfiles : [];
     state.tableDatabase.profileRows = state.tableDatabase.profileRows && typeof state.tableDatabase.profileRows === 'object' ? state.tableDatabase.profileRows : {};
     ensureTableProfileForScope(state.tableDatabase.schemaScope, state);
@@ -1047,6 +1052,10 @@ function ensureState() {
         if (state.inlineGeneration[key] === undefined) {
             state.inlineGeneration[key] = structuredClone(value);
         }
+    }
+    if (state.inlineGeneration.hideTableEditMigratedToRegex !== true) {
+        state.inlineGeneration.hideTableEdit = false;
+        state.inlineGeneration.hideTableEditMigratedToRegex = true;
     }
     state.vectorMemory = state.vectorMemory && typeof state.vectorMemory === 'object'
         ? state.vectorMemory
@@ -1384,18 +1393,24 @@ function persistCurrentTableDatabase(state = ensureState()) {
     }
 }
 
-function pushTableUndoSnapshot(label = '表格操作', state = ensureState()) {
+function pushTableUndoSnapshot(label = '表格操作', state = ensureState(), options = {}) {
     state.tableDatabase.undoStack = Array.isArray(state.tableDatabase.undoStack) ? state.tableDatabase.undoStack : [];
-    state.tableDatabase.undoStack.unshift({
+    const snapshot = {
         id: `table-undo-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         label: String(label || '表格操作'),
         createdAt: new Date().toISOString(),
         schemaScope: state.tableDatabase.schemaScope || tableSchemaScopes.CHAT,
         activeProfileId: state.tableDatabase.activeProfileId || '',
         profileKey: getActiveTableProfileKey(state),
+        sourceMessageIds: getFiniteMessageIds(options.sourceMessageIds || []),
         tables: structuredClone(state.tableDatabase.tables || []),
-    });
+    };
+    state.tableDatabase.undoStack.unshift(snapshot);
     state.tableDatabase.undoStack = state.tableDatabase.undoStack.slice(0, 20);
+    if (options.clearRedo !== false) {
+        state.tableDatabase.redoStack = [];
+    }
+    return snapshot;
 }
 
 function undoLastTableOperation(state = ensureState()) {
@@ -1416,11 +1431,133 @@ function undoLastTableOperation(state = ensureState()) {
         return false;
     }
     state.tableDatabase.undoStack.shift();
+    state.tableDatabase.redoStack = Array.isArray(state.tableDatabase.redoStack) ? state.tableDatabase.redoStack : [];
+    state.tableDatabase.redoStack.unshift({
+        ...snapshot,
+        redoTables: structuredClone(state.tableDatabase.tables || []),
+        undoneAt: new Date().toISOString(),
+    });
+    state.tableDatabase.redoStack = state.tableDatabase.redoStack.slice(0, 20);
     state.tableDatabase.tables = structuredClone(snapshot.tables || []);
     persistCurrentTableDatabase(state);
     renderAll(`已撤销表格操作：${snapshot.label || '表格操作'}`);
     toastr.success('已撤销上次表格操作。');
     return true;
+}
+
+function redoLastTableOperation(state = ensureState()) {
+    state.tableDatabase.redoStack = Array.isArray(state.tableDatabase.redoStack) ? state.tableDatabase.redoStack : [];
+    const snapshot = state.tableDatabase.redoStack[0];
+    if (!snapshot) {
+        toastr.info('没有可重做的表格操作。');
+        return false;
+    }
+    const confirmed = confirmDanger(
+        `重做表格操作「${snapshot.label || '表格操作'}」？`,
+        [
+            snapshot.undoneAt ? `撤销时间：${new Date(snapshot.undoneAt).toLocaleString()}` : '',
+            '这会把表格恢复到撤销前的状态。',
+        ],
+    );
+    if (!confirmed) {
+        return false;
+    }
+    state.tableDatabase.redoStack.shift();
+    state.tableDatabase.undoStack = Array.isArray(state.tableDatabase.undoStack) ? state.tableDatabase.undoStack : [];
+    state.tableDatabase.undoStack.unshift({
+        ...snapshot,
+        redoTables: undefined,
+        redoneAt: new Date().toISOString(),
+    });
+    state.tableDatabase.undoStack = state.tableDatabase.undoStack.slice(0, 20);
+    state.tableDatabase.tables = structuredClone(snapshot.redoTables || []);
+    persistCurrentTableDatabase(state);
+    renderAll(`已重做表格操作：${snapshot.label || '表格操作'}`);
+    toastr.success('已重做上次表格操作。');
+    return true;
+}
+
+function getAppliedTableHistoriesForMessage(messageId, state = ensureState()) {
+    const id = Number(messageId);
+    if (!Number.isFinite(id)) {
+        return [];
+    }
+    return (state.tableDatabase.history || []).filter(item => (
+        item?.appliedAt && getFiniteMessageIds(item.sourceMessageIds || []).includes(id)
+    ));
+}
+
+function hasAppliedTableEditForMessage(messageId, state = ensureState()) {
+    return getAppliedTableHistoriesForMessage(messageId, state).length > 0;
+}
+
+function rollbackLatestTableOperationForDeletedMessages(messageIds = [], state = ensureState()) {
+    const ids = new Set(getFiniteMessageIds(messageIds));
+    if (!ids.size) {
+        return false;
+    }
+    const snapshot = state.tableDatabase.undoStack?.[0];
+    const snapshotIds = getFiniteMessageIds(snapshot?.sourceMessageIds || []);
+    if (!snapshot || !snapshotIds.some(id => ids.has(id))) {
+        return false;
+    }
+    state.tableDatabase.undoStack.shift();
+    state.tableDatabase.tables = structuredClone(snapshot.tables || []);
+    state.tableDatabase.history = (state.tableDatabase.history || []).filter(item => item.undoSnapshotId !== snapshot.id);
+    state.tableDatabase.lastAppliedSourceMessageIds = [];
+    persistCurrentTableDatabase(state);
+    renderAll(`已随删除楼层撤销表格操作：${snapshot.label || '表格操作'}`);
+    toastr.info('已检测到来源楼层被删除，并撤销最近一次对应表格修改。');
+    return true;
+}
+
+function rollbackLatestTableOperationForChangedMessages(messageIds = [], state = ensureState()) {
+    const ids = new Set(getFiniteMessageIds(messageIds));
+    if (!ids.size) {
+        return false;
+    }
+    const snapshot = state.tableDatabase.undoStack?.[0];
+    const snapshotIds = getFiniteMessageIds(snapshot?.sourceMessageIds || []);
+    if (!snapshot || !snapshotIds.some(id => ids.has(id))) {
+        return false;
+    }
+    state.tableDatabase.undoStack.shift();
+    state.tableDatabase.tables = structuredClone(snapshot.tables || []);
+    state.tableDatabase.history = (state.tableDatabase.history || []).filter(item => item.undoSnapshotId !== snapshot.id);
+    state.tableDatabase.lastAppliedSourceMessageIds = [];
+    persistCurrentTableDatabase(state);
+    renderAll(`已随消息更新撤销旧表格操作：${snapshot.label || '表格操作'}`);
+    toastr.info('已检测到来源楼层变更，撤销旧表格修改并等待重新捕获。');
+    return true;
+}
+
+function collectMessageIdsFromEventArgs(args = []) {
+    const ids = new Set();
+    const visit = (value) => {
+        if (value === null || value === undefined) {
+            return;
+        }
+        if (typeof value === 'number' || typeof value === 'string') {
+            const id = Number(value);
+            if (Number.isInteger(id) && id >= 0) {
+                ids.add(id);
+            }
+            return;
+        }
+        if (Array.isArray(value)) {
+            value.forEach(visit);
+            return;
+        }
+        if (typeof value === 'object') {
+            for (const key of ['messageId', 'message_id', 'id', 'index', 'mesId', 'mes_id']) {
+                if (value[key] !== undefined) {
+                    visit(value[key]);
+                }
+            }
+        }
+    };
+    args.forEach(visit);
+    return [...ids];
 }
 
 function switchTableProfile(scope, profileId, state = ensureState(), options = {}) {
@@ -4515,11 +4652,32 @@ async function captureInlineGenerationFromLatestMessage() {
 
     if (state.inlineGeneration.tableEnabled && /<tableEdit[\s>]/i.test(text)) {
         try {
+            const existingHistories = getAppliedTableHistoriesForMessage(turn.assistantMessage.messageId, state);
+            const latestHistory = existingHistories[0];
+            if (latestHistory?.sourceSignature === signature) {
+                state.inlineGeneration.lastProcessedMessageId = turn.assistantMessage.messageId;
+                state.inlineGeneration.lastProcessedSignature = signature;
+                saveState();
+                return capturedSomething;
+            }
+            if (latestHistory && latestHistory.sourceSignature !== signature) {
+                const rolledBack = rollbackLatestTableOperationForChangedMessages([turn.assistantMessage.messageId], state);
+                if (!rolledBack) {
+                    toastr.warning('这楼已有表格记录，但它不是最近一次表格操作。为避免覆盖后续表格，请先手动撤销相关表格操作后再重 roll。');
+                    state.inlineGeneration.lastProcessedMessageId = turn.assistantMessage.messageId;
+                    state.inlineGeneration.lastProcessedSignature = signature;
+                    saveState();
+                    return capturedSomething;
+                }
+            }
             const blocks = buildLatestTurnBlocks(state);
             const draft = createTableEditDraft(text, blocks, state);
             if (draft && state.tableDatabase.autoApply) {
-                applyTableOperations(draft.operations, state);
-                state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString() });
+                const undoSnapshot = applyTableOperations(draft.operations, state, {
+                    sourceMessageIds: draft.sourceMessageIds,
+                    undoLabel: `随正文表格修改：${formatSourceRange(draft.sourceMessageIds || [])}`,
+                });
+                state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString(), undoSnapshotId: undoSnapshot?.id || '', sourceSignature: signature });
                 state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draft.id);
                 toastr.success(`已自动应用 ${draft.operations.length} 项随正文表格修改。`);
             } else if (draft) {
@@ -4896,8 +5054,10 @@ function createTableEditDraft(raw, blocks, state = ensureState()) {
 }
 
 function applyTableOperations(operations = [], state = ensureState(), options = {}) {
+    const sourceMessageIds = getFiniteMessageIds(options.sourceMessageIds || []);
+    let snapshot = null;
     if (options.recordUndo !== false && operations.length) {
-        pushTableUndoSnapshot(options.undoLabel || `AI 表格修改 ${operations.length} 项`, state);
+        snapshot = pushTableUndoSnapshot(options.undoLabel || `AI 表格修改 ${operations.length} 项`, state, { sourceMessageIds });
     }
     const tablesByIndex = new Map((state.tableDatabase.tables || []).map(table => [Number(table.tableIndex), table]));
     const deletes = [];
@@ -4935,6 +5095,10 @@ function applyTableOperations(operations = [], state = ensureState(), options = 
     });
     saveCurrentTableProfileRows(state);
     updateInjectionFromSummaries();
+    if (sourceMessageIds.length) {
+        state.tableDatabase.lastAppliedSourceMessageIds = sourceMessageIds;
+    }
+    return snapshot;
 }
 
 async function processLatestTurnSummary(options = {}) {
@@ -4955,6 +5119,12 @@ async function processLatestTurnSummary(options = {}) {
         return;
     }
     if (!options.manual && state.turnSummary.lastProcessedMessageId === turn.assistantMessage.messageId) {
+        return;
+    }
+    if (!options.manual && hasAppliedTableEditForMessage(turn.assistantMessage.messageId, state)) {
+        state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
+        saveState();
+        renderAll('本楼已经通过随正文 tableEdit 应用过表格修改，已跳过回复后填表。');
         return;
     }
     const blocks = buildLatestTurnBlocks(state);
@@ -4986,7 +5156,7 @@ async function processLatestTurnSummary(options = {}) {
             commitDraft(summaryDraft.id, summaryDraft.content, { silent: true });
         }
 
-        if (shouldGenerateTable) {
+        if (shouldGenerateTable && !hasAppliedTableEditForMessage(turn.assistantMessage.messageId, state)) {
             const tableResult = await callGenerationModel({
                 prompt: buildTableEditPrompt(blocks, state),
                 systemPrompt: await buildTurnReferenceSystemPrompt(blocks, 'table', state),
@@ -4994,8 +5164,11 @@ async function processLatestTurnSummary(options = {}) {
             try {
                 const draft = createTableEditDraft(tableResult, blocks, state);
                 if (draft && state.tableDatabase.autoApply) {
-                    applyTableOperations(draft.operations, state);
-                    state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString() });
+                    const undoSnapshot = applyTableOperations(draft.operations, state, {
+                        sourceMessageIds: draft.sourceMessageIds,
+                        undoLabel: `回复后表格修改：${formatSourceRange(draft.sourceMessageIds || [])}`,
+                    });
+                    state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString(), undoSnapshotId: undoSnapshot?.id || '' });
                     state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draft.id);
                 }
             } catch (error) {
@@ -5045,8 +5218,11 @@ async function processLatestTableEdit(options = {}) {
             return;
         }
         if (state.tableDatabase.autoApply && !options.manual) {
-            applyTableOperations(draft.operations, state);
-            state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString() });
+            const undoSnapshot = applyTableOperations(draft.operations, state, {
+                sourceMessageIds: draft.sourceMessageIds,
+                undoLabel: `回复后表格修改：${formatSourceRange(draft.sourceMessageIds || [])}`,
+            });
+            state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString(), undoSnapshotId: undoSnapshot?.id || '' });
             state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draft.id);
             state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
             saveState();
@@ -8191,8 +8367,11 @@ function bindSettingsEvents() {
                 return;
             }
             try {
-                applyTableOperations(draft.operations, state);
-                state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString() });
+                const undoSnapshot = applyTableOperations(draft.operations, state, {
+                    sourceMessageIds: draft.sourceMessageIds,
+                    undoLabel: `手动应用表格草稿：${formatSourceRange(draft.sourceMessageIds || [])}`,
+                });
+                state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString(), undoSnapshotId: undoSnapshot?.id || '' });
                 state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draftId);
                 saveState();
                 renderAll('表格修改已应用。');
@@ -8340,25 +8519,8 @@ function bindSettingsEvents() {
     $('#bakemono-memory-undo-table-operation').off('click').on('click', () => {
         undoLastTableOperation(ensureState());
     });
-    $('#bakemono-memory-recapture-inline-table').off('click').on('click', async () => {
-        const state = ensureState();
-        const previousSummaryEnabled = !!state.inlineGeneration.summaryEnabled;
-        const previousTableEnabled = !!state.inlineGeneration.tableEnabled;
-        state.inlineGeneration.summaryEnabled = false;
-        state.inlineGeneration.tableEnabled = true;
-        state.inlineGeneration.lastProcessedMessageId = null;
-        state.inlineGeneration.lastProcessedSignature = '';
-        const captured = await captureInlineGenerationFromLatestMessage();
-        state.inlineGeneration.summaryEnabled = previousSummaryEnabled;
-        state.inlineGeneration.tableEnabled = previousTableEnabled;
-        saveState();
-        if (captured) {
-            renderAll('已重新捕获最后一条回复里的 tableEdit。');
-            toastr.success('已重新捕获 tableEdit。');
-        } else {
-            renderAll();
-            toastr.info('最后一条回复里没有可重新捕获的 tableEdit，或内容已被隐藏清理。');
-        }
+    $('#bakemono-memory-redo-table-operation').off('click').on('click', () => {
+        redoLastTableOperation(ensureState());
     });
     $('#bakemono-memory-create-table').off('click').on('click', () => {
         createCustomTableFromUi();
@@ -9132,9 +9294,18 @@ async function init() {
         renderAll();
     });
     for (const event of [event_types.MESSAGE_UPDATED, event_types.MESSAGE_DELETED, event_types.MESSAGE_SWIPED]) {
-        eventSource.on(event, () => {
+        eventSource.on(event, (...args) => {
+            const eventMessageIds = collectMessageIdsFromEventArgs(args);
+            const fallbackTurn = findLatestAssistantTurn();
+            const messageIds = eventMessageIds.length ? eventMessageIds : getFiniteMessageIds([fallbackTurn?.assistantMessage?.messageId]);
             if (event !== event_types.MESSAGE_DELETED) {
+                rollbackLatestTableOperationForChangedMessages(messageIds, ensureState());
+                const state = ensureState();
+                state.inlineGeneration.lastProcessedMessageId = null;
+                state.inlineGeneration.lastProcessedSignature = '';
                 scheduleInlineGenerationCapture('消息更新');
+            } else {
+                rollbackLatestTableOperationForDeletedMessages(messageIds, ensureState());
             }
             markVectorIndexDirty('消息变更');
             syncInjection();
