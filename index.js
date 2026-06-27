@@ -5638,6 +5638,27 @@ function getHideBeforeRecentIds(preserveRecent = 2) {
     return visibleIds.slice(0, cutoffPosition);
 }
 
+function getAutoHideRecentPlan(preserveRecent = defaultState.autoHideRecent.preserveRecent, state = ensureState()) {
+    const keep = Math.max(0, Number(preserveRecent || 0));
+    const managedSet = new Set(getFiniteMessageIds(state.autoHideRecent?.managedMessageIds || []));
+    const sourceChat = getContext()?.chat || chat || [];
+    const sourceIds = sourceChat
+        .map((message, index) => ({ message, index }))
+        .filter(({ message, index }) => message?.mes && (!message.is_system || managedSet.has(index)))
+        .map(({ index }) => index);
+    const keepIds = keep > 0 ? sourceIds.slice(-keep) : [];
+    const keepSet = new Set(keepIds);
+    const hideIds = sourceIds.filter(id => !keepSet.has(id) && !sourceChat?.[id]?.is_system);
+    const restoreIds = keepIds.filter(id => managedSet.has(id) && sourceChat?.[id]?.is_system);
+    return { sourceIds, keepIds, hideIds, restoreIds };
+}
+
+function getAutoHideRecentPreviewText(preserveRecent = defaultState.autoHideRecent.preserveRecent, state = ensureState()) {
+    const { sourceIds, keepIds, hideIds, restoreIds } = getAutoHideRecentPlan(preserveRecent, state);
+    const keepText = keepIds.length ? `${keepIds[0]}-${keepIds.at(-1)}` : '无';
+    return `当前可收纳正文 ${sourceIds.length} 楼；将保留最近 ${preserveRecent} 楼（${keepText}），隐藏 ${hideIds.length} 楼，恢复 ${restoreIds.length} 楼。`;
+}
+
 function readAutoHideRecentFieldsFromUi(state = ensureState()) {
     if (!$('#bakemono-memory-preserve-recent-input').length) {
         return state;
@@ -5660,6 +5681,10 @@ function renderAutoHideRecentPanel(state = ensureState()) {
 
 function previewPreserveRecentMessages() {
     const preserve = Math.max(0, Number($('#bakemono-memory-preserve-recent-input').val() || 0));
+    const previewText = getAutoHideRecentPreviewText(preserve);
+    $('#bakemono-memory-range-preview').text(previewText);
+    renderAll(previewText);
+    return;
     const ids = getHideBeforeRecentIds(preserve);
     const text = ids.length
         ? `将隐藏较早的 ${ids.length} 楼正文，保留最近 ${preserve} 楼可见正文。范围约 ${ids[0]}-${ids.at(-1)}。`
@@ -5668,10 +5693,68 @@ function previewPreserveRecentMessages() {
     renderAll(text);
 }
 
+async function applyAutoHideRecentBalance({ silent = false, confirm = false } = {}) {
+    const state = ensureState();
+    const preserve = Math.max(0, Number(state.autoHideRecent?.preserveRecent ?? defaultState.autoHideRecent.preserveRecent));
+    const { hideIds, restoreIds } = getAutoHideRecentPlan(preserve, state);
+    if (!hideIds.length && !restoreIds.length) {
+        const text = getAutoHideRecentPreviewText(preserve, state);
+        $('#bakemono-memory-range-preview').text(text);
+        if (!silent) {
+            renderAll(text);
+            toastr.info(text);
+        } else {
+            renderAutoHideRecentPanel(state);
+        }
+        return;
+    }
+    if (confirm) {
+        const confirmed = window.confirm([
+            `自动收纳将保留最近 ${preserve} 楼正文。`,
+            `本次会隐藏 ${hideIds.length} 楼，恢复 ${restoreIds.length} 楼。`,
+            '',
+            '确认继续吗？',
+        ].join('\n'));
+        if (!confirmed) {
+            return;
+        }
+    }
+    for (const id of restoreIds) {
+        await hideChatMessageRange(id, id, true);
+    }
+    for (const id of hideIds) {
+        await hideChatMessageRange(id, id, false);
+    }
+    state.hiddenMessageIds = unique([
+        ...state.hiddenMessageIds.filter(id => !restoreIds.includes(id)),
+        ...hideIds,
+    ]);
+    const sourceChat = getContext()?.chat || chat || [];
+    const currentManaged = getFiniteMessageIds(state.autoHideRecent.managedMessageIds || [])
+        .filter(id => sourceChat?.[id]?.mes && !restoreIds.includes(id));
+    state.autoHideRecent.managedMessageIds = unique([...currentManaged, ...hideIds]);
+    state.autoHideRecent.lastRunAt = new Date().toISOString();
+    await saveChatConditional();
+    saveState();
+    scanBakemonoBlocks({ persist: false });
+    const text = `自动收纳已整理：隐藏 ${hideIds.length} 楼，恢复 ${restoreIds.length} 楼，保留最近 ${preserve} 楼正文。`;
+    $('#bakemono-memory-range-preview').text(text);
+    if (!silent) {
+        renderAll(text);
+        toastr.success(text);
+    } else {
+        renderAutoHideRecentPanel(state);
+    }
+}
+
 async function hideBeforeRecentMessages({ silent = false, fromAuto = false } = {}) {
     const state = ensureState();
     if (!fromAuto) {
         readAutoHideRecentFieldsFromUi(state);
+    }
+    if (fromAuto) {
+        await applyAutoHideRecentBalance({ silent });
+        return;
     }
     const fallbackPreserve = $('#bakemono-memory-preserve-recent-input').val();
     const preserve = Math.max(0, Number(state.autoHideRecent?.preserveRecent ?? fallbackPreserve ?? 0));
@@ -8367,7 +8450,7 @@ function bindSettingsEvents() {
     $('#bakemono-workbench-root').off('click.bakemonoNav').on('click.bakemonoNav', '[data-bakemono-nav]', function () {
         switchWorkbenchTab(this.dataset.bakemonoNav);
     });
-    const hintSelector = '.bakemono-memory-card-panel > h4 + .bakemono-memory-prompt-hint, .bakemono-memory-card-panel > h4 > .bakemono-memory-prompt-hint, .bakemono-memory-table-advanced > .bakemono-memory-prompt-hint';
+    const hintSelector = '.bakemono-memory-card-panel > h4 + .bakemono-memory-prompt-hint, .bakemono-memory-card-panel > h4 > .bakemono-memory-prompt-hint, .bakemono-memory-range-panel > summary .bakemono-memory-prompt-hint, .bakemono-memory-table-advanced > .bakemono-memory-prompt-hint';
     $('#bakemono-workbench-root').off('click.bakemonoHintToggle').on('click.bakemonoHintToggle', hintSelector, function (event) {
         event.stopImmediatePropagation();
         event.preventDefault();

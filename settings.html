@@ -322,11 +322,13 @@
         <div id="bakemono-memory-memory-warning" class="bakemono-memory-status-line">等待扫描。</div>
 
         <details class="bakemono-memory-card-panel bakemono-memory-range-panel">
-          <summary><i class="fa-solid fa-box-archive"></i><span>楼层收纳</span></summary>
-          <div class="bakemono-memory-prompt-hint">
+          <summary>
+            <span class="bakemono-memory-summary-title"><i class="fa-solid fa-box-archive"></i><span>楼层收纳</span></span>
+            <span class="bakemono-memory-prompt-hint bakemono-memory-range-summary-hint">
             <i class="fa-solid fa-circle-info"></i>
             <span>开启自动收纳后，插件会像隐藏助手一样持续只保留最近 N 楼正文；手动范围隐藏/恢复仍然可用。</span>
-          </div>
+            </span>
+          </summary>
           <label class="bakemono-memory-editor">
             <span>楼层范围</span>
             <textarea id="bakemono-memory-range-input" class="text_pole textarea_compact" rows="2" placeholder="例如：1-700, 720, 735-760" spellcheck="false"></textarea>

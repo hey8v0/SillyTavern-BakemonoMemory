@@ -450,12 +450,78 @@
 .bakemono-memory-range-panel > summary {
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   width: 100%;
   padding: 4px 2px 10px;
   cursor: pointer;
   list-style: none;
   font-weight: 700;
+}
+
+.bakemono-memory-summary-title {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.bakemono-memory-range-panel > summary .bakemono-memory-range-summary-hint {
+  display: none;
+}
+
+.bakemono-memory-range-panel[open] > summary .bakemono-memory-range-summary-hint {
+  display: inline-flex;
+}
+
+.bakemono-memory-range-panel > summary .bakemono-memory-prompt-hint {
+  position: relative;
+  z-index: 6;
+  width: 22px;
+  min-height: 22px;
+  margin: 0 24px 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  overflow: visible;
+  cursor: help;
+}
+
+.bakemono-memory-range-panel > summary .bakemono-memory-prompt-hint > i {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--SmartThemeQuoteColor) 62%, var(--SmartThemeBodyColor) 38%);
+  box-shadow: none;
+  font-size: 11px;
+}
+
+.bakemono-memory-range-panel > summary .bakemono-memory-prompt-hint > span {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: none;
+  width: min(360px, calc(100vw - 54px));
+  padding: 11px 12px;
+  border: 1px dashed var(--bk-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, var(--SmartThemeBodyColor) 4%);
+  color: var(--bk-ink-soft);
+  line-height: 1.55;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.28);
+}
+
+.bakemono-memory-range-panel > summary .bakemono-memory-prompt-hint:hover > span,
+.bakemono-memory-range-panel > summary .bakemono-memory-prompt-hint.is-open > span {
+  display: block;
 }
 
 .bakemono-memory-range-panel > summary::-webkit-details-marker {
