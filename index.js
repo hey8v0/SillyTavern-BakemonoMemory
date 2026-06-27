@@ -706,6 +706,7 @@ const defaultState = {
         tableEnabled: false,
         hideTableEdit: false,
         hideTableEditMigratedToRegex: false,
+        includeTableData: false,
         summaryPrompt: defaultInlineSummaryPrompt,
         tablePrompt: defaultInlineTablePrompt,
         depth: 1,
@@ -4930,15 +4931,18 @@ function formatTableDataForPrompt(state = ensureState()) {
     }).join('\n\n');
 }
 
-function formatSpecificTablesForPrompt(tables = []) {
+function formatSpecificTablesForPrompt(tables = [], options = {}) {
     if (!tables.length) {
         return '无。';
     }
+    const includeRows = options.includeRows !== false;
     return tables.map(table => {
         const header = `## ${table.tableIndex}: ${table.name}\nColumns: ${table.columns.map((col, index) => `${index}:${col}`).join(' | ')}`;
-        const rows = table.rows?.length
-            ? table.rows.map((row, rowIndex) => `row ${rowIndex}: ${row.map((cell, colIndex) => `${colIndex}:${cell}`).join(' | ')}`).join('\n')
-            : '(无数据行)';
+        const rows = includeRows
+            ? (table.rows?.length
+                ? table.rows.map((row, rowIndex) => `row ${rowIndex}: ${row.map((cell, colIndex) => `${colIndex}:${cell}`).join(' | ')}`).join('\n')
+                : '(无数据行)')
+            : 'Rows: 已省略；表格内容请读取长期上下文里的“表格记忆”。';
         return `${header}\n${rows}`;
     }).join('\n\n');
 }
@@ -5300,22 +5304,28 @@ function syncInjection() {
     syncInlineGenerationPrompts(state);
 }
 
-function renderInlinePrompt(template, state = ensureState()) {
+function renderInlinePrompt(template, state = ensureState(), options = {}) {
+    const includeRows = options.includeTableData !== false;
+    const tableData = includeRows
+        ? formatTableDataForPrompt(state)
+        : '当前表格数据已由“表格记忆”按注入设置进入上下文；此处不重复粘贴完整行数据。若没有看到表格记忆，请在表格页勾选表格注入，或开启“随正文填表携带当前表格数据”。';
     return String(template || '')
-        .replaceAll('{{tableData}}', formatTableDataForPrompt(state))
+        .replaceAll('{{tableData}}', tableData)
         .replaceAll('{{tableGuide}}', formatTableGuideForPrompt(state))
-        .replaceAll('{{readonlyTables}}', formatSpecificTablesForPrompt(getReadonlyTables(state)))
-        .replaceAll('{{writableTables}}', formatSpecificTablesForPrompt(getWritableTables(state)));
+        .replaceAll('{{readonlyTables}}', formatSpecificTablesForPrompt(getReadonlyTables(state), { includeRows }))
+        .replaceAll('{{writableTables}}', formatSpecificTablesForPrompt(getWritableTables(state), { includeRows }));
 }
 
 function syncInlineGenerationPrompts(state = ensureState()) {
     const depth = Math.max(0, Number(state.inlineGeneration?.depth ?? 1));
     const role = Number(state.inlineGeneration?.role ?? extension_prompt_roles.SYSTEM);
     const summaryValue = state.inlineGeneration?.summaryEnabled
-        ? renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state)
+        ? renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state, { includeTableData: false })
         : '';
     const tableValue = state.inlineGeneration?.tableEnabled
-        ? renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state)
+        ? renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state, {
+            includeTableData: state.inlineGeneration?.includeTableData === true,
+        })
         : '';
     setExtensionPrompt(inlinePromptKeys.SUMMARY, summaryValue, extension_prompt_types.IN_CHAT, depth, false, role);
     setExtensionPrompt(inlinePromptKeys.TABLE, tableValue, extension_prompt_types.IN_CHAT, depth, false, role);
@@ -5965,6 +5975,7 @@ function renderTurnSummaryPanel(state = ensureState()) {
     $('#bakemono-memory-table-prompt').val(state.turnSummary.tablePrompt || defaultTableEditPrompt);
     $('#bakemono-memory-inline-summary-enabled').prop('checked', !!state.inlineGeneration.summaryEnabled);
     $('#bakemono-memory-inline-table-enabled').prop('checked', !!state.inlineGeneration.tableEnabled);
+    $('#bakemono-memory-inline-include-table-data').prop('checked', state.inlineGeneration.includeTableData === true);
     $('#bakemono-memory-inline-hide-table').prop('checked', state.inlineGeneration.hideTableEdit !== false);
     $('#bakemono-memory-inline-summary-prompt').val(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt);
     $('#bakemono-memory-inline-table-prompt').val(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt);
@@ -7171,6 +7182,7 @@ function readTurnSummaryFieldsFromUi(state = ensureState()) {
         ...state.inlineGeneration,
         summaryEnabled: $('#bakemono-memory-inline-summary-enabled').prop('checked'),
         tableEnabled: $('#bakemono-memory-inline-table-enabled').prop('checked'),
+        includeTableData: $('#bakemono-memory-inline-include-table-data').prop('checked'),
         hideTableEdit: $('#bakemono-memory-inline-hide-table').prop('checked'),
         summaryPrompt: String($('#bakemono-memory-inline-summary-prompt').val() || defaultInlineSummaryPrompt),
         tablePrompt: String($('#bakemono-memory-inline-table-prompt').val() || defaultInlineTablePrompt),
