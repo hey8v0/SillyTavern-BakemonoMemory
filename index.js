@@ -4653,25 +4653,27 @@ async function captureInlineGenerationFromLatestMessage() {
     if (state.inlineGeneration.tableEnabled && /<tableEdit[\s>]/i.test(text)) {
         try {
             const existingHistories = getAppliedTableHistoriesForMessage(turn.assistantMessage.messageId, state);
-            const latestHistory = existingHistories[0];
-            if (latestHistory?.sourceSignature === signature) {
+            if (existingHistories.some(history => history.sourceSignature === signature)) {
                 state.inlineGeneration.lastProcessedMessageId = turn.assistantMessage.messageId;
                 state.inlineGeneration.lastProcessedSignature = signature;
                 saveState();
                 return capturedSomething;
             }
+            if ((state.tableDatabase.editDrafts || []).some(draft => draft.sourceSignature === signature)) {
+                state.inlineGeneration.lastProcessedMessageId = turn.assistantMessage.messageId;
+                state.inlineGeneration.lastProcessedSignature = signature;
+                saveState();
+                return capturedSomething;
+            }
+            const latestHistory = existingHistories[0];
             if (latestHistory && latestHistory.sourceSignature !== signature) {
-                const rolledBack = rollbackLatestTableOperationForChangedMessages([turn.assistantMessage.messageId], state);
-                if (!rolledBack) {
-                    toastr.warning('这楼已有表格记录，但它不是最近一次表格操作。为避免覆盖后续表格，请先手动撤销相关表格操作后再重 roll。');
-                    state.inlineGeneration.lastProcessedMessageId = turn.assistantMessage.messageId;
-                    state.inlineGeneration.lastProcessedSignature = signature;
-                    saveState();
-                    return capturedSomething;
-                }
+                rollbackLatestTableOperationForChangedMessages([turn.assistantMessage.messageId], state);
             }
             const blocks = buildLatestTurnBlocks(state);
             const draft = createTableEditDraft(text, blocks, state);
+            if (draft) {
+                draft.sourceSignature = signature;
+            }
             if (draft && state.tableDatabase.autoApply) {
                 const undoSnapshot = applyTableOperations(draft.operations, state, {
                     sourceMessageIds: draft.sourceMessageIds,
@@ -5013,6 +5015,7 @@ function stripHtmlCommentShell(value) {
 function parseTableObjectLiteral(value) {
     const cleaned = stripHtmlCommentShell(value)
         .replace(/([{,]\s*)(\d+)\s*:/g, '$1"$2":')
+        .replace(/"\s+(?="\d+"\s*:)/g, '", ')
         .replace(/'/g, '"');
     return JSON.parse(cleaned);
 }
@@ -8175,8 +8178,10 @@ function bindSettingsEvents() {
     $('#bakemono-workbench-root').off('click.bakemonoNav').on('click.bakemonoNav', '[data-bakemono-nav]', function () {
         switchWorkbenchTab(this.dataset.bakemonoNav);
     });
-    $('#bakemono-workbench-root').off('click.bakemonoHintToggle').on('click.bakemonoHintToggle', '.bakemono-memory-card-panel > h4 + .bakemono-memory-prompt-hint, .bakemono-memory-card-panel > h4 > .bakemono-memory-prompt-hint', function (event) {
+    const hintSelector = '.bakemono-memory-card-panel > h4 + .bakemono-memory-prompt-hint, .bakemono-memory-card-panel > h4 > .bakemono-memory-prompt-hint, .bakemono-memory-table-advanced > .bakemono-memory-prompt-hint';
+    $('#bakemono-workbench-root').off('click.bakemonoHintToggle').on('click.bakemonoHintToggle', hintSelector, function (event) {
         event.stopImmediatePropagation();
+        event.preventDefault();
         const root = document.getElementById('bakemono-workbench-root');
         root?.querySelectorAll('.bakemono-memory-prompt-hint.is-open').forEach(hint => {
             if (hint !== this) {
@@ -8186,7 +8191,7 @@ function bindSettingsEvents() {
         this.classList.toggle('is-open');
     });
     $('#bakemono-workbench-root').off('click.bakemonoHintClose').on('click.bakemonoHintClose', function (event) {
-        if (event.target.closest('.bakemono-memory-card-panel > h4 + .bakemono-memory-prompt-hint, .bakemono-memory-card-panel > h4 > .bakemono-memory-prompt-hint')) {
+        if (event.target.closest(hintSelector)) {
             return;
         }
         this.querySelectorAll('.bakemono-memory-prompt-hint.is-open').forEach(hint => hint.classList.remove('is-open'));
