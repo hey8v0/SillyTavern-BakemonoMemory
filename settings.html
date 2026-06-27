@@ -322,25 +322,42 @@
         <div id="bakemono-memory-memory-warning" class="bakemono-memory-status-line">等待扫描。</div>
 
         <details class="bakemono-memory-card-panel bakemono-memory-range-panel">
-          <summary><i class="fa-solid fa-box-archive"></i><span>楼层收纳（高级）</span></summary>
+          <summary><i class="fa-solid fa-box-archive"></i><span>楼层收纳</span></summary>
+          <div class="bakemono-memory-prompt-hint">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>开启自动收纳后，插件会像隐藏助手一样持续只保留最近 N 楼正文；手动范围隐藏/恢复仍然可用。</span>
+          </div>
           <label class="bakemono-memory-editor">
             <span>楼层范围</span>
             <textarea id="bakemono-memory-range-input" class="text_pole textarea_compact" rows="2" placeholder="例如：1-700, 720, 735-760" spellcheck="false"></textarea>
           </label>
           <div class="bakemono-memory-table-create">
+            <label class="checkbox_label bakemono-memory-switch">
+              <input type="checkbox" id="bakemono-memory-auto-hide-enabled">
+              <span>自动只保留最近正文</span>
+            </label>
             <label class="bakemono-memory-field">
               <span>只保留最近正文楼数</span>
-              <input id="bakemono-memory-preserve-recent-input" class="text_pole" type="number" min="0" step="1" value="2">
+              <input id="bakemono-memory-preserve-recent-input" class="text_pole" type="number" min="0" step="1" value="5">
             </label>
+            <button class="menu_button" data-bakemono-action="apply-auto-hide-recent">
+              <i class="fa-solid fa-floppy-disk"></i>
+              <span>应用自动收纳</span>
+            </button>
             <button class="menu_button" data-bakemono-action="preview-preserve-recent">
               <i class="fa-solid fa-list-check"></i>
               <span>预览保留</span>
             </button>
             <button class="menu_button danger_button" data-bakemono-action="hide-before-recent">
               <i class="fa-solid fa-box-archive"></i>
-              <span>只保留最近</span>
+              <span>立即整理一次</span>
+            </button>
+            <button class="menu_button" data-bakemono-action="restore-auto-hidden">
+              <i class="fa-solid fa-eye"></i>
+              <span>恢复自动收纳楼层</span>
             </button>
           </div>
+          <div id="bakemono-memory-auto-hide-status" class="bakemono-memory-status-line">自动收纳未开启。</div>
           <div class="bakemono-memory-inline-actions">
             <button class="menu_button" data-bakemono-action="preview-range">
               <i class="fa-solid fa-list-check"></i>
@@ -1196,6 +1213,14 @@
                 <option value="message">楼层召回：注入命中楼层正文</option>
                 <option value="chunk">片段召回：只注入命中片段</option>
               </select>
+            </label>
+            <label class="bakemono-memory-field">
+              <span>最多索引最近楼数</span>
+              <input id="bakemono-memory-vector-max-indexed-messages" class="text_pole" type="number" min="0" step="50">
+            </label>
+            <label class="bakemono-memory-field">
+              <span>索引保存文本上限</span>
+              <input id="bakemono-memory-vector-max-stored-text-chars" class="text_pole" type="number" min="240" step="100">
             </label>
           </div>
 

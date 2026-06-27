@@ -601,11 +601,14 @@ const defaultGenerationTargets = {
 const defaultVectorMemory = {
     enabled: false,
     includeHidden: true,
-    indexMode: 'hybrid',
+    indexMode: 'message',
     injectMode: 'message',
     chunkSize: 900,
     overlap: 120,
     longMessageThreshold: 1800,
+    maxIndexedMessages: 300,
+    maxStoredTextChars: 1200,
+    embeddingDimensions: 128,
     topK: 5,
     maxRecallMessages: 3,
     maxPerMessage: 1,
@@ -654,6 +657,12 @@ const defaultState = {
     coveredStageHashes: [],
     hiddenMessageIds: [],
     customHiddenMessageIds: [],
+    autoHideRecent: {
+        enabled: false,
+        preserveRecent: 5,
+        managedMessageIds: [],
+        lastRunAt: null,
+    },
     memoryStrategy: memoryStrategies.BAKEMONO,
     workflowMode: workflowModes.BAKEMONO,
     stageSourceMode: stageSourceModes.SUMMARIES,
@@ -725,6 +734,8 @@ let isBusy = false;
 let isQueueRunning = false;
 let vectorIndexTimer = null;
 let inlineCaptureTimer = null;
+let autoHideRecentTimer = null;
+const vectorEmbeddingRuntimeCache = new Map();
 const previewPageSize = 8;
 const historyPageSize = 10;
 const timelinePageSize = 25;
@@ -976,6 +987,16 @@ function ensureState() {
     state.coveredStageHashes = Array.isArray(state.coveredStageHashes) ? state.coveredStageHashes : [];
     state.hiddenMessageIds = Array.isArray(state.hiddenMessageIds) ? state.hiddenMessageIds : [];
     state.customHiddenMessageIds = Array.isArray(state.customHiddenMessageIds) ? state.customHiddenMessageIds : [];
+    state.autoHideRecent = state.autoHideRecent && typeof state.autoHideRecent === 'object'
+        ? state.autoHideRecent
+        : structuredClone(defaultState.autoHideRecent);
+    for (const [key, value] of Object.entries(defaultState.autoHideRecent)) {
+        if (state.autoHideRecent[key] === undefined) {
+            state.autoHideRecent[key] = structuredClone(value);
+        }
+    }
+    state.autoHideRecent.preserveRecent = Math.max(0, Number(state.autoHideRecent.preserveRecent ?? defaultState.autoHideRecent.preserveRecent));
+    state.autoHideRecent.managedMessageIds = getFiniteMessageIds(state.autoHideRecent.managedMessageIds || []);
     if (!Object.values(memoryStrategies).includes(state.memoryStrategy)) {
         state.memoryStrategy = memoryStrategies.BAKEMONO;
     }
@@ -1146,7 +1167,65 @@ function confirmDanger(title, lines = [], confirmText = '确认继续吗？') {
     ].join('\n'));
 }
 
+function compactEmbedding(values = [], dimensions = defaultVectorMemory.embeddingDimensions) {
+    const source = Array.isArray(values) ? values.map(Number).filter(Number.isFinite) : [];
+    const targetSize = Math.max(32, Math.min(384, Number(dimensions || defaultVectorMemory.embeddingDimensions)));
+    if (!source.length) {
+        return [];
+    }
+    if (source.length <= targetSize) {
+        return source.map(value => Number(value.toFixed(4)));
+    }
+    const compact = [];
+    for (let index = 0; index < targetSize; index++) {
+        const start = Math.floor(index * source.length / targetSize);
+        const end = Math.max(start + 1, Math.floor((index + 1) * source.length / targetSize));
+        const slice = source.slice(start, end);
+        const average = slice.reduce((sum, value) => sum + value, 0) / slice.length;
+        compact.push(Number(average.toFixed(4)));
+    }
+    return compact;
+}
+
+function pruneVectorRuntimeCache(limit = 120) {
+    while (vectorEmbeddingRuntimeCache.size > limit) {
+        const firstKey = vectorEmbeddingRuntimeCache.keys().next().value;
+        vectorEmbeddingRuntimeCache.delete(firstKey);
+    }
+}
+
+function getClippedVectorText(value, limit = defaultVectorMemory.maxStoredTextChars) {
+    const text = String(value || '');
+    const max = Math.max(240, Number(limit || defaultVectorMemory.maxStoredTextChars));
+    return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function slimVectorMemoryForSave(vectorMemory = null) {
+    if (!vectorMemory || typeof vectorMemory !== 'object') {
+        return;
+    }
+    const dimensions = Math.max(32, Number(vectorMemory.embeddingDimensions || defaultVectorMemory.embeddingDimensions));
+    const textLimit = Math.max(240, Number(vectorMemory.maxStoredTextChars || defaultVectorMemory.maxStoredTextChars));
+    vectorMemory.embeddingCache = {};
+    vectorMemory.records = Array.isArray(vectorMemory.records)
+        ? vectorMemory.records.map(record => ({
+            ...record,
+            text: getClippedVectorText(record.text, textLimit),
+            matchedText: getClippedVectorText(record.matchedText, Math.min(textLimit, 480)),
+            embedding: compactEmbedding(record.embedding, dimensions),
+        }))
+        : [];
+    vectorMemory.lastHits = Array.isArray(vectorMemory.lastHits)
+        ? vectorMemory.lastHits.map(hit => ({
+            ...hit,
+            text: getClippedVectorText(hit.text, Math.max(textLimit, Number(vectorMemory.perMessageMaxChars || defaultVectorMemory.perMessageMaxChars))),
+            matchedText: getClippedVectorText(hit.matchedText, Math.min(textLimit, 480)),
+        }))
+        : [];
+}
+
 function saveState() {
+    slimVectorMemoryForSave(chat_metadata?.[STORAGE_KEY]?.vectorMemory);
     saveMetadataDebounced();
 }
 
@@ -1987,13 +2066,15 @@ function getVectorSourceMessages(state = ensureState()) {
     const context = getContext();
     const sourceChat = context.chat || chat || [];
     const excludeTags = parseList(state.vectorMemory.excludeTags || defaultVectorMemory.excludeTags);
-    return sourceChat
+    const maxIndexedMessages = Math.max(0, Number(state.vectorMemory.maxIndexedMessages ?? defaultVectorMemory.maxIndexedMessages));
+    const items = sourceChat
         .map((message, messageId) => ({
             message,
             messageId,
             cleanedText: stripConfiguredTags(message?.mes || '', excludeTags).trim(),
         }))
         .filter(({ message }) => message?.mes && (state.vectorMemory.includeHidden !== false || !message.is_system));
+    return maxIndexedMessages > 0 ? items.slice(-maxIndexedMessages) : items;
 }
 
 function getVectorCleanedMessageText(messageId, state = ensureState()) {
@@ -2062,21 +2143,23 @@ function scheduleVectorAutoIndex(reason = 'auto') {
 async function getEmbeddingForText(text, state = ensureState()) {
     const source = String(text || '');
     const cacheKey = `${state.vectorMemory.embeddingProvider || 'local'}:${state.vectorMemory.customApi?.model || ''}:${getHash(source)}`;
-    state.vectorMemory.embeddingCache = state.vectorMemory.embeddingCache && typeof state.vectorMemory.embeddingCache === 'object' ? state.vectorMemory.embeddingCache : {};
-    if (Array.isArray(state.vectorMemory.embeddingCache[cacheKey])) {
-        return state.vectorMemory.embeddingCache[cacheKey];
+    if (Array.isArray(vectorEmbeddingRuntimeCache.get(cacheKey))) {
+        return vectorEmbeddingRuntimeCache.get(cacheKey);
     }
+    const dimensions = Math.max(32, Number(state.vectorMemory.embeddingDimensions || defaultVectorMemory.embeddingDimensions));
     if (state.vectorMemory.embeddingProvider === 'custom-openai') {
         try {
-            const embedding = await fetchCustomEmbedding(source, state);
-            state.vectorMemory.embeddingCache[cacheKey] = embedding;
+            const embedding = compactEmbedding(await fetchCustomEmbedding(source, state), dimensions);
+            vectorEmbeddingRuntimeCache.set(cacheKey, embedding);
+            pruneVectorRuntimeCache();
             return embedding;
         } catch (error) {
             console.warn('[BakemonoMemory] custom embedding failed, fallback to local', error);
         }
     }
-    const embedding = createLocalEmbedding(source);
-    state.vectorMemory.embeddingCache[cacheKey] = embedding;
+    const embedding = compactEmbedding(createLocalEmbedding(source, dimensions), dimensions);
+    vectorEmbeddingRuntimeCache.set(cacheKey, embedding);
+    pruneVectorRuntimeCache();
     return embedding;
 }
 
@@ -2172,6 +2255,7 @@ async function buildVectorMemoryIndex({ silent = false } = {}) {
     }
 
     state.vectorMemory.records = records;
+    state.vectorMemory.embeddingCache = {};
     state.vectorMemory.lastIndexAt = new Date().toISOString();
     state.vectorMemory.lastIndexedSignature = signature;
     state.vectorMemory.dirty = false;
@@ -2194,7 +2278,7 @@ function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState()) {
     if (!queryText.trim()) {
         return [];
     }
-    const queryEmbedding = createLocalEmbedding(queryText);
+    const queryEmbedding = compactEmbedding(createLocalEmbedding(queryText, Math.max(32, Number(state.vectorMemory.embeddingDimensions || defaultVectorMemory.embeddingDimensions))), state.vectorMemory.embeddingDimensions || defaultVectorMemory.embeddingDimensions);
     const keywords = parseList(state.vectorMemory.keywordTriggers);
     const keywordBoost = Number(state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost);
     const minScore = Number(state.vectorMemory.minScore ?? defaultVectorMemory.minScore);
@@ -2264,6 +2348,8 @@ function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState()) {
             });
     }
     state.vectorMemory.lastQuery = queryText;
+    const textLimit = Math.max(240, Number(state.vectorMemory.maxStoredTextChars || defaultVectorMemory.maxStoredTextChars));
+    const hitTextLimit = Math.max(textLimit, Number(state.vectorMemory.perMessageMaxChars || defaultVectorMemory.perMessageMaxChars));
     state.vectorMemory.lastHits = hits.map(hit => ({
         id: hit.id,
         kind: hit.kind || 'chunk',
@@ -2272,8 +2358,8 @@ function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState()) {
         role: hit.role,
         isHidden: hit.isHidden,
         title: hit.title,
-        text: hit.text,
-        matchedText: hit.matchedText || '',
+        text: getClippedVectorText(hit.text, hitTextLimit),
+        matchedText: getClippedVectorText(hit.matchedText || '', Math.min(textLimit, 480)),
         matchedChunks: hit.matchedChunks || 1,
         preview: hit.preview,
         score: Number(hit.score.toFixed(4)),
@@ -5552,6 +5638,26 @@ function getHideBeforeRecentIds(preserveRecent = 2) {
     return visibleIds.slice(0, cutoffPosition);
 }
 
+function readAutoHideRecentFieldsFromUi(state = ensureState()) {
+    if (!$('#bakemono-memory-preserve-recent-input').length) {
+        return state;
+    }
+    state.autoHideRecent.enabled = $('#bakemono-memory-auto-hide-enabled').prop('checked');
+    const preserveValue = $('#bakemono-memory-preserve-recent-input').val();
+    state.autoHideRecent.preserveRecent = Math.max(0, Number(preserveValue === '' ? defaultState.autoHideRecent.preserveRecent : preserveValue));
+    return state;
+}
+
+function renderAutoHideRecentPanel(state = ensureState()) {
+    $('#bakemono-memory-auto-hide-enabled').prop('checked', !!state.autoHideRecent.enabled);
+    $('#bakemono-memory-preserve-recent-input').val(state.autoHideRecent.preserveRecent ?? defaultState.autoHideRecent.preserveRecent);
+    const managedCount = getFiniteMessageIds(state.autoHideRecent.managedMessageIds || []).length;
+    const status = state.autoHideRecent.enabled
+        ? `自动收纳已开启：保留最近 ${state.autoHideRecent.preserveRecent} 楼正文，已管理 ${managedCount} 楼。${state.autoHideRecent.lastRunAt ? `上次整理：${new Date(state.autoHideRecent.lastRunAt).toLocaleString()}` : ''}`
+        : `自动收纳未开启。已管理 ${managedCount} 楼，可点击“恢复自动收纳楼层”恢复。`;
+    $('#bakemono-memory-auto-hide-status').text(status);
+}
+
 function previewPreserveRecentMessages() {
     const preserve = Math.max(0, Number($('#bakemono-memory-preserve-recent-input').val() || 0));
     const ids = getHideBeforeRecentIds(preserve);
@@ -5562,19 +5668,26 @@ function previewPreserveRecentMessages() {
     renderAll(text);
 }
 
-async function hideBeforeRecentMessages() {
+async function hideBeforeRecentMessages({ silent = false, fromAuto = false } = {}) {
     const state = ensureState();
-    const preserve = Math.max(0, Number($('#bakemono-memory-preserve-recent-input').val() || 0));
+    if (!fromAuto) {
+        readAutoHideRecentFieldsFromUi(state);
+    }
+    const fallbackPreserve = $('#bakemono-memory-preserve-recent-input').val();
+    const preserve = Math.max(0, Number(state.autoHideRecent?.preserveRecent ?? fallbackPreserve ?? 0));
     const ids = getHideBeforeRecentIds(preserve);
     if (!ids.length) {
         const text = `无需隐藏：当前可见正文不超过 ${preserve} 楼。`;
         $('#bakemono-memory-range-preview').text(text);
-        toastr.info(text);
+        if (!silent) {
+            toastr.info(text);
+            renderAll(text);
+        }
         return;
     }
     const coveredIds = getSummaryCoveredMessageIds();
     const uncovered = ids.filter(id => !coveredIds.has(id));
-    const confirmed = window.confirm([
+    const confirmed = fromAuto || window.confirm([
         `只保留最近 ${preserve} 楼正文？`,
         `将隐藏更早的 ${ids.length} 楼，范围约 ${ids[0]}-${ids.at(-1)}。`,
         uncovered.length ? `其中 ${uncovered.length} 楼没有已保存摘要覆盖，可能导致模型遗忘。` : '这些楼层已有摘要覆盖。',
@@ -5588,11 +5701,80 @@ async function hideBeforeRecentMessages() {
         await hideChatMessageRange(id, id, false);
     }
     state.hiddenMessageIds = unique([...state.hiddenMessageIds, ...ids]);
-    state.customHiddenMessageIds = unique([...state.customHiddenMessageIds, ...ids]);
+    if (fromAuto) {
+        state.autoHideRecent.managedMessageIds = unique([...(state.autoHideRecent.managedMessageIds || []), ...ids]);
+        state.autoHideRecent.lastRunAt = new Date().toISOString();
+    } else {
+        state.customHiddenMessageIds = unique([...state.customHiddenMessageIds, ...ids]);
+    }
     await saveChatConditional();
     saveState();
     scanBakemonoBlocks({ persist: false });
     const text = `已隐藏 ${ids.length} 楼，只保留最近 ${preserve} 楼正文。`;
+    $('#bakemono-memory-range-preview').text(text);
+    if (!silent) {
+        renderAll(text);
+        toastr.success(text);
+    } else {
+        renderAutoHideRecentPanel(state);
+    }
+}
+
+async function applyAutoHideRecentSettings() {
+    const state = ensureState();
+    readAutoHideRecentFieldsFromUi(state);
+    saveState();
+    if (!state.autoHideRecent.enabled) {
+        renderAll('自动收纳已关闭。');
+        toastr.info('自动收纳已关闭。');
+        return;
+    }
+    await hideBeforeRecentMessages({ fromAuto: true });
+}
+
+function scheduleAutoHideRecent(reason = 'auto') {
+    const state = ensureState();
+    if (!state.autoHideRecent?.enabled) {
+        return;
+    }
+    clearTimeout(autoHideRecentTimer);
+    autoHideRecentTimer = setTimeout(async () => {
+        try {
+            await hideBeforeRecentMessages({ silent: true, fromAuto: true, reason });
+        } catch (error) {
+            console.warn('[BakemonoMemory] auto hide recent failed', error);
+            toastr.warning(`自动收纳失败：${error?.message || error}`);
+        }
+    }, 900);
+}
+
+async function restoreAutoHiddenMessages() {
+    const state = ensureState();
+    const ids = getFiniteMessageIds(state.autoHideRecent?.managedMessageIds || []);
+    if (!ids.length) {
+        toastr.info('没有由自动收纳隐藏的楼层。');
+        return;
+    }
+    const confirmed = window.confirm([
+        `恢复自动收纳隐藏的 ${ids.length} 楼？`,
+        `范围约 ${ids[0]}-${ids.at(-1)}。`,
+        '',
+        '确认继续吗？',
+    ].join('\n'));
+    if (!confirmed) {
+        return;
+    }
+    for (const id of ids) {
+        await hideChatMessageRange(id, id, true);
+    }
+    state.hiddenMessageIds = state.hiddenMessageIds.filter(id => !ids.includes(id));
+    state.autoHideRecent.enabled = false;
+    state.autoHideRecent.managedMessageIds = [];
+    state.autoHideRecent.lastRunAt = null;
+    await saveChatConditional();
+    saveState();
+    scanBakemonoBlocks({ persist: false });
+    const text = `已恢复自动收纳隐藏的 ${ids.length} 楼。`;
     $('#bakemono-memory-range-preview').text(text);
     renderAll(text);
     toastr.success(text);
@@ -6384,6 +6566,7 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-strategy-label').text(getMemoryStrategyLabel(state.memoryStrategy));
     $('#bakemono-memory-workflow-label').text(`${getWorkflowModeLabel(state.workflowMode)} / ${getStageSourceModeLabel(getStageSourceMode(state))}`);
     renderWorkflowGuide(state);
+    renderAutoHideRecentPanel(state);
     renderMemoryDatabaseSummary(state);
     const injectionParts = getInjectionMemoryParts(state);
     $('#bakemono-memory-injection-stats').text(`注入：多次 ${injectionParts.stats.epic} / 阶段 ${injectionParts.stats.stage} / 普通 ${injectionParts.stats.story} / 表格 ${injectionParts.stats.table || 0} / 向量 ${injectionParts.stats.vector || 0}`);
@@ -6544,6 +6727,8 @@ function renderVectorMemoryPanel(state = ensureState()) {
     $('#bakemono-memory-vector-include-hidden').prop('checked', state.vectorMemory.includeHidden !== false);
     $('#bakemono-memory-vector-index-mode').val(state.vectorMemory.indexMode || defaultVectorMemory.indexMode);
     $('#bakemono-memory-vector-inject-mode').val(state.vectorMemory.injectMode || defaultVectorMemory.injectMode);
+    $('#bakemono-memory-vector-max-indexed-messages').val(state.vectorMemory.maxIndexedMessages ?? defaultVectorMemory.maxIndexedMessages);
+    $('#bakemono-memory-vector-max-stored-text-chars').val(state.vectorMemory.maxStoredTextChars ?? defaultVectorMemory.maxStoredTextChars);
     $('#bakemono-memory-vector-chunk-size').val(state.vectorMemory.chunkSize ?? defaultVectorMemory.chunkSize);
     $('#bakemono-memory-vector-overlap').val(state.vectorMemory.overlap ?? defaultVectorMemory.overlap);
     $('#bakemono-memory-vector-long-message-threshold').val(state.vectorMemory.longMessageThreshold ?? defaultVectorMemory.longMessageThreshold);
@@ -6564,7 +6749,8 @@ function renderVectorMemoryPanel(state = ensureState()) {
     $('#bakemono-memory-vector-model').val(state.vectorMemory.customApi?.model || defaultVectorMemory.customApi.model);
     renderVectorModelOptions(state.vectorMemory.customApi?.models || []);
     const messageRecordCount = unique((state.vectorMemory.records || []).map(record => String(record.messageId))).length;
-    $('#bakemono-memory-vector-stats').text(`索引 ${messageRecordCount} 楼 / ${state.vectorMemory.records.length} 条记录 / 召回 ${state.vectorMemory.lastHits.length} 楼或片段 / 预计 ${state.vectorMemory.estimatedChars || 0} 字 / 裁剪 ${state.vectorMemory.trimmedHitCount || 0} 个 / ${state.vectorMemory.dirty ? `待刷新：${state.vectorMemory.dirtyReason || '有变更'}` : state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '尚未建索引'}`);
+    const maxIndexed = Number(state.vectorMemory.maxIndexedMessages || 0);
+    $('#bakemono-memory-vector-stats').text(`索引 ${messageRecordCount} 楼 / ${state.vectorMemory.records.length} 条记录 / 召回 ${state.vectorMemory.lastHits.length} 楼或片段 / 预计 ${state.vectorMemory.estimatedChars || 0} 字 / 裁剪 ${state.vectorMemory.trimmedHitCount || 0} 个 / ${maxIndexed > 0 ? `最多索引最近 ${maxIndexed} 楼 / ` : ''}${state.vectorMemory.dirty ? `待刷新：${state.vectorMemory.dirtyReason || '有变更'}` : state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '尚未建索引'}`);
     $('#bakemono-memory-vector-query-preview').val(state.vectorMemory.lastQuery || getVectorQueryText(state));
     renderVectorHitList();
     renderVectorRecordList();
@@ -7195,7 +7381,7 @@ function readVectorMemoryFieldsFromUi(state = ensureState()) {
     }
     const previousRecords = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records : [];
     const previousHits = Array.isArray(state.vectorMemory?.lastHits) ? state.vectorMemory.lastHits : [];
-    const previousCache = state.vectorMemory?.embeddingCache && typeof state.vectorMemory.embeddingCache === 'object' ? state.vectorMemory.embeddingCache : {};
+    const previousCache = {};
     state.vectorMemory = {
         ...structuredClone(defaultVectorMemory),
         ...(state.vectorMemory || {}),
@@ -7204,6 +7390,9 @@ function readVectorMemoryFieldsFromUi(state = ensureState()) {
         includeHidden: $('#bakemono-memory-vector-include-hidden').prop('checked'),
         indexMode: String($('#bakemono-memory-vector-index-mode').val() || defaultVectorMemory.indexMode),
         injectMode: String($('#bakemono-memory-vector-inject-mode').val() || defaultVectorMemory.injectMode),
+        maxIndexedMessages: Math.max(0, Number($('#bakemono-memory-vector-max-indexed-messages').val() === '' ? defaultVectorMemory.maxIndexedMessages : $('#bakemono-memory-vector-max-indexed-messages').val())),
+        maxStoredTextChars: Math.max(240, Number($('#bakemono-memory-vector-max-stored-text-chars').val() || defaultVectorMemory.maxStoredTextChars)),
+        embeddingDimensions: Math.max(32, Number(state.vectorMemory?.embeddingDimensions || defaultVectorMemory.embeddingDimensions)),
         chunkSize: Math.max(240, Number($('#bakemono-memory-vector-chunk-size').val() || defaultVectorMemory.chunkSize)),
         overlap: Math.max(0, Number($('#bakemono-memory-vector-overlap').val() || defaultVectorMemory.overlap)),
         longMessageThreshold: Math.max(240, Number($('#bakemono-memory-vector-long-message-threshold').val() || defaultVectorMemory.longMessageThreshold)),
@@ -8144,6 +8333,10 @@ async function runWorkbenchAction(action) {
         previewPreserveRecentMessages();
     } else if (action === 'hide-before-recent') {
         await hideBeforeRecentMessages();
+    } else if (action === 'apply-auto-hide-recent') {
+        await applyAutoHideRecentSettings();
+    } else if (action === 'restore-auto-hidden') {
+        await restoreAutoHiddenMessages();
     } else if (action === 'vector-apply') {
         applyVectorMemorySettings();
     } else if (action === 'vector-index') {
@@ -9282,8 +9475,11 @@ async function init() {
         }
     }
 
+    scheduleAutoHideRecent('init');
+
     eventSource.on(event_types.CHAT_CHANGED, () => {
         ensureState();
+        scheduleAutoHideRecent('chat changed');
         markVectorIndexDirty('切换聊天');
         syncInjection();
         renderAll();
@@ -9293,6 +9489,7 @@ async function init() {
         scheduleInlineGenerationCapture('收到新回复');
         await maybeRunTurnSummary();
         await maybeRunAutoSummary();
+        scheduleAutoHideRecent('message received');
         markVectorIndexDirty('收到新消息');
         syncInjection();
         renderAll();
@@ -9302,6 +9499,7 @@ async function init() {
             const eventMessageIds = collectMessageIdsFromEventArgs(args);
             const fallbackTurn = findLatestAssistantTurn();
             const messageIds = eventMessageIds.length ? eventMessageIds : getFiniteMessageIds([fallbackTurn?.assistantMessage?.messageId]);
+            scheduleAutoHideRecent('message changed');
             if (event !== event_types.MESSAGE_DELETED) {
                 rollbackLatestTableOperationForChangedMessages(messageIds, ensureState());
                 const state = ensureState();
