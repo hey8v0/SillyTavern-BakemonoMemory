@@ -773,6 +773,12 @@ function ensureGlobalSettings() {
         extension_settings[STORAGE_KEY] = {};
     }
     const settings = extension_settings[STORAGE_KEY];
+    if (!settings.ui || typeof settings.ui !== 'object') {
+        settings.ui = {};
+    }
+    if (settings.ui.showTopNavButton === undefined) {
+        settings.ui.showTopNavButton = false;
+    }
     if (!Array.isArray(extension_settings[STORAGE_KEY].promptPresets)) {
         extension_settings[STORAGE_KEY].promptPresets = [structuredClone(defaultPromptPreset), structuredClone(defaultGenericPromptPreset)];
     }
@@ -8437,6 +8443,15 @@ async function runWorkbenchAction(action) {
 function bindSettingsEvents() {
     window.removeEventListener('resize', syncMobileCollapsibles);
     window.addEventListener('resize', syncMobileCollapsibles);
+    $('#bakemono-memory-extension-open').off('click').on('click', () => openWorkbench());
+    $('#bakemono-memory-show-top-nav').off('change').on('change', function () {
+        const settings = extension_settings[STORAGE_KEY];
+        settings.ui = settings.ui || {};
+        settings.ui.showTopNavButton = !!this.checked;
+        saveSettingsDebounced();
+        renderExtensionEntrySettings();
+        syncTopNavButton();
+    });
     $('#bakemono-memory-close, [data-bakemono-close]').off('click').on('click', () => closeWorkbench());
     $('#bakemono-memory-menu-toggle').off('click').on('click', () => {
         const root = document.getElementById('bakemono-workbench-root');
@@ -9501,10 +9516,53 @@ async function initWorkbench() {
 
     document.getElementById('bakemono-workbench-root')?.remove();
     $('body').append(await response.text());
+    await addExtensionSettingsBlock();
     await addWandButton();
+    syncTopNavButton();
     bindSettingsEvents();
     switchWorkbenchTab('overview');
     renderAll();
+}
+
+async function addExtensionSettingsBlock() {
+    const container = document.getElementById('extensions_settings') || document.getElementById('extensions_settings2');
+    if (!container) {
+        return;
+    }
+
+    document.getElementById('bakemono-memory-extension-settings')?.remove();
+
+    const wrapper = document.createElement('div');
+    wrapper.id = 'bakemono-memory-extension-settings';
+    wrapper.className = 'extension_container bakemono-memory-extension-settings';
+    wrapper.innerHTML = `
+        <div class="inline-drawer">
+            <div class="inline-drawer-toggle inline-drawer-header">
+                <b><i class="fa-solid fa-clapperboard"></i> 剧情剪辑台</b>
+                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+            </div>
+            <div class="inline-drawer-content">
+                <div class="bakemono-memory-extension-entry">
+                    <button type="button" class="menu_button menu_button_icon" id="bakemono-memory-extension-open">
+                        <i class="fa-solid fa-clapperboard"></i>
+                        <span>打开剧情剪辑台</span>
+                    </button>
+                    <label class="checkbox_label" for="bakemono-memory-show-top-nav">
+                        <input id="bakemono-memory-show-top-nav" type="checkbox" class="checkbox">
+                        <span>在顶部导航栏显示入口按钮</span>
+                    </label>
+                    <small>如果当前酒馆美化和顶部栏不兼容，可以关闭这个入口，继续用左下角魔法棒进入。</small>
+                </div>
+            </div>
+        </div>
+    `;
+    container.append(wrapper);
+    renderExtensionEntrySettings();
+}
+
+function renderExtensionEntrySettings() {
+    const settings = extension_settings[STORAGE_KEY] || {};
+    $('#bakemono-memory-show-top-nav').prop('checked', !!settings.ui?.showTopNavButton);
 }
 
 async function addWandButton() {
@@ -9526,6 +9584,48 @@ async function addWandButton() {
     button.append(icon, text);
     button.addEventListener('click', () => openWorkbench());
     menu.append(button);
+}
+
+function syncTopNavButton() {
+    const settings = extension_settings[STORAGE_KEY] || {};
+    const shouldShow = !!settings.ui?.showTopNavButton;
+    const existing = document.getElementById('bakemono-memory-top-nav-entry');
+    if (!shouldShow) {
+        existing?.remove();
+        return;
+    }
+    if (existing) {
+        return;
+    }
+
+    const holder = document.getElementById('top-settings-holder') || document.getElementById('top-bar');
+    if (!holder) {
+        return;
+    }
+
+    const entry = document.createElement('div');
+    entry.id = 'bakemono-memory-top-nav-entry';
+    entry.className = 'drawer bakemono-memory-top-nav-entry';
+    entry.innerHTML = `
+        <div class="drawer-toggle bakemono-memory-top-nav-toggle">
+            <div id="bakemono-memory-top-nav-button"
+                class="drawer-icon fa-solid fa-clapperboard fa-fw closedIcon bakemono-memory-top-nav-button"
+                title="剧情剪辑台"
+                aria-label="打开剧情剪辑台"></div>
+        </div>
+    `;
+    entry.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openWorkbench();
+    });
+
+    const anchor = document.getElementById('extensions-settings-button');
+    if (anchor?.parentElement === holder) {
+        anchor.insertAdjacentElement('afterend', entry);
+    } else {
+        holder.append(entry);
+    }
 }
 
 function openWorkbench() {

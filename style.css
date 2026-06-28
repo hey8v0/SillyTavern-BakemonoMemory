@@ -2,6 +2,41 @@
   align-items: center;
 }
 
+.bakemono-memory-extension-settings .inline-drawer-header b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bakemono-memory-extension-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.bakemono-memory-extension-entry .menu_button {
+  justify-content: center;
+}
+
+.bakemono-memory-extension-entry small {
+  color: var(--SmartThemeQuoteColor);
+  line-height: 1.5;
+}
+
+.bakemono-memory-top-nav-entry {
+  min-width: 0;
+}
+
+#bakemono-memory-top-nav-button.bakemono-memory-top-nav-button {
+  color: var(--SmartThemeBodyColor);
+}
+
+#bakemono-memory-top-nav-button.bakemono-memory-top-nav-button:hover,
+#bakemono-memory-top-nav-entry:hover #bakemono-memory-top-nav-button {
+  opacity: 1;
+}
+
 .bakemono-workbench-root {
   position: fixed;
   inset: 0;
