@@ -1810,6 +1810,58 @@
   margin-top: 12px;
 }
 
+.bakemono-memory-auto-archive-main {
+  display: grid;
+  gap: 12px;
+}
+
+.bakemono-memory-auto-archive-switch {
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px dashed var(--bk-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+}
+
+.bakemono-memory-auto-hide-options {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed var(--bk-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.bakemono-memory-auto-hide-options[hidden] {
+  display: none;
+}
+
+.bakemono-memory-manual-range-panel {
+  margin-top: 12px;
+  border: 1px dashed var(--bk-line);
+  border-radius: 12px;
+  padding: 8px 10px 10px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+}
+
+.bakemono-memory-manual-range-panel > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+}
+
+.bakemono-memory-manual-range-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bakemono-memory-manual-range-panel:not([open]) {
+  padding-bottom: 8px;
+}
+
 .bakemono-memory-notebook {
   margin: 0 0 12px;
 }

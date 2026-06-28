@@ -5672,6 +5672,7 @@ function readAutoHideRecentFieldsFromUi(state = ensureState()) {
 function renderAutoHideRecentPanel(state = ensureState()) {
     $('#bakemono-memory-auto-hide-enabled').prop('checked', !!state.autoHideRecent.enabled);
     $('#bakemono-memory-preserve-recent-input').val(state.autoHideRecent.preserveRecent ?? defaultState.autoHideRecent.preserveRecent);
+    $('#bakemono-memory-auto-hide-options').prop('hidden', !state.autoHideRecent.enabled);
     const managedCount = getFiniteMessageIds(state.autoHideRecent.managedMessageIds || []).length;
     const status = state.autoHideRecent.enabled
         ? `自动收纳已开启：保留最近 ${state.autoHideRecent.preserveRecent} 楼正文，已管理 ${managedCount} 楼。${state.autoHideRecent.lastRunAt ? `上次整理：${new Date(state.autoHideRecent.lastRunAt).toLocaleString()}` : ''}`
@@ -8490,6 +8491,29 @@ function bindSettingsEvents() {
             console.error('[BakemonoMemory] action failed', error);
             toastr.error(error?.message || String(error), '剧情剪辑台');
             renderAll(`操作失败：${error?.message || error}`);
+        }
+    });
+    $('#bakemono-workbench-root').off('change.bakemonoAutoArchiveToggle').on('change.bakemonoAutoArchiveToggle', '#bakemono-memory-auto-hide-enabled', async function () {
+        try {
+            await applyAutoHideRecentSettings();
+        } catch (error) {
+            console.error('[BakemonoMemory] auto archive toggle failed', error);
+            toastr.error(error?.message || String(error), '剧情剪辑台');
+        }
+    });
+    $('#bakemono-workbench-root').off('change.bakemonoAutoArchiveCount').on('change.bakemonoAutoArchiveCount', '#bakemono-memory-preserve-recent-input', async function () {
+        const state = ensureState();
+        readAutoHideRecentFieldsFromUi(state);
+        saveState();
+        if (!state.autoHideRecent.enabled) {
+            renderAutoHideRecentPanel(state);
+            return;
+        }
+        try {
+            await applyAutoHideRecentBalance({ silent: false });
+        } catch (error) {
+            console.error('[BakemonoMemory] auto archive count failed', error);
+            toastr.error(error?.message || String(error), '剧情剪辑台');
         }
     });
     $('#bakemono-workbench-root').off('click.bakemonoWorkflow').on('click.bakemonoWorkflow', '[data-bakemono-workflow-preset]', function () {
