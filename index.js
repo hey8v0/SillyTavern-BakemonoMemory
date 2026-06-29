@@ -234,21 +234,21 @@ const defaultClassificationRules = {
 };
 
 const defaultPreviewLayouts = {
-    story: `🎬 场记|场记打板|normal
-🎙️ 收音|高光收音|normal
-🌍 监视|副镜监视器|normal
-🪢 暗线|剧本暗线|tag
-💡 墙外|第四面墙|bubble`,
-    stage: `🎞️ 长焦|剧情长焦|normal
-🎭 进化|角色进化录|normal
-🏆 金句|金句名人堂|bubble
-🗃️ 谜题|未解之谜|tag
-👾 墙外|第四面墙·终极笔记|bubble`,
-    epic: `📜 时间线|时间线总览,事件断代史|normal
-🔗 锚点|关键锚点,命运锚点|tag
-🦋 角色|角色状态,灵魂蝶变|normal
-🗃️ 未解|未解事项|tag
-👾 长期笔记|第四面墙·长期笔记,第四面墙·高维观测|bubble`,
+    story: `场记|场记打板|normal
+收音|高光收音|normal
+监视|副镜监视器|normal
+暗线|剧本暗线|tag
+墙外|第四面墙|bubble`,
+    stage: `长焦|剧情长焦|normal
+进化|角色进化录|normal
+金句|金句名人堂|bubble
+谜题|未解之谜|tag
+墙外|第四面墙·终极笔记|bubble`,
+    epic: `时间线|时间线总览,事件断代史|normal
+锚点|关键锚点,命运锚点|tag
+角色|角色状态,灵魂蝶变|normal
+未解|未解事项|tag
+长期笔记|第四面墙·长期笔记,第四面墙·高维观测|bubble`,
 };
 
 const defaultStageGenerationPrompt = `# 👾总结模式！
@@ -485,7 +485,7 @@ const defaultGenericEpicGenerationPrompt = `# 通用全局总结
 
 const defaultPromptPreset = {
     id: 'default-bakemono',
-    name: '默认 Bakemono 手账',
+    name: '默认摘要手账',
     story: defaultStoryGenerationPrompt,
     stage: defaultStageGenerationPrompt,
     epic: defaultEpicGenerationPrompt,
@@ -520,18 +520,18 @@ const defaultGenericPromptPreset = {
         epic: '通用全局总结, 全局回顾, 时间线总览, 决定性转折',
     },
     previewLayouts: {
-        story: `🧭 事件|事件经过|normal
-👥 角色|角色与关系|normal
-💬 话语|关键话语,心理|bubble
-🧩 线索|伏笔与未解事项|tag`,
-        stage: `🧭 脉络|剧情脉络|normal
-👥 变化|角色变化|normal
-🎞️ 场面|关键场面|bubble
-🧩 未解|未解事项|tag`,
-        epic: `🕰️ 时间线|时间线总览|normal
-🔀 转折|决定性转折|tag
-👥 弧光|核心角色弧光|normal
-🧩 线索|长期线索|bubble`,
+        story: `事件|事件经过|normal
+角色|角色与关系|normal
+话语|关键话语,心理|bubble
+线索|伏笔与未解事项|tag`,
+        stage: `脉络|剧情脉络|normal
+变化|角色变化|normal
+场面|关键场面|bubble
+未解|未解事项|tag`,
+        epic: `时间线|时间线总览|normal
+转折|决定性转折|tag
+弧光|核心角色弧光|normal
+线索|长期线索|bubble`,
     },
     automation: {
         enabled: false,
@@ -822,7 +822,7 @@ function ensureGlobalSettings() {
         settings.activeConfig = {
             ...structuredClone(selectedPreset),
             id: selectedPreset.id || defaultPromptPreset.id,
-            name: selectedPreset.name || '默认 Bakemono 手账',
+            name: selectedPreset.name || '默认摘要手账',
             updatedAt: new Date().toISOString(),
         };
     }
@@ -2095,7 +2095,7 @@ function getRecentConversationQuery(maxMessages = 8) {
         .map((message, messageId) => ({ message, messageId }))
         .filter(({ message }) => message?.mes && !message.is_system)
         .slice(-Math.max(1, Number(maxMessages || 8)))
-        .map(({ message, messageId }) => `${message.is_user ? 'User' : 'Assistant'} #${messageId}: ${stripHtml(message.mes || '')}`)
+        .map(({ message, messageId }) => `${message.is_user ? '用户' : '助手'} #${messageId}: ${stripHtml(message.mes || '')}`)
         .join('\n')
         .trim();
 }
@@ -2181,7 +2181,7 @@ async function fetchCustomEmbedding(text, state = ensureState()) {
     const apiKey = String(config.apiKey || '').trim();
     const model = String(config.model || defaultVectorMemory.customApi.model).trim();
     if (!baseUrl || !model) {
-        throw new Error('Embedding API 需要 Base URL 和 Model。');
+        throw new Error('嵌入向量接口需要填写接口地址和模型。');
     }
     const response = await fetch(getCustomEmbeddingsUrl(baseUrl), {
         method: 'POST',
@@ -2192,12 +2192,12 @@ async function fetchCustomEmbedding(text, state = ensureState()) {
         body: JSON.stringify({ model, input: text }),
     });
     if (!response.ok) {
-        throw new Error(`Embedding API 请求失败：${response.status} ${response.statusText}`);
+        throw new Error(`嵌入向量接口请求失败：${response.status} ${response.statusText}`);
     }
     const data = await response.json();
     const embedding = data?.data?.[0]?.embedding;
     if (!Array.isArray(embedding)) {
-        throw new Error('Embedding API 没有返回 embedding。');
+        throw new Error('嵌入向量接口没有返回向量结果。');
     }
     return embedding.map(Number);
 }
@@ -2231,7 +2231,7 @@ async function buildVectorMemoryIndex({ silent = false } = {}) {
                 chunkIndex: 0,
                 role,
                 isHidden: !!message.is_system,
-                title: `${message.is_user ? 'User' : message.is_system ? '隐藏楼层' : 'Assistant'} #${messageId}`,
+                title: `${message.is_user ? '用户' : message.is_system ? '隐藏楼层' : '助手'} #${messageId}`,
                 text: fullText,
                 preview: toPlainPreview(fullText, 180),
                 embedding: await getEmbeddingForText(fullText, state),
@@ -2251,7 +2251,7 @@ async function buildVectorMemoryIndex({ silent = false } = {}) {
                 chunkIndex,
                 role,
                 isHidden: !!message.is_system,
-                title: `${message.is_user ? 'User' : message.is_system ? '隐藏楼层' : 'Assistant'} #${messageId}.${chunkIndex + 1}`,
+                title: `${message.is_user ? '用户' : message.is_system ? '隐藏楼层' : '助手'} #${messageId}.${chunkIndex + 1}`,
                 text,
                 preview: toPlainPreview(text, 180),
                 embedding: await getEmbeddingForText(text, state),
@@ -2347,7 +2347,7 @@ function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState()) {
                     kind: 'message',
                     text: fullText,
                     matchedText: item.text,
-                    title: `${item.role === 'user' ? 'User' : item.isHidden ? '隐藏楼层' : 'Assistant'} #${item.messageId}`,
+                    title: `${item.role === 'user' ? '用户' : item.isHidden ? '隐藏楼层' : '助手'} #${item.messageId}`,
                     preview: toPlainPreview(fullText, 220),
                     keywordHits: item.keywordHitsTotal || item.keywordHits,
                 };
@@ -2457,8 +2457,8 @@ function parsePreviewMeta(block) {
 function getPreviewSummaryText(block) {
     const meta = parsePreviewMeta(block);
     const pieces = [meta.label, meta.title].filter(Boolean);
-    const prefix = block.type === blockTypes.EPIC ? '🕰️' : block.type === blockTypes.STAGE ? '🎞️' : '📋';
-    return `${prefix} ${pieces.join(' · ') || meta.sticker || block.title}`;
+    const prefix = block.type === blockTypes.EPIC ? '多次' : block.type === blockTypes.STAGE ? '阶段' : '摘要';
+    return `${prefix} · ${pieces.join(' · ') || meta.sticker || block.title}`;
 }
 
 function getPreviewTabs(type) {
@@ -3891,7 +3891,7 @@ function buildBackfillBatches() {
             type: blockTypes.STORY,
             messageId,
             blockIndex: 0,
-            title: message.is_user ? `User #${messageId}` : `Assistant #${messageId}`,
+            title: message.is_user ? `用户 #${messageId}` : `助手 #${messageId}`,
             content: text,
             sourceKind: 'raw',
         });
@@ -4059,7 +4059,7 @@ async function callGenerationModel({ prompt, systemPrompt }) {
     const model = String(config.model || '').trim();
     const apiKey = String(config.apiKey || '').trim();
     if (!baseUrl || !model) {
-        throw new Error('自定义 API 需要填写 Base URL 和 Model。');
+        throw new Error('自定义接口需要填写接口地址和模型。');
     }
 
     const stream = !!config.stream;
@@ -4161,7 +4161,7 @@ async function fetchCustomApiModels() {
     const baseUrl = normalizeCustomApiBaseUrl(config.baseUrl);
     const apiKey = String(config.apiKey || '').trim();
     if (!baseUrl) {
-        toastr.warning('请先填写自定义 API 的 Base URL。');
+        toastr.warning('请先填写自定义接口地址。');
         return;
     }
     const toast = toastr.info('正在拉取模型列表...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
@@ -4204,10 +4204,10 @@ async function fetchVectorEmbeddingModels() {
     const baseUrl = normalizeCustomApiBaseUrl(config.baseUrl);
     const apiKey = String(config.apiKey || '').trim();
     if (!baseUrl) {
-        toastr.warning('请先填写 Embedding API 的 Base URL。');
+        toastr.warning('请先填写嵌入向量接口地址。');
         return;
     }
-    const toast = toastr.info('正在拉取 Embedding 模型列表...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
+    const toast = toastr.info('正在拉取嵌入向量模型列表...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
     try {
         const response = await fetch(getCustomModelsUrl(baseUrl), {
             method: 'GET',
@@ -4232,9 +4232,9 @@ async function fetchVectorEmbeddingModels() {
         }
         renderVectorModelOptions(state.vectorMemory.customApi.models);
         saveState();
-        toastr.success(`已拉取 ${state.vectorMemory.customApi.models.length} 个 Embedding 模型。`);
+        toastr.success(`已拉取 ${state.vectorMemory.customApi.models.length} 个嵌入向量模型。`);
     } catch (error) {
-        toastr.error(error?.message || String(error), 'Embedding 模型拉取失败');
+        toastr.error(error?.message || String(error), '嵌入向量模型拉取失败');
     } finally {
         toastr.clear(toast);
     }
@@ -4667,7 +4667,7 @@ function buildLatestTurnBlocks(state = ensureState()) {
             type: blockTypes.STORY,
             messageId: turn.userMessage.messageId,
             blockIndex: 0,
-            title: `User 楼层 ${turn.userMessage.messageId}`,
+            title: `用户楼层 ${turn.userMessage.messageId}`,
             content: stripPostProcessNoise(turn.userMessage.mes || ''),
         });
     }
@@ -4864,7 +4864,7 @@ function buildWorldInfoScanMessages(blocks = []) {
         .map((message, messageId) => ({ message, messageId }))
         .filter(({ message }) => message?.mes && !message.is_system)
         .filter(({ messageId }) => sourceIds.has(messageId) || messageId >= recentStart)
-        .map(({ message, messageId }) => `${message.is_user ? context.name1 || 'User' : context.name2 || 'Assistant'} #${messageId}: ${stripHtml(message.mes || '')}`)
+        .map(({ message, messageId }) => `${message.is_user ? context.name1 || '用户' : context.name2 || '助手'} #${messageId}: ${stripHtml(message.mes || '')}`)
         .reverse();
 }
 
@@ -5222,7 +5222,7 @@ async function processLatestTurnSummary(options = {}) {
     if (!options.manual && hasAppliedTableEditForMessage(turn.assistantMessage.messageId, state)) {
         state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
         saveState();
-        renderAll('本楼已经通过随正文 tableEdit 应用过表格修改，已跳过回复后填表。');
+        renderAll('本楼已经通过随正文表格修改应用过表格内容，已跳过回复后填表。');
         return;
     }
     const blocks = buildLatestTurnBlocks(state);
@@ -5884,7 +5884,7 @@ async function setMessageRangeHidden(unhide = false) {
     const uncovered = ids.filter(id => !coveredIds.has(id));
     const strategyHint = state.memoryStrategy === memoryStrategies.GENERIC
         ? '通用模式：普通补课摘要可以临时承担记忆，但仍建议之后生成阶段总结压缩 token。'
-        : 'Bakemono 模式：普通摘要通常不注入，建议只隐藏已经被阶段总结覆盖的楼层。';
+        : '摘要块手账模式：普通摘要通常不注入，建议只隐藏已经被阶段总结覆盖的楼层。';
     const warning = uncovered.length
         ? `其中 ${uncovered.length} 楼没有任何已保存摘要覆盖，隐藏后可能导致模型遗忘。`
         : '这些楼层已有摘要覆盖。';
@@ -5920,7 +5920,7 @@ async function setMessageRangeHidden(unhide = false) {
 }
 
 function getMemoryStrategyLabelLegacy(strategy = ensureState().memoryStrategy) {
-    return strategy === memoryStrategies.GENERIC ? '通用全文补课模式' : 'Bakemono 摘要块模式';
+    return strategy === memoryStrategies.GENERIC ? '通用全文补课模式' : '摘要块手账模式';
 }
 
 function getWorkflowModeLabelLegacy(mode = ensureState().workflowMode) {
@@ -5930,7 +5930,7 @@ function getWorkflowModeLabelLegacy(mode = ensureState().workflowMode) {
     if (mode === workflowModes.MIXED) {
         return '混合工作流';
     }
-    return 'Bakemono 摘要块';
+    return '摘要块手账';
 }
 
 function getStageSourceModeLabelLegacy(mode = getStageSourceMode()) {
@@ -6354,7 +6354,7 @@ function renderTableList(state = ensureState()) {
     if (!tables.length) {
         const empty = document.createElement('div');
         empty.className = 'bakemono-memory-empty';
-        empty.textContent = '暂无表格。可以粘贴 tableStructure 或 chatSheets JSON 后导入。';
+        empty.textContent = '暂无表格。可以导入表格结构或聊天表格数据。';
         container.append(empty);
         return;
     }
@@ -6552,21 +6552,21 @@ function saveEditedTableFromElement(details, options = {}) {
     return table;
 }
 
-function importTablesFromText(raw, sourceLabel = 'JSON') {
+function importTablesFromText(raw, sourceLabel = '表格数据') {
     const text = String(raw || '').trim();
     if (!text) {
-        toastr.warning('请先选择或粘贴表格 JSON。');
+        toastr.warning('请先选择或粘贴表格数据。');
         return false;
     }
     let tables;
     try {
         tables = normalizeImportedTablesFromJson(text);
     } catch (error) {
-        toastr.error(`表格 JSON 解析失败：${error?.message || error}`);
+        toastr.error(`表格数据解析失败：${error?.message || error}`);
         return false;
     }
     if (!tables.length) {
-        toastr.warning('没有在 JSON 中找到可用表格。');
+        toastr.warning('没有在导入内容中找到可用表格。');
         return false;
     }
     const confirmed = confirmDanger(
@@ -6662,10 +6662,10 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-injection-stats').text(`注入：多次 ${injectionParts.stats.epic} / 阶段 ${injectionParts.stats.stage} / 普通 ${injectionParts.stats.story} / 表格 ${injectionParts.stats.table || 0} / 向量 ${injectionParts.stats.vector || 0}`);
     const uncoveredStory = state.storySummaries.filter(item => !(state.coveredBlockHashes || []).includes(item.hash)).length;
     $('#bakemono-memory-memory-warning').text(state.memoryStrategy === memoryStrategies.BAKEMONO && uncoveredStory
-        ? `Bakemono 模式下普通摘要不注入：当前有 ${uncoveredStory} 个普通摘要仍只是阶段总结材料。`
+        ? `摘要块手账模式下普通摘要不注入：当前有 ${uncoveredStory} 个普通摘要仍只是阶段总结材料。`
         : state.memoryStrategy === memoryStrategies.GENERIC
             ? '通用模式下未被阶段总结覆盖的普通补课摘要会进入注入，阶段总结后会自动退出。'
-            : 'Bakemono 模式适合配合酒馆正则使用，避免普通摘要和正文摘要重复占 token。');
+            : '摘要块手账模式适合配合酒馆正则使用，避免普通摘要和正文摘要重复占用上下文。');
     $('#bakemono-memory-injection-enabled').prop('checked', !!state.injection.enabled);
     $('#bakemono-memory-memory-warning').text(getWorkflowStatusText(state, injectionParts.stats, uncoveredStory));
     $('#bakemono-memory-depth').val(state.injection.depth);
@@ -8680,7 +8680,7 @@ function bindSettingsEvents() {
         if (action === 'apply') {
             const confirmed = confirmDanger(
                 `应用 ${draft.operations.length} 项表格修改？`,
-                ['这会修改当前聊天的表格数据库。应用后可以从导出 JSON 中查看结果。'],
+                ['这会修改当前聊天的表格数据库。应用后可以从导出数据中查看结果。'],
             );
             if (!confirmed) {
                 return;
@@ -8962,7 +8962,7 @@ function bindSettingsEvents() {
     $('#bakemono-memory-reset-stage-prompt').off('click').on('click', () => {
         const confirmed = confirmDanger(
             '恢复默认阶段总结提示词？',
-            ['当前阶段总结提示词会被默认 Bakemono 模板覆盖。'],
+            ['当前阶段总结提示词会被默认摘要手账模板覆盖。'],
         );
         if (!confirmed) {
             return;
@@ -8975,7 +8975,7 @@ function bindSettingsEvents() {
     $('#bakemono-memory-reset-epic-prompt').off('click').on('click', () => {
         const confirmed = confirmDanger(
             '恢复默认多次总结提示词？',
-            ['当前多次总结提示词会被默认 Bakemono 模板覆盖。'],
+            ['当前多次总结提示词会被默认摘要手账模板覆盖。'],
         );
         if (!confirmed) {
             return;
@@ -8988,7 +8988,7 @@ function bindSettingsEvents() {
     $('#bakemono-memory-reset-story-prompt').off('click').on('click', () => {
         const confirmed = confirmDanger(
             '恢复默认旧正文补课提示词？',
-            ['当前旧正文补课提示词会被默认 Bakemono 模板覆盖。'],
+            ['当前旧正文补课提示词会被默认摘要手账模板覆盖。'],
         );
         if (!confirmed) {
             return;
@@ -9191,7 +9191,7 @@ function bindSettingsEvents() {
         }
         const shouldShow = input.type === 'password';
         input.type = shouldShow ? 'text' : 'password';
-        this.title = shouldShow ? '隐藏 API Key' : '显示 API Key';
+        this.title = shouldShow ? '隐藏接口密钥' : '显示接口密钥';
         this.setAttribute('aria-label', this.title);
         this.querySelector('i')?.classList.toggle('fa-eye', !shouldShow);
         this.querySelector('i')?.classList.toggle('fa-eye-slash', shouldShow);
@@ -9317,7 +9317,7 @@ function bindSettingsEvents() {
         const selected = getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
         const preset = getCurrentPromptPresetPayload($('#bakemono-memory-preset-name').val() || selected?.name || '当前工作流');
         $('#bakemono-memory-preset-json').val(JSON.stringify(preset, null, 2));
-        toastr.success('预设 JSON 已写入导出框。');
+        toastr.success('预设数据已写入导出框。');
     });
     $('#bakemono-memory-copy-preset').off('click').on('click', async () => {
         let value = String($('#bakemono-memory-preset-json').val() || '');
@@ -9328,7 +9328,7 @@ function bindSettingsEvents() {
             $('#bakemono-memory-preset-json').val(value);
         }
         await navigator.clipboard.writeText(value);
-        toastr.success('预设 JSON 已复制。');
+        toastr.success('预设数据已复制。');
     });
     $('#bakemono-memory-import-preset').off('click').on('click', () => {
         try {

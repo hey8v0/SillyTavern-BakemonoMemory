@@ -203,9 +203,9 @@
             </button>
           </div>
           <details class="bakemono-memory-advanced-options">
-            <summary><i class="fa-solid fa-file-code"></i><span>导入 / 导出整套配置 JSON</span></summary>
+            <summary><i class="fa-solid fa-file-code"></i><span>导入 / 导出整套配置</span></summary>
             <label class="bakemono-memory-editor">
-              <span>整套配置 JSON</span>
+              <span>整套配置数据</span>
               <textarea id="bakemono-memory-preset-json" class="text_pole textarea_compact" rows="4" spellcheck="false"></textarea>
             </label>
             <div class="bakemono-memory-inline-actions">
@@ -219,7 +219,7 @@
               </button>
               <button class="menu_button" id="bakemono-memory-import-preset">
                 <i class="fa-solid fa-file-import"></i>
-                <span>从 JSON 导入</span>
+                <span>从配置数据导入</span>
               </button>
             </div>
           </details>
@@ -262,14 +262,14 @@
           <label class="bakemono-memory-field">
             <span>记忆策略</span>
             <select id="bakemono-memory-memory-strategy" class="text_pole">
-              <option value="bakemono">Bakemono 摘要块模式</option>
+              <option value="bakemono">摘要块手账模式</option>
               <option value="generic">通用全文补课模式</option>
             </select>
           </label>
           <label class="bakemono-memory-field">
             <span>工作流模式</span>
             <select id="bakemono-memory-workflow-mode" class="text_pole">
-              <option value="bakemono">Bakemono 摘要块</option>
+              <option value="bakemono">摘要块手账</option>
               <option value="generic">通用插件补课</option>
               <option value="mixed">混合工作流</option>
             </select>
@@ -287,7 +287,7 @@
           <label class="bakemono-memory-field">
             <span>输出风格</span>
             <select id="bakemono-memory-output-mode" class="text_pole">
-              <option value="bakemono">Bakemono 手账</option>
+              <option value="bakemono">摘要手账</option>
               <option value="plain">通用纯文本</option>
               <option value="custom">自定义模板</option>
             </select>
@@ -303,9 +303,9 @@
           <label class="bakemono-memory-field">
             <span>角色</span>
             <select id="bakemono-memory-role" class="text_pole">
-              <option value="0">System</option>
-              <option value="1">User</option>
-              <option value="2">Assistant</option>
+              <option value="0">系统</option>
+              <option value="1">用户</option>
+              <option value="2">助手</option>
             </select>
           </label>
         </div>
@@ -313,11 +313,11 @@
 
         <div class="bakemono-memory-prompt-hint">
           <i class="fa-solid fa-brain"></i>
-          <span><strong id="bakemono-memory-strategy-label">Bakemono 摘要块模式</strong> · <span id="bakemono-memory-injection-stats">注入：多次 0 / 阶段 0 / 普通 0</span></span>
+          <span><strong id="bakemono-memory-strategy-label">摘要块手账模式</strong> · <span id="bakemono-memory-injection-stats">注入：多次 0 / 阶段 0 / 普通 0</span></span>
         </div>
         <div class="bakemono-memory-prompt-hint">
           <i class="fa-solid fa-route"></i>
-          <span id="bakemono-memory-workflow-label">Bakemono 摘要块 / 摘要总结模式</span>
+          <span id="bakemono-memory-workflow-label">摘要块手账 / 摘要总结模式</span>
         </div>
         <div id="bakemono-memory-memory-warning" class="bakemono-memory-status-line">等待扫描。</div>
 
@@ -547,7 +547,7 @@
               </label>
               <label class="checkbox_label bakemono-memory-switch">
                 <input type="checkbox" id="bakemono-memory-inline-hide-table">
-                <span>捕获后隐藏 tableEdit</span>
+                <span>捕获后隐藏表格修改块</span>
               </label>
             </div>
             <details class="bakemono-memory-table-import">
@@ -695,16 +695,16 @@
                 </button>
               </div>
             <details class="bakemono-memory-table-import">
-              <summary><i class="fa-solid fa-file-import"></i><span>从 JSON 导入</span></summary>
+              <summary><i class="fa-solid fa-file-import"></i><span>从表格数据导入</span></summary>
               <label class="bakemono-memory-editor">
-                <span>表格 JSON</span>
-                <textarea id="bakemono-memory-table-json" class="text_pole textarea_compact" rows="5" spellcheck="false" placeholder="粘贴 tableStructure 或 chatSheets JSON"></textarea>
+                <span>表格数据</span>
+                <textarea id="bakemono-memory-table-json" class="text_pole textarea_compact" rows="5" spellcheck="false" placeholder="粘贴表格结构或聊天表格数据"></textarea>
               </label>
               <input id="bakemono-memory-table-file" type="file" accept=".json,application/json" hidden>
               <div class="bakemono-memory-inline-actions">
                 <button class="menu_button" id="bakemono-memory-pick-table-file">
                   <i class="fa-solid fa-folder-open"></i>
-                  <span>选择 JSON 文件</span>
+                  <span>选择表格文件</span>
                 </button>
                 <button class="menu_button" id="bakemono-memory-import-table-json">
                   <i class="fa-solid fa-file-import"></i>
@@ -749,7 +749,7 @@
           <h4><i class="fa-solid fa-list-check"></i> 表格修改草稿</h4>
           <div class="bakemono-memory-prompt-hint">
             <i class="fa-solid fa-shield-heart"></i>
-            <span>关闭“表格修改自动应用”时，AI 生成的 tableEdit 会先放在这里；开启后会自动保存到表格并进入历史。</span>
+            <span>关闭“表格修改自动应用”时，模型生成的表格修改块会先放在这里；开启后会自动保存到表格并进入历史。</span>
           </div>
           <div id="bakemono-memory-table-draft-list" class="bakemono-memory-table-draft-list"></div>
         </div>
@@ -942,25 +942,25 @@
               <span>API 来源</span>
               <select id="bakemono-memory-api-provider" class="text_pole">
                 <option value="tavern">酒馆主模型</option>
-                <option value="custom">自定义 OpenAI-compatible API</option>
+                <option value="custom">自定义 OpenAI 兼容接口</option>
               </select>
             </label>
             <label class="bakemono-memory-field">
-              <span>Base URL</span>
+              <span>接口地址</span>
               <input id="bakemono-memory-custom-base-url" class="text_pole" type="text" placeholder="https://api.example.com/v1">
             </label>
             <label class="bakemono-memory-field">
-              <span>API Key</span>
+              <span>接口密钥</span>
               <div class="bakemono-memory-secret-row">
                 <input id="bakemono-memory-custom-api-key" class="text_pole" type="password" autocomplete="off">
-                <button class="menu_button bakemono-memory-icon-action" id="bakemono-memory-toggle-api-key" type="button" title="显示 API Key" aria-label="显示 API Key">
+                <button class="menu_button bakemono-memory-icon-action" id="bakemono-memory-toggle-api-key" type="button" title="显示接口密钥" aria-label="显示接口密钥">
                   <i class="fa-solid fa-eye"></i>
                   <span>显示</span>
                 </button>
               </div>
             </label>
             <label class="bakemono-memory-field">
-              <span>Model</span>
+              <span>模型</span>
               <div class="bakemono-memory-model-row">
                 <input id="bakemono-memory-custom-model" class="text_pole" type="text" list="bakemono-memory-custom-model-options" placeholder="gpt-4.1-mini">
                 <datalist id="bakemono-memory-custom-model-options"></datalist>
@@ -972,11 +972,11 @@
             </label>
             <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
               <label class="bakemono-memory-field">
-                <span>Temperature</span>
+                <span>创意温度</span>
                 <input id="bakemono-memory-custom-temperature" class="text_pole" type="number" min="0" max="2" step="0.1">
               </label>
               <label class="bakemono-memory-field">
-                <span>Max tokens</span>
+                <span>最大输出长度</span>
                 <input id="bakemono-memory-custom-max-tokens" class="text_pole" type="number" min="100" step="100">
               </label>
             </div>
@@ -992,7 +992,7 @@
 
         <div class="bakemono-memory-prompt-hint">
           <i class="fa-solid fa-shield-heart"></i>
-          <span>“自动保存并隐藏”会先生成阶段总结草稿，再自动写入长期记忆，并按上方设置保留最近几楼。自定义 API Key 会保存在当前聊天元数据里。</span>
+          <span>“自动保存并隐藏”会先生成阶段总结草稿，再自动写入长期记忆，并按上方设置保留最近几楼。自定义接口密钥会保存在当前聊天元数据里。</span>
         </div>
 
         <div class="bakemono-memory-inline-actions">
@@ -1189,7 +1189,7 @@
               </select>
             </label>
             <label class="bakemono-memory-field">
-              <span>Rerank</span>
+              <span>重排方式</span>
               <select id="bakemono-memory-vector-rerank-mode" class="text_pole">
                 <option value="hybrid">混合：向量 + 关键词</option>
               </select>
@@ -1235,7 +1235,7 @@
                 <input id="bakemono-memory-vector-long-message-threshold" class="text_pole" type="number" min="240" step="100">
               </label>
               <label class="bakemono-memory-field">
-                <span>召回数量 topK</span>
+                <span>候选召回数量</span>
                 <input id="bakemono-memory-vector-top-k" class="text_pole" type="number" min="1" step="1">
               </label>
               <label class="bakemono-memory-field">
@@ -1287,30 +1287,30 @@
         </div>
 
         <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
-          <h4><i class="fa-solid fa-network-wired"></i> Embedding API 预留</h4>
+          <h4><i class="fa-solid fa-network-wired"></i> 嵌入向量接口</h4>
           <div class="bakemono-memory-prompt-hint">
             <i class="fa-solid fa-circle-info"></i>
-            <span>默认使用本地哈希向量，不消耗 API；选择自定义 OpenAI Embedding 后会请求兼容的 /embeddings 接口，失败会自动回退本地向量。</span>
+            <span>默认使用本地哈希向量，不消耗接口额度；选择自定义嵌入向量后会请求兼容的向量接口，失败会自动回退本地向量。</span>
           </div>
           <label class="bakemono-memory-field">
-            <span>Embedding 提供方</span>
+              <span>嵌入向量来源</span>
             <select id="bakemono-memory-vector-provider" class="text_pole">
               <option value="local">本地哈希向量（默认）</option>
-              <option value="custom-openai">自定义 OpenAI Embedding</option>
+              <option value="custom-openai">自定义 OpenAI 兼容嵌入</option>
             </select>
           </label>
           <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
             <label class="bakemono-memory-field">
-              <span>Base URL</span>
+              <span>接口地址</span>
               <input id="bakemono-memory-vector-base-url" class="text_pole" type="text" placeholder="https://api.openai.com/v1">
             </label>
             <label class="bakemono-memory-field">
-              <span>Model</span>
+              <span>模型</span>
               <input id="bakemono-memory-vector-model" class="text_pole" type="text" list="bakemono-memory-vector-model-options" placeholder="text-embedding-3-small">
               <datalist id="bakemono-memory-vector-model-options"></datalist>
             </label>
             <label class="bakemono-memory-field">
-              <span>API Key</span>
+              <span>接口密钥</span>
               <input id="bakemono-memory-vector-api-key" class="text_pole" type="password" autocomplete="off">
             </label>
           </div>
