@@ -46,7 +46,12 @@
   border-radius: 14px;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeBodyColor) 8%), color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, transparent)),
-    var(--SmartThemeBlurTintColor);
+    var(--SmartThemeBlurTintColor) !important;
+  background-image:
+    linear-gradient(135deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeBodyColor) 8%), color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, transparent)) !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: 100% 100% !important;
   color: var(--SmartThemeBodyColor);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
   backdrop-filter: blur(12px);
