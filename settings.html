@@ -1128,7 +1128,7 @@
           <h4><i class="fa-solid fa-magnifying-glass-chart"></i> 向量记忆</h4>
           <div class="bakemono-memory-prompt-hint">
             <i class="fa-solid fa-circle-info"></i>
-            <span>把聊天原文切块建索引；后续根据最近对话、关键词和语义相似度召回原文片段，并随长期记忆一起注入。</span>
+            <span>先把当前剧情改写成多条检索句，再用向量相似度初筛、重排分档；高相关内容发全文，较相关内容发摘要，避免召回过多撑爆上下文。</span>
           </div>
           <div class="bakemono-memory-inline-actions">
             <button class="menu_button" data-bakemono-action="vector-apply">
@@ -1184,14 +1184,22 @@
             <label class="bakemono-memory-field">
               <span>查询改写</span>
               <select id="bakemono-memory-vector-query-mode" class="text_pole">
+                <option value="model-required">模型改写：失败则本轮不召回</option>
                 <option value="local">本地改写：最近对话 + 关键词</option>
                 <option value="off">关闭改写：只用最近对话</option>
               </select>
             </label>
             <label class="bakemono-memory-field">
+              <span>改写模型</span>
+              <select id="bakemono-memory-vector-query-provider" class="text_pole">
+                <option value="tavern">酒馆当前模型</option>
+                <option value="custom">自动记忆自定义接口</option>
+              </select>
+            </label>
+            <label class="bakemono-memory-field">
               <span>重排方式</span>
               <select id="bakemono-memory-vector-rerank-mode" class="text_pole">
-                <option value="hybrid">混合：向量 + 关键词</option>
+                <option value="hybrid">轻量重排：相似度 + 关键词 + 查询命中</option>
               </select>
             </label>
             <label class="bakemono-memory-field">
@@ -1205,8 +1213,9 @@
             <label class="bakemono-memory-field">
               <span>注入方式</span>
               <select id="bakemono-memory-vector-inject-mode" class="text_pole">
-                <option value="message">楼层召回：注入命中楼层正文</option>
-                <option value="chunk">片段召回：只注入命中片段</option>
+                <option value="tiered">分档召回：高分全文，低分摘要</option>
+                <option value="message">兼容楼层召回</option>
+                <option value="chunk">兼容片段召回</option>
               </select>
             </label>
             <label class="bakemono-memory-field">
@@ -1235,12 +1244,16 @@
                 <input id="bakemono-memory-vector-long-message-threshold" class="text_pole" type="number" min="240" step="100">
               </label>
               <label class="bakemono-memory-field">
-                <span>候选召回数量</span>
+                <span>重排候选数</span>
                 <input id="bakemono-memory-vector-top-k" class="text_pole" type="number" min="1" step="1">
               </label>
               <label class="bakemono-memory-field">
-                <span>最多召回楼层</span>
+                <span>最终召回条数</span>
                 <input id="bakemono-memory-vector-max-recall-messages" class="text_pole" type="number" min="1" step="1">
+              </label>
+              <label class="bakemono-memory-field">
+                <span>召回全文数</span>
+                <input id="bakemono-memory-vector-full-recall-count" class="text_pole" type="number" min="0" step="1">
               </label>
               <label class="bakemono-memory-field">
                 <span>每楼层最多片段</span>
@@ -1251,8 +1264,12 @@
                 <input id="bakemono-memory-vector-per-message-max-chars" class="text_pole" type="number" min="200" step="100">
               </label>
               <label class="bakemono-memory-field">
-                <span>最低分数</span>
+                <span>向量相似阈值</span>
                 <input id="bakemono-memory-vector-min-score" class="text_pole" type="number" min="0" step="0.01">
+              </label>
+              <label class="bakemono-memory-field">
+                <span>重排全文阈值</span>
+                <input id="bakemono-memory-vector-rerank-threshold" class="text_pole" type="number" min="0" step="0.01">
               </label>
               <label class="bakemono-memory-field">
                 <span>关键词加权</span>
@@ -1262,12 +1279,32 @@
                 <span>注入上限字数</span>
                 <input id="bakemono-memory-vector-max-chars" class="text_pole" type="number" min="200" step="100">
               </label>
+              <label class="bakemono-memory-field">
+                <span>摘要档字数</span>
+                <input id="bakemono-memory-vector-summary-max-chars" class="text_pole" type="number" min="120" step="50">
+              </label>
+              <label class="bakemono-memory-field">
+                <span>起召 AI 楼数</span>
+                <input id="bakemono-memory-vector-start-after-ai" class="text_pole" type="number" min="0" step="1">
+              </label>
+              <label class="bakemono-memory-field">
+                <span>最近窗口楼数</span>
+                <input id="bakemono-memory-vector-context-window" class="text_pole" type="number" min="0" step="1">
+              </label>
             </div>
+            <label class="checkbox_label bakemono-memory-switch">
+              <input type="checkbox" id="bakemono-memory-vector-skip-context" checked>
+              <span>正文仍在最近窗口内时跳过召回</span>
+            </label>
           </div>
         </div>
 
         <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
           <h4><i class="fa-solid fa-key"></i> 关键词与测试</h4>
+          <label class="bakemono-memory-editor">
+            <span>查询改写提示词</span>
+            <textarea id="bakemono-memory-vector-query-prompt" class="text_pole textarea_compact" rows="4" spellcheck="false"></textarea>
+          </label>
           <label class="bakemono-memory-editor">
             <span>关键词触发（逗号或换行分隔；命中会提高分数并强制进入候选）</span>
             <textarea id="bakemono-memory-vector-keywords" class="text_pole textarea_compact" rows="4" spellcheck="false" placeholder="例如：戒指, 地下室, Seraphina"></textarea>
