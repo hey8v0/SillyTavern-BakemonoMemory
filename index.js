@@ -601,6 +601,7 @@ const defaultGenerationTargets = {
 const defaultVectorMemory = {
     enabled: false,
     includeHidden: true,
+    includeUser: false,
     indexMode: 'message',
     injectMode: 'tiered',
     chunkSize: 900,
@@ -741,6 +742,11 @@ const defaultState = {
     previewLayouts: defaultPreviewLayouts,
     scanPreview: [],
     lastScanAt: null,
+    chatGuard: {
+        lastPrunedAt: null,
+        lastPrunedCount: 0,
+        lastPrunedReason: '',
+    },
 };
 
 let isBusy = false;
@@ -1116,9 +1122,166 @@ function ensureState() {
     state.vectorMemory.records = Array.isArray(state.vectorMemory.records) ? state.vectorMemory.records : [];
     state.vectorMemory.embeddingCache = state.vectorMemory.embeddingCache && typeof state.vectorMemory.embeddingCache === 'object' ? state.vectorMemory.embeddingCache : {};
     state.vectorMemory.lastHits = Array.isArray(state.vectorMemory.lastHits) ? state.vectorMemory.lastHits : [];
+    state.chatGuard = state.chatGuard && typeof state.chatGuard === 'object'
+        ? state.chatGuard
+        : structuredClone(defaultState.chatGuard);
+    sanitizeCurrentChatState(state);
 
     state.memoryRecords = buildMemoryRecords(state);
     return state;
+}
+
+function getCurrentChatMessageMap() {
+    const context = getContext();
+    const sourceChat = context.chat || chat || [];
+    if (!Array.isArray(sourceChat) || !sourceChat.length) {
+        return null;
+    }
+    const ids = new Set();
+    sourceChat.forEach((message, messageId) => {
+        if (message) {
+            ids.add(Number(messageId));
+        }
+    });
+    return {
+        ids,
+        sourceChat,
+        maxId: sourceChat.length - 1,
+    };
+}
+
+function isCurrentMessageId(messageId, messageMap) {
+    const id = Number(messageId);
+    if (!Number.isFinite(id)) {
+        return true;
+    }
+    if (id >= Number.MAX_SAFE_INTEGER) {
+        return true;
+    }
+    return messageMap.ids.has(id);
+}
+
+function hasCurrentSourceMessages(item, messageMap) {
+    const ids = getFiniteMessageIds(item?.sourceMessageIds || []);
+    if (ids.length) {
+        return ids.every(id => isCurrentMessageId(id, messageMap));
+    }
+    if (item?.messageId !== undefined && item.messageId !== null) {
+        return isCurrentMessageId(item.messageId, messageMap);
+    }
+    return true;
+}
+
+function isAllowedVectorMessage(messageId, role, state, messageMap) {
+    if (!isCurrentMessageId(messageId, messageMap)) {
+        return false;
+    }
+    if (state.vectorMemory?.includeUser === true) {
+        return true;
+    }
+    const id = Number(messageId);
+    const message = Number.isFinite(id) ? messageMap.sourceChat?.[id] : null;
+    if (message?.is_user) {
+        return false;
+    }
+    return String(role || '').toLowerCase() !== 'user';
+}
+
+function filterByHashList(values = [], validHashes = new Set()) {
+    return unique((Array.isArray(values) ? values : []).filter(hash => validHashes.has(hash)));
+}
+
+function sanitizeCurrentChatState(state) {
+    const messageMap = getCurrentChatMessageMap();
+    if (!messageMap) {
+        return false;
+    }
+
+    let prunedCount = 0;
+    const countPruned = (before, after) => {
+        prunedCount += Math.max(0, before - after);
+    };
+    const filterArray = (items, predicate) => {
+        const source = Array.isArray(items) ? items : [];
+        const filtered = source.filter(predicate);
+        countPruned(source.length, filtered.length);
+        return filtered;
+    };
+
+    state.blocks = filterArray(state.blocks, block => hasCurrentSourceMessages(block, messageMap));
+    state.scanPreview = filterArray(state.scanPreview, item => hasCurrentSourceMessages(item, messageMap));
+    state.storySummaries = filterArray(state.storySummaries, summary => hasCurrentSourceMessages(summary, messageMap));
+    const validStoryHashes = new Set([
+        ...state.blocks.map(block => block.hash).filter(Boolean),
+        ...state.storySummaries.map(summary => summary.hash).filter(Boolean),
+    ]);
+
+    state.stageSummaries = filterArray(state.stageSummaries, summary => {
+        if (!hasCurrentSourceMessages(summary, messageMap)) {
+            return false;
+        }
+        const sourceHashes = Array.isArray(summary.sourceHashes) ? summary.sourceHashes.filter(Boolean) : [];
+        return !sourceHashes.length || sourceHashes.every(hash => validStoryHashes.has(hash));
+    });
+    const validStageHashes = new Set(state.stageSummaries.map(summary => summary.hash).filter(Boolean));
+
+    state.epicSummaries = filterArray(state.epicSummaries, summary => {
+        if (!hasCurrentSourceMessages(summary, messageMap)) {
+            return false;
+        }
+        const sourceStageHashes = Array.isArray(summary.sourceStageHashes) ? summary.sourceStageHashes.filter(Boolean) : [];
+        const sourceHashes = Array.isArray(summary.sourceHashes) ? summary.sourceHashes.filter(Boolean) : [];
+        const stageOk = !sourceStageHashes.length || sourceStageHashes.every(hash => validStageHashes.has(hash));
+        const storyOk = !sourceHashes.length || sourceHashes.every(hash => validStoryHashes.has(hash) || validStageHashes.has(hash));
+        return stageOk && storyOk;
+    });
+    const validEpicHashes = new Set(state.epicSummaries.map(summary => summary.hash).filter(Boolean));
+
+    const previousCoveredBlockCount = state.coveredBlockHashes.length;
+    state.coveredBlockHashes = filterByHashList(state.coveredBlockHashes, validStoryHashes);
+    countPruned(previousCoveredBlockCount, state.coveredBlockHashes.length);
+    const previousCoveredStageCount = state.coveredStageHashes.length;
+    state.coveredStageHashes = filterByHashList(state.coveredStageHashes, validStageHashes);
+    countPruned(previousCoveredStageCount, state.coveredStageHashes.length);
+
+    for (const key of ['hiddenMessageIds', 'customHiddenMessageIds']) {
+        const previous = Array.isArray(state[key]) ? state[key] : [];
+        state[key] = unique(previous.filter(id => isCurrentMessageId(id, messageMap)));
+        countPruned(previous.length, state[key].length);
+    }
+    if (state.autoHideRecent && typeof state.autoHideRecent === 'object') {
+        const previous = Array.isArray(state.autoHideRecent.managedMessageIds) ? state.autoHideRecent.managedMessageIds : [];
+        state.autoHideRecent.managedMessageIds = unique(previous.filter(id => isCurrentMessageId(id, messageMap)));
+        countPruned(previous.length, state.autoHideRecent.managedMessageIds.length);
+    }
+
+    if (state.vectorMemory && typeof state.vectorMemory === 'object') {
+        const previousRecordCount = Array.isArray(state.vectorMemory.records) ? state.vectorMemory.records.length : 0;
+        state.vectorMemory.records = filterArray(state.vectorMemory.records, record => isAllowedVectorMessage(record?.messageId, record?.role, state, messageMap));
+        const previousHitCount = Array.isArray(state.vectorMemory.lastHits) ? state.vectorMemory.lastHits.length : 0;
+        state.vectorMemory.lastHits = filterArray(state.vectorMemory.lastHits, hit => isAllowedVectorMessage(hit?.messageId, hit?.role, state, messageMap));
+        if (previousRecordCount !== state.vectorMemory.records.length) {
+            state.vectorMemory.dirty = true;
+            state.vectorMemory.dirtyReason = '当前聊天分支已清理越界索引';
+            state.vectorMemory.lastIndexedSignature = '';
+        }
+    }
+
+    const validMemoryHashes = new Set([...validStoryHashes, ...validStageHashes, ...validEpicHashes]);
+    state.memoryRecords = filterArray(state.memoryRecords, record => !record?.hash || validMemoryHashes.has(record.hash));
+
+    if (prunedCount > 0) {
+        state.chatGuard = {
+            lastPrunedAt: new Date().toISOString(),
+            lastPrunedCount: prunedCount,
+            lastPrunedReason: '当前聊天缺少部分来源楼层，已清理继承的旧记忆引用',
+        };
+        const parts = getInjectionMemoryParts(state);
+        state.generatedMemory = parts.memory;
+        state.injection.content = renderInjectionContent(state);
+        saveState();
+    }
+    return prunedCount > 0;
 }
 
 function normalizeLineEndings(value) {
@@ -2092,7 +2255,8 @@ function getVectorSourceMessages(state = ensureState()) {
             messageId,
             cleanedText: stripConfiguredTags(message?.mes || '', excludeTags).trim(),
         }))
-        .filter(({ message }) => message?.mes && (state.vectorMemory.includeHidden !== false || !message.is_system));
+        .filter(({ message }) => message?.mes && (state.vectorMemory.includeHidden !== false || !message.is_system))
+        .filter(({ message }) => state.vectorMemory.includeUser === true || !message.is_user);
     return maxIndexedMessages > 0 ? items.slice(-maxIndexedMessages) : items;
 }
 
@@ -7017,6 +7181,7 @@ function renderVectorMemoryPanel(state = ensureState()) {
     $('#bakemono-memory-vector-enabled').prop('checked', !!state.vectorMemory.enabled);
     $('#bakemono-memory-vector-auto-index').prop('checked', state.vectorMemory.autoIndex !== false);
     $('#bakemono-memory-vector-include-hidden').prop('checked', state.vectorMemory.includeHidden !== false);
+    $('#bakemono-memory-vector-include-user').prop('checked', state.vectorMemory.includeUser === true);
     $('#bakemono-memory-vector-index-mode').val(state.vectorMemory.indexMode || defaultVectorMemory.indexMode);
     $('#bakemono-memory-vector-inject-mode').val(state.vectorMemory.injectMode || defaultVectorMemory.injectMode);
     $('#bakemono-memory-vector-max-indexed-messages').val(state.vectorMemory.maxIndexedMessages ?? defaultVectorMemory.maxIndexedMessages);
@@ -7691,6 +7856,7 @@ function readVectorMemoryFieldsFromUi(state = ensureState()) {
         enabled: $('#bakemono-memory-vector-enabled').prop('checked'),
         autoIndex: $('#bakemono-memory-vector-auto-index').length ? $('#bakemono-memory-vector-auto-index').prop('checked') : state.vectorMemory?.autoIndex !== false,
         includeHidden: $('#bakemono-memory-vector-include-hidden').prop('checked'),
+        includeUser: $('#bakemono-memory-vector-include-user').length ? $('#bakemono-memory-vector-include-user').prop('checked') : state.vectorMemory?.includeUser === true,
         indexMode: String($('#bakemono-memory-vector-index-mode').val() || defaultVectorMemory.indexMode),
         injectMode: String($('#bakemono-memory-vector-inject-mode').val() || defaultVectorMemory.injectMode),
         maxIndexedMessages: Math.max(0, Number($('#bakemono-memory-vector-max-indexed-messages').val() === '' ? defaultVectorMemory.maxIndexedMessages : $('#bakemono-memory-vector-max-indexed-messages').val())),
