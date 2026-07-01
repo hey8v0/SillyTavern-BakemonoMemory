@@ -711,6 +711,7 @@ const defaultState = {
     },
     tableDatabase: {
         enabled: false,
+        injectMemory: true,
         autoApply: false,
         schemaScope: tableSchemaScopes.CHAT,
         activeProfileId: '',
@@ -5406,7 +5407,7 @@ function formatSpecificTablesForPrompt(tables = [], options = {}) {
 
 function renderInjectedTablesSection(state = ensureState()) {
     const tables = state.tableDatabase.tables || [];
-    if (!tables.length) {
+    if (state.tableDatabase.injectMemory === false || !tables.length) {
         return '';
     }
     const sections = [];
@@ -5739,7 +5740,7 @@ function getInjectionMemoryParts(state = ensureState()) {
             epic: latestEpic?.content ? 1 : 0,
             stage: stageContents.length,
             story: storyContents.length,
-            table: (state.tableDatabase.tables || []).length,
+            table: state.tableDatabase.injectMemory === false ? 0 : (state.tableDatabase.tables || []).length,
             vector: state.vectorMemory?.lastHits?.length || 0,
         },
     };
@@ -6600,6 +6601,7 @@ function renderTurnSummaryPanel(state = ensureState()) {
     $('#bakemono-memory-turn-world-max-context').val(state.turnSummary.worldInfoMaxContext ?? defaultState.turnSummary.worldInfoMaxContext);
     $('#bakemono-memory-turn-reference').val(state.turnSummary.referenceContext || '');
     $('#bakemono-memory-table-enabled').prop('checked', !!state.tableDatabase.enabled);
+    $('#bakemono-memory-table-inject-memory').prop('checked', state.tableDatabase.injectMemory !== false);
     $('#bakemono-memory-table-auto-apply').prop('checked', !!state.tableDatabase.autoApply);
     $('#bakemono-memory-table-schema-scope').val(state.tableDatabase.schemaScope || tableSchemaScopes.CHAT);
     $('#bakemono-memory-table-schema-status').text(`${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)} · ${state.tableDatabase.tables.length} tables · ${getCurrentCharacterSchemaLabel()}`);
@@ -7814,6 +7816,7 @@ function readTurnSummaryFieldsFromUi(state = ensureState()) {
     state.tableDatabase = {
         ...state.tableDatabase,
         enabled: $('#bakemono-memory-table-enabled').prop('checked'),
+        injectMemory: $('#bakemono-memory-table-inject-memory').length ? $('#bakemono-memory-table-inject-memory').prop('checked') : state.tableDatabase.injectMemory !== false,
         autoApply: $('#bakemono-memory-table-auto-apply').prop('checked'),
         schemaScope: String($('#bakemono-memory-table-schema-scope').val() || state.tableDatabase.schemaScope || tableSchemaScopes.CHAT),
     };
@@ -7965,6 +7968,7 @@ function getCurrentPromptPresetPayload(name = '') {
         },
         tableDatabase: {
             enabled: !!state.tableDatabase.enabled,
+            injectMemory: state.tableDatabase.injectMemory !== false,
             autoApply: !!state.tableDatabase.autoApply,
             schemaScope: state.tableDatabase.schemaScope || tableSchemaScopes.CHAT,
             tables: getTableSchemasForPreset(state),
@@ -8107,6 +8111,7 @@ function applyPromptPresetToState(preset, options = {}) {
         state.tableDatabase = {
             ...state.tableDatabase,
             enabled: !!preset.tableDatabase.enabled,
+            injectMemory: preset.tableDatabase.injectMemory !== false,
             autoApply: !!preset.tableDatabase.autoApply,
             schemaScope: Object.values(tableSchemaScopes).includes(preset.tableDatabase.schemaScope) ? preset.tableDatabase.schemaScope : state.tableDatabase.schemaScope,
             tables: Array.isArray(preset.tableDatabase.tables)
