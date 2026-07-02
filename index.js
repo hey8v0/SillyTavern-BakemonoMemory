@@ -2400,6 +2400,36 @@ function getVisibleConversationMessageCount() {
     return sourceChat.filter(message => message?.mes && !message.is_system).length;
 }
 
+function getRecentVisibleConversationMessageIds(limit = defaultVectorMemory.contextWindowMessages) {
+    const max = Math.max(0, Number(limit || 0));
+    if (!max) {
+        return new Set();
+    }
+    const context = getContext();
+    const sourceChat = context.chat || chat || [];
+    return new Set(sourceChat
+        .map((message, messageId) => ({ message, messageId }))
+        .filter(({ message }) => message?.mes && !message.is_system)
+        .slice(-max)
+        .map(({ messageId }) => Number(messageId)));
+}
+
+function shouldSkipVectorRecallForRecentWindow(state = ensureState()) {
+    const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
+    if (state.vectorMemory.skipIfAllInContext === false || contextWindowMessages <= 0) {
+        return false;
+    }
+    const records = Array.isArray(state.vectorMemory.records) ? state.vectorMemory.records : [];
+    if (!records.length) {
+        return false;
+    }
+    const recentVisibleIds = getRecentVisibleConversationMessageIds(contextWindowMessages);
+    if (!recentVisibleIds.size) {
+        return false;
+    }
+    return records.every(record => recentVisibleIds.has(Number(record.messageId)));
+}
+
 function makeVectorRecordSummary(text, maxChars = defaultVectorMemory.summaryMaxChars) {
     const clean = normalizeLineEndings(stripHtml(text)).replace(/\n{3,}/g, '\n\n').trim();
     if (!clean) {
@@ -2617,9 +2647,9 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
     if (minAiMessages > 0 && getAssistantMessageCount() < minAiMessages) {
         return clearVectorRecall(`当前 AI 楼数少于 ${minAiMessages}，已跳过召回。`, state);
     }
-    const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
-    if (!explicitQuery && state.vectorMemory.skipIfAllInContext !== false && contextWindowMessages > 0 && getVisibleConversationMessageCount() <= contextWindowMessages) {
-        return clearVectorRecall('当前正文仍在最近上下文范围内，已跳过向量召回。', state);
+    if (!explicitQuery && shouldSkipVectorRecallForRecentWindow(state)) {
+        const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
+        return clearVectorRecall(`已索引内容都还在可见最近 ${contextWindowMessages} 楼内，已跳过向量召回。`, state);
     }
     let queries = [];
     try {
