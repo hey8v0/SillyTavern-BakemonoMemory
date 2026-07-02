@@ -1253,7 +1253,7 @@ function sanitizeCurrentChatState(state) {
     state.coveredBlockHashes = filterByHashList(state.coveredBlockHashes, validStoryHashes);
     countPruned(previousCoveredBlockCount, state.coveredBlockHashes.length);
     const previousCoveredStageCount = state.coveredStageHashes.length;
-    state.coveredStageHashes = filterByHashList(state.coveredStageHashes, validStageHashes);
+    state.coveredStageHashes = [...getActiveCoveredStageHashes(state)];
     countPruned(previousCoveredStageCount, state.coveredStageHashes.length);
 
     for (const key of ['hiddenMessageIds', 'customHiddenMessageIds']) {
@@ -1367,8 +1367,12 @@ function compactEmbedding(values = [], dimensions = defaultVectorMemory.embeddin
     if (!source.length) {
         return [];
     }
+    const normalize = vector => {
+        const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0)) || 1;
+        return vector.map(value => Number((value / norm).toFixed(6)));
+    };
     if (source.length <= targetSize) {
-        return source.map(value => Number(value.toFixed(4)));
+        return normalize(source);
     }
     const compact = [];
     for (let index = 0; index < targetSize; index++) {
@@ -1376,9 +1380,9 @@ function compactEmbedding(values = [], dimensions = defaultVectorMemory.embeddin
         const end = Math.max(start + 1, Math.floor((index + 1) * source.length / targetSize));
         const slice = source.slice(start, end);
         const average = slice.reduce((sum, value) => sum + value, 0) / slice.length;
-        compact.push(Number(average.toFixed(4)));
+        compact.push(average);
     }
-    return compact;
+    return normalize(compact);
 }
 
 function pruneVectorRuntimeCache(limit = 120) {
@@ -2446,12 +2450,26 @@ function makeVectorRecordSummary(text, maxChars = defaultVectorMemory.summaryMax
     if (!clean) {
         return '';
     }
-    const summaryLike = clean
+
+    const hasSummaryEnvelope = /<bakemono\b|<summary\b|剧情摘要|阶段总结|多次总结|剧集终了|长期总览|纪元回溯|正文摘要/i.test(text);
+    const sectionLines = clean
         .split(/\n+/)
         .map(line => line.trim())
-        .find(line => /摘要|总结|事件|关系|线索|伏笔|状态|地点|时间/.test(line) && line.length >= 12);
-    const source = summaryLike || clean;
-    return getClippedVectorText(source, Math.max(120, Number(maxChars || defaultVectorMemory.summaryMaxChars)));
+        .filter(line => line.length >= 12)
+        .filter(line => (
+            /摘要|总结|事件|关系|线索|伏笔|暗线|第四面墙|角色|地点|时间/.test(line)
+            && (/[:：]|[【】\[\]]|^[-*➤]/.test(line) || /摘要|总结/.test(line))
+        ));
+
+    if (sectionLines.length) {
+        return getClippedVectorText(sectionLines.slice(0, 8).join('\n'), Math.max(120, Number(maxChars || defaultVectorMemory.summaryMaxChars)));
+    }
+
+    if (!hasSummaryEnvelope) {
+        return '';
+    }
+
+    return getClippedVectorText(clean, Math.max(120, Number(maxChars || defaultVectorMemory.summaryMaxChars)));
 }
 
 function getVectorQueryTerms(queries = [], state = ensureState()) {
@@ -2752,7 +2770,7 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
                 preview: toPlainPreview(fullText, 220),
             });
         } else {
-            const summaryText = makeVectorRecordSummary(item.summary || fullText || item.text || '', state.vectorMemory.summaryMaxChars);
+            const summaryText = String(item.summary || '').trim();
             if (summaryText) {
                 summaryHits.push({
                     ...base,
@@ -3651,10 +3669,34 @@ function summaryToBlock(summary) {
     };
 }
 
+function getActiveCoveredStageHashes(state = ensureState()) {
+    const existingStageHashes = new Set(getStageMemoryBlocks(state).map(summary => summary.hash).filter(Boolean));
+    const covered = new Set();
+    const epicBlocks = dedupeByHash([
+        ...(state.epicSummaries || []).map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
+        ...(state.blocks || []).filter(block => block.type === blockTypes.EPIC),
+    ]);
+    for (const epic of epicBlocks) {
+        for (const hash of [...(epic.sourceStageHashes || []), ...(epic.sourceHashes || [])]) {
+            if (existingStageHashes.has(hash)) {
+                covered.add(hash);
+            }
+        }
+    }
+    return covered;
+}
+
+function getStageMemoryBlocks(state = ensureState()) {
+    return dedupeByHash([
+        ...(state.stageSummaries || []).map(summary => ({ ...summaryToBlock(summary), type: blockTypes.STAGE })),
+        ...(state.blocks || []).filter(block => block.type === blockTypes.STAGE),
+    ]);
+}
+
 function buildMemoryRecords(state = ensureState()) {
     const records = new Map();
     const coveredStoryHashes = new Set(state.coveredBlockHashes || []);
-    const coveredStageHashes = new Set(state.coveredStageHashes || []);
+    const coveredStageHashes = getActiveCoveredStageHashes(state);
     const latestEpic = [...(state.epicSummaries || [])]
         .sort((a, b) => (
             getSummaryLevel(b) - getSummaryLevel(a)
@@ -5764,8 +5806,8 @@ function getInjectionMemoryParts(state = ensureState()) {
             || String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
             || getSummarySortKey(b) - getSummarySortKey(a)
         ))[0] || null;
-    const epicCoveredStageHashes = new Set(state.coveredStageHashes || []);
-    const stageContents = state.stageSummaries
+    const epicCoveredStageHashes = getActiveCoveredStageHashes(state);
+    const stageContents = getStageMemoryBlocks(state)
         .filter(item => !epicCoveredStageHashes.has(item.hash))
         .map(item => item.content);
     const shouldInjectStory = state.memoryStrategy === memoryStrategies.GENERIC;
