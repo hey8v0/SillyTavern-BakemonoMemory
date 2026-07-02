@@ -1173,6 +1173,11 @@ function hasCurrentSourceMessages(item, messageMap) {
     return true;
 }
 
+function hasExplicitCurrentSourceMessages(item, messageMap) {
+    const ids = getFiniteMessageIds(item?.sourceMessageIds || []);
+    return ids.length > 0 && ids.every(id => isCurrentMessageId(id, messageMap));
+}
+
 function isAllowedVectorMessage(messageId, role, state, messageMap) {
     if (!isCurrentMessageId(messageId, messageMap)) {
         return false;
@@ -1221,6 +1226,9 @@ function sanitizeCurrentChatState(state) {
         if (!hasCurrentSourceMessages(summary, messageMap)) {
             return false;
         }
+        if (hasExplicitCurrentSourceMessages(summary, messageMap)) {
+            return true;
+        }
         const sourceHashes = Array.isArray(summary.sourceHashes) ? summary.sourceHashes.filter(Boolean) : [];
         return !sourceHashes.length || sourceHashes.every(hash => validStoryHashes.has(hash));
     });
@@ -1229,6 +1237,9 @@ function sanitizeCurrentChatState(state) {
     state.epicSummaries = filterArray(state.epicSummaries, summary => {
         if (!hasCurrentSourceMessages(summary, messageMap)) {
             return false;
+        }
+        if (hasExplicitCurrentSourceMessages(summary, messageMap)) {
+            return true;
         }
         const sourceStageHashes = Array.isArray(summary.sourceStageHashes) ? summary.sourceStageHashes.filter(Boolean) : [];
         const sourceHashes = Array.isArray(summary.sourceHashes) ? summary.sourceHashes.filter(Boolean) : [];
@@ -2686,7 +2697,15 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
     });
 
     scored.sort((a, b) => (b.embeddingScore - a.embeddingScore) || (b.keywordHits - a.keywordHits) || (Number(b.messageId) - Number(a.messageId)));
-    const embeddingCandidates = scored.filter(item => item.embeddingScore >= embeddingThreshold || item.keywordHits > 0);
+    let embeddingCandidates = scored.filter(item => item.embeddingScore >= embeddingThreshold || item.keywordHits > 0);
+    if (!embeddingCandidates.length) {
+        const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
+        const recentVisibleIds = getRecentVisibleConversationMessageIds(contextWindowMessages);
+        const fallbackCandidates = scored.filter(item => item.isHidden || !recentVisibleIds.has(Number(item.messageId)));
+        if (fallbackCandidates.length) {
+            embeddingCandidates = fallbackCandidates.slice(0, rerankCandidateCount);
+        }
+    }
     const byMessage = new Map();
     for (const item of embeddingCandidates.slice(0, Math.max(rerankCandidateCount * 2, rerankCandidateCount))) {
         const key = String(item.messageId);
