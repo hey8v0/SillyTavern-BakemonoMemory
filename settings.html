@@ -1201,7 +1201,7 @@
               <span>改写模型</span>
               <select id="bakemono-memory-vector-query-provider" class="text_pole">
                 <option value="tavern">酒馆当前模型</option>
-                <option value="custom">自动记忆自定义接口</option>
+                <option value="custom">自定义改写接口</option>
               </select>
             </label>
             <label class="bakemono-memory-field">
@@ -1317,14 +1317,18 @@
             <span>关键词触发（逗号或换行分隔；命中会提高分数并强制进入候选）</span>
             <textarea id="bakemono-memory-vector-keywords" class="text_pole textarea_compact" rows="4" spellcheck="false" placeholder="例如：戒指, 地下室, Seraphina"></textarea>
           </label>
-          <label class="bakemono-memory-editor">
-            <span>排除标签（建索引前剔除这些标签块，避免召回文生图 tag / thinking）</span>
-            <textarea id="bakemono-memory-vector-exclude-tags" class="text_pole textarea_compact" rows="3" spellcheck="false" placeholder="thinking, think, reasoning, tag"></textarea>
-          </label>
-          <label class="bakemono-memory-editor">
-            <span>测试查询（为空则使用最近对话）</span>
-            <textarea id="bakemono-memory-vector-test-query" class="text_pole textarea_compact" rows="4" spellcheck="false"></textarea>
-          </label>
+            <label class="bakemono-memory-editor">
+              <span>排除标签（建索引前剔除这些标签块，避免召回文生图 tag / thinking）</span>
+              <textarea id="bakemono-memory-vector-exclude-tags" class="text_pole textarea_compact" rows="3" spellcheck="false" placeholder="thinking, think, reasoning, tag"></textarea>
+            </label>
+            <label class="bakemono-memory-editor">
+              <span>摘要标签（单独抽取为摘要索引，不受上方排除标签影响）</span>
+              <textarea id="bakemono-memory-vector-summary-tags" class="text_pole textarea_compact" rows="2" spellcheck="false" placeholder="bakemono, summaryDraft"></textarea>
+            </label>
+            <label class="bakemono-memory-editor">
+              <span>测试查询（为空则使用最近对话）</span>
+              <textarea id="bakemono-memory-vector-test-query" class="text_pole textarea_compact" rows="4" spellcheck="false"></textarea>
+            </label>
           <label class="bakemono-memory-editor">
             <span>本次查询预览</span>
             <textarea id="bakemono-memory-vector-query-preview" class="text_pole textarea_compact" rows="4" spellcheck="false" readonly></textarea>
@@ -1364,6 +1368,28 @@
               <i class="fa-solid fa-cloud-arrow-down"></i>
               <span>拉取模型</span>
             </button>
+          </div>
+        </div>
+
+        <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
+          <h4><i class="fa-solid fa-pen-nib"></i> 查询改写接口</h4>
+          <div class="bakemono-memory-prompt-hint">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>查询改写需要聊天模型，不是嵌入向量模型。接口地址和密钥留空时，会复用上面的嵌入向量接口地址和密钥；模型请填写可对话的小模型。</span>
+          </div>
+          <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
+            <label class="bakemono-memory-field">
+              <span>改写接口地址</span>
+              <input id="bakemono-memory-vector-query-base-url" class="text_pole" type="text" placeholder="留空复用嵌入向量接口地址">
+            </label>
+            <label class="bakemono-memory-field">
+              <span>改写模型</span>
+              <input id="bakemono-memory-vector-query-model" class="text_pole" type="text" placeholder="例如 gpt-4o-mini / gemini-flash">
+            </label>
+            <label class="bakemono-memory-field">
+              <span>改写密钥</span>
+              <input id="bakemono-memory-vector-query-api-key" class="text_pole" type="password" autocomplete="off" placeholder="留空复用嵌入向量密钥">
+            </label>
           </div>
         </div>
 

@@ -625,9 +625,15 @@ const defaultVectorMemory = {
     summaryMaxChars: 520,
     keywordTriggers: '',
     excludeTags: 'thinking, think, reasoning',
+    summaryTags: 'bakemono, summaryDraft',
     queryMode: 'model-required',
     queryRewriteProvider: 'tavern',
     queryRewritePrompt: '请把最近剧情改写成 3 到 5 条适合检索旧剧情记忆的查询句。要求：只保留已经发生的事实、人物、地点、物品、关系和未解决事项；不要续写；每行一条；不要解释。',
+    queryCustomApi: {
+        baseUrl: '',
+        apiKey: '',
+        model: '',
+    },
     startAfterAiMessages: 0,
     skipIfAllInContext: true,
     contextWindowMessages: 20,
@@ -1118,6 +1124,14 @@ function ensureState() {
     for (const [key, value] of Object.entries(defaultVectorMemory.customApi)) {
         if (state.vectorMemory.customApi[key] === undefined) {
             state.vectorMemory.customApi[key] = structuredClone(value);
+        }
+    }
+    state.vectorMemory.queryCustomApi = state.vectorMemory.queryCustomApi && typeof state.vectorMemory.queryCustomApi === 'object'
+        ? state.vectorMemory.queryCustomApi
+        : structuredClone(defaultVectorMemory.queryCustomApi);
+    for (const [key, value] of Object.entries(defaultVectorMemory.queryCustomApi)) {
+        if (state.vectorMemory.queryCustomApi[key] === undefined) {
+            state.vectorMemory.queryCustomApi[key] = structuredClone(value);
         }
     }
     state.vectorMemory.records = Array.isArray(state.vectorMemory.records) ? state.vectorMemory.records : [];
@@ -2260,16 +2274,37 @@ function splitTextIntoChunks(text, chunkSize = defaultVectorMemory.chunkSize, ov
     return chunks;
 }
 
+function getVectorSummaryTags(state = ensureState()) {
+    return parseList(state.vectorMemory.summaryTags || defaultVectorMemory.summaryTags);
+}
+
+function extractVectorSummaryText(text, state = ensureState()) {
+    const summaryTags = getVectorSummaryTags(state);
+    const blocks = extractConfiguredTagBlocks(text, summaryTags.length ? summaryTags : ['bakemono', 'summaryDraft'])
+        .map(block => block.content)
+        .filter(Boolean);
+    if (!blocks.length) {
+        return '';
+    }
+    return normalizeLineEndings(blocks.join('\n\n')).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function getVectorBodyText(text, state = ensureState()) {
+    const excludeTags = parseList(state.vectorMemory.excludeTags || defaultVectorMemory.excludeTags);
+    const summaryTags = getVectorSummaryTags(state);
+    return stripConfiguredTags(text, unique([...excludeTags, ...summaryTags])).trim();
+}
+
 function getVectorSourceMessages(state = ensureState()) {
     const context = getContext();
     const sourceChat = context.chat || chat || [];
-    const excludeTags = parseList(state.vectorMemory.excludeTags || defaultVectorMemory.excludeTags);
     const maxIndexedMessages = Math.max(0, Number(state.vectorMemory.maxIndexedMessages ?? defaultVectorMemory.maxIndexedMessages));
     const items = sourceChat
         .map((message, messageId) => ({
             message,
             messageId,
-            cleanedText: stripConfiguredTags(message?.mes || '', excludeTags).trim(),
+            cleanedText: getVectorBodyText(message?.mes || '', state),
+            summaryText: extractVectorSummaryText(message?.mes || '', state),
         }))
         .filter(({ message }) => message?.mes && (state.vectorMemory.includeHidden !== false || !message.is_system))
         .filter(({ message }) => state.vectorMemory.includeUser === true || !message.is_user);
@@ -2324,12 +2359,13 @@ function parseVectorQueryRewriteResult(raw) {
 async function callVectorQueryRewriteModel(prompt, systemPrompt, state = ensureState()) {
     const provider = String(state.vectorMemory.queryRewriteProvider || defaultVectorMemory.queryRewriteProvider);
     if (provider === 'custom') {
-        const config = state.automation.customApi || {};
-        const baseUrl = normalizeCustomApiBaseUrl(config.baseUrl);
-        const model = String(config.model || '').trim();
-        const apiKey = String(config.apiKey || '').trim();
+        const queryConfig = state.vectorMemory.queryCustomApi || {};
+        const embeddingConfig = state.vectorMemory.customApi || {};
+        const baseUrl = normalizeCustomApiBaseUrl(queryConfig.baseUrl || embeddingConfig.baseUrl || '');
+        const model = String(queryConfig.model || '').trim();
+        const apiKey = String(queryConfig.apiKey || embeddingConfig.apiKey || '').trim();
         if (!baseUrl || !model) {
-            throw new Error('查询重写需要先配置自定义接口地址和模型，或改用酒馆当前模型。');
+            throw new Error('查询重写需要聊天模型。请填写改写模型；接口地址和密钥可留空复用嵌入向量接口。');
         }
         const response = await fetch(getCustomChatCompletionsUrl(baseUrl), {
             method: 'POST',
@@ -2506,7 +2542,7 @@ function clearVectorRecall(reason = '', state = ensureState()) {
 
 function getVectorSourceSignature(state = ensureState()) {
     return getVectorSourceMessages(state)
-        .map(({ message, messageId, cleanedText }) => `${messageId}:${getMessageVariantKey(message)}:${getHash(cleanedText || '')}`)
+        .map(({ message, messageId, cleanedText, summaryText }) => `${messageId}:${getMessageVariantKey(message)}:${getHash(cleanedText || '')}:${getHash(summaryText || '')}`)
         .join('|');
 }
 
@@ -2603,16 +2639,35 @@ async function buildVectorMemoryIndex({ silent = false } = {}) {
     const overlap = Math.max(0, Number(state.vectorMemory.overlap || defaultVectorMemory.overlap));
     const longMessageThreshold = Math.max(240, Number(state.vectorMemory.longMessageThreshold || defaultVectorMemory.longMessageThreshold));
 
-    for (const { message, messageId, cleanedText } of getVectorSourceMessages(state)) {
+    for (const { message, messageId, cleanedText, summaryText } of getVectorSourceMessages(state)) {
         const fullText = String(cleanedText || '').trim();
-        if (!fullText) {
+        const summaryContent = String(summaryText || '').trim();
+        if (!fullText && !summaryContent) {
             continue;
         }
         const role = message.is_user ? 'user' : message.is_system ? 'hidden' : 'assistant';
         const variantKey = getMessageVariantKey(message);
         const shouldChunk = indexMode === 'chunk' || (indexMode === 'hybrid' && fullText.length > longMessageThreshold);
+        if (summaryContent) {
+            records.push({
+                id: `vec-${getHash(`${messageId}|${variantKey}|summary|${summaryContent}`)}`,
+                kind: 'summary',
+                messageId,
+                chunkIndex: 0,
+                role,
+                isHidden: !!message.is_system,
+                title: `${message.is_user ? '用户摘要' : message.is_system ? '隐藏摘要' : '助手摘要'} #${messageId}`,
+                text: getClippedVectorText(summaryContent, Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars))),
+                summary: getClippedVectorText(summaryContent, Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars))),
+                preview: toPlainPreview(summaryContent, 180),
+                embedding: await getEmbeddingForText(summaryContent, state),
+                createdAt: new Date().toISOString(),
+            });
+        }
+        if (!fullText) {
+            continue;
+        }
         if (!shouldChunk) {
-            const summary = makeVectorRecordSummary(fullText, state.vectorMemory.summaryMaxChars);
             records.push({
                 id: `vec-${getHash(`${messageId}|${variantKey}|message|${fullText}`)}`,
                 kind: 'message',
@@ -2622,7 +2677,7 @@ async function buildVectorMemoryIndex({ silent = false } = {}) {
                 isHidden: !!message.is_system,
                 title: `${message.is_user ? '用户' : message.is_system ? '隐藏楼层' : '助手'} #${messageId}`,
                 text: fullText,
-                summary,
+                summary: '',
                 preview: toPlainPreview(fullText, 180),
                 embedding: await getEmbeddingForText(fullText, state),
                 createdAt: new Date().toISOString(),
@@ -2634,7 +2689,6 @@ async function buildVectorMemoryIndex({ silent = false } = {}) {
             if (!text) {
                 continue;
             }
-            const summary = makeVectorRecordSummary(fullText, state.vectorMemory.summaryMaxChars);
             records.push({
                 id: `vec-${getHash(`${messageId}|${variantKey}|${chunkIndex}|${text}`)}`,
                 kind: 'chunk',
@@ -2644,7 +2698,7 @@ async function buildVectorMemoryIndex({ silent = false } = {}) {
                 isHidden: !!message.is_system,
                 title: `${message.is_user ? '用户' : message.is_system ? '隐藏楼层' : '助手'} #${messageId}.${chunkIndex + 1}`,
                 text,
-                summary,
+                summary: '',
                 preview: toPlainPreview(text, 180),
                 embedding: await getEmbeddingForText(text, state),
                 createdAt: new Date().toISOString(),
@@ -2757,12 +2811,14 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
         const fullText = getVectorCleanedMessageText(item.messageId, state) || item.text || '';
         const base = {
             ...item,
-            kind: 'message',
+            kind: item.kind === 'summary' ? 'summary' : 'message',
             matchedText: item.text,
-            title: `${item.role === 'user' ? '用户' : item.isHidden ? '隐藏楼层' : '助手'} #${item.messageId}`,
+            title: item.kind === 'summary'
+                ? `${item.role === 'user' ? '用户摘要' : item.isHidden ? '隐藏摘要' : '助手摘要'} #${item.messageId}`
+                : `${item.role === 'user' ? '用户' : item.isHidden ? '隐藏楼层' : '助手'} #${item.messageId}`,
             keywordHits: item.keywordHitsTotal || item.keywordHits,
         };
-        if (item.rerankScore >= rerankThreshold && fullHits.length < fullRecallCount) {
+        if (item.kind !== 'summary' && item.rerankScore >= rerankThreshold && fullHits.length < fullRecallCount) {
             fullHits.push({
                 ...base,
                 recallTier: 'full',
@@ -2770,7 +2826,7 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
                 preview: toPlainPreview(fullText, 220),
             });
         } else {
-            const summaryText = String(item.summary || '').trim();
+            const summaryText = String(item.kind === 'summary' ? item.text : item.summary || '').trim();
             if (summaryText) {
                 summaryHits.push({
                     ...base,
@@ -7297,9 +7353,13 @@ function renderVectorMemoryPanel(state = ensureState()) {
     $('#bakemono-memory-vector-context-window').val(state.vectorMemory.contextWindowMessages ?? defaultVectorMemory.contextWindowMessages);
     $('#bakemono-memory-vector-keywords').val(state.vectorMemory.keywordTriggers || '');
     $('#bakemono-memory-vector-exclude-tags').val(state.vectorMemory.excludeTags || defaultVectorMemory.excludeTags);
+    $('#bakemono-memory-vector-summary-tags').val(state.vectorMemory.summaryTags || defaultVectorMemory.summaryTags);
     $('#bakemono-memory-vector-query-mode').val(state.vectorMemory.queryMode || defaultVectorMemory.queryMode);
     $('#bakemono-memory-vector-query-provider').val(state.vectorMemory.queryRewriteProvider || defaultVectorMemory.queryRewriteProvider);
     $('#bakemono-memory-vector-query-prompt').val(state.vectorMemory.queryRewritePrompt || defaultVectorMemory.queryRewritePrompt);
+    $('#bakemono-memory-vector-query-base-url').val(state.vectorMemory.queryCustomApi?.baseUrl || '');
+    $('#bakemono-memory-vector-query-api-key').val(state.vectorMemory.queryCustomApi?.apiKey || '');
+    $('#bakemono-memory-vector-query-model').val(state.vectorMemory.queryCustomApi?.model || '');
     $('#bakemono-memory-vector-rerank-mode').val(state.vectorMemory.rerankMode || defaultVectorMemory.rerankMode);
     $('#bakemono-memory-vector-provider').val(state.vectorMemory.embeddingProvider || defaultVectorMemory.embeddingProvider);
     $('#bakemono-memory-vector-base-url').val(state.vectorMemory.customApi?.baseUrl || '');
@@ -7365,8 +7425,9 @@ function renderVectorRecordList(state = ensureState()) {
     records.forEach(record => {
         const item = document.createElement('div');
         item.className = 'bakemono-memory-debug-item';
+        const typeLabel = record.kind === 'summary' ? '摘要索引' : record.kind === 'message' ? '楼层索引' : '片段索引';
         item.innerHTML = `
-            <div class="bakemono-memory-debug-meta">${escapeHtml(record.title)} · ${record.kind === 'message' ? '楼层索引' : '片段索引'} · ${record.isHidden ? '隐藏' : '可见'}</div>
+            <div class="bakemono-memory-debug-meta">${escapeHtml(record.title)} · ${typeLabel} · ${record.isHidden ? '隐藏' : '可见'}</div>
             <div class="bakemono-memory-debug-text">${escapeHtml(record.preview || record.text || '')}</div>
         `;
         fragment.append(item);
@@ -7974,9 +8035,15 @@ function readVectorMemoryFieldsFromUi(state = ensureState()) {
         summaryMaxChars: Math.max(120, Number($('#bakemono-memory-vector-summary-max-chars').val() || defaultVectorMemory.summaryMaxChars)),
         keywordTriggers: String($('#bakemono-memory-vector-keywords').val() || ''),
         excludeTags: String($('#bakemono-memory-vector-exclude-tags').val() || defaultVectorMemory.excludeTags),
+        summaryTags: String($('#bakemono-memory-vector-summary-tags').val() || defaultVectorMemory.summaryTags),
         queryMode: String($('#bakemono-memory-vector-query-mode').val() || defaultVectorMemory.queryMode),
         queryRewriteProvider: String($('#bakemono-memory-vector-query-provider').val() || defaultVectorMemory.queryRewriteProvider),
         queryRewritePrompt: String($('#bakemono-memory-vector-query-prompt').val() || defaultVectorMemory.queryRewritePrompt),
+        queryCustomApi: {
+            baseUrl: String($('#bakemono-memory-vector-query-base-url').val() || '').trim(),
+            apiKey: String($('#bakemono-memory-vector-query-api-key').val() || '').trim(),
+            model: String($('#bakemono-memory-vector-query-model').val() || '').trim(),
+        },
         startAfterAiMessages: Math.max(0, Number($('#bakemono-memory-vector-start-after-ai').val() || defaultVectorMemory.startAfterAiMessages)),
         skipIfAllInContext: $('#bakemono-memory-vector-skip-context').length ? $('#bakemono-memory-vector-skip-context').prop('checked') : state.vectorMemory?.skipIfAllInContext !== false,
         contextWindowMessages: Math.max(0, Number($('#bakemono-memory-vector-context-window').val() || defaultVectorMemory.contextWindowMessages)),
