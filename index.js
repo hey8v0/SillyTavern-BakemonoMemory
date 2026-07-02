@@ -2336,25 +2336,59 @@ function getVectorQueryText(state = ensureState(), explicitQuery = '') {
 }
 
 function parseVectorQueryRewriteResult(raw) {
-    const source = String(raw || '').trim();
+    let source = String(raw || '')
+        .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
+        .replace(/```(?:json|text)?/gi, '')
+        .replace(/```/g, '')
+        .trim();
     if (!source) {
         return [];
     }
+    const jsonMatch = source.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
     try {
-        const parsed = JSON.parse(source.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim());
+        const parsed = JSON.parse((jsonMatch?.[1] || source).trim());
         if (Array.isArray(parsed)) {
             return parsed.map(item => String(item || '').trim()).filter(Boolean);
         }
         if (Array.isArray(parsed?.queries)) {
             return parsed.queries.map(item => String(item || '').trim()).filter(Boolean);
         }
+        if (Array.isArray(parsed?.query)) {
+            return parsed.query.map(item => String(item || '').trim()).filter(Boolean);
+        }
+        if (typeof parsed?.query === 'string') {
+            return [parsed.query.trim()].filter(Boolean);
+        }
     } catch {
         // The rewrite prompt allows plain line output; JSON is only a convenience.
     }
     return source
         .split(/\r?\n/)
-        .map(line => line.replace(/^\s*(?:[-*]|\d+[.)、])\s*/, '').trim())
-        .filter(Boolean);
+        .map(line => line
+            .replace(/^\s*(?:[-*]|\d+[.)、]|[（(]?\d+[）)])\s*/, '')
+            .replace(/^\s*(?:query|查询|检索句|关键词)\s*[:：]\s*/i, '')
+            .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+            .trim())
+        .filter(line => line && !/^以下|^输出|^检索|^queries?\s*[:：]?$/i.test(line));
+}
+
+function extractChatCompletionText(data) {
+    const choice = data?.choices?.[0] || {};
+    const message = choice.message || {};
+    const content = message.content ?? choice.text ?? data?.output_text ?? '';
+    if (Array.isArray(content)) {
+        return content.map(part => {
+            if (typeof part === 'string') {
+                return part;
+            }
+            return part?.text || part?.content || '';
+        }).join('\n').trim();
+    }
+    const text = String(content || '').trim();
+    if (text) {
+        return text;
+    }
+    return String(message.reasoning_content || message.reasoning || choice.reasoning_content || '').trim();
 }
 
 async function callVectorQueryRewriteModel(prompt, systemPrompt, state = ensureState()) {
@@ -2389,7 +2423,7 @@ async function callVectorQueryRewriteModel(prompt, systemPrompt, state = ensureS
             throw new Error(`查询重写请求失败：${response.status} ${response.statusText}`);
         }
         const data = await response.json();
-        const content = data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text;
+        const content = extractChatCompletionText(data);
         if (!content) {
             throw new Error('查询重写没有返回可用内容。');
         }
@@ -2466,6 +2500,19 @@ function getRecentVisibleConversationMessageIds(limit = defaultVectorMemory.cont
         .map(({ messageId }) => Number(messageId)));
 }
 
+function getVectorRecallSourceRecords(state = ensureState()) {
+    const records = Array.isArray(state.vectorMemory.records) ? state.vectorMemory.records : [];
+    const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
+    if (state.vectorMemory.skipIfAllInContext === false || contextWindowMessages <= 0) {
+        return records;
+    }
+    const recentVisibleIds = getRecentVisibleConversationMessageIds(contextWindowMessages);
+    if (!recentVisibleIds.size) {
+        return records;
+    }
+    return records.filter(record => !recentVisibleIds.has(Number(record.messageId)));
+}
+
 function shouldSkipVectorRecallForRecentWindow(state = ensureState()) {
     const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
     if (state.vectorMemory.skipIfAllInContext === false || contextWindowMessages <= 0) {
@@ -2479,7 +2526,7 @@ function shouldSkipVectorRecallForRecentWindow(state = ensureState()) {
     if (!recentVisibleIds.size) {
         return false;
     }
-    return records.every(record => recentVisibleIds.has(Number(record.messageId)));
+    return !getVectorRecallSourceRecords(state).length;
 }
 
 function makeVectorRecordSummary(text, maxChars = defaultVectorMemory.summaryMaxChars) {
@@ -2735,6 +2782,11 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
         const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
         return clearVectorRecall(`已索引内容都还在可见最近 ${contextWindowMessages} 楼内，已跳过向量召回。`, state);
     }
+    const recallRecords = getVectorRecallSourceRecords(state);
+    if (!recallRecords.length) {
+        const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
+        return clearVectorRecall(`可召回内容都还在可见最近 ${contextWindowMessages} 楼内，已跳过向量召回。`, state);
+    }
     let queries = [];
     try {
         queries = await prepareVectorQueries(explicitQuery, state);
@@ -2756,7 +2808,7 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
     const rerankCandidateCount = Math.max(1, Number(state.vectorMemory.rerankCandidateCount || state.vectorMemory.topK || defaultVectorMemory.rerankCandidateCount));
     const finalRecallCount = Math.max(1, Number(state.vectorMemory.finalRecallCount || state.vectorMemory.maxRecallMessages || defaultVectorMemory.finalRecallCount));
     const fullRecallCount = Math.max(0, Number(state.vectorMemory.fullRecallCount ?? defaultVectorMemory.fullRecallCount));
-    const scored = state.vectorMemory.records.map(record => {
+    const scored = recallRecords.map(record => {
         const similarities = queryEmbeddings.map(embedding => cosineSimilarity(embedding, record.embedding || []));
         const similarity = similarities.length ? Math.max(...similarities) : 0;
         const keywordHits = countKeywordHits(`${record.title}\n${record.summary || ''}\n${record.text}`, keywords);
@@ -3760,6 +3812,7 @@ function buildMemoryRecords(state = ensureState()) {
             || String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
             || getSummarySortKey(b) - getSummarySortKey(a)
         ))[0] || null;
+    const latestEpicHash = latestEpic?.hash || '';
     const epicCoveredStageHashes = new Set(latestEpic ? [...(latestEpic.sourceStageHashes || []), ...(latestEpic.sourceHashes || [])] : []);
     const stageInjectedHashes = new Set(state.stageSummaries
         .filter(summary => !epicCoveredStageHashes.has(summary.hash))
@@ -7189,6 +7242,7 @@ function createCustomTableFromUi() {
 
 function renderAll(statusText = '') {
     const state = ensureState();
+    state.memoryRecords = buildMemoryRecords(state);
     const storyBlocks = getStoryBlocks();
     const stageBlocks = [
         ...getBlocksByType(blockTypes.STAGE),
