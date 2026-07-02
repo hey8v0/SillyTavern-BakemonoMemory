@@ -633,6 +633,7 @@ const defaultVectorMemory = {
         baseUrl: '',
         apiKey: '',
         model: '',
+        models: [],
     },
     startAfterAiMessages: 0,
     skipIfAllInContext: true,
@@ -4559,7 +4560,7 @@ async function runGeneration(message, action) {
 
 function setBusy(value) {
     isBusy = value;
-    $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-epic"], [data-bakemono-action="backfill"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-table-draft-action]').prop('disabled', value);
+    $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-epic"], [data-bakemono-action="backfill"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-table-draft-action]').prop('disabled', value);
 }
 
 async function callGenerationModel({ prompt, systemPrompt }) {
@@ -4749,6 +4750,50 @@ async function fetchVectorEmbeddingModels() {
         toastr.success(`已拉取 ${state.vectorMemory.customApi.models.length} 个嵌入向量模型。`);
     } catch (error) {
         toastr.error(error?.message || String(error), '嵌入向量模型拉取失败');
+    } finally {
+        toastr.clear(toast);
+    }
+}
+
+async function fetchVectorQueryModels() {
+    const state = ensureState();
+    readVectorMemoryFieldsFromUi(state);
+    const queryConfig = state.vectorMemory.queryCustomApi || {};
+    const embeddingConfig = state.vectorMemory.customApi || {};
+    const baseUrl = normalizeCustomApiBaseUrl(queryConfig.baseUrl || embeddingConfig.baseUrl);
+    const apiKey = String(queryConfig.apiKey || embeddingConfig.apiKey || '').trim();
+    if (!baseUrl) {
+        toastr.warning('请先填写改写接口地址，或填写上方嵌入向量接口地址以便复用。');
+        return;
+    }
+    const toast = toastr.info('正在拉取改写模型列表...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
+    try {
+        const response = await fetch(getCustomModelsUrl(baseUrl), {
+            method: 'GET',
+            headers: {
+                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+            },
+        });
+        if (!response.ok) {
+            throw new Error(`拉取模型失败：${response.status} ${response.statusText}`);
+        }
+        const data = await response.json();
+        const models = Array.isArray(data?.data)
+            ? data.data.map(item => item?.id || item?.name).filter(Boolean)
+            : [];
+        if (!models.length) {
+            throw new Error('接口返回里没有找到模型 ID。');
+        }
+        state.vectorMemory.queryCustomApi.models = unique(models.map(item => String(item).trim()).filter(Boolean)).sort();
+        if (!String(state.vectorMemory.queryCustomApi.model || '').trim()) {
+            state.vectorMemory.queryCustomApi.model = state.vectorMemory.queryCustomApi.models[0];
+            $('#bakemono-memory-vector-query-model').val(state.vectorMemory.queryCustomApi.model);
+        }
+        renderVectorQueryModelOptions(state.vectorMemory.queryCustomApi.models);
+        saveState();
+        toastr.success(`已拉取 ${state.vectorMemory.queryCustomApi.models.length} 个改写模型。`);
+    } catch (error) {
+        toastr.error(error?.message || String(error), '改写模型拉取失败');
     } finally {
         toastr.clear(toast);
     }
@@ -7360,6 +7405,7 @@ function renderVectorMemoryPanel(state = ensureState()) {
     $('#bakemono-memory-vector-query-base-url').val(state.vectorMemory.queryCustomApi?.baseUrl || '');
     $('#bakemono-memory-vector-query-api-key').val(state.vectorMemory.queryCustomApi?.apiKey || '');
     $('#bakemono-memory-vector-query-model').val(state.vectorMemory.queryCustomApi?.model || '');
+    renderVectorQueryModelOptions(state.vectorMemory.queryCustomApi?.models || []);
     $('#bakemono-memory-vector-rerank-mode').val(state.vectorMemory.rerankMode || defaultVectorMemory.rerankMode);
     $('#bakemono-memory-vector-provider').val(state.vectorMemory.embeddingProvider || defaultVectorMemory.embeddingProvider);
     $('#bakemono-memory-vector-base-url').val(state.vectorMemory.customApi?.baseUrl || '');
@@ -7870,6 +7916,19 @@ function renderVectorModelOptions(models = []) {
     }
 }
 
+function renderVectorQueryModelOptions(models = []) {
+    const list = document.querySelector('#bakemono-memory-vector-query-model-options');
+    if (!list) {
+        return;
+    }
+    list.innerHTML = '';
+    for (const model of unique(models.map(item => String(item || '').trim()).filter(Boolean)).sort()) {
+        const option = document.createElement('option');
+        option.value = model;
+        list.append(option);
+    }
+}
+
 function readRuleFieldsFromUi(state = ensureState()) {
     if (!$('#bakemono-memory-scan-mode').length) {
         return state;
@@ -8043,6 +8102,7 @@ function readVectorMemoryFieldsFromUi(state = ensureState()) {
             baseUrl: String($('#bakemono-memory-vector-query-base-url').val() || '').trim(),
             apiKey: String($('#bakemono-memory-vector-query-api-key').val() || '').trim(),
             model: String($('#bakemono-memory-vector-query-model').val() || '').trim(),
+            models: Array.isArray(state.vectorMemory?.queryCustomApi?.models) ? state.vectorMemory.queryCustomApi.models : [],
         },
         startAfterAiMessages: Math.max(0, Number($('#bakemono-memory-vector-start-after-ai').val() || defaultVectorMemory.startAfterAiMessages)),
         skipIfAllInContext: $('#bakemono-memory-vector-skip-context').length ? $('#bakemono-memory-vector-skip-context').prop('checked') : state.vectorMemory?.skipIfAllInContext !== false,
@@ -8991,6 +9051,8 @@ async function runWorkbenchAction(action) {
         await testVectorMemoryRetrieval();
     } else if (action === 'vector-fetch-models') {
         await fetchVectorEmbeddingModels();
+    } else if (action === 'vector-fetch-query-models') {
+        await fetchVectorQueryModels();
     } else if (action === 'vector-clear') {
         clearVectorMemoryIndex();
     }

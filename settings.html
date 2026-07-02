@@ -1384,12 +1384,19 @@
             </label>
             <label class="bakemono-memory-field">
               <span>改写模型</span>
-              <input id="bakemono-memory-vector-query-model" class="text_pole" type="text" placeholder="例如 gpt-4o-mini / gemini-flash">
+              <input id="bakemono-memory-vector-query-model" class="text_pole" type="text" list="bakemono-memory-vector-query-model-options" placeholder="例如 gpt-4o-mini / gemini-flash">
+              <datalist id="bakemono-memory-vector-query-model-options"></datalist>
             </label>
             <label class="bakemono-memory-field">
               <span>改写密钥</span>
               <input id="bakemono-memory-vector-query-api-key" class="text_pole" type="password" autocomplete="off" placeholder="留空复用嵌入向量密钥">
             </label>
+          </div>
+          <div class="bakemono-memory-inline-actions">
+            <button type="button" class="menu_button" data-bakemono-action="vector-fetch-query-models">
+              <i class="fa-solid fa-cloud-arrow-down"></i>
+              <span>拉取改写模型</span>
+            </button>
           </div>
         </div>
 
