@@ -1144,6 +1144,24 @@
   display: grid;
   gap: 8px;
   padding: 0 12px 12px;
+  max-height: min(52vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 45%, transparent) transparent;
+}
+
+.bakemono-memory-vector-step-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.bakemono-memory-vector-step-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.bakemono-memory-vector-step-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 45%, transparent);
 }
 
 .bakemono-memory-vector-query-row {
@@ -1154,6 +1172,36 @@
   padding: 8px 10px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 18%, transparent);
+}
+
+.bakemono-memory-vector-intent-card {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 24%, transparent);
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, var(--SmartThemeBlurTintColor) 12%);
+}
+
+.bakemono-memory-vector-intent-card strong {
+  display: inline-grid;
+  place-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--SmartThemeBlurTintColor);
+  background: var(--SmartThemeQuoteColor);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.bakemono-memory-vector-intent-card span {
+  min-width: 0;
+  color: var(--SmartThemeBodyColor);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
 }
 
 .bakemono-memory-vector-query-row strong {

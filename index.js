@@ -657,6 +657,7 @@ const defaultVectorMemory = {
     lastHits: [],
     lastQuery: '',
     lastQueries: [],
+    lastRewriteIntent: '',
     lastEmbeddingCandidates: [],
     lastRerankCandidates: [],
     lastRecallSkippedReason: '',
@@ -2342,6 +2343,8 @@ function getVectorQueryText(state = ensureState(), explicitQuery = '') {
 function parseVectorQueryRewriteResult(raw) {
     let source = String(raw || '')
         .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
+        .replace(/<analysis\b[^>]*>[\s\S]*?<\/analysis>/gi, '')
+        .replace(/<reasoning\b[^>]*>[\s\S]*?<\/reasoning>/gi, '')
         .replace(/```(?:json|text)?/gi, '')
         .replace(/```/g, '')
         .trim();
@@ -2352,28 +2355,73 @@ function parseVectorQueryRewriteResult(raw) {
     try {
         const parsed = JSON.parse((jsonMatch?.[1] || source).trim());
         if (Array.isArray(parsed)) {
-            return parsed.map(item => String(item || '').trim()).filter(Boolean);
+            return normalizeVectorRewriteQueries(parsed);
         }
         if (Array.isArray(parsed?.queries)) {
-            return parsed.queries.map(item => String(item || '').trim()).filter(Boolean);
+            return normalizeVectorRewriteQueries(parsed.queries);
         }
         if (Array.isArray(parsed?.query)) {
-            return parsed.query.map(item => String(item || '').trim()).filter(Boolean);
+            return normalizeVectorRewriteQueries(parsed.query);
         }
         if (typeof parsed?.query === 'string') {
-            return [parsed.query.trim()].filter(Boolean);
+            return normalizeVectorRewriteQueries([parsed.query]);
         }
     } catch {
         // The rewrite prompt allows plain line output; JSON is only a convenience.
     }
-    return source
+    return normalizeVectorRewriteQueries(source
         .split(/\r?\n/)
         .map(line => line
             .replace(/^\s*(?:[-*]|\d+[.)、]|[（(]?\d+[）)])\s*/, '')
             .replace(/^\s*(?:query|查询|检索句|关键词)\s*[:：]\s*/i, '')
             .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
             .trim())
-        .filter(line => line && !/^以下|^输出|^检索|^queries?\s*[:：]?$/i.test(line));
+        .filter(Boolean));
+}
+
+function normalizeVectorRewriteQueries(items = []) {
+    return items
+        .map(item => normalizeVectorRewriteQueryItem(item))
+        .filter(Boolean)
+        .filter(item => !isVectorRewriteInstructionLine(item));
+}
+
+function normalizeVectorRewriteQueryItem(item) {
+    let text = String(item || '').trim();
+    if (!text) {
+        return '';
+    }
+    text = text
+        .replace(/^\s*(?:Q\s*)?\d+\s*[.)、:：-]\s*/i, '')
+        .replace(/^\s*(?:[-*]|\d+[.)、]|[（(]?\d+[）)])\s*/, '')
+        .replace(/^\s*(?:query|查询|检索句|关键词)\s*[:：]\s*/i, '')
+        .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+        .trim();
+    return text;
+}
+
+function isVectorRewriteInstructionLine(text) {
+    const value = String(text || '').trim();
+    if (!value) {
+        return true;
+    }
+    if (value.length < 4) {
+        return true;
+    }
+    return /^(?:thinking\s*process|analy[sz]e\s+the\s+request|role\s*:|task\s*:|constraints?\s*:|requirements?\s*:|output\s*:|only\s+output|do\s+not|system\s*:|assistant\s*:|user\s*:|recent\s+plot|search\s+queries?|queries?\s*:|intent\s*:)/i.test(value)
+        || /^(?:以下|输出|检索|要求|约束|任务|角色)(?:[:：\s]|$)/.test(value)
+        || /^\*\*(?:analy[sz]e|role|task|constraints?|output|thinking)[\s\S]*\*\*$/i.test(value);
+}
+
+function getVectorRewriteIntentText(baseQuery = '') {
+    const clean = String(baseQuery || '')
+        .split(/\n\n关键词提示：/)[0]
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
+    const userLine = [...clean].reverse().find(line => /^用户\s*#?\d*\s*[:：]/.test(line));
+    const lastLine = userLine || clean.at(-1) || '';
+    return toPlainPreview(lastLine.replace(/^(?:用户|助手)\s*#?\d*\s*[:：]\s*/, '').trim(), 220);
 }
 
 function extractChatCompletionText(data) {
@@ -2439,6 +2487,7 @@ async function callVectorQueryRewriteModel(prompt, systemPrompt, state = ensureS
 async function prepareVectorQueries(explicitQuery = '', state = ensureState()) {
     const baseQuery = getVectorQueryText(state, explicitQuery);
     const mode = String(state.vectorMemory.queryMode || defaultVectorMemory.queryMode);
+    state.vectorMemory.lastRewriteIntent = getVectorRewriteIntentText(baseQuery);
     if (!baseQuery.trim()) {
         return [];
     }
@@ -2585,6 +2634,7 @@ function computeVectorRerankScore(item, queries = [], state = ensureState()) {
 function clearVectorRecall(reason = '', state = ensureState()) {
     state.vectorMemory.lastHits = [];
     state.vectorMemory.lastQueries = [];
+    state.vectorMemory.lastRewriteIntent = '';
     state.vectorMemory.lastEmbeddingCandidates = [];
     state.vectorMemory.lastRerankCandidates = [];
     state.vectorMemory.lastQuery = '';
@@ -7610,6 +7660,7 @@ function renderVectorRecallDetails(state = ensureState()) {
     container.innerHTML = '';
     const queries = state.vectorMemory.lastQueries || [];
     const hits = state.vectorMemory.lastHits || [];
+    const intent = String(state.vectorMemory.lastRewriteIntent || '').trim();
     const embeddingCandidates = state.vectorMemory.lastEmbeddingCandidates || [];
     const rerankCandidates = state.vectorMemory.lastRerankCandidates || [];
     const renderRecallItems = (items = [], emptyText = '暂无内容。') => {
@@ -7647,9 +7698,14 @@ function renderVectorRecallDetails(state = ensureState()) {
     const steps = [
         {
             title: `查询重写 · ${queries.length || 0} Q`,
-            body: queries.length
-                ? queries.map((query, index) => `<div class="bakemono-memory-vector-query-row"><strong>Q${index + 1}</strong><span>${escapeHtml(query)}</span></div>`).join('')
-                : '<div class="bakemono-memory-empty">暂无查询重写结果。成功召回后会在这里显示多条检索 query。</div>',
+            body: [
+                intent
+                    ? `<div class="bakemono-memory-vector-intent-card"><strong>INTENT</strong><span>${escapeHtml(intent)}</span></div>`
+                    : '',
+                queries.length
+                    ? queries.map((query, index) => `<div class="bakemono-memory-vector-query-row"><strong>Q${index + 1}</strong><span>${escapeHtml(query)}</span></div>`).join('')
+                    : '<div class="bakemono-memory-empty">暂无查询重写结果。成功召回后会在这里显示多条检索 query。</div>',
+            ].filter(Boolean).join(''),
         },
         {
             title: `Embedding 检索 · ${embeddingCandidates.length || 0} 候选`,
