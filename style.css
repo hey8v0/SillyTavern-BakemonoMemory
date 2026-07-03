@@ -1169,6 +1169,42 @@
   overflow-wrap: anywhere;
 }
 
+.bakemono-memory-vector-detail-item {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed color-mix(in srgb, var(--bk-line) 78%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 16%, transparent);
+}
+
+.bakemono-memory-vector-detail-head {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.bakemono-memory-vector-detail-head strong {
+  min-width: 0;
+  color: var(--SmartThemeBodyColor);
+  overflow-wrap: anywhere;
+}
+
+.bakemono-memory-vector-detail-head span {
+  color: var(--bk-ink-soft);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.bakemono-memory-vector-detail-text {
+  color: var(--SmartThemeBodyColor);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  opacity: 0.95;
+}
+
 .bakemono-memory-record-item {
   min-width: 0;
   display: grid;

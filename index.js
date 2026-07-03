@@ -657,6 +657,8 @@ const defaultVectorMemory = {
     lastHits: [],
     lastQuery: '',
     lastQueries: [],
+    lastEmbeddingCandidates: [],
+    lastRerankCandidates: [],
     lastRecallSkippedReason: '',
     lastIndexAt: null,
 };
@@ -1138,6 +1140,8 @@ function ensureState() {
     state.vectorMemory.records = Array.isArray(state.vectorMemory.records) ? state.vectorMemory.records : [];
     state.vectorMemory.embeddingCache = state.vectorMemory.embeddingCache && typeof state.vectorMemory.embeddingCache === 'object' ? state.vectorMemory.embeddingCache : {};
     state.vectorMemory.lastHits = Array.isArray(state.vectorMemory.lastHits) ? state.vectorMemory.lastHits : [];
+    state.vectorMemory.lastEmbeddingCandidates = Array.isArray(state.vectorMemory.lastEmbeddingCandidates) ? state.vectorMemory.lastEmbeddingCandidates : [];
+    state.vectorMemory.lastRerankCandidates = Array.isArray(state.vectorMemory.lastRerankCandidates) ? state.vectorMemory.lastRerankCandidates : [];
     state.chatGuard = state.chatGuard && typeof state.chatGuard === 'object'
         ? state.chatGuard
         : structuredClone(defaultState.chatGuard);
@@ -2581,11 +2585,38 @@ function computeVectorRerankScore(item, queries = [], state = ensureState()) {
 function clearVectorRecall(reason = '', state = ensureState()) {
     state.vectorMemory.lastHits = [];
     state.vectorMemory.lastQueries = [];
+    state.vectorMemory.lastEmbeddingCandidates = [];
+    state.vectorMemory.lastRerankCandidates = [];
     state.vectorMemory.lastQuery = '';
     state.vectorMemory.estimatedChars = 0;
     state.vectorMemory.trimmedHitCount = 0;
     state.vectorMemory.lastRecallSkippedReason = reason;
     return [];
+}
+
+function serializeVectorRecallItem(item, options = {}) {
+    const score = Number((item.rerankScore ?? item.score ?? 0).toFixed(4));
+    const similarity = Number((item.embeddingScore ?? item.similarity ?? 0).toFixed(4));
+    return {
+        id: item.id,
+        kind: item.kind || 'message',
+        recallTier: options.recallTier || item.recallTier || '',
+        messageId: item.messageId,
+        chunkIndex: item.chunkIndex,
+        role: item.role,
+        isHidden: !!item.isHidden,
+        isSavedSummary: !!item.isSavedSummary,
+        summaryType: item.summaryType || '',
+        title: item.title || `楼层 ${item.messageId}`,
+        text: getClippedVectorText(item.text || item.summary || '', Number(options.textLimit || 480)),
+        preview: toPlainPreview(item.preview || item.text || item.summary || '', Number(options.previewLimit || 220)),
+        matchedText: getClippedVectorText(item.matchedText || item.text || '', 360),
+        matchedChunks: item.matchedChunks || 1,
+        keywordHits: item.keywordHitsTotal || item.keywordHits || 0,
+        score,
+        similarity,
+        rerankScore: Number((item.rerankScore ?? score).toFixed(4)),
+    };
 }
 
 function getVectorSourceSignature(state = ensureState()) {
@@ -2899,6 +2930,9 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
             embeddingCandidates = fallbackCandidates.slice(0, rerankCandidateCount);
         }
     }
+    state.vectorMemory.lastEmbeddingCandidates = embeddingCandidates
+        .slice(0, rerankCandidateCount)
+        .map(item => serializeVectorRecallItem(item, { previewLimit: 240, textLimit: 480 }));
     const byMessage = new Map();
     for (const item of embeddingCandidates.slice(0, Math.max(rerankCandidateCount * 2, rerankCandidateCount))) {
         const key = String(item.messageId);
@@ -2926,6 +2960,12 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
     const reranked = [...byMessage.values()]
         .sort((a, b) => (b.rerankScore - a.rerankScore) || (b.embeddingScore - a.embeddingScore) || (b.keywordHitsTotal - a.keywordHitsTotal) || (Number(b.messageId) - Number(a.messageId)))
         .slice(0, rerankCandidateCount);
+    state.vectorMemory.lastRerankCandidates = reranked.map(item => {
+        const recallTier = item.kind !== 'summary' && item.rerankScore >= rerankThreshold
+            ? 'full'
+            : (item.kind === 'summary' || item.summary ? 'summary' : 'dropped');
+        return serializeVectorRecallItem(item, { recallTier, previewLimit: 260, textLimit: 520 });
+    });
     const fullHits = [];
     const summaryHits = [];
     for (const item of reranked) {
@@ -7570,6 +7610,40 @@ function renderVectorRecallDetails(state = ensureState()) {
     container.innerHTML = '';
     const queries = state.vectorMemory.lastQueries || [];
     const hits = state.vectorMemory.lastHits || [];
+    const embeddingCandidates = state.vectorMemory.lastEmbeddingCandidates || [];
+    const rerankCandidates = state.vectorMemory.lastRerankCandidates || [];
+    const renderRecallItems = (items = [], emptyText = '暂无内容。') => {
+        if (!items.length) {
+            return `<div class="bakemono-memory-empty">${escapeHtml(emptyText)}</div>`;
+        }
+        return items.map(item => {
+            const tier = item.recallTier === 'full'
+                ? '全文'
+                : item.recallTier === 'summary'
+                    ? '摘要'
+                    : item.recallTier === 'dropped'
+                        ? '未入档'
+                        : item.kind === 'summary'
+                            ? '摘要'
+                            : '候选';
+            const meta = [
+                tier,
+                `重排 ${item.rerankScore ?? item.score ?? 0}`,
+                `相似 ${item.similarity ?? 0}`,
+                item.keywordHits ? `关键词 ${item.keywordHits}` : '',
+                item.matchedChunks > 1 ? `命中片段 ${item.matchedChunks}` : '',
+            ].filter(Boolean).join(' · ');
+            return `
+                <article class="bakemono-memory-vector-detail-item">
+                  <div class="bakemono-memory-vector-detail-head">
+                    <strong>${escapeHtml(item.title || `楼层 ${item.messageId}`)}</strong>
+                    <span>${escapeHtml(meta)}</span>
+                  </div>
+                  <div class="bakemono-memory-vector-detail-text">${escapeHtml(item.preview || item.text || '')}</div>
+                </article>
+            `;
+        }).join('');
+    };
     const steps = [
         {
             title: `查询重写 · ${queries.length || 0} Q`,
@@ -7578,18 +7652,16 @@ function renderVectorRecallDetails(state = ensureState()) {
                 : '<div class="bakemono-memory-empty">暂无查询重写结果。成功召回后会在这里显示多条检索 query。</div>',
         },
         {
-            title: `Embedding 检索 · ${Math.max(0, Number(state.vectorMemory.rerankCandidateCount || state.vectorMemory.topK || 0))} 候选`,
-            body: `<div class="bakemono-memory-vector-step-note">先用向量相似度从索引里取候选。正文索引和摘要索引分开统计，最近可见窗口内的内容会被排除。</div>`,
+            title: `Embedding 检索 · ${embeddingCandidates.length || 0} 候选`,
+            body: renderRecallItems(embeddingCandidates, state.vectorMemory.lastRecallSkippedReason || '暂无候选。'),
         },
         {
-            title: `Rerank 分档 · ${hits.length || 0} 条`,
-            body: `<div class="bakemono-memory-vector-step-note">候选会按相似度、关键词命中和查询命中重排，高分走全文档，低分但可用的走摘要档。</div>`,
+            title: `Rerank 分档 · ${rerankCandidates.length || 0} 条`,
+            body: renderRecallItems(rerankCandidates, embeddingCandidates.length ? '候选没有进入可注入档位。' : '暂无重排结果。'),
         },
         {
             title: `最终注入 · ${hits.length || 0} 条`,
-            body: hits.length
-                ? hits.map(hit => `<div class="bakemono-memory-vector-query-row"><strong>${escapeHtml(hit.recallTier === 'full' ? '全文' : '摘要')}</strong><span>${escapeHtml(hit.title || `楼层 ${hit.messageId}`)} · 重排 ${escapeHtml(hit.rerankScore ?? hit.score ?? 0)} · 相似 ${escapeHtml(hit.similarity ?? 0)}</span></div>`).join('')
-                : '<div class="bakemono-memory-empty">暂无最终注入。</div>',
+            body: renderRecallItems(hits, state.vectorMemory.lastRecallSkippedReason || '暂无最终注入。'),
         },
     ];
     const fragment = document.createDocumentFragment();
@@ -8260,6 +8332,8 @@ function readVectorMemoryFieldsFromUi(state = ensureState()) {
     }
     const previousRecords = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records : [];
     const previousHits = Array.isArray(state.vectorMemory?.lastHits) ? state.vectorMemory.lastHits : [];
+    const previousEmbeddingCandidates = Array.isArray(state.vectorMemory?.lastEmbeddingCandidates) ? state.vectorMemory.lastEmbeddingCandidates : [];
+    const previousRerankCandidates = Array.isArray(state.vectorMemory?.lastRerankCandidates) ? state.vectorMemory.lastRerankCandidates : [];
     const previousCache = {};
     state.vectorMemory = {
         ...structuredClone(defaultVectorMemory),
@@ -8315,6 +8389,8 @@ function readVectorMemoryFieldsFromUi(state = ensureState()) {
         records: previousRecords,
         embeddingCache: previousCache,
         lastHits: previousHits,
+        lastEmbeddingCandidates: previousEmbeddingCandidates,
+        lastRerankCandidates: previousRerankCandidates,
     };
     return state;
 }
