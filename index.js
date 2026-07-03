@@ -628,7 +628,7 @@ const defaultVectorMemory = {
     summaryTags: 'bakemono, summaryDraft',
     queryMode: 'model-required',
     queryRewriteProvider: 'tavern',
-    queryRewritePrompt: '请把最近剧情改写成 3 到 5 条适合检索旧剧情记忆的查询句。要求：只保留已经发生的事实、人物、地点、物品、关系和未解决事项；不要续写；每行一条；不要解释。',
+    queryRewritePrompt: '请把最近剧情改写成 3 到 5 条适合检索旧剧情记忆的中文查询句。只保留已经发生的事实、人物、地点、物品、关系和未解决事项；不要续写，不要解释，不要输出步骤。请只返回 JSON 字符串数组，例如 ["角色A和角色B过去的关系转折", "某个物品首次出现和后续影响"]。',
     queryCustomApi: {
         baseUrl: '',
         apiKey: '',
@@ -2395,6 +2395,7 @@ function normalizeVectorRewriteQueryItem(item) {
         .replace(/^\s*(?:Q\s*)?\d+\s*[.)、:：-]\s*/i, '')
         .replace(/^\s*(?:[-*]|\d+[.)、]|[（(]?\d+[）)])\s*/, '')
         .replace(/^\s*(?:query|查询|检索句|关键词)\s*[:：]\s*/i, '')
+        .replace(/^[\s*_`#>]+|[\s*_`#>]+$/g, '')
         .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
         .trim();
     return text;
@@ -2408,8 +2409,9 @@ function isVectorRewriteInstructionLine(text) {
     if (value.length < 4) {
         return true;
     }
-    return /^(?:thinking\s*process|analy[sz]e\s+the\s+request|role\s*:|task\s*:|constraints?\s*:|requirements?\s*:|output\s*:|only\s+output|do\s+not|system\s*:|assistant\s*:|user\s*:|recent\s+plot|search\s+queries?|queries?\s*:|intent\s*:)/i.test(value)
+    return /^(?:thinking\s*process|analy[sz]e\s+the\s+request|role\s*:|task\s*:|constraints?\s*:|requirements?\s*:|output\s*:|only\s+output|do\s+not|system\s*:|assistant\s*:|user\s*:|recent\s+plot|search\s+queries?|queries?\s*:|intent\s*:|keep\s+only\s+facts|one\s+query\s+per\s+line|no\s+explanations?|language\s*:|convert\s+recent\s+plot)/i.test(value)
         || /^(?:以下|输出|检索|要求|约束|任务|角色)(?:[:：\s]|$)/.test(value)
+        || /(?:only\s+return|return\s+json|json\s+array|不要解释|不要输出步骤|每行一条|只返回|只输出)/i.test(value)
         || /^\*\*(?:analy[sz]e|role|task|constraints?|output|thinking)[\s\S]*\*\*$/i.test(value);
 }
 
@@ -7697,13 +7699,13 @@ function renderVectorRecallDetails(state = ensureState()) {
     };
     const steps = [
         {
-            title: `查询重写 · ${queries.length || 0} Q`,
+            title: `查询重写 · ${queries.length || 0} 条线索`,
             body: [
                 intent
-                    ? `<div class="bakemono-memory-vector-intent-card"><strong>INTENT</strong><span>${escapeHtml(intent)}</span></div>`
+                    ? `<div class="bakemono-memory-vector-intent-card"><strong>检索意图</strong><span>${escapeHtml(intent)}</span></div>`
                     : '',
                 queries.length
-                    ? queries.map((query, index) => `<div class="bakemono-memory-vector-query-row"><strong>Q${index + 1}</strong><span>${escapeHtml(query)}</span></div>`).join('')
+                    ? queries.map((query, index) => `<div class="bakemono-memory-vector-query-row"><strong>线索 ${String(index + 1).padStart(2, '0')}</strong><span>${escapeHtml(query)}</span></div>`).join('')
                     : '<div class="bakemono-memory-empty">暂无查询重写结果。成功召回后会在这里显示多条检索 query。</div>',
             ].filter(Boolean).join(''),
         },

@@ -1165,36 +1165,37 @@
 }
 
 .bakemono-memory-vector-query-row {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(44px, max-content) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(78px, max-content) minmax(0, 1fr);
+  gap: 14px;
   align-items: start;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 18%, transparent);
+  padding: 10px 12px 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--bk-line) 58%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 62%, var(--bk-line));
+  border-radius: 10px 14px 14px 10px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--SmartThemeQuoteColor) 9%, transparent),
+    color-mix(in srgb, var(--SmartThemeBlurTintColor) 12%, transparent));
 }
 
 .bakemono-memory-vector-intent-card {
+  position: relative;
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 24%, transparent);
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, var(--SmartThemeBlurTintColor) 12%);
+  gap: 8px;
+  padding: 14px 16px 14px 18px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--bk-line) 70%, transparent);
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, transparent), transparent 32%),
+    color-mix(in srgb, var(--SmartThemeBlurTintColor) 14%, transparent);
+  box-shadow: inset 4px 0 0 color-mix(in srgb, var(--SmartThemeQuoteColor) 54%, var(--bk-line));
 }
 
 .bakemono-memory-vector-intent-card strong {
-  display: inline-grid;
-  place-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  color: var(--SmartThemeBlurTintColor);
-  background: var(--SmartThemeQuoteColor);
+  color: var(--SmartThemeQuoteColor);
   font-size: 12px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
 }
 
 .bakemono-memory-vector-intent-card span {
@@ -1206,6 +1207,8 @@
 
 .bakemono-memory-vector-query-row strong {
   color: var(--SmartThemeQuoteColor);
+  font-size: 12px;
+  letter-spacing: 0.04em;
   white-space: nowrap;
 }
 
