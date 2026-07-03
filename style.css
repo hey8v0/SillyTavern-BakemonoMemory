@@ -1095,6 +1095,7 @@
 
 .bakemono-memory-vector-recall-card {
   margin-top: 10px;
+  grid-column: 1 / -1;
 }
 
 .bakemono-memory-vector-recall-details {

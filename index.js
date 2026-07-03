@@ -2589,9 +2589,55 @@ function clearVectorRecall(reason = '', state = ensureState()) {
 }
 
 function getVectorSourceSignature(state = ensureState()) {
-    return getVectorSourceMessages(state)
-        .map(({ message, messageId, cleanedText, summaryText }) => `${messageId}:${getMessageVariantKey(message)}:${getHash(cleanedText || '')}:${getHash(summaryText || '')}`)
-        .join('|');
+    return [
+        ...getVectorSourceMessages(state)
+            .map(({ message, messageId, cleanedText, summaryText }) => `${messageId}:${getMessageVariantKey(message)}:${getHash(cleanedText || '')}:${getHash(summaryText || '')}`),
+        ...getVectorSavedSummarySources(state)
+            .map(source => `saved:${source.type}:${source.hash}:${getHash(source.text || '')}`),
+    ].join('|');
+}
+
+function getVectorSavedSummarySources(state = ensureState()) {
+    const summaryMax = Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars));
+    const sources = [];
+    const addSummary = (summary, type) => {
+        const raw = String(summary?.content || '').trim();
+        if (!summary?.hash || !raw) {
+            return;
+        }
+        const sourceMessageIds = getFiniteMessageIds(summary.sourceMessageIds || []);
+        const sourceStart = Number.isFinite(summary.sourceStart)
+            ? Number(summary.sourceStart)
+            : getSourceStart(sourceMessageIds);
+        const sourceEnd = Number.isFinite(summary.sourceEnd)
+            ? Number(summary.sourceEnd)
+            : getSourceEnd(sourceMessageIds);
+        const title = summary.title || getBlockTitle(raw, getKindLabel(type));
+        const plain = getBlockPlainText(raw) || normalizeLineEndings(stripHtml(raw)).trim();
+        const text = getClippedVectorText(plain, summaryMax);
+        if (!text) {
+            return;
+        }
+        sources.push({
+            id: `vec-saved-${type}-${summary.hash}`,
+            hash: summary.hash,
+            type,
+            messageId: Number.isFinite(sourceStart) && sourceStart < Number.MAX_SAFE_INTEGER ? sourceStart : Number.MAX_SAFE_INTEGER,
+            sourceStart,
+            sourceEnd,
+            sourceMessageIds,
+            title: `${getKindLabel(type)}：${title}`,
+            text,
+            preview: toPlainPreview(text, 180),
+            createdAt: summary.createdAt || '',
+        });
+    };
+    (state.storySummaries || [])
+        .filter(summary => ['backfill', 'turn', 'inline', 'manual', 'turn_manual', 'turn_auto', 'inline_summary'].includes(String(summary.sourceKind || summary.metadata?.sourceKind || '')))
+        .forEach(summary => addSummary(summary, blockTypes.STORY));
+    (state.stageSummaries || []).forEach(summary => addSummary(summary, blockTypes.STAGE));
+    (state.epicSummaries || []).forEach(summary => addSummary(summary, blockTypes.EPIC));
+    return sources;
 }
 
 function markVectorIndexDirty(reason = 'changed', state = ensureState()) {
@@ -2754,6 +2800,28 @@ async function buildVectorMemoryIndex({ silent = false } = {}) {
         }
     }
 
+    for (const source of getVectorSavedSummarySources(state)) {
+        records.push({
+            id: source.id,
+            kind: 'summary',
+            messageId: source.messageId,
+            chunkIndex: 0,
+            role: 'memory',
+            isHidden: false,
+            isSavedSummary: true,
+            summaryType: source.type,
+            sourceStart: source.sourceStart,
+            sourceEnd: source.sourceEnd,
+            sourceMessageIds: source.sourceMessageIds,
+            title: source.title,
+            text: source.text,
+            summary: source.text,
+            preview: source.preview,
+            embedding: await getEmbeddingForText(source.text, state),
+            createdAt: source.createdAt || new Date().toISOString(),
+        });
+    }
+
     state.vectorMemory.records = records;
     state.vectorMemory.embeddingCache = {};
     state.vectorMemory.lastIndexAt = new Date().toISOString();
@@ -2867,7 +2935,9 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
             kind: item.kind === 'summary' ? 'summary' : 'message',
             matchedText: item.text,
             title: item.kind === 'summary'
-                ? `${item.role === 'user' ? '用户摘要' : item.isHidden ? '隐藏摘要' : '助手摘要'} #${item.messageId}`
+                ? item.isSavedSummary
+                    ? item.title
+                    : `${item.role === 'user' ? '用户摘要' : item.isHidden ? '隐藏摘要' : '助手摘要'} #${item.messageId}`
                 : `${item.role === 'user' ? '用户' : item.isHidden ? '隐藏楼层' : '助手'} #${item.messageId}`,
             keywordHits: item.keywordHitsTotal || item.keywordHits,
         };
@@ -2910,6 +2980,8 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
         chunkIndex: hit.chunkIndex,
         role: hit.role,
         isHidden: hit.isHidden,
+        isSavedSummary: !!hit.isSavedSummary,
+        summaryType: hit.summaryType || '',
         title: hit.title,
         text: getClippedVectorText(hit.text, hit.recallTier === 'full' ? hitTextLimit : Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars))),
         matchedText: getClippedVectorText(hit.matchedText || '', Math.min(textLimit, 480)),
@@ -7570,7 +7642,15 @@ function renderVectorRecordList(state = ensureState()) {
         return;
     }
     container.innerHTML = '';
-    const records = (state.vectorMemory.records || []).slice(0, 16);
+    const records = (state.vectorMemory.records || [])
+        .slice()
+        .sort((a, b) => {
+            const priority = record => record.isSavedSummary ? 0 : record.kind === 'summary' ? 1 : record.kind === 'message' ? 2 : 3;
+            return priority(a) - priority(b)
+                || Number(a.messageId) - Number(b.messageId)
+                || Number(a.chunkIndex || 0) - Number(b.chunkIndex || 0);
+        })
+        .slice(0, 16);
     if (!records.length) {
         const empty = document.createElement('div');
         empty.className = 'bakemono-memory-empty';
@@ -7582,7 +7662,13 @@ function renderVectorRecordList(state = ensureState()) {
     records.forEach(record => {
         const item = document.createElement('div');
         item.className = 'bakemono-memory-debug-item';
-        const typeLabel = record.kind === 'summary' ? '摘要索引' : record.kind === 'message' ? '楼层索引' : '片段索引';
+        const typeLabel = record.isSavedSummary
+            ? '保存摘要索引'
+            : record.kind === 'summary'
+                ? '摘要索引'
+                : record.kind === 'message'
+                    ? '楼层索引'
+                    : '片段索引';
         item.innerHTML = `
             <div class="bakemono-memory-debug-meta">${escapeHtml(record.title)} · ${typeLabel} · ${record.isHidden ? '隐藏' : '可见'}</div>
             <div class="bakemono-memory-debug-text">${escapeHtml(record.preview || record.text || '')}</div>
