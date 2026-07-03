@@ -2890,7 +2890,13 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
             }
         }
     }
-    const hits = [...fullHits, ...summaryHits].slice(0, finalRecallCount);
+    const hits = [...fullHits, ...summaryHits]
+        .slice(0, finalRecallCount)
+        .sort((a, b) => (
+            Number(a.messageId) - Number(b.messageId)
+            || Number(a.chunkIndex || 0) - Number(b.chunkIndex || 0)
+            || String(a.recallTier || '').localeCompare(String(b.recallTier || ''))
+        ));
     state.vectorMemory.lastQuery = queries.join('\n');
     state.vectorMemory.lastQueries = queries;
     state.vectorMemory.lastRecallSkippedReason = hits.length ? '' : '没有内容通过当前向量阈值和重排规则。';
@@ -6756,7 +6762,12 @@ function renderMemoryRecordList() {
     }
 
     const state = ensureState();
-    const records = getFilteredMemoryRecords(state);
+    const records = getFilteredMemoryRecords(state).sort((a, b) => {
+        const kindPriority = { [blockTypes.EPIC]: 0, [blockTypes.STAGE]: 1, [blockTypes.STORY]: 2 };
+        return (kindPriority[a.kind] ?? 9) - (kindPriority[b.kind] ?? 9)
+            || Number(a.sortKey ?? Number.MAX_SAFE_INTEGER) - Number(b.sortKey ?? Number.MAX_SAFE_INTEGER)
+            || String(a.updatedAt || '').localeCompare(String(b.updatedAt || ''));
+    });
     container.innerHTML = '';
 
     if (!records.length) {
@@ -7467,13 +7478,59 @@ function renderVectorMemoryPanel(state = ensureState()) {
     $('#bakemono-memory-vector-model').val(state.vectorMemory.customApi?.model || defaultVectorMemory.customApi.model);
     renderVectorModelOptions(state.vectorMemory.customApi?.models || []);
     const messageRecordCount = unique((state.vectorMemory.records || []).map(record => String(record.messageId))).length;
+    const bodyRecordCount = (state.vectorMemory.records || []).filter(record => record.kind !== 'summary').length;
+    const summaryRecordCount = (state.vectorMemory.records || []).filter(record => record.kind === 'summary').length;
     const maxIndexed = Number(state.vectorMemory.maxIndexedMessages || 0);
     const fullHitCount = (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier === 'full').length;
     const summaryHitCount = (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier !== 'full').length;
-    $('#bakemono-memory-vector-stats').text(`索引 ${messageRecordCount} 楼 / ${state.vectorMemory.records.length} 条记录 / 全文 ${fullHitCount} 条 / 摘要 ${summaryHitCount} 条 / 预计 ${state.vectorMemory.estimatedChars || 0} 字 / 裁剪 ${state.vectorMemory.trimmedHitCount || 0} 个 / ${maxIndexed > 0 ? `最多索引最近 ${maxIndexed} 楼 / ` : ''}${state.vectorMemory.lastRecallSkippedReason ? `跳过：${state.vectorMemory.lastRecallSkippedReason}` : state.vectorMemory.dirty ? `待刷新：${state.vectorMemory.dirtyReason || '有变更'}` : state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '尚未建索引'}`);
+    $('#bakemono-memory-vector-stats').text(`索引 ${messageRecordCount} 楼 / 正文 ${bodyRecordCount} 条 / 摘要 ${summaryRecordCount} 条 / 召回全文 ${fullHitCount} 条 / 召回摘要 ${summaryHitCount} 条 / 预计 ${state.vectorMemory.estimatedChars || 0} 字 / 裁剪 ${state.vectorMemory.trimmedHitCount || 0} 个 / ${maxIndexed > 0 ? `最多索引最近 ${maxIndexed} 楼 / ` : ''}${state.vectorMemory.lastRecallSkippedReason ? `跳过：${state.vectorMemory.lastRecallSkippedReason}` : state.vectorMemory.dirty ? `待刷新：${state.vectorMemory.dirtyReason || '有变更'}` : state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '尚未建索引'}`);
     $('#bakemono-memory-vector-query-preview').val((state.vectorMemory.lastQueries || []).join('\n') || state.vectorMemory.lastQuery || getVectorQueryText(state));
+    renderVectorRecallDetails(state);
     renderVectorHitList();
     renderVectorRecordList();
+}
+
+function renderVectorRecallDetails(state = ensureState()) {
+    const container = document.querySelector('#bakemono-memory-vector-recall-details');
+    if (!container) {
+        return;
+    }
+    container.innerHTML = '';
+    const queries = state.vectorMemory.lastQueries || [];
+    const hits = state.vectorMemory.lastHits || [];
+    const steps = [
+        {
+            title: `查询重写 · ${queries.length || 0} Q`,
+            body: queries.length
+                ? queries.map((query, index) => `<div class="bakemono-memory-vector-query-row"><strong>Q${index + 1}</strong><span>${escapeHtml(query)}</span></div>`).join('')
+                : '<div class="bakemono-memory-empty">暂无查询重写结果。成功召回后会在这里显示多条检索 query。</div>',
+        },
+        {
+            title: `Embedding 检索 · ${Math.max(0, Number(state.vectorMemory.rerankCandidateCount || state.vectorMemory.topK || 0))} 候选`,
+            body: `<div class="bakemono-memory-vector-step-note">先用向量相似度从索引里取候选。正文索引和摘要索引分开统计，最近可见窗口内的内容会被排除。</div>`,
+        },
+        {
+            title: `Rerank 分档 · ${hits.length || 0} 条`,
+            body: `<div class="bakemono-memory-vector-step-note">候选会按相似度、关键词命中和查询命中重排，高分走全文档，低分但可用的走摘要档。</div>`,
+        },
+        {
+            title: `最终注入 · ${hits.length || 0} 条`,
+            body: hits.length
+                ? hits.map(hit => `<div class="bakemono-memory-vector-query-row"><strong>${escapeHtml(hit.recallTier === 'full' ? '全文' : '摘要')}</strong><span>${escapeHtml(hit.title || `楼层 ${hit.messageId}`)} · 重排 ${escapeHtml(hit.rerankScore ?? hit.score ?? 0)} · 相似 ${escapeHtml(hit.similarity ?? 0)}</span></div>`).join('')
+                : '<div class="bakemono-memory-empty">暂无最终注入。</div>',
+        },
+    ];
+    const fragment = document.createDocumentFragment();
+    steps.forEach((step, index) => {
+        const details = document.createElement('details');
+        details.className = 'bakemono-memory-vector-step';
+        if (index === 0 && queries.length) {
+            details.open = true;
+        }
+        details.innerHTML = `<summary><span>${index + 1} · ${escapeHtml(step.title)}</span><i class="fa-solid fa-chevron-down"></i></summary><div class="bakemono-memory-vector-step-body">${step.body}</div>`;
+        fragment.append(details);
+    });
+    container.append(fragment);
 }
 
 function renderVectorHitList(state = ensureState()) {
