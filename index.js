@@ -9163,6 +9163,14 @@ function switchWorkbenchTab(tabName) {
     if (!root) {
         return;
     }
+    if (!tabName) {
+        setWorkbenchMenuOpen(false);
+        return;
+    }
+    if (root.dataset.activeTab === tabName) {
+        setWorkbenchMenuOpen(false);
+        return;
+    }
     const panelName = tabName === 'tables' ? 'turn-summary' : tabName;
     root.dataset.activeTab = tabName;
     const title = document.getElementById('bakemono-workbench-title');
@@ -9178,8 +9186,8 @@ function switchWorkbenchTab(tabName) {
     root.querySelectorAll('.bakemono-mobile-actions [data-bakemono-nav]').forEach(button => {
         button.classList.toggle('is-active', button.dataset.bakemonoNav === tabName);
     });
-    setWorkbenchMenuOpen(false);
-    syncMobileCollapsibles();
+    requestAnimationFrame(() => setWorkbenchMenuOpen(false));
+    syncMobileCollapsibles(root.querySelector(`.bakemono-workbench-panel[data-bakemono-panel="${panelName}"]`) || root);
 }
 
 function setWorkbenchMenuOpen(open) {
@@ -9198,13 +9206,14 @@ function setWorkbenchMenuOpen(open) {
     }
 }
 
-function syncMobileCollapsibles() {
+function syncMobileCollapsibles(scope = null) {
     const root = document.getElementById('bakemono-workbench-root');
     if (!root) {
         return;
     }
     const isMobile = window.matchMedia?.('(max-width: 900px)').matches ?? false;
-    root.querySelectorAll('.bakemono-mobile-collapsible').forEach(panel => {
+    const target = scope || root;
+    target.querySelectorAll('.bakemono-mobile-collapsible').forEach(panel => {
         if (!isMobile) {
             panel.classList.remove('is-mobile-collapsed', 'is-mobile-expanded');
             delete panel.dataset.bakemonoMobileReady;
@@ -9215,6 +9224,23 @@ function syncMobileCollapsibles() {
             panel.classList.remove('is-mobile-expanded');
             panel.dataset.bakemonoMobileReady = '1';
         }
+    });
+}
+
+function refreshMobilePreviewScroll(details) {
+    if (!details?.matches?.('.bakemono-memory-notebook, .bakemono-memory-card')) {
+        return;
+    }
+    if (!(window.matchMedia?.('(max-width: 900px)').matches ?? false)) {
+        return;
+    }
+    requestAnimationFrame(() => {
+        details.querySelectorAll('.bk-tab-panel, .bakemono-memory-card-body').forEach(panel => {
+            panel.scrollTop = 0;
+            panel.style.webkitOverflowScrolling = 'auto';
+            void panel.offsetHeight;
+            panel.style.webkitOverflowScrolling = '';
+        });
     });
 }
 
@@ -9446,7 +9472,9 @@ function bindSettingsEvents() {
         const root = document.getElementById('bakemono-workbench-root');
         setWorkbenchMenuOpen(!root?.classList.contains('is-menu-open'));
     });
-    $('.bakemono-workbench-tab').off('click').on('click', function () {
+    $('.bakemono-workbench-tab').off('click').on('click', function (event) {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
         switchWorkbenchTab(this.dataset.bakemonoTab);
     });
     $('#bakemono-workbench-root').off('click.bakemonoHubTab').on('click.bakemonoHubTab', '.menu_button[data-bakemono-tab]', function () {
@@ -9455,6 +9483,11 @@ function bindSettingsEvents() {
     $('#bakemono-workbench-root').off('click.bakemonoNav').on('click.bakemonoNav', '[data-bakemono-nav]', function () {
         switchWorkbenchTab(this.dataset.bakemonoNav);
     });
+    const workbenchRoot = document.getElementById('bakemono-workbench-root');
+    if (workbenchRoot && !workbenchRoot.dataset.bakemonoPreviewToggleBound) {
+        workbenchRoot.addEventListener('toggle', event => refreshMobilePreviewScroll(event.target), true);
+        workbenchRoot.dataset.bakemonoPreviewToggleBound = '1';
+    }
     const hintSelector = '.bakemono-memory-card-panel > h4 + .bakemono-memory-prompt-hint, .bakemono-memory-card-panel > h4 > .bakemono-memory-prompt-hint, .bakemono-memory-range-panel > summary .bakemono-memory-prompt-hint, .bakemono-memory-table-advanced > .bakemono-memory-prompt-hint';
     $('#bakemono-workbench-root').off('click.bakemonoHintToggle').on('click.bakemonoHintToggle', hintSelector, function (event) {
         event.stopImmediatePropagation();

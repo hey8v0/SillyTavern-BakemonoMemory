@@ -3027,6 +3027,17 @@
     overflow: visible;
   }
 
+  .bakemono-workbench-root[data-active-tab="preview"] .bakemono-memory-card-body,
+  .bakemono-workbench-root[data-active-tab="preview"] .bk-tab-panel {
+    max-height: none;
+    overflow: visible;
+    -webkit-overflow-scrolling: auto;
+  }
+
+  .bakemono-workbench-root[data-active-tab="preview"] .bk-tabs-content-wrapper {
+    min-height: 0;
+  }
+
   .nh-title {
     font-size: 21px;
   }
