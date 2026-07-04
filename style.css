@@ -2803,6 +2803,16 @@
     padding: 10px;
   }
 
+  .bakemono-workbench-root[data-active-tab="preview"] .bakemono-workbench-main {
+    overflow-y: scroll;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .bakemono-workbench-root[data-active-tab="preview"] .bakemono-workbench-panel[data-bakemono-panel="preview"].is-active {
+    min-height: calc(100% + 24dvh);
+    padding-bottom: 24dvh;
+  }
+
   .bakemono-memory-status-grid,
   .bakemono-memory-editor-grid,
   .bakemono-memory-preview-grid,
@@ -3034,6 +3044,7 @@
     overflow: visible;
     touch-action: pan-y;
     overscroll-behavior: auto;
+    padding-bottom: 12px;
   }
 
   .bakemono-workbench-root[data-active-tab="preview"] .bakemono-memory-card-body,

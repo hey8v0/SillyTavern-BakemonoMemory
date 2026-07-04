@@ -9188,6 +9188,9 @@ function switchWorkbenchTab(tabName) {
     });
     requestAnimationFrame(() => setWorkbenchMenuOpen(false));
     syncMobileCollapsibles(root.querySelector(`.bakemono-workbench-panel[data-bakemono-panel="${panelName}"]`) || root);
+    if (tabName === 'preview') {
+        stabilizeMobilePreviewScroll();
+    }
 }
 
 function setWorkbenchMenuOpen(open) {
@@ -9224,6 +9227,34 @@ function syncMobileCollapsibles(scope = null) {
             panel.classList.remove('is-mobile-expanded');
             panel.dataset.bakemonoMobileReady = '1';
         }
+    });
+}
+
+function stabilizeMobilePreviewScroll() {
+    const root = document.getElementById('bakemono-workbench-root');
+    if (!root || root.dataset.activeTab !== 'preview') {
+        return;
+    }
+    if (!(window.matchMedia?.('(max-width: 900px)').matches ?? false)) {
+        return;
+    }
+    const main = root.querySelector('.bakemono-workbench-main');
+    if (!main) {
+        return;
+    }
+    const settle = () => {
+        const currentTop = main.scrollTop;
+        const maxTop = Math.max(0, main.scrollHeight - main.clientHeight);
+        if (maxTop <= 0) {
+            return;
+        }
+        const nudgedTop = Math.min(currentTop + 1, maxTop);
+        main.scrollTop = nudgedTop;
+        main.scrollTop = Math.min(currentTop, maxTop);
+    };
+    requestAnimationFrame(() => {
+        settle();
+        window.setTimeout(settle, 80);
     });
 }
 
@@ -9593,6 +9624,10 @@ function bindSettingsEvents() {
         previewState.pages[type] = Math.max(0, (previewState.pages[type] || 0) + direction);
         previewState.activeType = type;
         renderPreviewSections();
+        stabilizeMobilePreviewScroll();
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoPreviewNotebookScroll').on('click.bakemonoPreviewNotebookScroll', '.bakemono-memory-notebook > summary, .bakemono-memory-card > summary', () => {
+        stabilizeMobilePreviewScroll();
     });
     $('#bakemono-workbench-root').off('click.bakemonoHistoryPage').on('click.bakemonoHistoryPage', '[data-bakemono-history-page]', function () {
         const direction = this.dataset.bakemonoHistoryPage === 'next' ? 1 : -1;
