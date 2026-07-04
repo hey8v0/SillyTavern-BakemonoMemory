@@ -3948,18 +3948,68 @@ function summaryToBlock(summary) {
     };
 }
 
-function getActiveCoveredStageHashes(state = ensureState()) {
-    const existingStageHashes = new Set(getStageMemoryBlocks(state).map(summary => summary.hash).filter(Boolean));
-    const covered = new Set();
-    const epicBlocks = dedupeByHash([
+function getEpicMemoryBlocks(state = ensureState()) {
+    return dedupeByHash([
         ...(state.epicSummaries || []).map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
         ...(state.blocks || []).filter(block => block.type === blockTypes.EPIC),
     ]);
+}
+
+function getActiveEpicMemoryBlocks(state = ensureState()) {
+    const epicBlocks = getEpicMemoryBlocks(state);
+    const epicHashes = new Set(epicBlocks.map(summary => summary.hash).filter(Boolean));
+    const coveredEpicHashes = new Set();
+
     for (const epic of epicBlocks) {
         for (const hash of [...(epic.sourceStageHashes || []), ...(epic.sourceHashes || [])]) {
-            if (existingStageHashes.has(hash)) {
-                covered.add(hash);
+            if (epicHashes.has(hash)) {
+                coveredEpicHashes.add(hash);
             }
+        }
+    }
+
+    return epicBlocks
+        .filter(summary => !coveredEpicHashes.has(summary.hash))
+        .sort((a, b) => (
+            getSummarySortKey(a) - getSummarySortKey(b)
+            || getSummaryLevel(a) - getSummaryLevel(b)
+            || String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
+            || String(a.hash || '').localeCompare(String(b.hash || ''))
+        ));
+}
+
+function getCoveredStageHashesFromEpic(epic, epicByHash, stageHashes, visited = new Set()) {
+    const covered = new Set();
+    if (!epic?.hash || visited.has(epic.hash)) {
+        return covered;
+    }
+
+    visited.add(epic.hash);
+    for (const hash of [...(epic.sourceStageHashes || []), ...(epic.sourceHashes || [])]) {
+        if (stageHashes.has(hash)) {
+            covered.add(hash);
+            continue;
+        }
+
+        const childEpic = epicByHash.get(hash);
+        if (childEpic) {
+            for (const childHash of getCoveredStageHashesFromEpic(childEpic, epicByHash, stageHashes, visited)) {
+                covered.add(childHash);
+            }
+        }
+    }
+    return covered;
+}
+
+function getActiveCoveredStageHashes(state = ensureState()) {
+    const existingStageHashes = new Set(getStageMemoryBlocks(state).map(summary => summary.hash).filter(Boolean));
+    const covered = new Set();
+    const epicBlocks = getEpicMemoryBlocks(state);
+    const epicByHash = new Map(epicBlocks.map(epic => [epic.hash, epic]).filter(([hash]) => hash));
+
+    for (const epic of getActiveEpicMemoryBlocks(state)) {
+        for (const hash of getCoveredStageHashesFromEpic(epic, epicByHash, existingStageHashes)) {
+            covered.add(hash);
         }
     }
     return covered;
@@ -3976,14 +4026,8 @@ function buildMemoryRecords(state = ensureState()) {
     const records = new Map();
     const coveredStoryHashes = new Set(state.coveredBlockHashes || []);
     const coveredStageHashes = getActiveCoveredStageHashes(state);
-    const latestEpic = [...(state.epicSummaries || [])]
-        .sort((a, b) => (
-            getSummaryLevel(b) - getSummaryLevel(a)
-            || String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
-            || getSummarySortKey(b) - getSummarySortKey(a)
-        ))[0] || null;
-    const latestEpicHash = latestEpic?.hash || '';
-    const epicCoveredStageHashes = new Set(latestEpic ? [...(latestEpic.sourceStageHashes || []), ...(latestEpic.sourceHashes || [])] : []);
+    const activeEpicHashes = new Set(getActiveEpicMemoryBlocks(state).map(summary => summary.hash).filter(Boolean));
+    const epicCoveredStageHashes = getActiveCoveredStageHashes(state);
     const stageInjectedHashes = new Set(state.stageSummaries
         .filter(summary => !epicCoveredStageHashes.has(summary.hash))
         .map(summary => summary.hash));
@@ -4047,7 +4091,7 @@ function buildMemoryRecords(state = ensureState()) {
                     ? memoryRecordStatuses.ARCHIVED
                     : memoryRecordStatuses.SAVED;
         } else if (kind === blockTypes.EPIC) {
-            status = summary.hash === latestEpicHash ? memoryRecordStatuses.INJECTED : memoryRecordStatuses.ARCHIVED;
+            status = activeEpicHashes.has(summary.hash) ? memoryRecordStatuses.INJECTED : memoryRecordStatuses.ARCHIVED;
         }
         upsert({
             id: `summary:${summary.hash}`,
@@ -6124,12 +6168,8 @@ function updateInjectionFromSummaries() {
 }
 
 function getInjectionMemoryParts(state = ensureState()) {
-    const latestEpic = [...(state.epicSummaries || [])]
-        .sort((a, b) => (
-            getSummaryLevel(b) - getSummaryLevel(a)
-            || String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
-            || getSummarySortKey(b) - getSummarySortKey(a)
-        ))[0] || null;
+    const activeEpicBlocks = getActiveEpicMemoryBlocks(state);
+    const epicContents = activeEpicBlocks.map(item => `## ${getMultiSummaryLabel(item)}\n${item.content}`);
     const epicCoveredStageHashes = getActiveCoveredStageHashes(state);
     const stageContents = getStageMemoryBlocks(state)
         .filter(item => !epicCoveredStageHashes.has(item.hash))
@@ -6142,7 +6182,7 @@ function getInjectionMemoryParts(state = ensureState()) {
         : [];
 
     const sections = [
-        latestEpic?.content ? `## ${getMultiSummaryLabel(latestEpic)}\n` + latestEpic.content : '',
+        epicContents.length ? epicContents.join('\n\n') : '',
         stageContents.length ? '## 阶段总结\n' + stageContents.join('\n\n') : '',
         storyContents.length ? '## 普通剧情摘要\n' + storyContents.join('\n\n') : '',
         renderInjectedTablesSection(state),
@@ -6152,7 +6192,7 @@ function getInjectionMemoryParts(state = ensureState()) {
     return {
         memory: sections.join('\n\n').trim(),
         stats: {
-            epic: latestEpic?.content ? 1 : 0,
+            epic: epicContents.length,
             stage: stageContents.length,
             story: storyContents.length,
             table: state.tableDatabase.injectMemory === false ? 0 : (state.tableDatabase.tables || []).length,
