@@ -2747,7 +2747,10 @@
   }
 
   .bakemono-workbench-tabs {
-    display: none;
+    display: flex;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
     top: 56px;
     left: 12px;
     width: min(360px, calc(100vw - 24px));
@@ -2755,10 +2758,14 @@
     gap: 12px;
     padding: 14px;
     border-radius: 16px;
+    transform: none;
+    transition: none;
   }
 
   .bakemono-workbench-root.is-menu-open .bakemono-workbench-tabs {
-    display: flex;
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .bakemono-workbench-menu-head {
@@ -2946,7 +2953,7 @@
     transform: translateY(-50%) rotate(0deg);
     font: var(--fa-font-solid);
     color: var(--SmartThemeQuoteColor);
-    transition: transform 160ms ease;
+    transition: none;
   }
 
   .bakemono-memory-card-panel.bakemono-mobile-collapsible > h4 > .bakemono-memory-prompt-hint,
@@ -3025,13 +3032,17 @@
   .bakemono-memory-preview-list {
     max-height: none;
     overflow: visible;
+    touch-action: pan-y;
+    overscroll-behavior: auto;
   }
 
   .bakemono-workbench-root[data-active-tab="preview"] .bakemono-memory-card-body,
   .bakemono-workbench-root[data-active-tab="preview"] .bk-tab-panel {
     max-height: none;
     overflow: visible;
-    -webkit-overflow-scrolling: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior: auto;
   }
 
   .bakemono-workbench-root[data-active-tab="preview"] .bk-tabs-content-wrapper {
@@ -3043,8 +3054,49 @@
   }
 
   .bk-tab-panel {
-    max-height: 310px;
+    max-height: none;
+    overflow: visible;
     padding: 14px;
+  }
+
+  .bakemono-workbench-main,
+  .bakemono-memory-preview-grid,
+  .bakemono-memory-preview-column,
+  .bakemono-memory-notebook,
+  .bakemono-memory-card,
+  .bk-notebook-container,
+  .bk-tabs-content-wrapper,
+  .bakemono-memory-card-body {
+    touch-action: pan-y;
+    overscroll-behavior: auto;
+  }
+
+  .bk-tabs-nav {
+    touch-action: pan-x;
+  }
+
+  .bakemono-workbench .menu_button,
+  .bakemono-workbench .menu_button::after,
+  .bakemono-workbench-tab,
+  .bk-notebook-outer > summary,
+  .bk-tab-label {
+    transition: none !important;
+    transform: none !important;
+  }
+
+  .bakemono-workbench .menu_button::after {
+    display: none;
+  }
+
+  .bakemono-workbench-tab:hover,
+  .bakemono-workbench .menu_button:hover,
+  .bk-notebook-outer:not([open]) > summary:hover,
+  .bk-tab-label:hover {
+    transform: none !important;
+  }
+
+  .bakemono-workbench-backdrop {
+    backdrop-filter: none;
   }
 
   .bakemono-mobile-actions {
