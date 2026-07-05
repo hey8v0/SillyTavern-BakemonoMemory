@@ -598,24 +598,21 @@ const defaultGenerationTargets = {
     },
 };
 
-const defaultVectorQueryRewritePrompt = `请把最近剧情改写成“1 个检索意图 + 5 条旧记忆检索线索”。
+const defaultVectorQueryRewritePrompt = `你是剧情记忆检索器。请只根据最近剧情，写出需要回忆的旧剧情问题。
 
-你的任务不是续写剧情，也不是复述用户输入；你只需要判断：为了理解当前回合，最应该从旧剧情里找回哪些已经发生过的事实。
-优先围绕人物关系、过去承诺、冲突转折、地点组织、物品状态、伏笔秘密、情绪变化和长期设定来写。
+输出必须严格为 6 行：
+INTENT: 用中文写一句检索目标
+Q1: 用中文写第一条旧记忆检索问题
+Q2: 用中文写第二条旧记忆检索问题
+Q3: 用中文写第三条旧记忆检索问题
+Q4: 用中文写第四条旧记忆检索问题
+Q5: 用中文写第五条旧记忆检索问题
 
-输出格式必须严格为 6 行，不能多字，不能少行，不能写解释：
-INTENT: 一句话概括本次检索目标
-Q1: 第一条具体检索线索
-Q2: 第二条具体检索线索
-Q3: 第三条具体检索线索
-Q4: 第四条具体检索线索
-Q5: 第五条具体检索线索
-
-硬性要求：
-- INTENT 和 Q1-Q5 都必须使用中文。
-- 每条 Q 都要像“去旧记忆里找什么”的搜索线索，不能写规则、分析步骤、英文说明或当前剧情原文。
-- 不要输出 Input、Goal、Task、Role、Constraints、Current context、Determine、Clue 等提示词残留。
-- 不要输出 JSON、Markdown、代码块、项目符号或编号以外的内容。`;
+要求：
+- 只写中文，不写英文。
+- 不解释，不分析，不复述规则，不输出 JSON。
+- Q1-Q5 要寻找旧剧情中已经发生过的事实，例如人物关系、旧承诺、旧冲突、地点组织、物品状态、伏笔秘密、情绪变化。
+- 不要写 Clue、Input、Goal、Task、Role、Current context、Analyze、Determine。`;
 
 const defaultVectorMemory = {
     enabled: false,
@@ -781,6 +778,7 @@ const defaultState = {
 
 let isBusy = false;
 let isQueueRunning = false;
+const cancelledQueueTaskIds = new Set();
 let vectorIndexTimer = null;
 let inlineCaptureTimer = null;
 let autoHideRecentTimer = null;
@@ -2507,7 +2505,7 @@ function isVectorRewriteInstructionLine(text) {
     }
     return /^(?:thinking\s*process|analy[sz]e\s+the\s+request|role\s*:|task\s*:|constraints?\s*:|requirements?\s*:|output\s*:|only\s+output|do\s+not|system\s*:|assistant\s*:|user\s*:|recent\s+plot|search\s+queries?|queries?\s*:|intent\s*:|intent[`'"]?\s+and\s+[`'"]?queries|keep\s+only\s+facts|one\s+query\s+per\s+line|no\s+explanations?|language\s*:|convert\s+recent\s+plot|clue\s*\d+|query\s*\d+)/i.test(value)
         || /^(?:以下|输出|检索|要求|约束|任务|角色|输入|目标|规则|格式|最近剧情|当前剧情|检索意图)(?:[:：\s]|$)/.test(value)
-        || /(?:only\s+return|return\s+json|json\s+array|json\s+object|do\s+not\s+output|must\s+be\s+in\s+chinese|must\s+be\s+specific|specific\s+questions?|searching\s+old\s+plot|focus\s+on\s+what\s+old\s+memories|current\s+context|determine\s+the\s+retrieval|retrieval\s+intent|the\s+text\s+mentions|the\s+current\s+scene|old\s+memories\s+need\s+to\s+be\s+recalled|characters,\s*relationships,\s*locations|unresolved\s+foreshadowing|不要解释|不要输出步骤|不要输出分析|每行一条|只返回|只输出|必须使用中文|输出必须|只能包含|不要把最近剧情)/i.test(value)
+        || /(?:only\s+return|return\s+json|json\s+array|json\s+object|do\s+not\s+output|must\s+be\s+in\s+chinese|must\s+be\s+specific|specific\s+questions?|searching\s+old\s+plot|focus\s+on\s+what\s+old\s+memories|current\s+context|determine\s+the\s+retrieval|retrieval\s+intent|pain\s+connection|the\s+text\s+mentions|the\s+current\s+scene|old\s+memories\s+need\s+to\s+be\s+recalled|characters,\s*relationships,\s*locations|unresolved\s+foreshadowing|不要解释|不要输出步骤|不要输出分析|每行一条|只返回|只输出|必须使用中文|输出必须|只能包含|不要把最近剧情)/i.test(value)
         || /^\*\*(?:analy[sz]e|role|task|constraints?|output|thinking|goal|input)[\s\S]*\*\*$/i.test(value)
         || /^(?:input|goal|analy[sz]e|chapter\s*\d+|recent\s+plot\s+chapters|current\s+context|determine\s+the\s+retrieval|the\s+current\s+scene)\b/i.test(value);
 }
@@ -2565,9 +2563,11 @@ async function callVectorQueryRewriteModel(prompt, systemPrompt, state = ensureS
                     ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
                     { role: 'user', content: prompt },
                 ],
-                temperature: 0.2,
-                max_tokens: 700,
+                temperature: 0.1,
+                top_p: 0.8,
+                max_tokens: 900,
                 stream: false,
+                enable_thinking: false,
             }),
         });
         if (!response.ok) {
@@ -2599,7 +2599,7 @@ async function prepareVectorQueries(explicitQuery = '', state = ensureState()) {
             ...parseList(state.vectorMemory.keywordTriggers),
         ]).filter(Boolean).slice(0, 6);
     }
-    const systemPrompt = '你是剧情记忆检索的查询改写器。你只负责把当前剧情改写成旧记忆检索线索，不续写剧情，不输出分析过程。必须严格按指定格式输出。';
+    const systemPrompt = '你是剧情记忆检索的查询改写器。关闭思考过程。只输出 INTENT 与 Q1-Q5 六行中文，不输出解释、英文、JSON、Markdown 或分析。';
     const prompt = `${state.vectorMemory.queryRewritePrompt || defaultVectorMemory.queryRewritePrompt}
 
 <最近剧情>
@@ -4425,10 +4425,46 @@ async function processTaskQueue() {
             renderAll(`正在处理任务：${task.label}`);
 
             try {
-                const result = normalizeGeneratedBakemono(await callGenerationModel({
+                const rawResult = await callGenerationModel({
                     prompt: task.prompt,
                     systemPrompt: task.systemPrompt,
-                }));
+                });
+                if (cancelledQueueTaskIds.has(task.id)) {
+                    cancelledQueueTaskIds.delete(task.id);
+                    task.status = 'cancelled';
+                    task.error = '任务已被手动解除。';
+                    task.updatedAt = new Date().toISOString();
+                    saveState();
+                    renderAll();
+                    continue;
+                }
+                if (task.trigger === 'missing_summary_batch') {
+                    const items = parseMissingSummaryBatchResult(rawResult, task);
+                    if (!items.length) {
+                        throw new Error('这一批没有解析出任何楼层摘要。请检查模型是否按“===楼层#数字===”分隔输出。');
+                    }
+                    const createdMessageIds = new Set();
+                    for (const item of items) {
+                        createMissingSummaryDraftFromBatchItem(item, task);
+                        createdMessageIds.add(Number(item.target.messageId));
+                    }
+                    createdDrafts += items.length;
+                    const expectedCount = Array.isArray(task.metadata?.missingTargets) ? task.metadata.missingTargets.length : 0;
+                    if (expectedCount && items.length < expectedCount) {
+                        const expectedIds = task.metadata.missingTargets.map(target => Number(target.messageId));
+                        const missed = expectedIds.filter(id => !createdMessageIds.has(id));
+                        task.error = `部分完成：本批 ${expectedCount} 楼中解析出 ${items.length} 楼，缺少 ${missed.map(id => `#${id}`).join(', ')}。`;
+                    } else {
+                        task.error = '';
+                    }
+                    task.status = 'done';
+                    task.updatedAt = new Date().toISOString();
+                    saveState();
+                    renderAll(`已处理任务：${task.label}`);
+                    continue;
+                }
+
+                const result = normalizeGeneratedBakemono(rawResult);
                 const draft = createDraft({
                     kind: task.kind,
                     content: result,
@@ -4440,7 +4476,7 @@ async function processTaskQueue() {
                     metadata: task.metadata || {},
                 });
                 if (task.trigger === 'auto' && state.automation.mode === 'commit_hide' && task.kind === blockTypes.STAGE) {
-                    commitDraft(draft.id, draft.content, { silent: true });
+                    await commitDraft(draft.id, draft.content, { silent: true });
                     autoCommitted += 1;
                     const preserveRecent = Math.max(0, Number(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent));
                     task.metadata = {
@@ -4502,16 +4538,30 @@ function retryQueueTask(taskId) {
 function removeQueueTask(taskId) {
     const state = ensureState();
     const task = state.taskQueue.find(item => item.id === taskId);
+    const isRunningMissing = task?.status === 'running' && isMissingSummaryTask(task);
+    if (task?.status === 'running' && !isRunningMissing) {
+        toastr.warning('这个任务正在生成中，暂时不能移除。');
+        return;
+    }
     const confirmed = confirmDanger(
-        `移除任务「${task?.label || '未命名任务'}」？`,
-        ['任务移除后不会删除已保存摘要，但这个队列项无法从队列中恢复。'],
+        `${isRunningMissing ? '强制移除卡住任务' : '移除任务'}「${task?.label || '未命名任务'}」？`,
+        [
+            '任务移除后不会删除已保存摘要，但这个队列项无法从队列中恢复。',
+            ...(isRunningMissing ? ['如果旧请求稍后返回，插件会忽略它，不再写入草稿。'] : []),
+        ],
     );
     if (!confirmed) {
         return;
     }
+    if (isRunningMissing) {
+        cancelledQueueTaskIds.add(task.id);
+        isQueueRunning = false;
+        setBusy(false);
+    }
     state.taskQueue = state.taskQueue.filter(task => task.id !== taskId);
     saveState();
-    renderAll('任务已从队列移除。');
+    renderAll(isRunningMissing ? '已解除卡住的缺失摘要任务。' : '任务已从队列移除。');
+    processTaskQueue();
 }
 
 function clearFinishedQueueTasks() {
@@ -4750,12 +4800,13 @@ async function generateBackfillDrafts() {
     });
 }
 
-function buildBackfillBatches() {
+function buildBackfillBatches(options = {}) {
     const state = ensureState();
     const sourceChat = getContext().chat || chat || [];
     const excludeTags = parseList(state.scanRules.excludeTags);
     const includeHidden = state.scanRules.includeHidden !== false;
     const batchSize = Math.max(1, Number(state.automation.backfillBatchSize || defaultAutomation.backfillBatchSize));
+    const rangeIds = options.rangeIds instanceof Set ? options.rangeIds : null;
     const covered = new Set([
         ...state.coveredBlockHashes,
         ...state.storySummaries.flatMap(summary => summary.sourceHashes || []),
@@ -4764,6 +4815,9 @@ function buildBackfillBatches() {
     const rawBlocks = [];
 
     sourceChat.forEach((message, messageId) => {
+        if (rangeIds && !rangeIds.has(messageId)) {
+            return;
+        }
         if (!message?.mes || (message.is_system && !includeHidden)) {
             return;
         }
@@ -4815,12 +4869,254 @@ function makeBackfillBatchMetadata(blocks, index, total) {
     };
 }
 
-async function generateBackfillQueue() {
+function getConfiguredSummaryTags(state = ensureState()) {
+    const nonSummaryTags = new Set(['content', 'thinking', 'think', 'reasoning', 'tableedit', 'tablethink']);
+    const scanSummaryTags = parseList(state.scanRules.includeTags)
+        .filter(tag => tag && !nonSummaryTags.has(String(tag).trim().toLowerCase()));
+    return unique([
+        ...scanSummaryTags,
+        ...parseList(state.vectorMemory?.summaryTags || ''),
+        'bakemono',
+        'summaryDraft',
+    ].filter(Boolean));
+}
+
+function messageHasConfiguredSummary(message, state = ensureState()) {
+    return extractConfiguredTagBlocks(message?.mes || '', getConfiguredSummaryTags(state)).length > 0;
+}
+
+function buildMissingSummaryTargets(options = {}) {
+    const state = ensureState();
+    const sourceChat = getContext().chat || chat || [];
+    const includeHidden = state.scanRules.includeHidden !== false;
+    const rangeIds = options.rangeIds instanceof Set ? options.rangeIds : null;
+    const excludeTags = unique([...parseList(state.scanRules.excludeTags), ...getConfiguredSummaryTags(state)]);
+    const existingSourceHashes = new Set([
+        ...state.storySummaries.flatMap(summary => summary.sourceHashes || []),
+        ...state.drafts.flatMap(draft => draft.sourceHashes || []),
+        ...state.taskQueue.flatMap(task => task.sourceHashes || []),
+    ]);
+    const targets = [];
+
+    sourceChat.forEach((message, messageId) => {
+        if (rangeIds && !rangeIds.has(messageId)) {
+            return;
+        }
+        if (!message?.mes || message.is_user || (message.is_system && !includeHidden)) {
+            return;
+        }
+        if (messageHasConfiguredSummary(message, state)) {
+            return;
+        }
+        const rawText = String(message.mes || '');
+        const cleaned = stripConfiguredTags(stripPostProcessNoise(rawText), excludeTags).trim();
+        if (!cleaned) {
+            return;
+        }
+        const sourceHash = getHash(`missing-summary|${messageId}|${getMessageVariantKey(message)}|${cleaned}`);
+        if (existingSourceHashes.has(sourceHash)) {
+            return;
+        }
+        targets.push({
+            hash: sourceHash,
+            type: blockTypes.STORY,
+            messageId,
+            blockIndex: 0,
+            title: `助手 #${messageId}`,
+            content: cleaned,
+            sourceKind: 'missing_summary',
+            targetMessageHash: getHash(rawText),
+        });
+    });
+
+    return targets;
+}
+
+function buildMissingSummaryBatches(targets, batchSize) {
+    const size = Math.max(1, Number(batchSize || 1));
+    const batches = [];
+    for (let index = 0; index < targets.length; index += size) {
+        const blocks = targets.slice(index, index + size);
+        const ids = blocks.map(block => block.messageId).filter(Number.isFinite);
+        batches.push({
+            blocks,
+            metadata: {
+                batchIndex: batches.length + 1,
+                batchTotal: Math.ceil(targets.length / size),
+                sourceRange: formatSourceRange(ids),
+                sourceStart: getSourceStart(ids),
+                sourceEnd: getSourceEnd(ids),
+                sourceSortKey: getSourceStart(ids),
+                sourceKind: 'missing_summary_batch',
+                trigger: 'missing_summary',
+            },
+        });
+    }
+    return batches;
+}
+
+function buildMissingSummaryBatchPrompt(blocks, metadata = {}, state = ensureState()) {
+    const basePrompt = state.turnSummary.prompt || defaultTurnSummaryPrompt;
+    const template = String(basePrompt || '').trim();
+    const blockText = blocks.map(block => [
+        `===楼层#${block.messageId}===`,
+        block.content,
+    ].join('\n')).join('\n\n');
+    return [
+        '你是剧情剪辑台的缺失摘要补写器。请为下面每个助手楼层分别生成一个剧情摘要。',
+        '硬性要求：',
+        '- 不续写剧情，不扮演角色，不补充原文没有发生的事件。',
+        '- 每个楼层必须独立输出，且必须使用完全一致的分隔符：===楼层#数字===。',
+        '- 每个分隔符下面只放该楼层对应的摘要块。',
+        '- 如果原模板要求 <bakemono>，每个楼层都要各自输出完整 <bakemono>...</bakemono>。',
+        '- 不要输出总说明、寒暄、列表解释或 Markdown 代码围栏。',
+        '',
+        metadata.sourceRange ? `本批楼层：${metadata.sourceRange}` : '',
+        '',
+        '【单楼摘要模板】',
+        template || '请总结该楼层正文。',
+        '',
+        '【待补写楼层】',
+        blockText,
+    ].filter(Boolean).join('\n');
+}
+
+function parseMissingSummaryBatchResult(result, task) {
+    const text = String(result || '')
+        .replace(/<think(?:ing)?[\s>][\s\S]*?<\/think(?:ing)?>/gi, '')
+        .trim();
+    const segments = text.split(/={2,}\s*(?:楼层|消息|message|floor)\s*#?\s*(\d+)\s*={2,}/gi);
+    const parsed = [];
+    const expected = new Map((task.metadata?.missingTargets || []).map(target => [Number(target.messageId), target]));
+
+    if (segments.length > 1) {
+        for (let index = 1; index < segments.length; index += 2) {
+            const messageId = Number(segments[index]);
+            const target = expected.get(messageId);
+            const rawContent = String(segments[index + 1] || '').trim();
+            if (!target || !rawContent) {
+                continue;
+            }
+            parsed.push({ target, content: normalizeGeneratedBakemono(rawContent) });
+        }
+    }
+
+    if (!parsed.length && expected.size === 1 && text) {
+        const [target] = expected.values();
+        parsed.push({ target, content: normalizeGeneratedBakemono(text) });
+    }
+
+    return parsed;
+}
+
+function createMissingSummaryDraftFromBatchItem(item, task) {
+    return createDraft({
+        kind: blockTypes.STORY,
+        content: item.content,
+        sourceHashes: [item.target.hash],
+        sourceMessageIds: [item.target.messageId],
+        prompt: task.prompt,
+        trigger: task.trigger || 'missing_summary',
+        metadata: {
+            ...(task.metadata || {}),
+            sourceKind: 'missing_summary',
+            sourceRange: formatSourceRange([item.target.messageId]),
+            sourceSortKey: item.target.messageId,
+            targetMessageId: item.target.messageId,
+            targetMessageHash: item.target.targetMessageHash,
+            appendMode: 'missing_summary',
+            suggestedTitle: `补写摘要 #${item.target.messageId}`,
+            missingBatchTaskId: task.id,
+            missingBatchRange: task.metadata?.sourceRange || '',
+            missingBatchIndex: task.metadata?.batchIndex || '',
+            missingBatchTotal: task.metadata?.batchTotal || '',
+        },
+    });
+}
+
+function getBatchSummaryRangeIdsFromUi() {
+    const raw = String($('#bakemono-memory-batch-summary-range').val() || '').trim();
+    if (!raw) {
+        return { ids: null, invalid: [] };
+    }
+    const parsed = parseMessageRangeInput(raw);
+    return { ids: new Set(parsed.ids), invalid: parsed.invalid || [] };
+}
+
+async function generateBatchSummaryQueue() {
+    const mode = String($('#bakemono-memory-batch-summary-mode').val() || 'missing');
+    const { ids, invalid } = getBatchSummaryRangeIdsFromUi();
+    if (invalid.length) {
+        toastr.warning(`这些范围没有识别：${invalid.join(', ')}`);
+    }
+    if (mode === 'backfill') {
+        await generateBackfillQueue({ rangeIds: ids });
+        return;
+    }
+    await generateMissingSummaryQueue({ rangeIds: ids });
+}
+
+async function generateMissingSummaryQueue(options = {}) {
     if (isBusy) {
         return;
     }
 
-    const batches = buildBackfillBatches();
+    const state = ensureState();
+    const targets = buildMissingSummaryTargets(options);
+    if (!targets.length) {
+        renderAll('没有找到缺失摘要的助手楼层。');
+        toastr.info('没有找到缺失摘要的助手楼层。');
+        return;
+    }
+
+    const batchSize = Math.max(1, Number(state.automation.backfillBatchSize || defaultAutomation.backfillBatchSize));
+    const batches = buildMissingSummaryBatches(targets, batchSize);
+    const confirmed = confirmDanger(
+        `补写 ${targets.length} 个缺失摘要？`,
+        [
+            `将按每批 ${batchSize} 楼加入 ${batches.length} 个批次任务。`,
+            `预计最多调用 ${batches.length} 次生成 API，而不是 ${targets.length} 次。`,
+            '每个批次会返回多个楼层摘要；插件会拆成逐楼草稿，确认保存后才会追加回原正文。',
+            `范围：${formatSourceRange(targets.map(block => block.messageId))}`,
+        ],
+    );
+    if (!confirmed) {
+        renderAll('已取消补写缺失摘要。');
+        return;
+    }
+
+    for (const [index, batch] of batches.entries()) {
+        const prompt = buildMissingSummaryBatchPrompt(batch.blocks, batch.metadata, state);
+        enqueueSummaryTask({
+            kind: blockTypes.STORY,
+            label: `补写缺失摘要 第 ${index + 1}/${batches.length} 批（${batch.metadata.sourceRange}）`,
+            prompt,
+            systemPrompt: await buildTurnReferenceSystemPrompt(batch.blocks, 'summary', state),
+            sourceHashes: batch.blocks.map(block => block.hash),
+            sourceMessageIds: batch.blocks.map(block => block.messageId),
+            trigger: 'missing_summary_batch',
+            metadata: {
+                ...batch.metadata,
+                appendMode: 'missing_summary_batch',
+                missingTargets: batch.blocks.map(block => ({
+                    hash: block.hash,
+                    messageId: block.messageId,
+                    targetMessageHash: block.targetMessageHash,
+                    title: block.title,
+                })),
+            },
+        });
+    }
+    renderAll(`已加入 ${batches.length} 个缺失摘要批次任务。`);
+    toastr.success(`已加入 ${batches.length} 个补写批次任务。`);
+}
+
+async function generateBackfillQueue(options = {}) {
+    if (isBusy) {
+        return;
+    }
+
+    const batches = buildBackfillBatches(options);
     if (!batches.length) {
         renderAll('没有找到可补课的旧正文。');
         toastr.info('没有找到可补课的旧正文。');
@@ -4971,7 +5267,7 @@ async function runVisibleOperation(message, action) {
 
 function setBusy(value) {
     isBusy = value;
-    $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-epic"], [data-bakemono-action="backfill"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-test"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-table-draft-action]').prop('disabled', value);
+    $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-epic"], [data-bakemono-action="backfill"], [data-bakemono-action="batch-summary"], [data-bakemono-action="commit-missing-all"], [data-bakemono-action="remove-missing-all"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-test"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-table-draft-action]').prop('disabled', value);
 }
 
 async function callGenerationModel({ prompt, systemPrompt }) {
@@ -5243,7 +5539,231 @@ function getDefaultDraftTitle(kind, state = ensureState()) {
     return `剧集终了草稿 ${state.stageSummaries.length + 1}`;
 }
 
-function commitDraft(draftId, editedContent = null, options = {}) {
+function updateChatMessageText(message, text) {
+    message.mes = text;
+    if (Array.isArray(message.swipes)) {
+        const swipeId = Number.isFinite(Number(message.swipe_id)) ? Number(message.swipe_id) : 0;
+        if (swipeId >= 0 && swipeId < message.swipes.length) {
+            message.swipes[swipeId] = text;
+        }
+    }
+}
+
+function getMissingSummaryDraftConflict(draft, state = ensureState()) {
+    const targetMessageId = Number(draft?.metadata?.targetMessageId);
+    if (!Number.isFinite(targetMessageId) || !chat[targetMessageId]) {
+        return '目标楼层不存在，可能已经被删除。';
+    }
+    const message = chat[targetMessageId];
+    if (message.is_user) {
+        return '目标楼层不是助手正文。';
+    }
+    if (messageHasConfiguredSummary(message, state)) {
+        return '目标楼层已经包含摘要块。';
+    }
+    const expectedHash = String(draft?.metadata?.targetMessageHash || '');
+    if (expectedHash && getHash(String(message.mes || '')) !== expectedHash) {
+        return '目标楼层正文已经变化，请重新补写。';
+    }
+    return '';
+}
+
+function commitMissingSummaryDraft(draftIndex, editedContent = null, options = {}) {
+    const state = ensureState();
+    const draft = state.drafts[draftIndex];
+    const conflict = getMissingSummaryDraftConflict(draft, state);
+    if (conflict) {
+        toastr.warning(conflict);
+        return null;
+    }
+
+    const targetMessageId = Number(draft.metadata.targetMessageId);
+    const message = chat[targetMessageId];
+    const content = normalizeGeneratedBakemono(editedContent ?? draft.content);
+    const original = String(message.mes || '').trimEnd();
+    updateChatMessageText(message, `${original}\n\n${content}`);
+
+    state.drafts.splice(draftIndex, 1);
+    state.history.unshift({
+        id: `append-missing-${getHash(`${draft.id}|${Date.now()}`)}`,
+        kind: draft.kind,
+        summaryHash: getHash(content),
+        draft,
+        summary: {
+            hash: getHash(content),
+            type: draft.kind,
+            title: draft.title || getBlockTitle(content, '补写摘要'),
+            content,
+            sourceHashes: draft.sourceHashes || [],
+            sourceMessageIds: [targetMessageId],
+            sourceKind: 'missing_summary',
+            metadata: draft.metadata || {},
+            createdAt: new Date().toISOString(),
+            draftId: draft.id,
+        },
+        action: 'append_missing_summary',
+        createdAt: new Date().toISOString(),
+    });
+
+    saveChatConditional().catch(error => console.warn('[BakemonoMemory] failed to save appended summary', error));
+    scanBakemonoBlocks({ persist: false });
+    updateInjectionFromSummaries();
+    saveState();
+    if (!options.silent) {
+        renderAll(`已把摘要补写到第 ${targetMessageId} 楼。`);
+        toastr.success(`已补写到第 ${targetMessageId} 楼。`);
+    }
+    return content;
+}
+
+async function commitAllMissingSummaryDrafts() {
+    const state = ensureState();
+    const drafts = state.drafts.filter(draft => draft.metadata?.appendMode === 'missing_summary');
+    if (!drafts.length) {
+        toastr.info('暂无可应用的缺失摘要草稿。');
+        return;
+    }
+
+    const ready = [];
+    const conflicts = [];
+    const seenTargets = new Set();
+    for (const draft of drafts) {
+        const conflict = getMissingSummaryDraftConflict(draft, state);
+        if (conflict) {
+            conflicts.push({ draft, conflict });
+        } else if (seenTargets.has(Number(draft.metadata?.targetMessageId))) {
+            conflicts.push({ draft, conflict: '同一楼层存在多个缺失摘要草稿，请手动处理。' });
+        } else {
+            seenTargets.add(Number(draft.metadata?.targetMessageId));
+            ready.push(draft);
+        }
+    }
+
+    if (!ready.length) {
+        toastr.warning(`没有无冲突草稿可应用。${conflicts[0]?.conflict || ''}`);
+        return;
+    }
+
+    const confirmed = confirmDanger(
+        `一键应用 ${ready.length} 个缺失摘要草稿？`,
+        [
+            '插件会把摘要追加到对应助手正文末尾，然后重新扫描登记。',
+            conflicts.length ? `${conflicts.length} 个有冲突的草稿会保留，不会被自动应用。` : '所有缺失摘要草稿都会被应用。',
+        ],
+    );
+    if (!confirmed) {
+        return;
+    }
+
+    const toast = toastr.info(`正在批量应用 ${ready.length} 个缺失摘要...`, '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
+    const appliedDraftIds = new Set();
+    let applied = 0;
+    const createdAt = new Date().toISOString();
+    try {
+        for (const draft of ready) {
+            const targetMessageId = Number(draft.metadata.targetMessageId);
+            const message = chat[targetMessageId];
+            const content = normalizeGeneratedBakemono(draft.content);
+            const original = String(message.mes || '').trimEnd();
+            updateChatMessageText(message, `${original}\n\n${content}`);
+            appliedDraftIds.add(draft.id);
+            applied += 1;
+            state.history.unshift({
+                id: `append-missing-${getHash(`${draft.id}|${createdAt}`)}`,
+                kind: draft.kind,
+                summaryHash: getHash(content),
+                draft,
+                summary: {
+                    hash: getHash(content),
+                    type: draft.kind,
+                    title: draft.title || getBlockTitle(content, '补写摘要'),
+                    content,
+                    sourceHashes: draft.sourceHashes || [],
+                    sourceMessageIds: [targetMessageId],
+                    sourceKind: 'missing_summary',
+                    metadata: draft.metadata || {},
+                    createdAt,
+                    draftId: draft.id,
+                },
+                action: 'append_missing_summary',
+                createdAt,
+            });
+        }
+        state.drafts = state.drafts.filter(draft => !appliedDraftIds.has(draft.id));
+        scanBakemonoBlocks({ persist: false });
+        updateInjectionFromSummaries();
+        saveState();
+        await saveChatConditional();
+    } finally {
+        toastr.clear(toast);
+    }
+    renderAll(`已补写 ${applied} 个缺失摘要。${conflicts.length ? `保留 ${conflicts.length} 个冲突草稿。` : ''}`);
+    toastr.success(`已补写 ${applied} 个缺失摘要。`);
+}
+
+function removeMissingSummaryDraftsAndTasks() {
+    const state = ensureState();
+    const draftCount = state.drafts.filter(draft => draft.metadata?.appendMode === 'missing_summary').length;
+    const removableTaskStatuses = new Set(['queued', 'failed', 'done']);
+    const taskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && removableTaskStatuses.has(task.status)).length;
+    if (!draftCount && !taskCount) {
+        toastr.info('没有可移除的缺失摘要草稿或批次任务。');
+        return;
+    }
+    const confirmed = confirmDanger(
+        `移除 ${draftCount} 个缺失摘要草稿和 ${taskCount} 个批次任务？`,
+        [
+            '这只会清理插件里的待确认内容和未运行/失败/完成的补写任务。',
+            '已经追加进正文的摘要不会被删除。',
+            '正在运行中的任务会保留，避免队列状态损坏。',
+        ],
+    );
+    if (!confirmed) {
+        return;
+    }
+    state.drafts = state.drafts.filter(draft => draft.metadata?.appendMode !== 'missing_summary');
+    state.taskQueue = state.taskQueue.filter(task => !(isMissingSummaryTask(task) && removableTaskStatuses.has(task.status)));
+    saveState();
+    renderAll(`已移除 ${draftCount} 个缺失摘要草稿和 ${taskCount} 个批次任务。`);
+    toastr.success('缺失摘要待处理内容已移除。');
+}
+
+function clearStuckMissingSummaryTasks() {
+    const state = ensureState();
+    const stuckTasks = state.taskQueue.filter(task => isMissingSummaryTask(task) && task.status === 'running');
+    if (!stuckTasks.length) {
+        toastr.info('没有卡住的缺失摘要生成任务。');
+        return;
+    }
+    const confirmed = confirmDanger(
+        `解除 ${stuckTasks.length} 个生成中的缺失摘要任务？`,
+        [
+            '这只会清理显示“生成中”的缺失摘要任务，不会删除已经生成的草稿。',
+            '如果旧请求稍后返回，插件会忽略它，不再写入草稿。',
+            '解除后，后面的等待任务会继续排队处理。',
+        ],
+    );
+    if (!confirmed) {
+        return;
+    }
+    stuckTasks.forEach(task => cancelledQueueTaskIds.add(task.id));
+    state.taskQueue = state.taskQueue.filter(task => !(isMissingSummaryTask(task) && task.status === 'running'));
+    isQueueRunning = false;
+    setBusy(false);
+    saveState();
+    renderAll(`已解除 ${stuckTasks.length} 个卡住的缺失摘要任务。`);
+    toastr.success('已解除卡住任务，队列可以继续。');
+    processTaskQueue();
+}
+
+function isMissingSummaryTask(task) {
+    return task?.trigger === 'missing_summary_batch'
+        || task?.trigger === 'missing_summary'
+        || task?.metadata?.appendMode === 'missing_summary'
+        || task?.metadata?.appendMode === 'missing_summary_batch';
+}
+
+async function commitDraft(draftId, editedContent = null, options = {}) {
     const state = ensureState();
     const draftIndex = state.drafts.findIndex(draft => draft.id === draftId);
     if (draftIndex < 0) {
@@ -5252,6 +5772,10 @@ function commitDraft(draftId, editedContent = null, options = {}) {
     }
 
     const draft = state.drafts[draftIndex];
+    if (draft.metadata?.appendMode === 'missing_summary') {
+        return commitMissingSummaryDraft(draftIndex, editedContent, options);
+    }
+
     const content = normalizeGeneratedBakemono(editedContent ?? draft.content);
     const titleText = String(draft.title || getDefaultDraftTitle(draft.kind, state)).trim();
     const hash = getHash(content);
@@ -5707,7 +6231,7 @@ async function captureInlineGenerationFromLatestMessage() {
                     sourceSortKey: getSourceStart(sourceMessageIds),
                 },
             });
-            commitDraft(draft.id, draft.content, { silent: true });
+            await commitDraft(draft.id, draft.content, { silent: true });
             capturedSomething = true;
         }
     }
@@ -6227,7 +6751,7 @@ async function processLatestTurnSummary(options = {}) {
             },
         });
         if (state.turnSummary.saveMode === 'commit') {
-            commitDraft(summaryDraft.id, summaryDraft.content, { silent: true });
+            await commitDraft(summaryDraft.id, summaryDraft.content, { silent: true });
         }
 
         if (shouldGenerateTable && !hasAppliedTableEditForMessage(turn.assistantMessage.messageId, state)) {
@@ -8006,6 +8530,24 @@ function renderDrafts() {
     }
 
     container.innerHTML = '';
+    const missingDraftCount = state.drafts.filter(draft => draft.metadata?.appendMode === 'missing_summary').length;
+    const missingTaskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && ['queued', 'failed', 'done'].includes(task.status)).length;
+    if (missingDraftCount || missingTaskCount) {
+        const bulkActions = document.createElement('div');
+        bulkActions.className = 'bakemono-memory-inline-actions bakemono-memory-draft-bulk-actions';
+        bulkActions.innerHTML = `
+            ${missingDraftCount ? `
+            <button class="menu_button" data-bakemono-action="commit-missing-all">
+                <i class="fa-solid fa-file-circle-check"></i>
+                <span>一键应用缺失摘要 ${missingDraftCount}</span>
+            </button>` : ''}
+            <button class="menu_button danger" data-bakemono-action="remove-missing-all">
+                <i class="fa-solid fa-broom"></i>
+                <span>移除缺失摘要待处理 ${missingDraftCount + missingTaskCount}</span>
+            </button>
+        `;
+        container.append(bulkActions);
+    }
     if (!state.drafts.length) {
         const empty = document.createElement('div');
         empty.className = 'bakemono-memory-empty';
@@ -8036,7 +8578,8 @@ function renderDrafts() {
         const draftMeta = draft.metadata?.sourceRange
             ? `${draft.metadata.sourceRange}${draft.metadata.batchIndex ? ` · 第 ${draft.metadata.batchIndex}/${draft.metadata.batchTotal || '?'} 批` : ''}`
             : '';
-        meta.textContent = [draft.trigger || 'manual', draftMeta, draft.createdAt ? new Date(draft.createdAt).toLocaleString() : ''].filter(Boolean).join(' · ');
+        const appendLabel = draft.metadata?.appendMode === 'missing_summary' ? '确认后追加到原助手楼层' : '';
+        meta.textContent = [draft.trigger || 'manual', appendLabel, draftMeta, draft.createdAt ? new Date(draft.createdAt).toLocaleString() : ''].filter(Boolean).join(' · ');
         header.append(titleWrap, meta);
 
         const textarea = document.createElement('textarea');
@@ -8128,6 +8671,26 @@ function renderTaskQueue() {
     }
 
     container.innerHTML = '';
+    const removableTaskStatuses = new Set(['queued', 'failed', 'done']);
+    const missingTaskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && removableTaskStatuses.has(task.status)).length;
+    const stuckMissingTaskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && task.status === 'running').length;
+    if (missingTaskCount || stuckMissingTaskCount) {
+        const bulkActions = document.createElement('div');
+        bulkActions.className = 'bakemono-memory-inline-actions bakemono-memory-draft-bulk-actions';
+        bulkActions.innerHTML = `
+            ${stuckMissingTaskCount ? `
+            <button class="menu_button danger" data-bakemono-action="clear-stuck-missing">
+                <i class="fa-solid fa-unlink"></i>
+                <span>解除卡住缺失摘要 ${stuckMissingTaskCount}</span>
+            </button>` : ''}
+            ${missingTaskCount ? `
+            <button class="menu_button danger" data-bakemono-action="remove-missing-all">
+                <i class="fa-solid fa-broom"></i>
+                <span>移除缺失摘要任务 ${missingTaskCount}</span>
+            </button>` : ''}
+        `;
+        container.append(bulkActions);
+    }
     if (!state.taskQueue.length) {
         const empty = document.createElement('div');
         empty.className = 'bakemono-memory-empty';
@@ -8160,8 +8723,9 @@ function renderTaskQueue() {
         if (task.status === 'failed') {
             actions.innerHTML = '<button class="menu_button" data-bakemono-task-action="retry"><i class="fa-solid fa-rotate"></i><span>重试</span></button>';
         }
-        if (task.status !== 'running') {
-            actions.insertAdjacentHTML('beforeend', '<button class="menu_button" data-bakemono-task-action="remove"><i class="fa-solid fa-xmark"></i><span>移除</span></button>');
+        if (task.status !== 'running' || isMissingSummaryTask(task)) {
+            const removeLabel = task.status === 'running' && isMissingSummaryTask(task) ? '强制移除' : '移除';
+            actions.insertAdjacentHTML('beforeend', `<button class="menu_button${task.status === 'running' ? ' danger' : ''}" data-bakemono-task-action="remove"><i class="fa-solid fa-xmark"></i><span>${removeLabel}</span></button>`);
         }
         row.append(main, actions);
         fragment.append(row);
@@ -9574,6 +10138,14 @@ async function runWorkbenchAction(action) {
         await generateEpicDraft();
     } else if (action === 'backfill') {
         await generateBackfillQueue();
+    } else if (action === 'batch-summary') {
+        await generateBatchSummaryQueue();
+    } else if (action === 'commit-missing-all') {
+        await commitAllMissingSummaryDrafts();
+    } else if (action === 'remove-missing-all') {
+        removeMissingSummaryDraftsAndTasks();
+    } else if (action === 'clear-stuck-missing') {
+        clearStuckMissingSummaryTasks();
     } else if (action === 'process-latest-turn') {
         readTurnSummaryFieldsFromUi();
         await processLatestTurnSummary({ manual: true });
@@ -9733,7 +10305,7 @@ function bindSettingsEvents() {
         }
         if (action === 'commit') {
             renderAll('正在保存草稿...');
-            commitDraft(draftId, card.querySelector('.bakemono-memory-draft-editor')?.value || '');
+            await commitDraft(draftId, card.querySelector('.bakemono-memory-draft-editor')?.value || '');
         } else if (action === 'regenerate') {
             this.disabled = true;
             renderAll('正在重新总结草稿，请稍等...');

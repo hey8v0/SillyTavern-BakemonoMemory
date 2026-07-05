@@ -627,6 +627,91 @@
   padding-bottom: 8px;
 }
 
+.bakemono-memory-batch-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 28%, var(--SmartThemeBorderColor) 72%);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 7%, transparent), transparent 46%),
+    color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+}
+
+.bakemono-memory-batch-fields {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1.2fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.bakemono-memory-batch-mode,
+.bakemono-memory-batch-range {
+  min-width: 0;
+  padding: 12px;
+  border: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 30%, transparent);
+}
+
+.bakemono-memory-batch-mode small {
+  color: var(--bk-ink-soft);
+  line-height: 1.55;
+}
+
+.bakemono-memory-batch-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px dashed var(--bk-line);
+  border-radius: 12px;
+  color: var(--bk-ink-soft);
+  line-height: 1.65;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.bakemono-memory-batch-note i {
+  margin-top: 4px;
+  color: color-mix(in srgb, var(--SmartThemeQuoteColor) 72%, var(--SmartThemeBodyColor) 28%);
+}
+
+.bakemono-memory-batch-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bakemono-memory-batch-flow span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 58%, transparent);
+  border-radius: 999px;
+  color: var(--bk-ink-soft);
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+  white-space: nowrap;
+}
+
+.bakemono-memory-batch-flow i {
+  color: color-mix(in srgb, var(--SmartThemeQuoteColor) 68%, var(--SmartThemeBodyColor) 32%);
+}
+
+.bakemono-memory-batch-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.bakemono-memory-batch-actions .menu_button {
+  min-height: 42px;
+  padding-inline: 18px;
+}
+
 .bakemono-memory-advanced-options > summary::-webkit-details-marker {
   display: none;
 }
@@ -2898,6 +2983,32 @@
   .bakemono-memory-control-deck .menu_button {
     flex: 1 1 calc(50% - 8px);
     min-width: 0;
+  }
+
+  .bakemono-memory-batch-panel {
+    padding: 12px;
+  }
+
+  .bakemono-memory-batch-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .bakemono-memory-batch-flow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .bakemono-memory-batch-flow span {
+    justify-content: flex-start;
+    border-radius: 12px;
+    white-space: normal;
+  }
+
+  .bakemono-memory-batch-actions {
+    justify-content: stretch;
+  }
+
+  .bakemono-memory-batch-actions .menu_button {
+    width: 100%;
   }
 
   .bakemono-memory-options {

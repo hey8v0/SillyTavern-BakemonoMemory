@@ -238,10 +238,6 @@
             <i class="fa-solid fa-layer-group"></i>
             <span>生成多次总结</span>
           </button>
-          <button class="menu_button" data-bakemono-action="backfill" id="bakemono-memory-backfill">
-            <i class="fa-solid fa-box-archive"></i>
-            <span>旧正文补课</span>
-          </button>
           <button class="menu_button" data-bakemono-action="undo" id="bakemono-memory-undo">
             <i class="fa-solid fa-clock-rotate-left"></i>
             <span>撤回上次保存</span>
@@ -255,6 +251,48 @@
             <span>恢复隐藏楼层</span>
           </button>
         </div>
+
+        <details class="bakemono-memory-card-panel bakemono-memory-range-panel">
+          <summary>
+            <span class="bakemono-memory-summary-title"><i class="fa-solid fa-file-circle-plus"></i><span>批量摘要</span></span>
+            <span class="bakemono-memory-prompt-hint bakemono-memory-range-summary-hint">
+              <i class="fa-solid fa-circle-info"></i>
+              <span>旧正文补课会把旧聊天压缩进插件；补写缺失摘要会把摘要追加回缺摘要的助手楼层。</span>
+            </span>
+          </summary>
+          <div class="bakemono-memory-batch-panel">
+            <div class="bakemono-memory-batch-fields">
+              <label class="bakemono-memory-field bakemono-memory-batch-mode">
+                <span>处理方式</span>
+                <select id="bakemono-memory-batch-summary-mode" class="text_pole">
+                  <option value="missing">补写缺失摘要</option>
+                  <option value="backfill">旧正文补课</option>
+                </select>
+                <small>缺摘要：写回原助手楼层；旧正文：保存成插件内补课摘要。</small>
+              </label>
+              <label class="bakemono-memory-editor bakemono-memory-batch-range">
+                <span>楼层范围</span>
+                <textarea id="bakemono-memory-batch-summary-range" class="text_pole textarea_compact" rows="2" placeholder="留空为全部候选；例如：1-80, 96, 120-150" spellcheck="false"></textarea>
+              </label>
+            </div>
+            <div class="bakemono-memory-batch-note">
+              <i class="fa-solid fa-route"></i>
+              <span>批量大小复用“旧正文每批楼数”，隐藏楼层读取沿用扫描配置。补写完成后，到待确认应用草稿，再扫描摘要并按需要生成阶段总结。</span>
+            </div>
+            <div class="bakemono-memory-batch-flow" aria-label="批量摘要流程">
+              <span><i class="fa-solid fa-list-check"></i> 选范围</span>
+              <span><i class="fa-solid fa-arrows-split-up-and-left"></i> 分批生成</span>
+              <span><i class="fa-solid fa-file-circle-check"></i> 待确认应用</span>
+              <span><i class="fa-solid fa-wand-magic-sparkles"></i> 再做阶段总结</span>
+            </div>
+            <div class="bakemono-memory-batch-actions">
+              <button class="menu_button" data-bakemono-action="batch-summary" id="bakemono-memory-batch-summary">
+                <i class="fa-solid fa-play"></i>
+                <span>开始批量摘要</span>
+              </button>
+            </div>
+          </div>
+        </details>
 
         <details class="bakemono-memory-advanced-options">
           <summary><i class="fa-solid fa-gear"></i><span>高级设置</span></summary>
@@ -1003,10 +1041,6 @@
           <button class="menu_button" id="bakemono-memory-apply-automation">
             <i class="fa-solid fa-floppy-disk"></i>
             <span>应用自动设置</span>
-          </button>
-          <button class="menu_button" data-bakemono-action="backfill">
-            <i class="fa-solid fa-box-archive"></i>
-            <span>分批补课旧正文</span>
           </button>
         </div>
       </section>
