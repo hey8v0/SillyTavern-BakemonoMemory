@@ -4538,29 +4538,28 @@ function retryQueueTask(taskId) {
 function removeQueueTask(taskId) {
     const state = ensureState();
     const task = state.taskQueue.find(item => item.id === taskId);
-    const isRunningMissing = task?.status === 'running' && isMissingSummaryTask(task);
-    if (task?.status === 'running' && !isRunningMissing) {
-        toastr.warning('这个任务正在生成中，暂时不能移除。');
-        return;
-    }
+    const isRunningTask = task?.status === 'running';
     const confirmed = confirmDanger(
-        `${isRunningMissing ? '强制移除卡住任务' : '移除任务'}「${task?.label || '未命名任务'}」？`,
+        `${isRunningTask ? '强制移除卡住任务' : '移除任务'}「${task?.label || '未命名任务'}」？`,
         [
             '任务移除后不会删除已保存摘要，但这个队列项无法从队列中恢复。',
-            ...(isRunningMissing ? ['如果旧请求稍后返回，插件会忽略它，不再写入草稿。'] : []),
+            ...(isRunningTask ? [
+                '如果旧请求稍后返回，插件会忽略它，不再写入草稿。',
+                '这只解除插件队列状态，不能中止已经发出的模型请求。',
+            ] : []),
         ],
     );
     if (!confirmed) {
         return;
     }
-    if (isRunningMissing) {
+    if (isRunningTask) {
         cancelledQueueTaskIds.add(task.id);
         isQueueRunning = false;
         setBusy(false);
     }
     state.taskQueue = state.taskQueue.filter(task => task.id !== taskId);
     saveState();
-    renderAll(isRunningMissing ? '已解除卡住的缺失摘要任务。' : '任务已从队列移除。');
+    renderAll(isRunningTask ? '已解除卡住的队列任务。' : '任务已从队列移除。');
     processTaskQueue();
 }
 
@@ -5728,17 +5727,17 @@ function removeMissingSummaryDraftsAndTasks() {
     toastr.success('缺失摘要待处理内容已移除。');
 }
 
-function clearStuckMissingSummaryTasks() {
+function clearStuckQueueTasks(predicate = () => true, label = '任务') {
     const state = ensureState();
-    const stuckTasks = state.taskQueue.filter(task => isMissingSummaryTask(task) && task.status === 'running');
+    const stuckTasks = state.taskQueue.filter(task => task.status === 'running' && predicate(task));
     if (!stuckTasks.length) {
-        toastr.info('没有卡住的缺失摘要生成任务。');
+        toastr.info(`没有卡住的${label}。`);
         return;
     }
     const confirmed = confirmDanger(
-        `解除 ${stuckTasks.length} 个生成中的缺失摘要任务？`,
+        `解除 ${stuckTasks.length} 个生成中的${label}？`,
         [
-            '这只会清理显示“生成中”的缺失摘要任务，不会删除已经生成的草稿。',
+            '这只会清理显示“生成中”的队列项，不会删除已经生成的草稿或保存记录。',
             '如果旧请求稍后返回，插件会忽略它，不再写入草稿。',
             '解除后，后面的等待任务会继续排队处理。',
         ],
@@ -5747,13 +5746,18 @@ function clearStuckMissingSummaryTasks() {
         return;
     }
     stuckTasks.forEach(task => cancelledQueueTaskIds.add(task.id));
-    state.taskQueue = state.taskQueue.filter(task => !(isMissingSummaryTask(task) && task.status === 'running'));
+    const stuckTaskIds = new Set(stuckTasks.map(task => task.id));
+    state.taskQueue = state.taskQueue.filter(task => !stuckTaskIds.has(task.id));
     isQueueRunning = false;
     setBusy(false);
     saveState();
-    renderAll(`已解除 ${stuckTasks.length} 个卡住的缺失摘要任务。`);
+    renderAll(`已解除 ${stuckTasks.length} 个卡住的${label}。`);
     toastr.success('已解除卡住任务，队列可以继续。');
     processTaskQueue();
+}
+
+function clearStuckMissingSummaryTasks() {
+    clearStuckQueueTasks(isMissingSummaryTask, '缺失摘要任务');
 }
 
 function isMissingSummaryTask(task) {
@@ -8673,15 +8677,15 @@ function renderTaskQueue() {
     container.innerHTML = '';
     const removableTaskStatuses = new Set(['queued', 'failed', 'done']);
     const missingTaskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && removableTaskStatuses.has(task.status)).length;
-    const stuckMissingTaskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && task.status === 'running').length;
-    if (missingTaskCount || stuckMissingTaskCount) {
+    const stuckTaskCount = state.taskQueue.filter(task => task.status === 'running').length;
+    if (missingTaskCount || stuckTaskCount) {
         const bulkActions = document.createElement('div');
         bulkActions.className = 'bakemono-memory-inline-actions bakemono-memory-draft-bulk-actions';
         bulkActions.innerHTML = `
-            ${stuckMissingTaskCount ? `
-            <button class="menu_button danger" data-bakemono-action="clear-stuck-missing">
+            ${stuckTaskCount ? `
+            <button class="menu_button danger" data-bakemono-action="clear-stuck-tasks">
                 <i class="fa-solid fa-unlink"></i>
-                <span>解除卡住缺失摘要 ${stuckMissingTaskCount}</span>
+                <span>解除卡住任务 ${stuckTaskCount}</span>
             </button>` : ''}
             ${missingTaskCount ? `
             <button class="menu_button danger" data-bakemono-action="remove-missing-all">
@@ -8723,10 +8727,8 @@ function renderTaskQueue() {
         if (task.status === 'failed') {
             actions.innerHTML = '<button class="menu_button" data-bakemono-task-action="retry"><i class="fa-solid fa-rotate"></i><span>重试</span></button>';
         }
-        if (task.status !== 'running' || isMissingSummaryTask(task)) {
-            const removeLabel = task.status === 'running' && isMissingSummaryTask(task) ? '强制移除' : '移除';
-            actions.insertAdjacentHTML('beforeend', `<button class="menu_button${task.status === 'running' ? ' danger' : ''}" data-bakemono-task-action="remove"><i class="fa-solid fa-xmark"></i><span>${removeLabel}</span></button>`);
-        }
+        const removeLabel = task.status === 'running' ? '强制移除' : '移除';
+        actions.insertAdjacentHTML('beforeend', `<button class="menu_button${task.status === 'running' ? ' danger' : ''}" data-bakemono-task-action="remove"><i class="fa-solid fa-xmark"></i><span>${removeLabel}</span></button>`);
         row.append(main, actions);
         fragment.append(row);
     });
@@ -10144,6 +10146,8 @@ async function runWorkbenchAction(action) {
         await commitAllMissingSummaryDrafts();
     } else if (action === 'remove-missing-all') {
         removeMissingSummaryDraftsAndTasks();
+    } else if (action === 'clear-stuck-tasks') {
+        clearStuckQueueTasks();
     } else if (action === 'clear-stuck-missing') {
         clearStuckMissingSummaryTasks();
     } else if (action === 'process-latest-turn') {
