@@ -5936,9 +5936,15 @@ function stripHtmlCommentShell(value) {
 function parseTableObjectLiteral(value) {
     const cleaned = stripHtmlCommentShell(value)
         .replace(/([{,]\s*)(\d+)\s*:/g, '$1"$2":')
-        .replace(/"\s+(?="\d+"\s*:)/g, '", ')
-        .replace(/'/g, '"');
-    return JSON.parse(cleaned);
+        .replace(/"\s+(?="\d+"\s*:)/g, '", ');
+    try {
+        return JSON.parse(cleaned);
+    } catch (error) {
+        const fallback = cleaned
+            .replace(/([{,]\s*)'([^'"]+)'\s*:/g, '$1"$2":')
+            .replace(/:\s*'([^']*)'/g, (_, inner) => `:${JSON.stringify(inner)}`);
+        return JSON.parse(fallback);
+    }
 }
 
 function parseTableEditOperations(raw) {
