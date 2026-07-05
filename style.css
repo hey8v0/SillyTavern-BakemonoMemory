@@ -59,6 +59,63 @@
   display: none;
 }
 
+.bakemono-memory-operation-toast {
+  position: fixed;
+  z-index: 40100;
+  left: 50%;
+  top: max(18px, calc(env(safe-area-inset-top, 0px) + 14px));
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 11px 16px;
+  border: 1px solid var(--bk-line-strong);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bk-paper) 92%, transparent);
+  color: var(--SmartThemeBodyColor);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px);
+  pointer-events: none;
+  animation: bakemono-operation-toast-in 0.22s var(--bk-ease) both;
+}
+
+.bakemono-memory-operation-spinner {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border: 2px solid color-mix(in srgb, var(--SmartThemeBodyColor) 24%, transparent);
+  border-top-color: var(--bk-accent);
+  border-radius: 999px;
+  animation: bakemono-operation-spin 0.82s linear infinite;
+}
+
+@keyframes bakemono-operation-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bakemono-operation-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@media (max-width: 900px) {
+  .bakemono-memory-operation-toast {
+    top: auto;
+    bottom: max(18px, calc(env(safe-area-inset-bottom, 0px) + 86px));
+    width: max-content;
+    font-size: 0.92em;
+  }
+}
+
 .bakemono-workbench-backdrop {
   position: absolute;
   inset: 0;

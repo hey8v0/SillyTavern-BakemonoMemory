@@ -598,29 +598,24 @@ const defaultGenerationTargets = {
     },
 };
 
-const defaultVectorQueryRewritePrompt = `请把最近剧情改写成“一个检索意图 + 3 到 5 条旧记忆检索线索”。
+const defaultVectorQueryRewritePrompt = `请把最近剧情改写成“1 个检索意图 + 5 条旧记忆检索线索”。
 
-你要做的是理解当前回合真正需要回忆什么旧剧情，而不是复述用户输入。
-只使用已经发生的事实、人物、地点、组织、物品、关系变化、未解伏笔和关键状态。
-最近剧情只是判断检索方向的材料，不是要被照抄的正文。
-不要续写剧情，不要猜测未来，不要输出分析步骤，不要输出 Input/Goal/Task/Role/Constraints/Current context/Determine 等提示词内容。
+你的任务不是续写剧情，也不是复述用户输入；你只需要判断：为了理解当前回合，最应该从旧剧情里找回哪些已经发生过的事实。
+优先围绕人物关系、过去承诺、冲突转折、地点组织、物品状态、伏笔秘密、情绪变化和长期设定来写。
 
-输出必须是 JSON 对象，且只能包含这两个字段：
-{
-  "intent": "一句话说明这次要检索什么旧记忆",
-  "queries": [
-    "围绕人物关系的检索线索",
-    "围绕过去事件或转折点的检索线索",
-    "围绕地点、组织、物品或伏笔的检索线索"
-  ]
-}
+输出格式必须严格为 6 行，不能多字，不能少行，不能写解释：
+INTENT: 一句话概括本次检索目标
+Q1: 第一条具体检索线索
+Q2: 第二条具体检索线索
+Q3: 第三条具体检索线索
+Q4: 第四条具体检索线索
+Q5: 第五条具体检索线索
 
-要求：
-- intent 和 queries 必须使用中文。
-- queries 每条都要是可用于搜索旧剧情的具体问题或线索，而不是规则、要求或当前剧情复述。
-- 不要把最近剧情原文整段搬进 queries。
-- 不要输出英文解释，不要输出 Markdown，不要输出代码块。
-- 如果当前输入很短，也要结合最近剧情补足检索角度。`;
+硬性要求：
+- INTENT 和 Q1-Q5 都必须使用中文。
+- 每条 Q 都要像“去旧记忆里找什么”的搜索线索，不能写规则、分析步骤、英文说明或当前剧情原文。
+- 不要输出 Input、Goal、Task、Role、Constraints、Current context、Determine、Clue 等提示词残留。
+- 不要输出 JSON、Markdown、代码块、项目符号或编号以外的内容。`;
 
 const defaultVectorMemory = {
     enabled: false,
@@ -1146,7 +1141,7 @@ function ensureState() {
             state.vectorMemory[key] = structuredClone(value);
         }
     }
-    if (/JSON\s*字符串数组|3\s*到\s*5\s*条.*中文查询句|适合检索旧剧情记忆|recent\s+plot|old\s+memories|create\s+queries|only\s+output\s+the\s+queries/i.test(String(state.vectorMemory.queryRewritePrompt || ''))) {
+    if (/JSON\s*字符串数组|JSON\s*对象|3\s*到\s*5\s*条.*中文查询句|一个检索意图\s*\+\s*3\s*到\s*5\s*条|适合检索旧剧情记忆|recent\s+plot|old\s+memories|create\s+queries|only\s+output\s+the\s+queries/i.test(String(state.vectorMemory.queryRewritePrompt || ''))) {
         state.vectorMemory.queryRewritePrompt = defaultVectorMemory.queryRewritePrompt;
     }
     state.vectorMemory.customApi = state.vectorMemory.customApi && typeof state.vectorMemory.customApi === 'object'
@@ -2378,6 +2373,10 @@ function parseVectorQueryRewritePayload(raw) {
     if (!source) {
         return { intent: '', queries: [] };
     }
+    const linePayload = parseVectorQueryRewriteLines(source);
+    if (linePayload.queries.length || linePayload.intent) {
+        return linePayload;
+    }
     const jsonMatch = source.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
     try {
         const parsed = JSON.parse((jsonMatch?.[1] || source).trim());
@@ -2418,6 +2417,30 @@ function parseVectorQueryRewritePayload(raw) {
     };
 }
 
+function parseVectorQueryRewriteLines(source) {
+    const lines = String(source || '')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
+    let intent = '';
+    const queries = [];
+    for (const line of lines) {
+        const intentMatch = line.match(/^\s*INTENT\s*[:：]\s*(.+)$/i);
+        if (intentMatch) {
+            intent = normalizeVectorRewriteIntent(intentMatch[1]);
+            continue;
+        }
+        const queryMatch = line.match(/^\s*Q\s*([1-5])\s*[:：]\s*(.+)$/i);
+        if (queryMatch) {
+            const query = normalizeVectorRewriteQueryItem(queryMatch[2]);
+            if (query) {
+                queries.push(query);
+            }
+        }
+    }
+    return { intent, queries: unique(queries) };
+}
+
 function parseVectorQueryRewriteResult(raw) {
     return parseVectorQueryRewritePayload(raw).queries;
 }
@@ -2447,7 +2470,9 @@ function normalizeVectorRewriteQueryItem(item) {
         .map(line => line.trim())
         .filter(line => line && !isVectorRewriteInstructionLine(line))
         .join(' ')
+        .replace(/^\s*(?:INTENT|Q\s*[1-5])\s*[:：]\s*/i, '')
         .replace(/^\s*(?:Q\s*)?\d+\s*[.)、:：-]\s*/i, '')
+        .replace(/^\s*(?:clue|query)\s*\d+\s*(?:\([^)]*\))?\s*[:：*-]?\s*/i, '')
         .replace(/^\s*(?:[-*]|\d+[.)、]|[（(]?\d+[）)])\s*/, '')
         .replace(/^\s*(?:query|查询|检索句|关键词|线索)\s*[:：]\s*/i, '')
         .replace(/^[\s*_`#>]+|[\s*_`#>]+$/g, '')
@@ -2460,7 +2485,16 @@ function normalizeVectorRewriteQueryItem(item) {
 }
 
 function hasVectorRewriteQueryLanguage(text) {
-    return /[\u3400-\u9fff\u3040-\u30ff]/.test(String(text || ''));
+    const value = String(text || '');
+    const cjkCount = (value.match(/[\u3400-\u9fff\u3040-\u30ff]/g) || []).length;
+    if (cjkCount < 4) {
+        return false;
+    }
+    const latinCount = (value.match(/[A-Za-z]/g) || []).length;
+    if (latinCount && cjkCount / Math.max(1, cjkCount + latinCount) < 0.32) {
+        return false;
+    }
+    return true;
 }
 
 function isVectorRewriteInstructionLine(text) {
@@ -2471,9 +2505,9 @@ function isVectorRewriteInstructionLine(text) {
     if (value.length < 4) {
         return true;
     }
-    return /^(?:thinking\s*process|analy[sz]e\s+the\s+request|role\s*:|task\s*:|constraints?\s*:|requirements?\s*:|output\s*:|only\s+output|do\s+not|system\s*:|assistant\s*:|user\s*:|recent\s+plot|search\s+queries?|queries?\s*:|intent\s*:|intent[`'"]?\s+and\s+[`'"]?queries|keep\s+only\s+facts|one\s+query\s+per\s+line|no\s+explanations?|language\s*:|convert\s+recent\s+plot)/i.test(value)
+    return /^(?:thinking\s*process|analy[sz]e\s+the\s+request|role\s*:|task\s*:|constraints?\s*:|requirements?\s*:|output\s*:|only\s+output|do\s+not|system\s*:|assistant\s*:|user\s*:|recent\s+plot|search\s+queries?|queries?\s*:|intent\s*:|intent[`'"]?\s+and\s+[`'"]?queries|keep\s+only\s+facts|one\s+query\s+per\s+line|no\s+explanations?|language\s*:|convert\s+recent\s+plot|clue\s*\d+|query\s*\d+)/i.test(value)
         || /^(?:以下|输出|检索|要求|约束|任务|角色|输入|目标|规则|格式|最近剧情|当前剧情|检索意图)(?:[:：\s]|$)/.test(value)
-        || /(?:only\s+return|return\s+json|json\s+array|json\s+object|do\s+not\s+output|must\s+be\s+in\s+chinese|must\s+be\s+specific|specific\s+questions?|searching\s+old\s+plot|focus\s+on\s+what\s+old\s+memories|current\s+context|determine\s+the\s+retrieval|retrieval\s+intent|old\s+memories\s+need\s+to\s+be\s+recalled|characters,\s*relationships,\s*locations|unresolved\s+foreshadowing|不要解释|不要输出步骤|不要输出分析|每行一条|只返回|只输出|必须使用中文|输出必须|只能包含|不要把最近剧情)/i.test(value)
+        || /(?:only\s+return|return\s+json|json\s+array|json\s+object|do\s+not\s+output|must\s+be\s+in\s+chinese|must\s+be\s+specific|specific\s+questions?|searching\s+old\s+plot|focus\s+on\s+what\s+old\s+memories|current\s+context|determine\s+the\s+retrieval|retrieval\s+intent|the\s+text\s+mentions|the\s+current\s+scene|old\s+memories\s+need\s+to\s+be\s+recalled|characters,\s*relationships,\s*locations|unresolved\s+foreshadowing|不要解释|不要输出步骤|不要输出分析|每行一条|只返回|只输出|必须使用中文|输出必须|只能包含|不要把最近剧情)/i.test(value)
         || /^\*\*(?:analy[sz]e|role|task|constraints?|output|thinking|goal|input)[\s\S]*\*\*$/i.test(value)
         || /^(?:input|goal|analy[sz]e|chapter\s*\d+|recent\s+plot\s+chapters|current\s+context|determine\s+the\s+retrieval|the\s+current\s+scene)\b/i.test(value);
 }
@@ -2565,14 +2599,20 @@ async function prepareVectorQueries(explicitQuery = '', state = ensureState()) {
             ...parseList(state.vectorMemory.keywordTriggers),
         ]).filter(Boolean).slice(0, 6);
     }
-    const systemPrompt = '你是剧情记忆检索的查询改写器。你只负责把当前剧情改写成旧记忆检索线索，不续写剧情，不输出分析过程。';
+    const systemPrompt = '你是剧情记忆检索的查询改写器。你只负责把当前剧情改写成旧记忆检索线索，不续写剧情，不输出分析过程。必须严格按指定格式输出。';
     const prompt = `${state.vectorMemory.queryRewritePrompt || defaultVectorMemory.queryRewritePrompt}
 
 <最近剧情>
 ${baseQuery}
 </最近剧情>
 
-请严格输出 JSON 对象：{"intent":"一句话检索意图","queries":["检索线索1","检索线索2","检索线索3"]}`;
+请严格输出下面 6 行，不要输出任何解释、标题、JSON 或 Markdown：
+INTENT: 一句话检索意图
+Q1: 第一条旧记忆检索线索
+Q2: 第二条旧记忆检索线索
+Q3: 第三条旧记忆检索线索
+Q4: 第四条旧记忆检索线索
+Q5: 第五条旧记忆检索线索`;
     const rewritten = await callVectorQueryRewriteModel(prompt, systemPrompt, state);
     const payload = parseVectorQueryRewritePayload(rewritten);
     if (payload.intent) {
@@ -4892,9 +4932,46 @@ async function runGeneration(message, action) {
     }
 }
 
+function setOperationLoading(message = '') {
+    const root = document.getElementById('bakemono-workbench-root');
+    if (!root) {
+        return;
+    }
+    let toast = document.getElementById('bakemono-memory-operation-toast');
+    const text = String(message || '').trim();
+    if (!text) {
+        toast?.remove();
+        root.classList.remove('is-operation-running');
+        return;
+    }
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'bakemono-memory-operation-toast';
+        toast.className = 'bakemono-memory-operation-toast';
+        root.appendChild(toast);
+    }
+    toast.innerHTML = `<span class="bakemono-memory-operation-spinner" aria-hidden="true"></span><span>${escapeHtml(text)}</span>`;
+    root.classList.add('is-operation-running');
+}
+
+async function runVisibleOperation(message, action) {
+    const toast = toastr.info(message, '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
+    renderAll(message);
+    setOperationLoading(message);
+    setBusy(true);
+    try {
+        return await action();
+    } finally {
+        setBusy(false);
+        setOperationLoading('');
+        toastr.clear(toast);
+        toast?.remove?.();
+    }
+}
+
 function setBusy(value) {
     isBusy = value;
-    $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-epic"], [data-bakemono-action="backfill"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-table-draft-action]').prop('disabled', value);
+    $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-epic"], [data-bakemono-action="backfill"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-test"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-table-draft-action]').prop('disabled', value);
 }
 
 async function callGenerationModel({ prompt, systemPrompt }) {
@@ -9530,13 +9607,13 @@ async function runWorkbenchAction(action) {
     } else if (action === 'vector-apply') {
         await applyVectorMemorySettings();
     } else if (action === 'vector-index') {
-        await buildVectorMemoryIndex();
+        await runVisibleOperation('正在建立/刷新向量索引...', () => buildVectorMemoryIndex());
     } else if (action === 'vector-test') {
-        await testVectorMemoryRetrieval();
+        await runVisibleOperation('正在测试向量召回...', () => testVectorMemoryRetrieval());
     } else if (action === 'vector-fetch-models') {
-        await fetchVectorEmbeddingModels();
+        await runVisibleOperation('正在拉取嵌入向量模型...', () => fetchVectorEmbeddingModels());
     } else if (action === 'vector-fetch-query-models') {
-        await fetchVectorQueryModels();
+        await runVisibleOperation('正在拉取查询改写模型...', () => fetchVectorQueryModels());
     } else if (action === 'vector-clear') {
         clearVectorMemoryIndex();
     }
