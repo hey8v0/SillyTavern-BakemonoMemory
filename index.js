@@ -3795,6 +3795,23 @@ function selectGenerationTargets(blocks = [], config = {}) {
     return sorted;
 }
 
+function partitionGenerationTargets(blocks = [], kind = 'stage', config = {}) {
+    const sorted = getSortedTargetBlocks(blocks);
+    const mode = Object.values(targetSelectionModes).includes(config.mode) ? config.mode : targetSelectionModes.ALL;
+    if (mode === targetSelectionModes.OLDEST) {
+        return [selectGenerationTargets(sorted, config)].filter(batch => batch.length);
+    }
+
+    const pool = mode === targetSelectionModes.RANGE ? selectGenerationTargets(sorted, config) : sorted;
+    const defaultCount = defaultGenerationTargets[kind]?.count || (kind === 'epic' ? 5 : 20);
+    const batchSize = Math.max(1, Number(config.count || defaultCount));
+    const batches = [];
+    for (let index = 0; index < pool.length; index += batchSize) {
+        batches.push(pool.slice(index, index + batchSize));
+    }
+    return batches.filter(batch => batch.length);
+}
+
 function getAutoStageTargets(targets = []) {
     const state = ensureState();
     const sorted = getSortedTargetBlocks(targets);
@@ -4376,7 +4393,7 @@ async function generateEpicSummary() {
     });
 }
 
-function enqueueSummaryTask({ kind, prompt, systemPrompt, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], trigger = 'manual', label = '', metadata = {} }) {
+function enqueueSummaryTask({ kind, prompt, systemPrompt, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], trigger = 'manual', label = '', metadata = {}, autoStart = true, silent = false }) {
     const state = ensureState();
     const task = {
         id: `task-${getHash(`${kind}|${Date.now()}|${prompt}`)}`,
@@ -4396,8 +4413,12 @@ function enqueueSummaryTask({ kind, prompt, systemPrompt, sourceHashes = [], sou
     };
     state.taskQueue.push(task);
     saveState();
-    renderAll('任务已加入队列。');
-    processTaskQueue();
+    if (!silent) {
+        renderAll('任务已加入队列。');
+    }
+    if (autoStart) {
+        processTaskQueue();
+    }
     return task;
 }
 
@@ -4677,6 +4698,74 @@ async function generateStageDraft(options = {}) {
     });
 }
 
+async function generateStageBatchTasks() {
+    if (isBusy) {
+        return;
+    }
+
+    scanBakemonoBlocks({ persist: false });
+    const state = ensureState();
+    readGenerationTargetSettings();
+    const allTargets = getUnsummarizedStoryBlocks();
+    if (!allTargets.length) {
+        renderAll('没有新的剧情摘要需要生成阶段总结。');
+        toastr.info('没有新的剧情摘要需要生成阶段总结。');
+        return;
+    }
+
+    const config = state.generationTargets.stage || defaultGenerationTargets.stage;
+    const batches = partitionGenerationTargets(allTargets, 'stage', config);
+    if (!batches.length) {
+        renderAll('当前批量范围没有匹配到可总结摘要。');
+        toastr.warning('当前批量范围没有匹配到可总结摘要。');
+        return;
+    }
+
+    const totalTargets = batches.reduce((sum, batch) => sum + batch.length, 0);
+    const confirmed = confirmDanger(
+        `加入 ${batches.length} 个阶段总结批次任务？`,
+        [
+            `将覆盖 ${totalTargets}/${allTargets.length} 个普通摘要。`,
+            `每批最多 ${Math.max(1, Number(config.count || defaultGenerationTargets.stage.count))} 个摘要。`,
+            '生成结果会进入待确认草稿，不会自动保存。',
+        ],
+    );
+    if (!confirmed) {
+        renderAll('已取消批量阶段总结。');
+        return;
+    }
+
+    batches.forEach((targets, index) => {
+        const prompt = buildStageUserPrompt(targets);
+        const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
+        enqueueSummaryTask({
+            kind: blockTypes.STAGE,
+            label: `阶段总结 第 ${index + 1}/${batches.length} 批 · ${targets.length} 个片段`,
+            prompt,
+            systemPrompt: buildStageSystemPrompt(),
+            sourceHashes: targets.map(block => block.hash),
+            sourceMessageIds,
+            trigger: 'batch_stage',
+            metadata: {
+                sourceRange: formatSourceRange(sourceMessageIds),
+                sourceStart: getSourceStart(sourceMessageIds),
+                sourceEnd: getSourceEnd(sourceMessageIds),
+                sourceSortKey: getSourceStart(sourceMessageIds),
+                sourceMode: getStageSourceMode(),
+                batchIndex: index + 1,
+                batchTotal: batches.length,
+                selectionLabel: `批量阶段总结：第 ${index + 1}/${batches.length} 批，${targets.length}/${allTargets.length} 个`,
+            },
+            autoStart: false,
+            silent: true,
+        });
+    });
+
+    renderAll(`已加入 ${batches.length} 个阶段总结批次任务。`);
+    toastr.success(`已加入 ${batches.length} 个阶段总结批次任务。`);
+    processTaskQueue();
+}
+
 async function generateEpicDraft(options = {}) {
     if (isBusy) {
         return;
@@ -4752,6 +4841,80 @@ async function generateEpicDraft(options = {}) {
             selectionLabel: getTargetSelectionLabel('epic', targets.length, sourcePoolSize),
         },
     });
+}
+
+async function generateEpicBatchTasks() {
+    if (isBusy) {
+        return;
+    }
+
+    scanBakemonoBlocks({ persist: false });
+    const state = ensureState();
+    readGenerationTargetSettings();
+    const allStageTargets = getUnsummarizedStageBlocks();
+    const allMultiTargets = getUnsummarizedMultiSummaryBlocks();
+    const allStoryFallback = getStoryMaterialBlocks().filter(block => !state.coveredBlockHashes.includes(block.hash));
+    const sourceBlocks = allStageTargets.length ? allStageTargets : allMultiTargets.length ? allMultiTargets : allStoryFallback;
+    if (!sourceBlocks.length) {
+        renderAll('没有可用于生成多次总结的内容。');
+        toastr.info('没有可用于生成多次总结的内容。');
+        return;
+    }
+
+    const config = state.generationTargets.epic || defaultGenerationTargets.epic;
+    const batches = partitionGenerationTargets(sourceBlocks, 'epic', config);
+    if (!batches.length) {
+        renderAll('当前批量范围没有匹配到可用于多次总结的内容。');
+        toastr.warning('当前批量范围没有匹配到可用于多次总结的内容。');
+        return;
+    }
+
+    const totalTargets = batches.reduce((sum, batch) => sum + batch.length, 0);
+    const confirmed = confirmDanger(
+        `加入 ${batches.length} 个多次总结批次任务？`,
+        [
+            `将覆盖 ${totalTargets}/${sourceBlocks.length} 个阶段/多次材料。`,
+            `每批最多 ${Math.max(1, Number(config.count || defaultGenerationTargets.epic.count))} 个材料。`,
+            '建议先确认并保存已有阶段总结，再批量生成多次总结。',
+            '生成结果会进入待确认草稿，不会自动保存。',
+        ],
+    );
+    if (!confirmed) {
+        renderAll('已取消批量多次总结。');
+        return;
+    }
+
+    batches.forEach((targets, index) => {
+        const nextLevel = getNextMultiSummaryLevel(targets);
+        const prompt = buildEpicUserPrompt(targets);
+        const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
+        enqueueSummaryTask({
+            kind: blockTypes.EPIC,
+            label: `${getMultiSummaryLabel(nextLevel)} 第 ${index + 1}/${batches.length} 批 · ${targets.length} 个片段`,
+            prompt,
+            systemPrompt: buildEpicSystemPrompt(),
+            sourceHashes: targets.map(block => block.hash),
+            sourceStageHashes: targets.filter(block => block.type === blockTypes.STAGE || block.type === blockTypes.EPIC).map(block => block.hash),
+            sourceMessageIds,
+            trigger: 'batch_epic',
+            metadata: {
+                sourceRange: formatSourceRange(sourceMessageIds),
+                sourceStart: getSourceStart(sourceMessageIds),
+                sourceEnd: getSourceEnd(sourceMessageIds),
+                sourceSortKey: getSourceStart(sourceMessageIds),
+                level: nextLevel,
+                batchIndex: index + 1,
+                batchTotal: batches.length,
+                selectionLabel: `批量多次总结：第 ${index + 1}/${batches.length} 批，${targets.length}/${sourceBlocks.length} 个`,
+            },
+            autoStart: false,
+            silent: true,
+        });
+    });
+
+    renderAll(`已加入 ${batches.length} 个多次总结批次任务。`);
+    toastr.success(`已加入 ${batches.length} 个多次总结批次任务。`);
+    processTaskQueue();
 }
 
 async function generateBackfillDrafts() {
@@ -5266,7 +5429,7 @@ async function runVisibleOperation(message, action) {
 
 function setBusy(value) {
     isBusy = value;
-    $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-epic"], [data-bakemono-action="backfill"], [data-bakemono-action="batch-summary"], [data-bakemono-action="commit-missing-all"], [data-bakemono-action="remove-missing-all"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-test"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-table-draft-action]').prop('disabled', value);
+    $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-stage-batch"], [data-bakemono-action="generate-epic"], [data-bakemono-action="generate-epic-batch"], [data-bakemono-action="backfill"], [data-bakemono-action="batch-summary"], [data-bakemono-action="commit-missing-all"], [data-bakemono-action="remove-missing-all"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-test"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-table-draft-action]').prop('disabled', value);
 }
 
 async function callGenerationModel({ prompt, systemPrompt }) {
@@ -7043,6 +7206,14 @@ async function restoreHiddenMessages() {
     toastr.success(`已恢复 ${messageIds.length} 个楼层。`);
 }
 
+function getActualHiddenMessageIds() {
+    const sourceChat = getContext()?.chat || chat || [];
+    return sourceChat
+        .map((message, index) => ({ message, index }))
+        .filter(({ message }) => message?.is_system)
+        .map(({ index }) => index);
+}
+
 function unique(values) {
     return [...new Set(values)];
 }
@@ -7476,7 +7647,7 @@ function getWorkflowInfo(state = ensureState()) {
             title: '补课旧聊天',
             description: '适合以前没有写摘要的聊天。插件会先把旧楼层分批压缩成补课摘要，再继续做阶段总结。',
             steps: ['设置“旧正文每批楼数”', '点击“分批补课旧正文”', '到草稿箱检查并确认保存', '积累几批后生成阶段总结'],
-            actions: ['backfill', 'generate-stage', 'generate-epic', 'undo'],
+            actions: ['backfill', 'generate-stage', 'generate-stage-batch', 'generate-epic', 'generate-epic-batch', 'undo'],
         };
     }
     if (mode === workflowModes.MIXED) {
@@ -7484,14 +7655,14 @@ function getWorkflowInfo(state = ensureState()) {
             title: '高级自定义',
             description: '适合想自己控制标签、排除规则、正文来源、输出格式和注入方式的用户。',
             steps: ['打开高级设置或扫描规则', '确认扫描预览没有读错内容', '按你的材料来源生成总结', '必要时再调整提示词预设'],
-            actions: ['scan', 'backfill', 'generate-stage', 'generate-epic', 'hide', 'restore', 'undo'],
+            actions: ['scan', 'backfill', 'generate-stage', 'generate-stage-batch', 'generate-epic', 'generate-epic-batch', 'hide', 'restore', 'undo'],
         };
     }
     return {
         title: '已有摘要',
         description: '适合正文里已经有摘要块的聊天。插件只扫描摘要，普通摘要不重复注入，避免浪费 token。',
         steps: ['点击“扫描摘要”', '确认查看总结里识别正确', '生成阶段总结', '阶段总结确认后再隐藏已覆盖楼层'],
-        actions: ['scan', 'generate-stage', 'generate-epic', 'hide', 'restore', 'undo'],
+        actions: ['scan', 'generate-stage', 'generate-stage-batch', 'generate-epic', 'generate-epic-batch', 'hide', 'restore', 'undo'],
     };
 }
 
@@ -8155,7 +8326,11 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-tab-count-story').text(storyBlocks.length);
     $('#bakemono-memory-tab-count-stage').text(dedupedStageBlocks.length);
     $('#bakemono-memory-tab-count-epic').text(dedupedEpicBlocks.length);
-    $('#bakemono-memory-count-hidden').text(state.hiddenMessageIds.length);
+    const actualHiddenIds = getActualHiddenMessageIds();
+    const pluginHiddenIds = getFiniteMessageIds(state.hiddenMessageIds || []);
+    $('#bakemono-memory-count-hidden')
+        .text(actualHiddenIds.length)
+        .attr('title', `酒馆实际隐藏 ${actualHiddenIds.length} 楼；插件记录 ${pluginHiddenIds.length} 楼`);
     $('#bakemono-memory-memory-strategy').val(state.memoryStrategy || memoryStrategies.BAKEMONO);
     $('#bakemono-memory-workflow-mode').val(state.workflowMode || workflowModes.BAKEMONO);
     $('#bakemono-memory-stage-source-mode').val(getStageSourceMode(state));
@@ -10136,8 +10311,12 @@ async function runWorkbenchAction(action) {
         scanBakemonoBlocks();
     } else if (action === 'generate-stage') {
         await generateStageDraft();
+    } else if (action === 'generate-stage-batch') {
+        await generateStageBatchTasks();
     } else if (action === 'generate-epic') {
         await generateEpicDraft();
+    } else if (action === 'generate-epic-batch') {
+        await generateEpicBatchTasks();
     } else if (action === 'backfill') {
         await generateBackfillQueue();
     } else if (action === 'batch-summary') {
