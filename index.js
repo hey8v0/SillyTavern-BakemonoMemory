@@ -598,6 +598,28 @@ const defaultGenerationTargets = {
     },
 };
 
+const defaultVectorQueryRewritePrompt = `请把最近剧情改写成“一个检索意图 + 3 到 5 条旧记忆检索线索”。
+
+你要做的是理解当前回合真正需要回忆什么旧剧情，而不是复述用户输入。
+只使用已经发生的事实、人物、地点、组织、物品、关系变化、未解伏笔和关键状态。
+不要续写剧情，不要猜测未来，不要输出分析步骤，不要输出 Input/Goal/Task/Role/Constraints 等提示词内容。
+
+输出必须是 JSON 对象，且只能包含这两个字段：
+{
+  "intent": "一句话说明这次要检索什么旧记忆",
+  "queries": [
+    "围绕人物关系的检索线索",
+    "围绕过去事件或转折点的检索线索",
+    "围绕地点、组织、物品或伏笔的检索线索"
+  ]
+}
+
+要求：
+- intent 和 queries 必须使用中文。
+- queries 每条都要是可用于搜索旧剧情的具体问题或线索。
+- 不要把最近剧情原文整段搬进 queries。
+- 如果当前输入很短，也要结合最近剧情补足检索角度。`;
+
 const defaultVectorMemory = {
     enabled: false,
     includeHidden: true,
@@ -628,7 +650,7 @@ const defaultVectorMemory = {
     summaryTags: 'bakemono, summaryDraft',
     queryMode: 'model-required',
     queryRewriteProvider: 'tavern',
-    queryRewritePrompt: '请把最近剧情改写成 3 到 5 条适合检索旧剧情记忆的中文查询句。只保留已经发生的事实、人物、地点、物品、关系和未解决事项；不要续写，不要解释，不要输出步骤。请只返回 JSON 字符串数组，例如 ["角色A和角色B过去的关系转折", "某个物品首次出现和后续影响"]。',
+    queryRewritePrompt: defaultVectorQueryRewritePrompt,
     queryCustomApi: {
         baseUrl: '',
         apiKey: '',
@@ -1121,6 +1143,9 @@ function ensureState() {
         if (state.vectorMemory[key] === undefined) {
             state.vectorMemory[key] = structuredClone(value);
         }
+    }
+    if (/JSON\s*字符串数组|3\s*到\s*5\s*条.*中文查询句|适合检索旧剧情记忆/.test(String(state.vectorMemory.queryRewritePrompt || ''))) {
+        state.vectorMemory.queryRewritePrompt = defaultVectorMemory.queryRewritePrompt;
     }
     state.vectorMemory.customApi = state.vectorMemory.customApi && typeof state.vectorMemory.customApi === 'object'
         ? state.vectorMemory.customApi
@@ -2340,7 +2365,7 @@ function getVectorQueryText(state = ensureState(), explicitQuery = '') {
     return [current, keywords].filter(Boolean).join('\n\n关键词提示：');
 }
 
-function parseVectorQueryRewriteResult(raw) {
+function parseVectorQueryRewritePayload(raw) {
     let source = String(raw || '')
         .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
         .replace(/<analysis\b[^>]*>[\s\S]*?<\/analysis>/gi, '')
@@ -2349,34 +2374,58 @@ function parseVectorQueryRewriteResult(raw) {
         .replace(/```/g, '')
         .trim();
     if (!source) {
-        return [];
+        return { intent: '', queries: [] };
     }
     const jsonMatch = source.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
     try {
         const parsed = JSON.parse((jsonMatch?.[1] || source).trim());
         if (Array.isArray(parsed)) {
-            return normalizeVectorRewriteQueries(parsed);
+            return { intent: '', queries: normalizeVectorRewriteQueries(parsed) };
         }
         if (Array.isArray(parsed?.queries)) {
-            return normalizeVectorRewriteQueries(parsed.queries);
+            return {
+                intent: normalizeVectorRewriteIntent(parsed.intent || parsed.searchIntent || parsed.goal || ''),
+                queries: normalizeVectorRewriteQueries(parsed.queries),
+            };
         }
         if (Array.isArray(parsed?.query)) {
-            return normalizeVectorRewriteQueries(parsed.query);
+            return {
+                intent: normalizeVectorRewriteIntent(parsed.intent || parsed.searchIntent || parsed.goal || ''),
+                queries: normalizeVectorRewriteQueries(parsed.query),
+            };
         }
         if (typeof parsed?.query === 'string') {
-            return normalizeVectorRewriteQueries([parsed.query]);
+            return {
+                intent: normalizeVectorRewriteIntent(parsed.intent || parsed.searchIntent || parsed.goal || ''),
+                queries: normalizeVectorRewriteQueries([parsed.query]),
+            };
         }
     } catch {
         // The rewrite prompt allows plain line output; JSON is only a convenience.
     }
-    return normalizeVectorRewriteQueries(source
-        .split(/\r?\n/)
-        .map(line => line
-            .replace(/^\s*(?:[-*]|\d+[.)、]|[（(]?\d+[）)])\s*/, '')
-            .replace(/^\s*(?:query|查询|检索句|关键词)\s*[:：]\s*/i, '')
-            .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
-            .trim())
-        .filter(Boolean));
+    return {
+        intent: '',
+        queries: normalizeVectorRewriteQueries(source
+            .split(/\r?\n/)
+            .map(line => line
+                .replace(/^\s*(?:[-*]|\d+[.)、]|[（(]?\d+[）)])\s*/, '')
+                .replace(/^\s*(?:query|查询|检索句|关键词|线索)\s*[:：]\s*/i, '')
+                .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+                .trim())
+            .filter(Boolean)),
+    };
+}
+
+function parseVectorQueryRewriteResult(raw) {
+    return parseVectorQueryRewritePayload(raw).queries;
+}
+
+function normalizeVectorRewriteIntent(item) {
+    const text = normalizeVectorRewriteQueryItem(item);
+    if (!text || isVectorRewriteInstructionLine(text)) {
+        return '';
+    }
+    return text.slice(0, 220);
 }
 
 function normalizeVectorRewriteQueries(items = []) {
@@ -2392,9 +2441,13 @@ function normalizeVectorRewriteQueryItem(item) {
         return '';
     }
     text = text
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line && !isVectorRewriteInstructionLine(line))
+        .join(' ')
         .replace(/^\s*(?:Q\s*)?\d+\s*[.)、:：-]\s*/i, '')
         .replace(/^\s*(?:[-*]|\d+[.)、]|[（(]?\d+[）)])\s*/, '')
-        .replace(/^\s*(?:query|查询|检索句|关键词)\s*[:：]\s*/i, '')
+        .replace(/^\s*(?:query|查询|检索句|关键词|线索)\s*[:：]\s*/i, '')
         .replace(/^[\s*_`#>]+|[\s*_`#>]+$/g, '')
         .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
         .trim();
@@ -2410,9 +2463,10 @@ function isVectorRewriteInstructionLine(text) {
         return true;
     }
     return /^(?:thinking\s*process|analy[sz]e\s+the\s+request|role\s*:|task\s*:|constraints?\s*:|requirements?\s*:|output\s*:|only\s+output|do\s+not|system\s*:|assistant\s*:|user\s*:|recent\s+plot|search\s+queries?|queries?\s*:|intent\s*:|keep\s+only\s+facts|one\s+query\s+per\s+line|no\s+explanations?|language\s*:|convert\s+recent\s+plot)/i.test(value)
-        || /^(?:以下|输出|检索|要求|约束|任务|角色)(?:[:：\s]|$)/.test(value)
-        || /(?:only\s+return|return\s+json|json\s+array|不要解释|不要输出步骤|每行一条|只返回|只输出)/i.test(value)
-        || /^\*\*(?:analy[sz]e|role|task|constraints?|output|thinking)[\s\S]*\*\*$/i.test(value);
+        || /^(?:以下|输出|检索|要求|约束|任务|角色|输入|目标|规则|格式|最近剧情|当前剧情|检索意图)(?:[:：\s]|$)/.test(value)
+        || /(?:only\s+return|return\s+json|json\s+array|json\s+object|do\s+not\s+output|不要解释|不要输出步骤|不要输出分析|每行一条|只返回|只输出|必须使用中文|输出必须|只能包含|不要把最近剧情)/i.test(value)
+        || /^\*\*(?:analy[sz]e|role|task|constraints?|output|thinking|goal|input)[\s\S]*\*\*$/i.test(value)
+        || /^(?:input|goal|analy[sz]e|chapter\s*\d+|recent\s+plot\s+chapters)\b/i.test(value);
 }
 
 function getVectorRewriteIntentText(baseQuery = '') {
@@ -2502,16 +2556,20 @@ async function prepareVectorQueries(explicitQuery = '', state = ensureState()) {
             ...parseList(state.vectorMemory.keywordTriggers),
         ]).filter(Boolean).slice(0, 6);
     }
-    const systemPrompt = '你是剧情记忆检索的查询改写器。只输出检索 query，不写解释，不续写剧情。';
+    const systemPrompt = '你是剧情记忆检索的查询改写器。你只负责把当前剧情改写成旧记忆检索线索，不续写剧情，不输出分析过程。';
     const prompt = `${state.vectorMemory.queryRewritePrompt || defaultVectorMemory.queryRewritePrompt}
 
 <最近剧情>
 ${baseQuery}
 </最近剧情>
 
-输出 3 到 5 条检索 query。`;
+请严格输出 JSON 对象：{"intent":"一句话检索意图","queries":["检索线索1","检索线索2","检索线索3"]}`;
     const rewritten = await callVectorQueryRewriteModel(prompt, systemPrompt, state);
-    const queries = unique(parseVectorQueryRewriteResult(rewritten))
+    const payload = parseVectorQueryRewritePayload(rewritten);
+    if (payload.intent) {
+        state.vectorMemory.lastRewriteIntent = payload.intent;
+    }
+    const queries = unique(payload.queries)
         .map(text => text.slice(0, 260))
         .filter(Boolean)
         .slice(0, 6);
