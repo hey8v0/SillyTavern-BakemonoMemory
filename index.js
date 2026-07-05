@@ -602,7 +602,8 @@ const defaultVectorQueryRewritePrompt = `请把最近剧情改写成“一个检
 
 你要做的是理解当前回合真正需要回忆什么旧剧情，而不是复述用户输入。
 只使用已经发生的事实、人物、地点、组织、物品、关系变化、未解伏笔和关键状态。
-不要续写剧情，不要猜测未来，不要输出分析步骤，不要输出 Input/Goal/Task/Role/Constraints 等提示词内容。
+最近剧情只是判断检索方向的材料，不是要被照抄的正文。
+不要续写剧情，不要猜测未来，不要输出分析步骤，不要输出 Input/Goal/Task/Role/Constraints/Current context/Determine 等提示词内容。
 
 输出必须是 JSON 对象，且只能包含这两个字段：
 {
@@ -616,8 +617,9 @@ const defaultVectorQueryRewritePrompt = `请把最近剧情改写成“一个检
 
 要求：
 - intent 和 queries 必须使用中文。
-- queries 每条都要是可用于搜索旧剧情的具体问题或线索。
+- queries 每条都要是可用于搜索旧剧情的具体问题或线索，而不是规则、要求或当前剧情复述。
 - 不要把最近剧情原文整段搬进 queries。
+- 不要输出英文解释，不要输出 Markdown，不要输出代码块。
 - 如果当前输入很短，也要结合最近剧情补足检索角度。`;
 
 const defaultVectorMemory = {
@@ -1144,7 +1146,7 @@ function ensureState() {
             state.vectorMemory[key] = structuredClone(value);
         }
     }
-    if (/JSON\s*字符串数组|3\s*到\s*5\s*条.*中文查询句|适合检索旧剧情记忆/.test(String(state.vectorMemory.queryRewritePrompt || ''))) {
+    if (/JSON\s*字符串数组|3\s*到\s*5\s*条.*中文查询句|适合检索旧剧情记忆|recent\s+plot|old\s+memories|create\s+queries|only\s+output\s+the\s+queries/i.test(String(state.vectorMemory.queryRewritePrompt || ''))) {
         state.vectorMemory.queryRewritePrompt = defaultVectorMemory.queryRewritePrompt;
     }
     state.vectorMemory.customApi = state.vectorMemory.customApi && typeof state.vectorMemory.customApi === 'object'
@@ -2451,7 +2453,14 @@ function normalizeVectorRewriteQueryItem(item) {
         .replace(/^[\s*_`#>]+|[\s*_`#>]+$/g, '')
         .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
         .trim();
+    if (!hasVectorRewriteQueryLanguage(text) || isVectorRewriteInstructionLine(text)) {
+        return '';
+    }
     return text;
+}
+
+function hasVectorRewriteQueryLanguage(text) {
+    return /[\u3400-\u9fff\u3040-\u30ff]/.test(String(text || ''));
 }
 
 function isVectorRewriteInstructionLine(text) {
@@ -2462,11 +2471,11 @@ function isVectorRewriteInstructionLine(text) {
     if (value.length < 4) {
         return true;
     }
-    return /^(?:thinking\s*process|analy[sz]e\s+the\s+request|role\s*:|task\s*:|constraints?\s*:|requirements?\s*:|output\s*:|only\s+output|do\s+not|system\s*:|assistant\s*:|user\s*:|recent\s+plot|search\s+queries?|queries?\s*:|intent\s*:|keep\s+only\s+facts|one\s+query\s+per\s+line|no\s+explanations?|language\s*:|convert\s+recent\s+plot)/i.test(value)
+    return /^(?:thinking\s*process|analy[sz]e\s+the\s+request|role\s*:|task\s*:|constraints?\s*:|requirements?\s*:|output\s*:|only\s+output|do\s+not|system\s*:|assistant\s*:|user\s*:|recent\s+plot|search\s+queries?|queries?\s*:|intent\s*:|intent[`'"]?\s+and\s+[`'"]?queries|keep\s+only\s+facts|one\s+query\s+per\s+line|no\s+explanations?|language\s*:|convert\s+recent\s+plot)/i.test(value)
         || /^(?:以下|输出|检索|要求|约束|任务|角色|输入|目标|规则|格式|最近剧情|当前剧情|检索意图)(?:[:：\s]|$)/.test(value)
-        || /(?:only\s+return|return\s+json|json\s+array|json\s+object|do\s+not\s+output|不要解释|不要输出步骤|不要输出分析|每行一条|只返回|只输出|必须使用中文|输出必须|只能包含|不要把最近剧情)/i.test(value)
+        || /(?:only\s+return|return\s+json|json\s+array|json\s+object|do\s+not\s+output|must\s+be\s+in\s+chinese|must\s+be\s+specific|specific\s+questions?|searching\s+old\s+plot|focus\s+on\s+what\s+old\s+memories|current\s+context|determine\s+the\s+retrieval|retrieval\s+intent|old\s+memories\s+need\s+to\s+be\s+recalled|characters,\s*relationships,\s*locations|unresolved\s+foreshadowing|不要解释|不要输出步骤|不要输出分析|每行一条|只返回|只输出|必须使用中文|输出必须|只能包含|不要把最近剧情)/i.test(value)
         || /^\*\*(?:analy[sz]e|role|task|constraints?|output|thinking|goal|input)[\s\S]*\*\*$/i.test(value)
-        || /^(?:input|goal|analy[sz]e|chapter\s*\d+|recent\s+plot\s+chapters)\b/i.test(value);
+        || /^(?:input|goal|analy[sz]e|chapter\s*\d+|recent\s+plot\s+chapters|current\s+context|determine\s+the\s+retrieval|the\s+current\s+scene)\b/i.test(value);
 }
 
 function getVectorRewriteIntentText(baseQuery = '') {
