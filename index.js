@@ -736,6 +736,7 @@ const defaultState = {
     drafts: [],
     history: [],
     taskQueue: [],
+    autoSummaryTransactions: [],
     memoryRecords: [],
     generatedMemory: '',
     coveredBlockHashes: [],
@@ -1080,6 +1081,7 @@ function ensureState() {
     state.drafts = Array.isArray(state.drafts) ? state.drafts : [];
     state.history = Array.isArray(state.history) ? state.history : [];
     state.taskQueue = Array.isArray(state.taskQueue) ? state.taskQueue : [];
+    state.autoSummaryTransactions = Array.isArray(state.autoSummaryTransactions) ? state.autoSummaryTransactions : [];
     state.memoryRecords = Array.isArray(state.memoryRecords) ? state.memoryRecords : [];
     state.scanPreview = Array.isArray(state.scanPreview) ? state.scanPreview : [];
     const rawGeneratedMemory = String(state.generatedMemory || state.injection?.content || '');
@@ -1357,6 +1359,17 @@ function sanitizeCurrentChatState(state) {
         const previous = Array.isArray(state.autoHideRecent.managedMessageIds) ? state.autoHideRecent.managedMessageIds : [];
         state.autoHideRecent.managedMessageIds = unique(previous.filter(id => isCurrentMessageId(id, messageMap)));
         countPruned(previous.length, state.autoHideRecent.managedMessageIds.length);
+    }
+    if (Array.isArray(state.autoSummaryTransactions)) {
+        const previous = state.autoSummaryTransactions;
+        state.autoSummaryTransactions = previous
+            .map(transaction => ({
+                ...transaction,
+                sourceMessageIds: unique(getFiniteMessageIds(transaction.sourceMessageIds || [])),
+                hiddenMessageIds: unique(getFiniteMessageIds(transaction.hiddenMessageIds || []).filter(id => isCurrentMessageId(id, messageMap))),
+            }))
+            .filter(transaction => transaction.summaryHash && transaction.status !== 'rolled_back');
+        countPruned(previous.length, state.autoSummaryTransactions.length);
     }
 
     if (state.vectorMemory && typeof state.vectorMemory === 'object') {
@@ -2839,12 +2852,34 @@ function getVectorSourceSignature(state = ensureState()) {
     ].join('|');
 }
 
+function getInjectedSummaryHashesForVector(state = ensureState()) {
+    const coveredStoryHashes = new Set(state.coveredBlockHashes || []);
+    const coveredStageHashes = getActiveCoveredStageHashes(state);
+    return new Set([
+        ...(state.memoryStrategy === memoryStrategies.GENERIC
+            ? (state.storySummaries || [])
+                .filter(summary => summary.hash && !coveredStoryHashes.has(summary.hash))
+                .map(summary => summary.hash)
+            : []),
+        ...(state.stageSummaries || [])
+            .filter(summary => summary.hash && !coveredStageHashes.has(summary.hash))
+            .map(summary => summary.hash),
+        ...getActiveEpicMemoryBlocks(state)
+            .map(summary => summary.hash)
+            .filter(Boolean),
+    ]);
+}
+
 function getVectorSavedSummarySources(state = ensureState()) {
     const summaryMax = Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars));
     const sources = [];
+    const injectedSummaryHashes = getInjectedSummaryHashesForVector(state);
     const addSummary = (summary, type) => {
         const raw = String(summary?.content || '').trim();
         if (!summary?.hash || !raw) {
+            return;
+        }
+        if (injectedSummaryHashes.has(summary.hash)) {
             return;
         }
         const sourceMessageIds = getFiniteMessageIds(summary.sourceMessageIds || []);
@@ -4646,7 +4681,7 @@ async function processTaskQueue() {
                     metadata: task.metadata || {},
                 });
                 if (task.trigger === 'auto' && state.automation.mode === 'commit_hide' && task.kind === blockTypes.STAGE) {
-                    await commitDraft(draft.id, draft.content, { silent: true });
+                    const summary = await commitDraft(draft.id, draft.content, { silent: true });
                     autoCommitted += 1;
                     const preserveRecent = Math.max(0, Number(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent));
                     task.metadata = {
@@ -4654,7 +4689,15 @@ async function processTaskQueue() {
                         autoCommitted: true,
                         autoHiddenPreserveRecent: preserveRecent,
                     };
-                    await hideCoveredMessages({ confirm: false, preserveRecent, silent: true });
+                    const hiddenBefore = new Set(state.hiddenMessageIds || []);
+                    const hiddenIds = await hideCoveredMessages({ confirm: false, preserveRecent, silent: true }) || [];
+                    const newlyHiddenIds = hiddenIds.filter(id => !hiddenBefore.has(id));
+                    recordAutoSummaryTransaction({
+                        task,
+                        summary,
+                        hiddenMessageIds: newlyHiddenIds,
+                        preserveRecent,
+                    });
                     toastr.info(`自动阶段总结已保存进长期记忆，并已隐藏被覆盖楼层（保留最近 ${preserveRecent} 楼）。`, '剧情剪辑台');
                 } else {
                     createdDrafts += 1;
@@ -5606,7 +5649,7 @@ async function runVisibleOperation(message, action) {
 
 function setBusy(value) {
     isBusy = value;
-    $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-stage-batch"], [data-bakemono-action="generate-epic"], [data-bakemono-action="generate-epic-batch"], [data-bakemono-action="backfill"], [data-bakemono-action="batch-summary"], [data-bakemono-action="commit-missing-all"], [data-bakemono-action="remove-missing-all"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-test"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-table-draft-action]').prop('disabled', value);
+    $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-stage-batch"], [data-bakemono-action="generate-epic"], [data-bakemono-action="generate-epic-batch"], [data-bakemono-action="backfill"], [data-bakemono-action="batch-summary"], [data-bakemono-action="commit-missing-all"], [data-bakemono-action="remove-missing-all"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-test"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-auto-tx-action], [data-bakemono-table-draft-action]').prop('disabled', value);
 }
 
 async function callGenerationModel({ prompt, systemPrompt }) {
@@ -6274,6 +6317,132 @@ function undoLastCommit() {
     saveState();
     renderAll('已撤回上次保存，原草稿已放回草稿箱。');
     toastr.success('已撤回上次保存。');
+}
+
+function recordAutoSummaryTransaction({ task, summary, hiddenMessageIds = [], preserveRecent = 0 }) {
+    if (!summary?.hash) {
+        return null;
+    }
+    const state = ensureState();
+    const sourceMessageIds = unique(getFiniteMessageIds([
+        ...(task?.sourceMessageIds || []),
+        ...(summary.sourceMessageIds || []),
+    ]));
+    const transaction = {
+        id: `auto-summary-${getHash(`${summary.hash}|${Date.now()}`)}`,
+        kind: summary.type || task?.kind || blockTypes.STAGE,
+        summaryHash: summary.hash,
+        summaryTitle: summary.title || getBlockTitle(summary.content, '自动阶段总结'),
+        sourceMessageIds,
+        sourceStart: getSourceStart(sourceMessageIds),
+        sourceEnd: getSourceEnd(sourceMessageIds),
+        coveredBlockHashes: summary.type === blockTypes.EPIC ? [] : (summary.sourceHashes || task?.sourceHashes || []),
+        coveredStageHashes: summary.type === blockTypes.EPIC ? (summary.sourceStageHashes || task?.sourceStageHashes || []) : [],
+        hiddenMessageIds: unique(getFiniteMessageIds(hiddenMessageIds)),
+        preserveRecent,
+        taskId: task?.id || '',
+        status: 'active',
+        reason: '',
+        createdAt: new Date().toISOString(),
+        invalidatedAt: '',
+        invalidatedMessageIds: [],
+    };
+    state.autoSummaryTransactions.unshift(transaction);
+    state.autoSummaryTransactions = state.autoSummaryTransactions.slice(0, 50);
+    saveState();
+    return transaction;
+}
+
+function transactionTouchesMessage(transaction, messageIds = []) {
+    const ids = getFiniteMessageIds(messageIds);
+    if (!ids.length || !transaction) {
+        return false;
+    }
+    const sourceIds = new Set(getFiniteMessageIds(transaction.sourceMessageIds || []));
+    const sourceStart = Number(transaction.sourceStart);
+    const sourceEnd = Number(transaction.sourceEnd);
+    return ids.some(id => sourceIds.has(id) || (
+        Number.isFinite(sourceStart)
+        && Number.isFinite(sourceEnd)
+        && id >= sourceStart
+        && id <= sourceEnd
+    ));
+}
+
+function markAffectedAutoSummaryTransactions(messageIds = [], reason = '消息变更') {
+    const state = ensureState();
+    const ids = getFiniteMessageIds(messageIds);
+    if (!ids.length || !Array.isArray(state.autoSummaryTransactions)) {
+        return [];
+    }
+    const affected = [];
+    for (const transaction of state.autoSummaryTransactions) {
+        if (transaction.status === 'rolled_back' || !transactionTouchesMessage(transaction, ids)) {
+            continue;
+        }
+        transaction.status = 'needs_review';
+        transaction.reason = reason;
+        transaction.invalidatedAt = new Date().toISOString();
+        transaction.invalidatedMessageIds = unique([...(transaction.invalidatedMessageIds || []), ...ids]);
+        affected.push(transaction);
+    }
+    if (affected.length) {
+        saveState();
+        toastr.warning(`检测到 ${affected.length} 条自动总结覆盖的楼层被改动，可在“待确认”的自动总结回滚里处理。`, '剧情剪辑台');
+    }
+    return affected;
+}
+
+async function rollbackAutoSummaryTransaction(transactionId) {
+    const state = ensureState();
+    const transaction = state.autoSummaryTransactions.find(item => item.id === transactionId);
+    if (!transaction) {
+        toastr.warning('没有找到这条自动总结事务。');
+        return;
+    }
+    const saved = findSavedSummaryByHash(transaction.summaryHash);
+    const dependents = saved ? getSummaryDependents(saved.kind, transaction.summaryHash) : [];
+    if (dependents.length) {
+        toastr.warning('这条总结已经被上层总结引用，请先删除上层总结后再回滚。');
+        return;
+    }
+    const hiddenIds = unique(getFiniteMessageIds(transaction.hiddenMessageIds || []).filter(id => chat[id]));
+    const confirmed = confirmDanger(
+        `回滚自动总结「${transaction.summaryTitle || transaction.summaryHash}」？`,
+        [
+            saved ? '会移除这条自动保存的阶段总结，并同步更新长期记忆。' : '这条总结已不存在，本次只会处理隐藏楼层记录。',
+            hiddenIds.length ? `会恢复这次自动总结新隐藏的 ${hiddenIds.length} 楼。` : '没有可恢复的隐藏楼层。',
+            '不会恢复更早之前已经隐藏的楼层。',
+        ],
+    );
+    if (!confirmed) {
+        return;
+    }
+
+    if (saved) {
+        removeSummaryByHash(saved.kind, transaction.summaryHash);
+        state.blocks = state.blocks.filter(block => block.hash !== transaction.summaryHash);
+        state.coveredBlockHashes = state.coveredBlockHashes.filter(hash => !(transaction.coveredBlockHashes || []).includes(hash));
+        state.coveredStageHashes = state.coveredStageHashes.filter(hash => !(transaction.coveredStageHashes || []).includes(hash));
+        state.history = state.history.filter(item => item.summaryHash !== transaction.summaryHash);
+    }
+
+    for (const messageId of hiddenIds) {
+        await hideChatMessageRange(messageId, messageId, true);
+    }
+    if (hiddenIds.length) {
+        state.hiddenMessageIds = state.hiddenMessageIds.filter(id => !hiddenIds.includes(id));
+        await saveChatConditional();
+    }
+
+    transaction.status = 'rolled_back';
+    transaction.rolledBackAt = new Date().toISOString();
+    state.autoSummaryTransactions = state.autoSummaryTransactions.filter(item => item.status !== 'rolled_back');
+    updateInjectionFromSummaries();
+    markVectorIndexDirty('自动总结已回滚', state);
+    saveState();
+    renderAll(`已回滚自动总结，恢复 ${hiddenIds.length} 楼。`);
+    toastr.success('自动总结已回滚。');
 }
 
 function removeSummaryByHash(kind, hash) {
@@ -9048,6 +9217,7 @@ function renderTaskQueue() {
         `;
         container.append(bulkActions);
     }
+    renderAutoSummaryTransactions(container, state);
     if (!state.taskQueue.length) {
         const empty = document.createElement('div');
         empty.className = 'bakemono-memory-empty';
@@ -9086,6 +9256,46 @@ function renderTaskQueue() {
         fragment.append(row);
     });
     container.append(fragment);
+}
+
+function renderAutoSummaryTransactions(container, state = ensureState()) {
+    const transactions = (state.autoSummaryTransactions || [])
+        .filter(transaction => transaction.status !== 'rolled_back')
+        .slice(0, 8);
+    if (!transactions.length) {
+        return;
+    }
+
+    const panel = document.createElement('div');
+    panel.className = 'bakemono-memory-auto-tx-list';
+    const title = document.createElement('div');
+    title.className = 'bakemono-memory-auto-tx-title';
+    title.innerHTML = '<i class="fa-solid fa-shield-halved"></i><strong>自动总结回滚</strong><span>只处理自动保存并自动隐藏的总结</span>';
+    panel.append(title);
+
+    for (const transaction of transactions) {
+        const item = document.createElement('div');
+        item.className = `bakemono-memory-auto-tx-item is-${transaction.status || 'active'}`;
+        item.dataset.transactionId = transaction.id;
+        const sourceRange = formatSourceRange(transaction.sourceMessageIds || []);
+        const hiddenCount = getFiniteMessageIds(transaction.hiddenMessageIds || []).length;
+        const invalidIds = getFiniteMessageIds(transaction.invalidatedMessageIds || []);
+        item.innerHTML = `
+            <div class="bakemono-memory-auto-tx-main">
+                <strong>${escapeHtml(transaction.summaryTitle || getKindLabel(transaction.kind) || '自动总结')}</strong>
+                <span>${transaction.status === 'needs_review' ? '来源楼层已变更' : '已记录'} · ${sourceRange || '未知范围'} · 可恢复 ${hiddenCount} 楼</span>
+                ${invalidIds.length ? `<em>变更楼层：${invalidIds.map(id => `#${id}`).join('、')}</em>` : ''}
+            </div>
+            <div class="bakemono-memory-task-actions">
+                <button class="menu_button danger" data-bakemono-auto-tx-action="rollback">
+                    <i class="fa-solid fa-rotate-left"></i>
+                    <span>回滚</span>
+                </button>
+            </div>
+        `;
+        panel.append(item);
+    }
+    container.append(panel);
 }
 
 function getTaskStatusLabel(status) {
@@ -10705,6 +10915,16 @@ function bindSettingsEvents() {
             removeQueueTask(taskId);
         }
     });
+    $('#bakemono-workbench-root').off('click.bakemonoAutoTransaction').on('click.bakemonoAutoTransaction', '[data-bakemono-auto-tx-action]', async function () {
+        const row = this.closest('.bakemono-memory-auto-tx-item');
+        const transactionId = row?.dataset.transactionId;
+        if (!transactionId) {
+            return;
+        }
+        if (this.dataset.bakemonoAutoTxAction === 'rollback') {
+            await rollbackAutoSummaryTransaction(transactionId);
+        }
+    });
     $('#bakemono-workbench-root').off('click.bakemonoPreviewType').on('click.bakemonoPreviewType', '[data-bakemono-preview-type]', function () {
         previewState.activeType = this.dataset.bakemonoPreviewType || 'story';
         renderPreviewSections();
@@ -11846,6 +12066,7 @@ async function init() {
             const eventMessageIds = collectMessageIdsFromEventArgs(args);
             const fallbackTurn = findLatestAssistantTurn();
             const messageIds = eventMessageIds.length ? eventMessageIds : getFiniteMessageIds([fallbackTurn?.assistantMessage?.messageId]);
+            markAffectedAutoSummaryTransactions(messageIds, event === event_types.MESSAGE_DELETED ? '楼层已删除' : event === event_types.MESSAGE_SWIPED ? '楼层已重 roll' : '楼层已编辑');
             scheduleAutoHideRecent('message changed');
             if (event !== event_types.MESSAGE_DELETED) {
                 rollbackLatestTableOperationForChangedMessages(messageIds, ensureState());
