@@ -195,6 +195,49 @@ const defaultTurnSummaryPrompt = `你是剧情剪辑台的正文摘要器。你�
 待摘要正文：
 {{blocks}}`;
 
+const defaultMissingSummaryPrompt = `你是剧情剪辑台的缺失摘要补写器。你会看到若干个缺少摘要的助手楼层，请为每个楼层分别补写一个剧情摘要。
+
+硬性要求：
+- 只总结该楼层已经发生的正文内容，不续写剧情，不扮演角色，不添加原文没有发生的事件。
+- 每个楼层必须独立输出，并保留原楼层数字分隔符。
+- 不要输出 <summaryDraft>。
+- 每个楼层只输出一个完整的 <bakemono>...</bakemono> 摘要块。
+- 标题必须使用原楼层号，例如“第123楼：正文摘要”或“第123楼：可判断标题”；不要猜章节号，不要写“第x章”。
+- 无法判断时间、地点、天气或角色时写“未知”，不要猜测。
+- 不要输出寒暄、解释、总说明或 Markdown 代码围栏。
+
+每个楼层必须严格使用以下格式：
+===楼层#原楼层数字===
+<bakemono>
+<details>
+<summary>📋 剧情摘要</summary>
+【☆『第原楼层数字楼：正文摘要』★时间/时间跨度：从正文可判断，未知则写未知★地点/状态|本楼出现角色☆】
+
+➤ 🎬 【场记打板】（流水账形式记录，不得升华主题，记录本回合推进的全部事件，信息密度高且详细，这是后续👾记忆的前提）
+- 此处为剧情摘要
+
+➤ 🎙️ 【高光收音】（抓取本回合最有张力、最关键的几句重要对话/心理活动）
+> “此处填入台词或内心戏，最好是能体现角色性格的那种！” —— [角色名]
+
+➤ 🌍 【副镜监视器】（平行事件）
+*当主角在行动时，世界的其他角落……*
+[地点A | 角色B]：ta此刻的行动/心理。
+[地点C | 角色D]：ta此刻的行动/状态。
+
+➤ 🪢 【剧本暗线】（伏笔系统：只对导演可见的记录）
+[未回收伏笔 1]：(埋伏笔的章节) 某某提到了一个神秘的盒子。→ (系统提示：建议在接下来的3个章节内制造契机让主角打开它)
+[未回收伏笔 2]：(埋伏笔的章节) 骑士看某某的眼神有一瞬间的闪躲。→ (系统提示：待揭晓他隐瞒的秘密)
+[✅ 本回合回收]：(如果没有就写“无”)
+
+➤ 💡 【第四面墙】（用👾的视角，记录一些角色不知道、但读者知道的隐藏信息，**不是吐槽**）
+*偷偷记一笔*
+</details>
+</bakemono>
+===楼层#原楼层数字结束===
+
+待补写楼层：
+{{blocks}}`;
+
 const defaultTableEditPrompt = `你是剧情剪辑台的表格整理助手。请根据刚刚结束的一轮聊天正文和当前表格数据，输出需要执行的表格修改。
 
 硬性规则：
@@ -487,6 +530,7 @@ const defaultPromptPreset = {
     id: 'default-bakemono',
     name: '默认摘要手账',
     story: defaultStoryGenerationPrompt,
+    missing: defaultMissingSummaryPrompt,
     stage: defaultStageGenerationPrompt,
     epic: defaultEpicGenerationPrompt,
     scanRules: structuredClone(defaultScanRules),
@@ -505,6 +549,7 @@ const defaultGenericPromptPreset = {
     id: 'default-generic',
     name: '通用正文压缩',
     story: defaultGenericStoryGenerationPrompt,
+    missing: defaultMissingSummaryPrompt,
     stage: defaultGenericStageGenerationPrompt,
     epic: defaultGenericEpicGenerationPrompt,
     scanRules: {
@@ -716,6 +761,7 @@ const defaultState = {
     },
     generationPrompts: {
         story: defaultStoryGenerationPrompt,
+        missing: defaultMissingSummaryPrompt,
         stage: defaultStageGenerationPrompt,
         epic: defaultEpicGenerationPrompt,
     },
@@ -839,8 +885,12 @@ function ensureGlobalSettings() {
         if (preset.story === undefined) {
             preset.story = defaultStoryGenerationPrompt;
         }
+        if (preset.missing === undefined) {
+            preset.missing = defaultMissingSummaryPrompt;
+        }
         if (preset.id === defaultGenericPromptPreset.id) {
             preset.story = defaultGenericStoryGenerationPrompt;
+            preset.missing = defaultMissingSummaryPrompt;
             preset.stage = defaultGenericStageGenerationPrompt;
             preset.epic = defaultGenericEpicGenerationPrompt;
             preset.scanRules = structuredClone(defaultGenericPromptPreset.scanRules);
@@ -853,6 +903,7 @@ function ensureGlobalSettings() {
             preset.stageSourceMode = defaultGenericPromptPreset.stageSourceMode;
         }
         if (preset.id === defaultPromptPreset.id) {
+            preset.missing = defaultMissingSummaryPrompt;
             preset.memoryStrategy = defaultPromptPreset.memoryStrategy;
             preset.scanRules = structuredClone(defaultPromptPreset.scanRules);
             preset.outputMode = defaultPromptPreset.outputMode;
@@ -1001,6 +1052,7 @@ function ensureState() {
     }
     if (String(state.generationPrompts.story || '').includes('可以不用 <bakemono> 标签，也不用 HTML')) {
         state.generationPrompts.story = defaultGenericStoryGenerationPrompt;
+        state.generationPrompts.missing = defaultMissingSummaryPrompt;
         state.generationPrompts.stage = defaultGenericStageGenerationPrompt;
         state.generationPrompts.epic = defaultGenericEpicGenerationPrompt;
     }
@@ -4029,6 +4081,93 @@ function promptGenerationTargetSelection(kind, totalLength) {
     });
 }
 
+function promptGenerationModeSelection(kind) {
+    const kindLabel = kind === 'epic' ? '多次总结' : '阶段总结';
+    const batchLabel = kind === 'epic' ? '批量多次总结' : '批量阶段总结';
+    const singleHint = kind === 'epic'
+        ? '选范围，生成一条上层草稿。'
+        : '选范围，生成一条阶段草稿。';
+    const batchHint = kind === 'epic'
+        ? '大量总结分批入队。'
+        : '大量摘要分批入队。';
+
+    return new Promise(resolve => {
+        document.querySelector('.bakemono-memory-generation-mode-dialog')?.remove();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'bakemono-memory-target-dialog bakemono-memory-generation-mode-dialog';
+        overlay.innerHTML = `
+            <section class="bakemono-memory-target-box bakemono-memory-generation-mode-box" role="dialog" aria-modal="true">
+                <header>
+                    <div>
+                        <span>选择生成方式</span>
+                        <h3>${kindLabel}</h3>
+                    </div>
+                    <button type="button" class="menu_button" data-bakemono-mode-cancel><i class="fa-solid fa-xmark"></i></button>
+                </header>
+                <div class="bakemono-memory-generation-mode-list">
+                    <button type="button" class="menu_button bakemono-memory-generation-mode-option" data-bakemono-mode-choice="single">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span>
+                            <strong>单次生成</strong>
+                            <small>${singleHint}</small>
+                        </span>
+                    </button>
+                    <button type="button" class="menu_button bakemono-memory-generation-mode-option" data-bakemono-mode-choice="batch">
+                        <i class="fa-solid fa-list-check"></i>
+                        <span>
+                            <strong>${batchLabel}</strong>
+                            <small>${batchHint}</small>
+                        </span>
+                    </button>
+                </div>
+                <footer class="bakemono-memory-inline-actions">
+                    <button type="button" class="menu_button" data-bakemono-mode-cancel><i class="fa-solid fa-ban"></i><span>取消</span></button>
+                </footer>
+            </section>
+        `;
+
+        const close = value => {
+            overlay.remove();
+            resolve(value);
+        };
+        overlay.querySelectorAll('[data-bakemono-mode-cancel]').forEach(button => {
+            button.addEventListener('click', () => close(null));
+        });
+        overlay.querySelectorAll('[data-bakemono-mode-choice]').forEach(button => {
+            button.addEventListener('click', () => close(button.dataset.bakemonoModeChoice));
+        });
+
+        const host = document.getElementById('bakemono-workbench-root') || document.body;
+        host.append(overlay);
+        overlay.querySelector('[data-bakemono-mode-choice]')?.focus();
+    });
+}
+
+async function chooseStageGenerationMode() {
+    if (isBusy) {
+        return;
+    }
+    const mode = await promptGenerationModeSelection('stage');
+    if (mode === 'single') {
+        await generateStageDraft();
+    } else if (mode === 'batch') {
+        await generateStageBatchTasks();
+    }
+}
+
+async function chooseEpicGenerationMode() {
+    if (isBusy) {
+        return;
+    }
+    const mode = await promptGenerationModeSelection('epic');
+    if (mode === 'single') {
+        await generateEpicDraft();
+    } else if (mode === 'batch') {
+        await generateEpicBatchTasks();
+    }
+}
+
 function confirmGenerationTargets(kind, targets, totalLength) {
     const state = ensureState();
     const kindLabel = kind === 'epic' ? '多次总结' : '阶段总结';
@@ -5118,29 +5257,33 @@ function buildMissingSummaryBatches(targets, batchSize) {
 }
 
 function buildMissingSummaryBatchPrompt(blocks, metadata = {}, state = ensureState()) {
-    const basePrompt = state.turnSummary.prompt || defaultTurnSummaryPrompt;
+    const basePrompt = state.generationPrompts?.missing || defaultMissingSummaryPrompt;
     const template = String(basePrompt || '').trim();
     const blockText = blocks.map(block => [
         `===楼层#${block.messageId}===`,
         block.content,
+        `===楼层#${block.messageId}结束===`,
     ].join('\n')).join('\n\n');
-    return [
-        '你是剧情剪辑台的缺失摘要补写器。请为下面每个助手楼层分别生成一个剧情摘要。',
-        '硬性要求：',
-        '- 不续写剧情，不扮演角色，不补充原文没有发生的事件。',
-        '- 每个楼层必须独立输出，且必须使用完全一致的分隔符：===楼层#数字===。',
-        '- 每个分隔符下面只放该楼层对应的摘要块。',
-        '- 如果原模板要求 <bakemono>，每个楼层都要各自输出完整 <bakemono>...</bakemono>。',
-        '- 不要输出总说明、寒暄、列表解释或 Markdown 代码围栏。',
-        '',
-        metadata.sourceRange ? `本批楼层：${metadata.sourceRange}` : '',
-        '',
-        '【单楼摘要模板】',
-        template || '请总结该楼层正文。',
-        '',
-        '【待补写楼层】',
-        blockText,
-    ].filter(Boolean).join('\n');
+    const sourceStart = getSourceStart(blocks.map(block => block.messageId));
+    const sourceEnd = getSourceEnd(blocks.map(block => block.messageId));
+    const replacements = {
+        blocks: blockText,
+        batchIndex: metadata.batchIndex ?? '',
+        batchTotal: metadata.batchTotal ?? '',
+        sourceRange: metadata.sourceRange || formatSourceRange(blocks.map(block => block.messageId)),
+        startFloor: Number.isFinite(sourceStart) && sourceStart < Number.MAX_SAFE_INTEGER ? sourceStart : '未知',
+        endFloor: Number.isFinite(sourceEnd) && sourceEnd < Number.MAX_SAFE_INTEGER ? sourceEnd : '未知',
+        suggestedTitle: metadata.suggestedTitle || '补写缺失摘要',
+    };
+    let rendered = template || defaultMissingSummaryPrompt;
+    const hadBlocksPlaceholder = rendered.includes('{{blocks}}');
+    for (const [key, value] of Object.entries(replacements)) {
+        rendered = rendered.replaceAll(`{{${key}}}`, String(value));
+    }
+    if (!hadBlocksPlaceholder) {
+        rendered = `${rendered}\n\n待补写楼层：\n${blockText}`;
+    }
+    return rendered.trim();
 }
 
 function parseMissingSummaryBatchResult(result, task) {
@@ -5159,13 +5302,15 @@ function parseMissingSummaryBatchResult(result, task) {
             if (!target || !rawContent) {
                 continue;
             }
-            parsed.push({ target, content: normalizeGeneratedBakemono(rawContent) });
+            const legacyContent = extractTaggedContent(rawContent, 'summaryDraft');
+            parsed.push({ target, content: normalizeGeneratedBakemono(legacyContent || rawContent) });
         }
     }
 
     if (!parsed.length && expected.size === 1 && text) {
         const [target] = expected.values();
-        parsed.push({ target, content: normalizeGeneratedBakemono(text) });
+        const legacyContent = extractTaggedContent(text, 'summaryDraft');
+        parsed.push({ target, content: normalizeGeneratedBakemono(legacyContent || text) });
     }
 
     return parsed;
@@ -7647,7 +7792,7 @@ function getWorkflowInfo(state = ensureState()) {
             title: '补课旧聊天',
             description: '适合以前没有写摘要的聊天。插件会先把旧楼层分批压缩成补课摘要，再继续做阶段总结。',
             steps: ['设置“旧正文每批楼数”', '点击“分批补课旧正文”', '到草稿箱检查并确认保存', '积累几批后生成阶段总结'],
-            actions: ['backfill', 'generate-stage', 'generate-stage-batch', 'generate-epic', 'generate-epic-batch', 'undo'],
+            actions: ['backfill', 'generate-stage', 'generate-epic', 'undo'],
         };
     }
     if (mode === workflowModes.MIXED) {
@@ -7655,14 +7800,14 @@ function getWorkflowInfo(state = ensureState()) {
             title: '高级自定义',
             description: '适合想自己控制标签、排除规则、正文来源、输出格式和注入方式的用户。',
             steps: ['打开高级设置或扫描规则', '确认扫描预览没有读错内容', '按你的材料来源生成总结', '必要时再调整提示词预设'],
-            actions: ['scan', 'backfill', 'generate-stage', 'generate-stage-batch', 'generate-epic', 'generate-epic-batch', 'hide', 'restore', 'undo'],
+            actions: ['scan', 'backfill', 'generate-stage', 'generate-epic', 'hide', 'restore', 'undo'],
         };
     }
     return {
         title: '已有摘要',
         description: '适合正文里已经有摘要块的聊天。插件只扫描摘要，普通摘要不重复注入，避免浪费 token。',
         steps: ['点击“扫描摘要”', '确认查看总结里识别正确', '生成阶段总结', '阶段总结确认后再隐藏已覆盖楼层'],
-        actions: ['scan', 'generate-stage', 'generate-stage-batch', 'generate-epic', 'generate-epic-batch', 'hide', 'restore', 'undo'],
+        actions: ['scan', 'generate-stage', 'generate-epic', 'hide', 'restore', 'undo'],
     };
 }
 
@@ -8356,6 +8501,7 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-injection-template').val(state.injection.template || defaultInjectionTemplate);
     $('#bakemono-memory-injection-content').val(renderInjectionContent(state));
     $('#bakemono-memory-story-prompt').val(state.generationPrompts.story || defaultStoryGenerationPrompt);
+    $('#bakemono-memory-missing-prompt').val(state.generationPrompts.missing || defaultMissingSummaryPrompt);
     $('#bakemono-memory-stage-prompt').val(state.generationPrompts.stage || defaultStageGenerationPrompt);
     $('#bakemono-memory-epic-prompt').val(state.generationPrompts.epic || defaultEpicGenerationPrompt);
     $('#bakemono-memory-scan-mode').val(state.scanRules.mode || defaultScanRules.mode);
@@ -9259,6 +9405,7 @@ function readPromptFieldsFromUi(state = ensureState()) {
         return state;
     }
     state.generationPrompts.story = String($('#bakemono-memory-story-prompt').val() || defaultStoryGenerationPrompt);
+    state.generationPrompts.missing = String($('#bakemono-memory-missing-prompt').val() || defaultMissingSummaryPrompt);
     state.generationPrompts.stage = String($('#bakemono-memory-stage-prompt').val() || defaultStageGenerationPrompt);
     state.generationPrompts.epic = String($('#bakemono-memory-epic-prompt').val() || defaultEpicGenerationPrompt);
     return state;
@@ -9400,6 +9547,7 @@ function getCurrentPromptPresetPayload(name = '') {
         id: makePresetId(name),
         name: name || '未命名预设',
         story: String(state.generationPrompts.story || defaultStoryGenerationPrompt),
+        missing: String(state.generationPrompts.missing || defaultMissingSummaryPrompt),
         stage: String(state.generationPrompts.stage || defaultStageGenerationPrompt),
         epic: String(state.generationPrompts.epic || defaultEpicGenerationPrompt),
         scanRules: structuredClone(state.scanRules),
@@ -9472,6 +9620,7 @@ function normalizeImportedPreset(value) {
         id: makePresetId(name),
         name,
         story: String(preset.story || defaultStoryGenerationPrompt),
+        missing: String(preset.missing || defaultMissingSummaryPrompt),
         stage: String(preset.stage),
         epic: String(preset.epic),
         scanRules: preset.scanRules && typeof preset.scanRules === 'object' ? preset.scanRules : null,
@@ -9496,6 +9645,7 @@ function normalizeImportedPreset(value) {
 function applyPromptPresetToState(preset, options = {}) {
     const state = options.state || ensureState();
     state.generationPrompts.story = preset.story || defaultStoryGenerationPrompt;
+    state.generationPrompts.missing = preset.missing || defaultMissingSummaryPrompt;
     state.generationPrompts.stage = preset.stage || defaultStageGenerationPrompt;
     state.generationPrompts.epic = preset.epic || defaultEpicGenerationPrompt;
     if (preset.scanRules) {
@@ -9695,6 +9845,7 @@ function getAreaPresetPayload(scope, name) {
         return {
             ...base,
             story: String(state.generationPrompts.story || defaultStoryGenerationPrompt),
+            missing: String(state.generationPrompts.missing || defaultMissingSummaryPrompt),
             stage: String(state.generationPrompts.stage || defaultStageGenerationPrompt),
             epic: String(state.generationPrompts.epic || defaultEpicGenerationPrompt),
             turnSummary: {
@@ -9790,6 +9941,7 @@ function applyAreaPresetToState(scope, preset) {
         };
     } else if (scope === areaPresetScopes.PROMPTS) {
         state.generationPrompts.story = preset.story || defaultStoryGenerationPrompt;
+        state.generationPrompts.missing = preset.missing || defaultMissingSummaryPrompt;
         state.generationPrompts.stage = preset.stage || defaultStageGenerationPrompt;
         state.generationPrompts.epic = preset.epic || defaultEpicGenerationPrompt;
         if (preset.turnSummary) {
@@ -10310,11 +10462,11 @@ async function runWorkbenchAction(action) {
     if (action === 'scan') {
         scanBakemonoBlocks();
     } else if (action === 'generate-stage') {
-        await generateStageDraft();
+        await chooseStageGenerationMode();
     } else if (action === 'generate-stage-batch') {
         await generateStageBatchTasks();
     } else if (action === 'generate-epic') {
-        await generateEpicDraft();
+        await chooseEpicGenerationMode();
     } else if (action === 'generate-epic-batch') {
         await generateEpicBatchTasks();
     } else if (action === 'backfill') {
@@ -10938,6 +11090,19 @@ function bindSettingsEvents() {
         state.generationPrompts.story = defaultStoryGenerationPrompt;
         saveState();
         renderAll('旧正文摘要提示词已恢复默认。');
+    });
+    $('#bakemono-memory-reset-missing-prompt').off('click').on('click', () => {
+        const confirmed = confirmDanger(
+            '恢复默认补写缺失摘要提示词？',
+            ['当前补写缺失摘要提示词会被默认摘要手账模板覆盖。'],
+        );
+        if (!confirmed) {
+            return;
+        }
+        const state = ensureState();
+        state.generationPrompts.missing = defaultMissingSummaryPrompt;
+        saveState();
+        renderAll('补写缺失摘要提示词已恢复默认。');
     });
     $('#bakemono-memory-apply-turn-settings').off('click').on('click', () => {
         const state = ensureState();

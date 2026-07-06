@@ -234,17 +234,9 @@
             <i class="fa-solid fa-wand-magic-sparkles"></i>
             <span>生成阶段总结</span>
           </button>
-          <button class="menu_button" data-bakemono-action="generate-stage-batch" id="bakemono-memory-generate-stage-batch">
-            <i class="fa-solid fa-list-check"></i>
-            <span>批量阶段总结</span>
-          </button>
           <button class="menu_button" data-bakemono-action="generate-epic" id="bakemono-memory-generate-epic">
             <i class="fa-solid fa-layer-group"></i>
             <span>生成多次总结</span>
-          </button>
-          <button class="menu_button" data-bakemono-action="generate-epic-batch" id="bakemono-memory-generate-epic-batch">
-            <i class="fa-solid fa-layer-group"></i>
-            <span>批量多次总结</span>
           </button>
           <button class="menu_button" data-bakemono-action="undo" id="bakemono-memory-undo">
             <i class="fa-solid fa-clock-rotate-left"></i>
@@ -282,10 +274,6 @@
                 <span>楼层范围</span>
                 <textarea id="bakemono-memory-batch-summary-range" class="text_pole textarea_compact" rows="2" placeholder="留空为全部候选；例如：1-80, 96, 120-150" spellcheck="false"></textarea>
               </label>
-            </div>
-            <div class="bakemono-memory-batch-note">
-              <i class="fa-solid fa-route"></i>
-              <span>批量大小复用“旧正文每批楼数”，隐藏楼层读取沿用扫描配置。补写完成后，到待确认应用草稿，再扫描摘要并按需要生成阶段总结。</span>
             </div>
             <div class="bakemono-memory-batch-flow" aria-label="批量摘要流程">
               <span><i class="fa-solid fa-list-check"></i> 选范围</span>
@@ -1540,19 +1528,39 @@
 
         <div class="bakemono-memory-card-panel bakemono-mobile-collapsible">
           <h4><i class="fa-solid fa-feather-pointed"></i> 生成提示词编辑</h4>
+          <div class="bakemono-memory-prompt-hint">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>旧正文补课会保存到插件记忆；补写缺失摘要会追加回原助手楼层；批量摘要只是在这两种模式上分批执行，不使用第三套提示词。</span>
+          </div>
           <div class="bakemono-memory-editor-grid">
-            <label class="bakemono-memory-editor">
-              <span>旧正文批次摘要提示词</span>
-              <textarea id="bakemono-memory-story-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
-            </label>
-            <label class="bakemono-memory-editor">
-              <span>阶段总结提示词</span>
-              <textarea id="bakemono-memory-stage-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
-            </label>
-            <label class="bakemono-memory-editor">
-              <span>多次总结提示词</span>
-              <textarea id="bakemono-memory-epic-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
-            </label>
+            <details class="bakemono-memory-prompt-editor-item">
+              <summary><i class="fa-solid fa-box-archive"></i><span>旧正文批次摘要提示词</span></summary>
+              <label class="bakemono-memory-editor">
+                <span>用于“批量摘要 → 旧正文补课”，摘要保存到插件，不写回正文。</span>
+                <textarea id="bakemono-memory-story-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
+              </label>
+            </details>
+            <details class="bakemono-memory-prompt-editor-item">
+              <summary><i class="fa-solid fa-file-circle-plus"></i><span>补写缺失摘要提示词</span></summary>
+              <label class="bakemono-memory-editor">
+                <span>用于“批量摘要 → 补写缺失摘要”，摘要会追加回缺摘要的助手楼层。</span>
+                <textarea id="bakemono-memory-missing-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
+              </label>
+            </details>
+            <details class="bakemono-memory-prompt-editor-item">
+              <summary><i class="fa-solid fa-wand-magic-sparkles"></i><span>阶段总结提示词</span></summary>
+              <label class="bakemono-memory-editor">
+                <span>用于把普通摘要合并成阶段总结；单次和批量阶段总结共用这一套。</span>
+                <textarea id="bakemono-memory-stage-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
+              </label>
+            </details>
+            <details class="bakemono-memory-prompt-editor-item">
+              <summary><i class="fa-solid fa-layer-group"></i><span>多次总结提示词</span></summary>
+              <label class="bakemono-memory-editor">
+                <span>用于把阶段总结或上层总结继续压缩；单次和批量多次总结共用这一套。</span>
+                <textarea id="bakemono-memory-epic-prompt" class="text_pole textarea_compact" rows="16" spellcheck="false"></textarea>
+              </label>
+            </details>
           </div>
         </div>
 
@@ -1569,6 +1577,10 @@
           <button class="menu_button" id="bakemono-memory-reset-story-prompt">
             <i class="fa-solid fa-rotate-left"></i>
             <span>恢复旧正文默认</span>
+          </button>
+          <button class="menu_button" id="bakemono-memory-reset-missing-prompt">
+            <i class="fa-solid fa-file-circle-plus"></i>
+            <span>恢复补写默认</span>
           </button>
           <button class="menu_button" id="bakemono-memory-reset-stage-prompt">
             <i class="fa-solid fa-rotate-left"></i>

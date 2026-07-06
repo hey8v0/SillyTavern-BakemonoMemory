@@ -982,10 +982,158 @@
   line-height: 1.5;
 }
 
+.bakemono-memory-generation-mode-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 12px;
+  width: 100%;
+}
+
+.bakemono-memory-generation-mode-option {
+  display: grid !important;
+  grid-template-columns: 28px minmax(0, 1fr);
+  justify-content: stretch;
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px;
+  text-align: left;
+  white-space: normal;
+  line-height: 1.35;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 24%, transparent);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent),
+    color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent)
+  );
+}
+
+.bakemono-memory-generation-mode-option > i {
+  width: 24px;
+  margin-top: 3px;
+  color: var(--SmartThemeQuoteColor);
+  font-size: 18px;
+}
+
+.bakemono-memory-generation-mode-option > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bakemono-memory-generation-mode-option strong {
+  display: block;
+  font-size: 15px;
+  color: var(--bk-ink);
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.bakemono-memory-generation-mode-option small {
+  display: block;
+  color: var(--bk-ink-soft);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.bakemono-memory-generation-mode-option:hover,
+.bakemono-memory-generation-mode-option:focus-visible {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 52%, var(--SmartThemeBorderColor) 48%);
+  box-shadow: 0 12px 22px color-mix(in srgb, var(--SmartThemeShadowColor) 18%, transparent);
+}
+
+.bakemono-memory-generation-mode-box {
+  width: min(480px, calc(100vw - 32px));
+  max-height: min(78vh, 520px);
+  overflow: auto;
+}
+
+@media (min-width: 720px) {
+  .bakemono-memory-generation-mode-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .bakemono-memory-generation-mode-box {
+    width: min(420px, calc(100dvw - 28px));
+    max-height: min(70dvh, 460px);
+  }
+
+  .bakemono-memory-generation-mode-list {
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .bakemono-memory-generation-mode-option {
+    grid-template-columns: 24px minmax(0, 1fr);
+    padding: 12px;
+  }
+}
+
 .bakemono-memory-editor-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
+}
+
+.bakemono-memory-prompt-editor-item {
+  min-width: 0;
+  border: 1px dashed var(--bk-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+  overflow: hidden;
+}
+
+.bakemono-memory-prompt-editor-item > summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 800;
+  color: var(--bk-ink);
+  list-style: none;
+}
+
+.bakemono-memory-prompt-editor-item > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bakemono-memory-prompt-editor-item > summary::after {
+  content: "\f078";
+  margin-left: auto;
+  font: var(--fa-font-solid);
+  color: var(--SmartThemeQuoteColor);
+  transition: transform 0.16s ease;
+}
+
+.bakemono-memory-prompt-editor-item[open] > summary {
+  border-bottom: 1px dashed var(--bk-line);
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 7%, transparent);
+}
+
+.bakemono-memory-prompt-editor-item[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.bakemono-memory-prompt-editor-item > .bakemono-memory-editor {
+  padding: 12px;
+}
+
+.bakemono-memory-prompt-editor-item .bakemono-memory-editor > span {
+  color: var(--bk-ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .bakemono-memory-layout-grid {
