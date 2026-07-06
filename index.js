@@ -3968,9 +3968,10 @@ function parseGenerationTargetInput(input, fallbackConfig = {}) {
     return null;
 }
 
-function promptGenerationTargetSelection(kind, totalLength) {
+function promptGenerationTargetSelection(kind, totalLength, options = {}) {
     const state = ensureState();
     const defaults = defaultGenerationTargets[kind] || defaultGenerationTargets.stage;
+    const isBatch = !!options.batch;
     const current = {
         ...defaults,
         ...(state.generationTargets?.[kind] || {}),
@@ -3994,7 +3995,9 @@ function promptGenerationTargetSelection(kind, totalLength) {
                     <button type="button" class="menu_button" data-bakemono-target-cancel><i class="fa-solid fa-xmark"></i></button>
                 </header>
                 <div class="bakemono-memory-target-body">
-                    <p>本次可用材料：${totalLength} 个。你可以只合并一部分，避免一次压得太简洁。</p>
+                    <p>${isBatch
+                        ? `本次可用材料：${totalLength} 个。设置每批数量后会分批加入队列。`
+                        : `本次可用材料：${totalLength} 个。你可以只合并一部分，避免一次压得太简洁。`}</p>
                     <label class="bakemono-memory-field">
                         <span>读取范围</span>
                         <select class="text_pole" data-bakemono-target-mode>
@@ -4005,7 +4008,7 @@ function promptGenerationTargetSelection(kind, totalLength) {
                     </label>
                     <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
                         <label class="bakemono-memory-field">
-                            <span>N 个</span>
+                            <span>${isBatch ? '每批数量' : 'N 个'}</span>
                             <input class="text_pole" data-bakemono-target-count type="number" min="1" step="1">
                         </label>
                         <label class="bakemono-memory-field">
@@ -4039,10 +4042,16 @@ function promptGenerationTargetSelection(kind, totalLength) {
         };
         const syncHint = () => {
             const mode = modeInput.value;
-            countInput.disabled = mode !== targetSelectionModes.OLDEST;
+            countInput.disabled = !isBatch && mode !== targetSelectionModes.OLDEST;
             rangeInput.disabled = mode !== targetSelectionModes.RANGE;
             if (mode === targetSelectionModes.RANGE && !rangeInput.value.trim()) {
                 rangeInput.value = suggestedRange || '0-20';
+            }
+            if (isBatch) {
+                hint.textContent = mode === targetSelectionModes.RANGE
+                    ? `只处理指定楼层范围，并按每批 ${countInput.value || current.count || defaults.count} 个材料入队。`
+                    : `会按来源楼层从早到晚分批；每批 ${countInput.value || current.count || defaults.count} 个材料。`;
+                return;
             }
             hint.textContent = mode === targetSelectionModes.RANGE && current.range
                 ? `上次范围：${current.range}。已为你推导到：${rangeInput.value || suggestedRange}，可以直接修改。`
@@ -4073,6 +4082,7 @@ function promptGenerationTargetSelection(kind, totalLength) {
             close(parsed);
         });
         modeInput.addEventListener('change', syncHint);
+        countInput.addEventListener('input', syncHint);
         syncHint();
 
         const host = document.getElementById('bakemono-workbench-root') || document.body;
@@ -4852,7 +4862,13 @@ async function generateStageBatchTasks() {
         return;
     }
 
-    const config = state.generationTargets.stage || defaultGenerationTargets.stage;
+    const targetConfig = await promptGenerationTargetSelection('stage', allTargets.length, { batch: true });
+    if (!targetConfig) {
+        renderAll('已取消批量阶段总结。');
+        return;
+    }
+
+    const config = targetConfig || state.generationTargets.stage || defaultGenerationTargets.stage;
     const batches = partitionGenerationTargets(allTargets, 'stage', config);
     if (!batches.length) {
         renderAll('当前批量范围没有匹配到可总结摘要。');
@@ -5000,7 +5016,13 @@ async function generateEpicBatchTasks() {
         return;
     }
 
-    const config = state.generationTargets.epic || defaultGenerationTargets.epic;
+    const targetConfig = await promptGenerationTargetSelection('epic', sourceBlocks.length, { batch: true });
+    if (!targetConfig) {
+        renderAll('已取消批量多次总结。');
+        return;
+    }
+
+    const config = targetConfig || state.generationTargets.epic || defaultGenerationTargets.epic;
     const batches = partitionGenerationTargets(sourceBlocks, 'epic', config);
     if (!batches.length) {
         renderAll('当前批量范围没有匹配到可用于多次总结的内容。');
@@ -5350,7 +5372,17 @@ function getBatchSummaryRangeIdsFromUi() {
     return { ids: new Set(parsed.ids), invalid: parsed.invalid || [] };
 }
 
+function readBatchSummarySettingsFromUi(state = ensureState()) {
+    const input = $('#bakemono-memory-batch-summary-size');
+    if (input.length) {
+        state.automation.backfillBatchSize = Math.max(1, Number(input.val() || state.automation.backfillBatchSize || defaultAutomation.backfillBatchSize));
+        saveState();
+    }
+    return state;
+}
+
 async function generateBatchSummaryQueue() {
+    readBatchSummarySettingsFromUi();
     const mode = String($('#bakemono-memory-batch-summary-mode').val() || 'missing');
     const { ids, invalid } = getBatchSummaryRangeIdsFromUi();
     if (invalid.length) {
@@ -7791,7 +7823,7 @@ function getWorkflowInfo(state = ensureState()) {
         return {
             title: '补课旧聊天',
             description: '适合以前没有写摘要的聊天。插件会先把旧楼层分批压缩成补课摘要，再继续做阶段总结。',
-            steps: ['设置“旧正文每批楼数”', '点击“分批补课旧正文”', '到草稿箱检查并确认保存', '积累几批后生成阶段总结'],
+            steps: ['在“批量摘要”里设置每批楼数', '选择旧正文补课并开始批量摘要', '到草稿箱检查并确认保存', '积累几批后生成阶段总结'],
             actions: ['backfill', 'generate-stage', 'generate-epic', 'undo'],
         };
     }
@@ -8520,7 +8552,7 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-auto-trigger').val(state.automation.triggerType || defaultAutomation.triggerType);
     $('#bakemono-memory-auto-floor-interval').val(state.automation.floorInterval ?? defaultAutomation.floorInterval);
     $('#bakemono-memory-auto-char-interval').val(state.automation.charInterval ?? defaultAutomation.charInterval);
-    $('#bakemono-memory-backfill-batch-size').val(state.automation.backfillBatchSize ?? defaultAutomation.backfillBatchSize);
+    $('#bakemono-memory-batch-summary-size').val(state.automation.backfillBatchSize ?? defaultAutomation.backfillBatchSize);
     $('#bakemono-memory-auto-hide-preserve-recent').val(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent);
     $('#bakemono-memory-stage-target-mode').val(state.generationTargets.stage.mode || defaultGenerationTargets.stage.mode);
     $('#bakemono-memory-stage-target-count').val(state.generationTargets.stage.count ?? defaultGenerationTargets.stage.count);
@@ -9369,7 +9401,9 @@ function readAutomationFieldsFromUi(state = ensureState()) {
         triggerType: String($('#bakemono-memory-auto-trigger').val() || defaultAutomation.triggerType),
         floorInterval: Math.max(1, Number($('#bakemono-memory-auto-floor-interval').val() || defaultAutomation.floorInterval)),
         charInterval: Math.max(100, Number($('#bakemono-memory-auto-char-interval').val() || defaultAutomation.charInterval)),
-        backfillBatchSize: Math.max(1, Number($('#bakemono-memory-backfill-batch-size').val() || defaultAutomation.backfillBatchSize)),
+        backfillBatchSize: $('#bakemono-memory-backfill-batch-size').length
+            ? Math.max(1, Number($('#bakemono-memory-backfill-batch-size').val() || state.automation.backfillBatchSize || defaultAutomation.backfillBatchSize))
+            : Math.max(1, Number(state.automation.backfillBatchSize || defaultAutomation.backfillBatchSize)),
         autoHidePreserveRecent: Math.max(0, Number($('#bakemono-memory-auto-hide-preserve-recent').val() || defaultAutomation.autoHidePreserveRecent)),
     };
     return state;

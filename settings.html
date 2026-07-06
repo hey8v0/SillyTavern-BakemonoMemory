@@ -274,6 +274,10 @@
                 <span>楼层范围</span>
                 <textarea id="bakemono-memory-batch-summary-range" class="text_pole textarea_compact" rows="2" placeholder="留空为全部候选；例如：1-80, 96, 120-150" spellcheck="false"></textarea>
               </label>
+              <label class="bakemono-memory-field bakemono-memory-batch-size">
+                <span>每批楼数</span>
+                <input id="bakemono-memory-batch-summary-size" class="text_pole" type="number" min="1" step="1">
+              </label>
             </div>
             <div class="bakemono-memory-batch-flow" aria-label="批量摘要流程">
               <span><i class="fa-solid fa-list-check"></i> 选范围</span>
@@ -945,10 +949,6 @@
             <label class="bakemono-memory-field">
               <span>每多少字</span>
               <input id="bakemono-memory-auto-char-interval" class="text_pole" type="number" min="100" step="100">
-            </label>
-            <label class="bakemono-memory-field">
-              <span>旧正文每批楼数</span>
-              <input id="bakemono-memory-backfill-batch-size" class="text_pole" type="number" min="1" step="1">
             </label>
             <label class="bakemono-memory-field">
               <span>自动隐藏保留最近几楼</span>

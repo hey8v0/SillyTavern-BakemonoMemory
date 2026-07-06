@@ -647,7 +647,8 @@
 }
 
 .bakemono-memory-batch-mode,
-.bakemono-memory-batch-range {
+.bakemono-memory-batch-range,
+.bakemono-memory-batch-size {
   min-width: 0;
   padding: 12px;
   border: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
