@@ -3151,7 +3151,17 @@
     -webkit-overflow-scrolling: touch;
   }
 
+  .bakemono-workbench-root[data-active-tab="prompts"] .bakemono-workbench-main {
+    overflow-y: scroll;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .bakemono-workbench-root[data-active-tab="preview"] .bakemono-workbench-panel[data-bakemono-panel="preview"].is-active {
+    min-height: calc(100% + 24dvh);
+    padding-bottom: 24dvh;
+  }
+
+  .bakemono-workbench-root[data-active-tab="prompts"] .bakemono-workbench-panel[data-bakemono-panel="prompts"].is-active {
     min-height: calc(100% + 24dvh);
     padding-bottom: 24dvh;
   }
@@ -3388,6 +3398,22 @@
 
   .bakemono-mobile-collapsible.is-mobile-expanded > :not(h4) {
     margin-top: 10px;
+  }
+
+  .bakemono-workbench-root[data-active-tab="prompts"] .bakemono-memory-prompt-editor-item {
+    overflow: visible;
+  }
+
+  .bakemono-workbench-root[data-active-tab="prompts"] .bakemono-memory-prompt-editor-item > .bakemono-memory-editor {
+    max-height: min(62dvh, 560px);
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .bakemono-workbench-root[data-active-tab="prompts"] .bakemono-memory-prompt-editor-item textarea {
+    min-height: min(42dvh, 360px);
+    max-height: none;
   }
 
   .bakemono-memory-card-panel.bakemono-mobile-collapsible {

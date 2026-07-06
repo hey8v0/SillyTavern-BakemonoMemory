@@ -307,9 +307,9 @@ const defaultStageGenerationPrompt = `# 👾总结模式！
 <bakemono>
 <details>
 <summary>【剧集终了·点击回看】</summary>
-【👑『第x卷：自定义名称』★ 跨度：从x章至x章 ★ 当前时间点：XXX ☆】
+【👑『第x卷：自定义名称』★ 跨度：从x章至x章 ★ 时间跨度：XXX-XXX ☆】
 
-➤ 🎞️ 【剧情长焦】（详细提炼本阶段的“起、承、转、合”。概括每章节内容，让后续可清晰了解之前章节具体发生过什么）
+➤ 🎞️ 【剧情长焦】（详细提炼本阶段的“起、承、转、合”。概括每章节内容（包括时间），让后续可清晰了解之前章节具体发生过什么）
 
 ➤ 🎭 【角色进化录】（记录核心角色在本篇章后的心态/关系转变）
 - [角色A]：从最初的[状态]转变为了[现状]，关键转折点是[事件]。
@@ -347,9 +347,9 @@ const defaultEpicGenerationPrompt = `# 👾多次总结模式！
 <bakemono>
 <details>
 <summary>【多次总结·长期总览】</summary>
-【🪐『长期总览：自定义名称』★ 总跨度：从输入材料可判断的范围，未知则写未知 ★ 当前时间点：XXX ☆】
+【🪐『长期总览：自定义名称』★ 总跨度：从输入材料可判断的范围，未知则写未知 ★ 时间跨度：XXX-XXX ☆】
 
-➤ 📜 【时间线总览】（按时间顺序整理输入材料覆盖的核心事件，保留足够细节，避免只剩空泛主题）
+➤ 📜 【时间线总览】（按时间顺序整理输入材料覆盖的核心事件（标注时间），保留足够细节，避免只剩空泛主题）
 - [事件一名称]：……
 - [事件二名称]：……
 
@@ -889,6 +889,12 @@ function ensureGlobalSettings() {
         if (preset.missing === undefined) {
             preset.missing = defaultMissingSummaryPrompt;
         }
+        if (preset.stage !== undefined) {
+            preset.stage = migrateStagePromptTimeSpan(preset.stage);
+        }
+        if (preset.epic !== undefined) {
+            preset.epic = migrateEpicPromptTimeSpan(preset.epic);
+        }
         if (preset.id === defaultGenericPromptPreset.id) {
             preset.story = defaultGenericStoryGenerationPrompt;
             preset.missing = defaultMissingSummaryPrompt;
@@ -1011,6 +1017,18 @@ function ensureGlobalSettings() {
     }
 }
 
+function migrateStagePromptTimeSpan(prompt) {
+    return String(prompt || defaultStageGenerationPrompt)
+        .replace('★ 当前时间点：XXX ☆', '★ 时间跨度：XXX-XXX ☆')
+        .replace('概括每章节内容，让后续可清晰了解之前章节具体发生过什么', '概括每章节内容（包括时间），让后续可清晰了解之前章节具体发生过什么');
+}
+
+function migrateEpicPromptTimeSpan(prompt) {
+    return String(prompt || defaultEpicGenerationPrompt)
+        .replace('★ 当前时间点：XXX ☆', '★ 时间跨度：XXX-XXX ☆')
+        .replace('按时间顺序整理输入材料覆盖的核心事件，保留足够细节，避免只剩空泛主题', '按时间顺序整理输入材料覆盖的核心事件（标注时间），保留足够细节，避免只剩空泛主题');
+}
+
 function ensureState() {
     const isNewChatState = !chat_metadata[STORAGE_KEY];
     if (!chat_metadata[STORAGE_KEY]) {
@@ -1057,6 +1075,8 @@ function ensureState() {
         state.generationPrompts.stage = defaultGenericStageGenerationPrompt;
         state.generationPrompts.epic = defaultGenericEpicGenerationPrompt;
     }
+    state.generationPrompts.stage = migrateStagePromptTimeSpan(state.generationPrompts.stage);
+    state.generationPrompts.epic = migrateEpicPromptTimeSpan(state.generationPrompts.epic);
     for (const key of ['scanRules', 'classificationRules', 'previewLayouts']) {
         if (!state[key]) {
             state[key] = structuredClone(defaultState[key]);
@@ -3343,28 +3363,45 @@ function parsePreviewMeta(block) {
             }
         }
     } else if (block.type === blockTypes.STAGE) {
-        const stageMatch = metaLine.match(/『([^』]+)』.*?跨度[：:]\s*([^★]+).*?当前时间点[：:]\s*([^☆]+)\s*☆/);
+        const stageMatch = metaLine.match(/『([^』]+)』.*?跨度[：:]\s*([^★]+).*?(当前时间点|时间跨度)[：:]\s*([^☆]+)\s*☆/);
         if (stageMatch) {
             meta.label = stageMatch[2].trim();
             meta.title = stageMatch[1].trim();
-            meta.meta = `当前时间点：${stageMatch[3].trim()}`;
+            meta.meta = `${stageMatch[3].trim()}：${stageMatch[4].trim()}`;
         }
     } else if (block.type === blockTypes.EPIC) {
-        const epicMatch = metaLine.match(/『([^』]+)』.*?总跨度[：:]\s*([^★]+).*?当前时间点[：:]\s*([^☆]+)\s*☆/);
+        const epicMatch = metaLine.match(/『([^』]+)』.*?总跨度[：:]\s*([^★]+).*?(当前时间点|时间跨度)[：:]\s*([^☆]+)\s*☆/);
         if (epicMatch) {
             meta.label = epicMatch[2].trim();
             meta.title = epicMatch[1].trim();
-            meta.meta = `当前时间点：${epicMatch[3].trim()}`;
+            meta.meta = `${epicMatch[3].trim()}：${epicMatch[4].trim()}`;
         }
     }
 
     return meta;
 }
 
+function getPreferredSummaryTitle(block) {
+    const genericTitles = new Set(['剧情摘要', '📋 剧情摘要', '剧集终了·点击回看', '多次总结·长期总览', '纪元回溯·史诗简史']);
+    const manualTitle = String(block?.metadata?.userTitle || '').trim();
+    if (manualTitle) {
+        return manualTitle;
+    }
+    const title = String(block?.title || '').replace(/[【】]/g, '').trim();
+    if (block?.isGeneratedSummary && title && !genericTitles.has(title)) {
+        return title;
+    }
+    return '';
+}
+
 function getPreviewSummaryText(block) {
+    const prefix = block.type === blockTypes.EPIC ? '多次' : block.type === blockTypes.STAGE ? '阶段' : '摘要';
+    const preferredTitle = getPreferredSummaryTitle(block);
+    if (preferredTitle) {
+        return preferredTitle.startsWith(`${prefix} ·`) ? preferredTitle : `${prefix} · ${preferredTitle}`;
+    }
     const meta = parsePreviewMeta(block);
     const pieces = [meta.label, meta.title].filter(Boolean);
-    const prefix = block.type === blockTypes.EPIC ? '多次' : block.type === blockTypes.STAGE ? '阶段' : '摘要';
     return `${prefix} · ${pieces.join(' · ') || meta.sticker || block.title}`;
 }
 
@@ -6489,12 +6526,22 @@ function saveEditedSummary(hash, title, content) {
         toastr.warning('没有找到这个已保存摘要。');
         return;
     }
-    found.summary.title = String(title || found.summary.title || '').trim() || found.summary.title;
+    const nextTitle = String(title || found.summary.title || '').trim() || found.summary.title;
+    found.summary.title = nextTitle;
+    found.summary.metadata = {
+        ...(found.summary.metadata || {}),
+        userTitle: nextTitle,
+        userTitleUpdatedAt: new Date().toISOString(),
+    };
     found.summary.content = normalizeGeneratedBakemono(content || found.summary.content || '');
     const block = ensureState().blocks.find(item => item.hash === hash);
     if (block) {
         block.title = found.summary.title;
         block.content = found.summary.content;
+        block.metadata = {
+            ...(block.metadata || {}),
+            userTitle: nextTitle,
+        };
     }
     updateInjectionFromSummaries();
     saveState();
@@ -8795,6 +8842,10 @@ function preparePreviewBlocks(blocks) {
 }
 
 function syncPreviewTypeUi() {
+    const validTypes = new Set(['story', 'stage', 'epic']);
+    if (!validTypes.has(previewState.activeType)) {
+        previewState.activeType = 'story';
+    }
     document.querySelectorAll('.bakemono-preview-type-button').forEach(button => {
         button.classList.toggle('is-active', button.dataset.bakemonoPreviewType === previewState.activeType);
     });
@@ -9217,7 +9268,6 @@ function renderTaskQueue() {
         `;
         container.append(bulkActions);
     }
-    renderAutoSummaryTransactions(container, state);
     if (!state.taskQueue.length) {
         const empty = document.createElement('div');
         empty.className = 'bakemono-memory-empty';
@@ -10476,7 +10526,12 @@ function switchWorkbenchTab(tabName) {
     requestAnimationFrame(() => setWorkbenchMenuOpen(false));
     syncMobileCollapsibles(root.querySelector(`.bakemono-workbench-panel[data-bakemono-panel="${panelName}"]`) || root);
     if (tabName === 'preview') {
-        stabilizeMobilePreviewScroll();
+        requestAnimationFrame(() => {
+            renderPreviewSections();
+            stabilizeMobilePreviewScroll();
+        });
+    } else if (tabName === 'prompts') {
+        stabilizeMobileWorkbenchScroll('prompts');
     }
 }
 
@@ -10517,9 +10572,9 @@ function syncMobileCollapsibles(scope = null) {
     });
 }
 
-function stabilizeMobilePreviewScroll() {
+function stabilizeMobileWorkbenchScroll(expectedTab = '') {
     const root = document.getElementById('bakemono-workbench-root');
-    if (!root || root.dataset.activeTab !== 'preview') {
+    if (!root || (expectedTab && root.dataset.activeTab !== expectedTab)) {
         return;
     }
     if (!(window.matchMedia?.('(max-width: 900px)').matches ?? false)) {
@@ -10543,6 +10598,10 @@ function stabilizeMobilePreviewScroll() {
         settle();
         window.setTimeout(settle, 80);
     });
+}
+
+function stabilizeMobilePreviewScroll() {
+    stabilizeMobileWorkbenchScroll('preview');
 }
 
 async function applyVectorMemorySettings() {
@@ -10831,6 +10890,10 @@ function bindSettingsEvents() {
         panel.classList.toggle('is-mobile-collapsed', !expand);
         panel.classList.toggle('is-mobile-expanded', expand);
         panel.querySelectorAll('.bakemono-memory-prompt-hint.is-open').forEach(hint => hint.classList.remove('is-open'));
+        stabilizeMobileWorkbenchScroll(document.getElementById('bakemono-workbench-root')?.dataset.activeTab || '');
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoPromptEditorScroll').on('click.bakemonoPromptEditorScroll', '.bakemono-memory-prompt-editor-item > summary', function () {
+        stabilizeMobileWorkbenchScroll('prompts');
     });
     $('#bakemono-workbench-root').off('click.bakemonoAction').on('click.bakemonoAction', '[data-bakemono-action]', async function () {
         try {
