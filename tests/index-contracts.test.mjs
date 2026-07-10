@@ -1,0 +1,109 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import test from 'node:test';
+
+const source = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+
+function extractTemplate(name) {
+    const marker = `const ${name} = \``;
+    const start = source.indexOf(marker);
+    assert.notEqual(start, -1, `${name} should exist`);
+    const contentStart = start + marker.length;
+    const end = source.indexOf('`;', contentStart);
+    assert.notEqual(end, -1, `${name} should be a template literal`);
+    return source.slice(contentStart, end);
+}
+
+function extractFunction(name) {
+    const start = source.indexOf(`function ${name}(`);
+    assert.notEqual(start, -1, `${name} should exist`);
+    const bodyStart = source.indexOf('{', start);
+    let depth = 0;
+    for (let index = bodyStart; index < source.length; index += 1) {
+        if (source[index] === '{') depth += 1;
+        if (source[index] === '}') depth -= 1;
+        if (depth === 0) {
+            return source.slice(start, index + 1);
+        }
+    }
+    throw new Error(`Could not extract ${name}`);
+}
+
+function assertContinuationEllipses(prompt) {
+    const headings = [...prompt.matchAll(/^➤.*$/gm)];
+    for (let index = 0; index < headings.length; index += 1) {
+        const heading = headings[index];
+        if (heading[0].includes('第四面墙')) continue;
+        const nextStart = headings[index + 1]?.index ?? prompt.length;
+        const section = prompt.slice(heading.index, nextStart);
+        assert.match(section, /^……$/m, `${heading[0]} should end with a continuation ellipsis`);
+    }
+}
+
+test('structured prompts use expandable section examples', () => {
+    for (const name of [
+        'defaultInlineSummaryPrompt',
+        'defaultTurnSummaryPrompt',
+        'defaultMissingSummaryPrompt',
+        'defaultStageGenerationPrompt',
+        'defaultEpicGenerationPrompt',
+        'defaultStoryGenerationPrompt',
+    ]) {
+        assertContinuationEllipses(extractTemplate(name));
+    }
+});
+
+test('stage and multi-summary defaults use the requested event timeline format', () => {
+    const stage = extractTemplate('defaultStageGenerationPrompt');
+    const epic = extractTemplate('defaultEpicGenerationPrompt');
+
+    assert.match(stage, /➤ 🎞️ 【剧情长焦】（详细提炼本阶段的\[事件\]/);
+    assert.match(stage, /- \[事件名称\] \(涵盖的章节跨度 \| 发生时间 \| 发生地点 \| 在场角色\)/);
+    assert.match(stage, /经过：用流水账形式清晰记录该事件的起因、经过、结果，保留所有重要动作\/话语\/冲突。/);
+    assert.match(stage, /➤ 🎭 【角色进化录】/);
+    assert.match(stage, /➤ 🏆 【金句名人堂】（从整篇剧情中挑选出最具代表性、最能定义本卷灵魂的台词）/);
+    assert.match(stage, /1\. > “台词1”——【角色名】\n……/);
+
+    assert.match(epic, /➤ 📜 【时间线总览】/);
+    assert.match(epic, /- \[事件名称\] \(涵盖的章节跨度 \| 发生时间 \| 发生地点 \| 在场角色\)/);
+    assert.match(epic, /关键点：一句话总结该事件对剧情推进或角色关系造成的重大影响\/转折。/);
+});
+
+test('structured prompt migration only refreshes recognizable built-in prompts', () => {
+    const migrateBuiltInStructuredPrompt = Function(`return (${extractFunction('migrateBuiltInStructuredPrompt')})`)();
+    const fallback = 'new built-in prompt';
+    const markers = ['built-in heading', 'built-in section'];
+    const customized = 'built-in heading\n用户自己写的段落';
+    const legacyBuiltIn = 'built-in heading\nbuilt-in section\n➤ 示例\n- 固定示例';
+
+    assert.equal(migrateBuiltInStructuredPrompt(customized, fallback, markers), customized);
+    assert.equal(migrateBuiltInStructuredPrompt(legacyBuiltIn, fallback, markers), fallback);
+});
+
+test('table rollback plan cascades through newer dependent transactions', () => {
+    const buildTableRollbackPlan = Function(`return (${extractFunction('buildTableRollbackPlan')})`)();
+    const stack = [
+        { id: 'newest', profileKey: 'chat:a', sourceMessageIds: [30], tables: [{ rows: [['before-30']] }] },
+        { id: 'affected', profileKey: 'chat:a', sourceMessageIds: [20], tables: [{ rows: [['before-20']] }] },
+        { id: 'oldest', profileKey: 'chat:a', sourceMessageIds: [10], tables: [{ rows: [['before-10']] }] },
+        { id: 'other-profile', profileKey: 'chat:b', sourceMessageIds: [20], tables: [{ rows: [['other']] }] },
+    ];
+
+    const plan = buildTableRollbackPlan(stack, [20], 'chat:a');
+    assert.deepEqual(plan.rollbackSnapshotIds, ['newest', 'affected']);
+    assert.deepEqual(plan.cascadedSnapshotIds, ['newest']);
+    assert.equal(plan.restoreSnapshot.id, 'affected');
+    assert.deepEqual(plan.cascadedSourceMessageIds, [30]);
+});
+
+test('hot paths use scoped or coalesced rendering', () => {
+    const queueStart = source.indexOf('async function processTaskQueue()');
+    const queueEnd = source.indexOf('function retryQueueTask', queueStart);
+    const queueSource = source.slice(queueStart, queueEnd);
+    assert.match(queueSource, /renderTaskQueueProgress\(/);
+    assert.doesNotMatch(queueSource, /renderAll\(`正在处理任务/);
+
+    const initStart = source.indexOf('async function init()');
+    const initSource = source.slice(initStart);
+    assert.match(initSource, /scheduleRenderAll\(\)/);
+});

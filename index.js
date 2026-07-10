@@ -118,16 +118,20 @@ const defaultInlineSummaryPrompt = `请在本次回复正文结束后，额外�
 
 ➤ 🎬 【场记打板】
 - 本轮事件过程。
+……
 
 ➤ 🎙️ 【高光收音】
 > “关键台词” —— [角色名]
+……
 
 ➤ 🌍 【副镜监视器】
 [地点/角色]：平行状态。
+……
 
 ➤ 🪢 【剧本暗线】
 [未回收伏笔]：无
 [✅ 本回合回收]：无
+……
 
 ➤ 💡 【第四面墙】
 *隐藏信息记录*
@@ -177,16 +181,20 @@ const defaultTurnSummaryPrompt = `你是剧情剪辑台的正文摘要器。你�
 
 ➤ 🎬 【场记打板】
 - 本轮发生的事件过程。
+……
 
 ➤ 🎙️ 【高光收音】
 > “关键台词或心理活动” —— [角色名]
+……
 
 ➤ 🌍 【副镜监视器】
 [地点/角色]：平行事件或状态。
+……
 
 ➤ 🪢 【剧本暗线】
 [未回收伏笔]：……
 [✅ 本回合回收]：无
+……
 
 ➤ 💡 【第四面墙】
 *角色不知道、但读者知道的隐藏信息。*
@@ -215,19 +223,23 @@ const defaultMissingSummaryPrompt = `你是剧情剪辑台的缺失摘要补写�
 
 ➤ 🎬 【场记打板】（流水账形式记录，不得升华主题，记录本回合推进的全部事件，信息密度高且详细，这是后续👾记忆的前提）
 - 此处为剧情摘要
+……
 
 ➤ 🎙️ 【高光收音】（抓取本回合最有张力、最关键的几句重要对话/心理活动）
 > “此处填入台词或内心戏，最好是能体现角色性格的那种！” —— [角色名]
+……
 
 ➤ 🌍 【副镜监视器】（平行事件）
 *当主角在行动时，世界的其他角落……*
 [地点A | 角色B]：ta此刻的行动/心理。
 [地点C | 角色D]：ta此刻的行动/状态。
+……
 
 ➤ 🪢 【剧本暗线】（伏笔系统：只对导演可见的记录）
 [未回收伏笔 1]：(埋伏笔的章节) 某某提到了一个神秘的盒子。→ (系统提示：建议在接下来的3个章节内制造契机让主角打开它)
 [未回收伏笔 2]：(埋伏笔的章节) 骑士看某某的眼神有一瞬间的闪躲。→ (系统提示：待揭晓他隐瞒的秘密)
 [✅ 本回合回收]：(如果没有就写“无”)
+……
 
 ➤ 💡 【第四面墙】（用👾的视角，记录一些角色不知道、但读者知道的隐藏信息，**不是吐槽**）
 *偷偷记一笔*
@@ -309,20 +321,25 @@ const defaultStageGenerationPrompt = `# 👾总结模式！
 <summary>【剧集终了·点击回看】</summary>
 【👑『第x卷：自定义名称』★ 跨度：从x章至x章 ★ 时间跨度：XXX-XXX ☆】
 
-➤ 🎞️ 【剧情长焦】（详细提炼本阶段的“起、承、转、合”。概括每章节内容（包括时间），让后续可清晰了解之前章节具体发生过什么）
+➤ 🎞️ 【剧情长焦】（详细提炼本阶段的[事件]。概括每章节内容（包括时间），让后续可清晰了解之前章节具体发生过什么。）
+- [事件名称] (涵盖的章节跨度 | 发生时间 | 发生地点 | 在场角色)
+  - 经过：用流水账形式清晰记录该事件的起因、经过、结果，保留所有重要动作/话语/冲突。
+  - 关键点：一句话总结该事件对剧情推进或角色关系造成的重大影响/转折。
+  （请严格按照上述带时间轴的剧集目录体格式，逐个列出本卷发生的所有重要事件）
+……
 
 ➤ 🎭 【角色进化录】（记录核心角色在本篇章后的心态/关系转变）
 - [角色A]：从最初的[状态]转变为了[现状]，关键转折点是[事件]。
-- [角色B]：目前对[角色A]的看法是[心理描述]。
+……
 
-➤ 🏆 【金句名人堂】（从整篇剧情中挑选出最具代表性、最能定义本卷灵魂的三句台词）
+➤ 🏆 【金句名人堂】（从整篇剧情中挑选出最具代表性、最能定义本卷灵魂的台词）
 1. > “台词1”——【角色名】
-2. > “台词2”——【角色名】
-3. > “台词3”——【角色名】
+……
 
 ➤ 🗃️ 【未解之谜】（记录目前埋下但尚未回收的伏笔、未交待的秘密）
 * 伏笔A：...
 * 伏笔B：...
+……
 
 ➤ 👾 【第四面墙·终极笔记】（以👾视角，整合之前的第四面墙内容）
 *嘿嘿，这里是整合*
@@ -350,17 +367,23 @@ const defaultEpicGenerationPrompt = `# 👾多次总结模式！
 【🪐『长期总览：自定义名称』★ 总跨度：从输入材料可判断的范围，未知则写未知 ★ 时间跨度：XXX-XXX ☆】
 
 ➤ 📜 【时间线总览】（按时间顺序整理输入材料覆盖的核心事件（标注时间），保留足够细节，避免只剩空泛主题）
-- [事件一名称]：……
-- [事件二名称]：……
+- [事件名称] (涵盖的章节跨度 | 发生时间 | 发生地点 | 在场角色)
+  - 经过：用流水账形式清晰记录该事件的起因、经过、结果，保留所有重要动作/话语/冲突。
+  - 关键点：一句话总结该事件对剧情推进或角色关系造成的重大影响/转折。
+  （请严格按照上述带时间轴的剧集目录体格式，逐个列出本卷发生的所有重要事件）
+……
 
 ➤ 🔗 【关键锚点】（挑出对关系、任务、状态或世界线最有影响的 1 到 3 个关键节点）
 * 锚点A：[时刻] —— 它带来的后续影响是……
+……
 
 ➤ 🦋 【角色状态】（记录核心角色在这段长期剧情后的关系、心态、目标、身体/处境变化）
 * [角色名]：从[旧状态]变化为[现状]，关键原因是……
+……
 
 ➤ 🗃️ 【未解事项】（保留仍然重要、之后需要继续追踪的伏笔、秘密、任务、约定、风险）
 * 事项A：……
+……
 
 ➤ 👾 【第四面墙·长期笔记】（以👾视角，整合读者/系统知道但角色未必知道的信息）
 *这里是长期观测记录……*
@@ -395,16 +418,20 @@ const defaultStoryGenerationPrompt = `# 👾旧正文补课摘要模式！
 
 ➤ 🎬 【场记打板】（流水账形式记录本批次已经发生的全部事件，每个事件要有清楚的起因、过程和结果；不得升华主题，不得续写）
 - 此处为剧情摘要
+……
 
 ➤ 🎙️ 【高光收音】（抓取本批次最关键、最能体现角色性格或关系变化的对话/心理活动；只能引用或概括原文中已有内容）
 > “此处填入台词或内心戏” —— [角色名]
+……
 
 ➤ 🌍 【副镜监视器】（如果本批次有平行事件就记录；没有就写“无”）
 [地点A | 角色B]：ta此刻的行动/心理。
+……
 
 ➤ 🪢 【剧本暗线】（只记录正文里已经出现的伏笔、秘密、未解决事项；不得新增伏笔）
 [未回收伏笔 1]：……
 [✅ 本批次回收]：如果没有就写“无”
+……
 
 ➤ 💡 【第四面墙】（用👾视角记录角色不知道、但读者/系统知道的隐藏信息；不是吐槽；不得新增设定）
 *偷偷记一笔*
@@ -795,6 +822,7 @@ const defaultState = {
         history: [],
         undoStack: [],
         redoStack: [],
+        rollbackHistory: [],
         lastAppliedSourceMessageIds: [],
         lastImportAt: null,
     },
@@ -829,6 +857,8 @@ const cancelledQueueTaskIds = new Set();
 let vectorIndexTimer = null;
 let inlineCaptureTimer = null;
 let autoHideRecentTimer = null;
+let scheduledRenderHandle = null;
+let scheduledRenderStatus = '';
 const vectorEmbeddingRuntimeCache = new Map();
 const previewPageSize = 8;
 const historyPageSize = 10;
@@ -910,7 +940,10 @@ function ensureGlobalSettings() {
             preset.stageSourceMode = defaultGenericPromptPreset.stageSourceMode;
         }
         if (preset.id === defaultPromptPreset.id) {
+            preset.story = defaultStoryGenerationPrompt;
             preset.missing = defaultMissingSummaryPrompt;
+            preset.stage = defaultStageGenerationPrompt;
+            preset.epic = defaultEpicGenerationPrompt;
             preset.memoryStrategy = defaultPromptPreset.memoryStrategy;
             preset.scanRules = structuredClone(defaultPromptPreset.scanRules);
             preset.outputMode = defaultPromptPreset.outputMode;
@@ -1006,6 +1039,11 @@ function ensureGlobalSettings() {
             },
         ];
     }
+    const defaultInlineSummaryPreset = settings.inlinePromptPresets.find(preset => preset.id === 'default-inline-summary');
+    if (defaultInlineSummaryPreset && defaultInlineSummaryPreset.prompt !== defaultInlineSummaryPrompt) {
+        defaultInlineSummaryPreset.prompt = defaultInlineSummaryPrompt;
+        defaultInlineSummaryPreset.updatedAt = new Date().toISOString();
+    }
     if (!settings.selectedInlinePromptPresetIds || typeof settings.selectedInlinePromptPresetIds !== 'object') {
         settings.selectedInlinePromptPresetIds = {};
     }
@@ -1018,15 +1056,39 @@ function ensureGlobalSettings() {
 }
 
 function migrateStagePromptTimeSpan(prompt) {
-    return String(prompt || defaultStageGenerationPrompt)
+    const migrated = String(prompt || defaultStageGenerationPrompt)
         .replace('★ 当前时间点：XXX ☆', '★ 时间跨度：XXX-XXX ☆')
         .replace('概括每章节内容，让后续可清晰了解之前章节具体发生过什么', '概括每章节内容（包括时间），让后续可清晰了解之前章节具体发生过什么');
+    if (
+        migrated.includes('详细提炼本阶段的“起、承、转、合”')
+        || migrated.includes('最能定义本卷灵魂的三句台词')
+    ) {
+        return defaultStageGenerationPrompt;
+    }
+    return migrated;
 }
 
 function migrateEpicPromptTimeSpan(prompt) {
-    return String(prompt || defaultEpicGenerationPrompt)
+    const migrated = String(prompt || defaultEpicGenerationPrompt)
         .replace('★ 当前时间点：XXX ☆', '★ 时间跨度：XXX-XXX ☆')
         .replace('按时间顺序整理输入材料覆盖的核心事件，保留足够细节，避免只剩空泛主题', '按时间顺序整理输入材料覆盖的核心事件（标注时间），保留足够细节，避免只剩空泛主题');
+    if (migrated.includes('[事件一名称]：……') || migrated.includes('[事件二名称]：……')) {
+        return defaultEpicGenerationPrompt;
+    }
+    return migrated;
+}
+
+function migrateBuiltInStructuredPrompt(prompt, fallback, legacyMarkers) {
+    const current = String(prompt || fallback);
+    const markers = Array.isArray(legacyMarkers) ? legacyMarkers : [legacyMarkers];
+    if (!markers.every(marker => current.includes(marker))) {
+        return current;
+    }
+    const sections = current.split(/(?=^➤)/m).slice(1);
+    const hasAllContinuations = sections.every(section => (
+        section.split(/\r?\n/, 1)[0].includes('第四面墙') || /^……$/m.test(section)
+    ));
+    return hasAllContinuations ? current : fallback;
 }
 
 function ensureState() {
@@ -1077,6 +1139,16 @@ function ensureState() {
     }
     state.generationPrompts.stage = migrateStagePromptTimeSpan(state.generationPrompts.stage);
     state.generationPrompts.epic = migrateEpicPromptTimeSpan(state.generationPrompts.epic);
+    state.generationPrompts.story = migrateBuiltInStructuredPrompt(state.generationPrompts.story, defaultStoryGenerationPrompt, [
+        '# 👾旧正文补课摘要模式！',
+        '➤ 🎬 【场记打板】（流水账形式记录本批次已经发生的全部事件',
+        '➤ 💡 【第四面墙】（用👾视角记录角色不知道',
+    ]);
+    state.generationPrompts.missing = migrateBuiltInStructuredPrompt(state.generationPrompts.missing, defaultMissingSummaryPrompt, [
+        '你是剧情剪辑台的缺失摘要补写器',
+        '每个楼层必须严格使用以下格式',
+        '➤ 🪢 【剧本暗线】（伏笔系统',
+    ]);
     for (const key of ['scanRules', 'classificationRules', 'previewLayouts']) {
         if (!state[key]) {
             state[key] = structuredClone(defaultState[key]);
@@ -1171,6 +1243,11 @@ function ensureState() {
             state.turnSummary[key] = structuredClone(value);
         }
     }
+    state.turnSummary.prompt = migrateBuiltInStructuredPrompt(state.turnSummary.prompt, defaultTurnSummaryPrompt, [
+        '你是剧情剪辑台的正文摘要器',
+        '输出必须放在 <summaryDraft>',
+        '➤ 🎙️ 【高光收音】',
+    ]);
     state.tableDatabase = state.tableDatabase && typeof state.tableDatabase === 'object'
         ? state.tableDatabase
         : structuredClone(defaultState.tableDatabase);
@@ -1188,6 +1265,7 @@ function ensureState() {
     state.tableDatabase.history = Array.isArray(state.tableDatabase.history) ? state.tableDatabase.history : [];
     state.tableDatabase.undoStack = Array.isArray(state.tableDatabase.undoStack) ? state.tableDatabase.undoStack : [];
     state.tableDatabase.redoStack = Array.isArray(state.tableDatabase.redoStack) ? state.tableDatabase.redoStack : [];
+    state.tableDatabase.rollbackHistory = Array.isArray(state.tableDatabase.rollbackHistory) ? state.tableDatabase.rollbackHistory : [];
     state.tableDatabase.lastAppliedSourceMessageIds = getFiniteMessageIds(state.tableDatabase.lastAppliedSourceMessageIds || []);
     state.tableDatabase.chatProfiles = Array.isArray(state.tableDatabase.chatProfiles) ? state.tableDatabase.chatProfiles : [];
     state.tableDatabase.profileRows = state.tableDatabase.profileRows && typeof state.tableDatabase.profileRows === 'object' ? state.tableDatabase.profileRows : {};
@@ -1201,6 +1279,11 @@ function ensureState() {
             state.inlineGeneration[key] = structuredClone(value);
         }
     }
+    state.inlineGeneration.summaryPrompt = migrateBuiltInStructuredPrompt(state.inlineGeneration.summaryPrompt, defaultInlineSummaryPrompt, [
+        '请在本次回复正文结束后',
+        '推荐格式：',
+        '<summary>📋 剧情摘要</summary>',
+    ]);
     if (state.inlineGeneration.hideTableEditMigratedToRegex !== true) {
         state.inlineGeneration.hideTableEdit = false;
         state.inlineGeneration.hideTableEditMigratedToRegex = true;
@@ -1893,44 +1976,102 @@ function hasAppliedTableEditForMessage(messageId, state = ensureState()) {
     return getAppliedTableHistoriesForMessage(messageId, state).length > 0;
 }
 
-function rollbackLatestTableOperationForDeletedMessages(messageIds = [], state = ensureState()) {
-    const ids = new Set(getFiniteMessageIds(messageIds));
-    if (!ids.size) {
+function buildTableRollbackPlan(undoStack = [], messageIds = [], profileKey = '') {
+    const affectedIds = new Set((Array.isArray(messageIds) ? messageIds : [])
+        .map(Number)
+        .filter(id => Number.isInteger(id) && id >= 0));
+    if (!affectedIds.size) {
+        return null;
+    }
+    const relevant = (Array.isArray(undoStack) ? undoStack : []).filter(snapshot => (
+        snapshot && (!profileKey || !snapshot.profileKey || snapshot.profileKey === profileKey)
+    ));
+    const affectedPositions = relevant
+        .map((snapshot, index) => ({
+            index,
+            affected: (Array.isArray(snapshot.sourceMessageIds) ? snapshot.sourceMessageIds : [])
+                .map(Number)
+                .some(id => affectedIds.has(id)),
+        }))
+        .filter(item => item.affected)
+        .map(item => item.index);
+    if (!affectedPositions.length) {
+        return null;
+    }
+    const cutoff = Math.max(...affectedPositions);
+    const rollbackSnapshots = relevant.slice(0, cutoff + 1);
+    const affectedSnapshotIds = new Set(rollbackSnapshots
+        .filter(snapshot => (Array.isArray(snapshot.sourceMessageIds) ? snapshot.sourceMessageIds : [])
+            .map(Number)
+            .some(id => affectedIds.has(id)))
+        .map(snapshot => snapshot.id));
+    const cascadedSourceMessageIds = [...new Set(rollbackSnapshots
+        .filter(snapshot => !affectedSnapshotIds.has(snapshot.id))
+        .flatMap(snapshot => Array.isArray(snapshot.sourceMessageIds) ? snapshot.sourceMessageIds : [])
+        .map(Number)
+        .filter(id => Number.isInteger(id) && id >= 0))]
+        .sort((a, b) => a - b);
+    const cascadedSnapshotIds = rollbackSnapshots
+        .filter(snapshot => !affectedSnapshotIds.has(snapshot.id))
+        .map(snapshot => snapshot.id);
+    return {
+        restoreSnapshot: relevant[cutoff],
+        rollbackSnapshotIds: rollbackSnapshots.map(snapshot => snapshot.id),
+        affectedSnapshotIds: [...affectedSnapshotIds],
+        cascadedSnapshotIds,
+        cascadedSourceMessageIds,
+    };
+}
+
+function rollbackTableOperationsForMessages(messageIds = [], state = ensureState(), options = {}) {
+    const affectedIds = getFiniteMessageIds(messageIds);
+    const profileKey = getActiveTableProfileKey(state);
+    const plan = buildTableRollbackPlan(state.tableDatabase.undoStack || [], affectedIds, profileKey);
+    if (!plan) {
         return false;
     }
-    const snapshot = state.tableDatabase.undoStack?.[0];
-    const snapshotIds = getFiniteMessageIds(snapshot?.sourceMessageIds || []);
-    if (!snapshot || !snapshotIds.some(id => ids.has(id))) {
-        return false;
-    }
-    state.tableDatabase.undoStack.shift();
-    state.tableDatabase.tables = structuredClone(snapshot.tables || []);
-    state.tableDatabase.history = (state.tableDatabase.history || []).filter(item => item.undoSnapshotId !== snapshot.id);
+    const rollbackIds = new Set(plan.rollbackSnapshotIds);
+    state.tableDatabase.undoStack = (state.tableDatabase.undoStack || []).filter(snapshot => !rollbackIds.has(snapshot.id));
+    state.tableDatabase.redoStack = [];
+    state.tableDatabase.tables = structuredClone(plan.restoreSnapshot.tables || []);
+    state.tableDatabase.history = (state.tableDatabase.history || []).filter(item => !rollbackIds.has(item.undoSnapshotId));
+    state.tableDatabase.editDrafts = (state.tableDatabase.editDrafts || []).filter(draft => (
+        !getFiniteMessageIds(draft.sourceMessageIds || []).some(id => affectedIds.includes(id))
+    ));
     state.tableDatabase.lastAppliedSourceMessageIds = [];
+    state.tableDatabase.rollbackHistory = Array.isArray(state.tableDatabase.rollbackHistory) ? state.tableDatabase.rollbackHistory : [];
+    state.tableDatabase.rollbackHistory.unshift({
+        id: `table-rollback-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        reason: String(options.reason || '来源消息变更'),
+        affectedMessageIds: affectedIds,
+        cascadedSnapshotIds: plan.cascadedSnapshotIds,
+        cascadedSourceMessageIds: plan.cascadedSourceMessageIds,
+        rollbackSnapshotIds: plan.rollbackSnapshotIds,
+        restoredSnapshotId: plan.restoreSnapshot.id,
+        createdAt: new Date().toISOString(),
+    });
+    state.tableDatabase.rollbackHistory = state.tableDatabase.rollbackHistory.slice(0, 20);
     persistCurrentTableDatabase(state);
-    renderAll(`已随删除楼层撤销表格操作：${snapshot.label || '表格操作'}`);
-    toastr.info('已检测到来源楼层被删除，并撤销最近一次对应表格修改。');
-    return true;
+    const cascadeText = plan.cascadedSnapshotIds.length
+        ? `；同时安全回退其后的 ${plan.cascadedSnapshotIds.length} 组依赖修改`
+        : '';
+    scheduleRenderAll(`已回退受影响的表格事务${cascadeText}。`);
+    toastr.info(`${options.toast || '已检测到来源楼层变更并回退表格事务'}${cascadeText}。`);
+    return plan;
+}
+
+function rollbackLatestTableOperationForDeletedMessages(messageIds = [], state = ensureState()) {
+    return !!rollbackTableOperationsForMessages(messageIds, state, {
+        reason: '来源楼层删除',
+        toast: '已检测到来源楼层被删除，并恢复到对应表格事务之前',
+    });
 }
 
 function rollbackLatestTableOperationForChangedMessages(messageIds = [], state = ensureState()) {
-    const ids = new Set(getFiniteMessageIds(messageIds));
-    if (!ids.size) {
-        return false;
-    }
-    const snapshot = state.tableDatabase.undoStack?.[0];
-    const snapshotIds = getFiniteMessageIds(snapshot?.sourceMessageIds || []);
-    if (!snapshot || !snapshotIds.some(id => ids.has(id))) {
-        return false;
-    }
-    state.tableDatabase.undoStack.shift();
-    state.tableDatabase.tables = structuredClone(snapshot.tables || []);
-    state.tableDatabase.history = (state.tableDatabase.history || []).filter(item => item.undoSnapshotId !== snapshot.id);
-    state.tableDatabase.lastAppliedSourceMessageIds = [];
-    persistCurrentTableDatabase(state);
-    renderAll(`已随消息更新撤销旧表格操作：${snapshot.label || '表格操作'}`);
-    toastr.info('已检测到来源楼层变更，撤销旧表格修改并等待重新捕获。');
-    return true;
+    return !!rollbackTableOperationsForMessages(messageIds, state, {
+        reason: '来源楼层更新或重 roll',
+        toast: '已检测到来源楼层变更，撤销旧表格事务并等待重新捕获',
+    });
 }
 
 function collectMessageIdsFromEventArgs(args = []) {
@@ -4664,7 +4805,7 @@ async function processTaskQueue() {
             task.status = 'running';
             task.updatedAt = new Date().toISOString();
             saveState();
-            renderAll(`正在处理任务：${task.label}`);
+            renderTaskQueueProgress(`正在处理任务：${task.label}`);
 
             try {
                 const rawResult = await callGenerationModel({
@@ -4677,7 +4818,7 @@ async function processTaskQueue() {
                     task.error = '任务已被手动解除。';
                     task.updatedAt = new Date().toISOString();
                     saveState();
-                    renderAll();
+                    renderTaskQueueProgress();
                     continue;
                 }
                 if (task.trigger === 'missing_summary_batch') {
@@ -4702,7 +4843,7 @@ async function processTaskQueue() {
                     task.status = 'done';
                     task.updatedAt = new Date().toISOString();
                     saveState();
-                    renderAll(`已处理任务：${task.label}`);
+                    renderTaskQueueProgress(`已处理任务：${task.label}`);
                     continue;
                 }
 
@@ -4752,7 +4893,7 @@ async function processTaskQueue() {
                 toastr.error(task.error, '任务失败');
             }
             saveState();
-            renderAll();
+            renderTaskQueueProgress();
         }
         if (createdDrafts) {
             switchWorkbenchTab('drafts');
@@ -4767,7 +4908,7 @@ async function processTaskQueue() {
         toastr.clear(toast);
         isQueueRunning = false;
         setBusy(false);
-        renderAll();
+        renderTaskQueueProgress();
     }
 }
 
@@ -6849,7 +6990,7 @@ async function captureInlineGenerationFromLatestMessage() {
         await saveChatConditional();
     }
     if (capturedSomething) {
-        renderAll();
+        scheduleRenderAll();
     }
     return capturedSomething;
 }
@@ -8697,7 +8838,45 @@ function createCustomTableFromUi() {
     toastr.success('表格已创建。');
 }
 
+function scheduleRenderAll(statusText = '') {
+    if (statusText) {
+        scheduledRenderStatus = statusText;
+    }
+    if (scheduledRenderHandle !== null) {
+        return;
+    }
+    const flush = () => {
+        scheduledRenderHandle = null;
+        const nextStatus = scheduledRenderStatus;
+        scheduledRenderStatus = '';
+        renderAll(nextStatus);
+    };
+    scheduledRenderHandle = typeof globalThis.requestAnimationFrame === 'function'
+        ? globalThis.requestAnimationFrame(flush)
+        : globalThis.setTimeout(flush, 16);
+}
+
+function renderTaskQueueProgress(statusText = '') {
+    const state = ensureState();
+    $('#bakemono-memory-count-drafts').text(state.drafts.length);
+    renderDrafts();
+    renderTaskQueue();
+    if (statusText) {
+        $('#bakemono-memory-status-line').text(statusText);
+        $('#bakemono-memory-injection-badge').text(statusText);
+    }
+}
+
 function renderAll(statusText = '') {
+    if (scheduledRenderHandle !== null) {
+        if (typeof globalThis.cancelAnimationFrame === 'function') {
+            globalThis.cancelAnimationFrame(scheduledRenderHandle);
+        } else {
+            globalThis.clearTimeout(scheduledRenderHandle);
+        }
+        scheduledRenderHandle = null;
+        scheduledRenderStatus = '';
+    }
     const state = ensureState();
     state.memoryRecords = buildMemoryRecords(state);
     const storyBlocks = getStoryBlocks();
@@ -12112,7 +12291,7 @@ async function init() {
         scheduleAutoHideRecent('chat changed');
         markVectorIndexDirty('切换聊天');
         syncInjection();
-        renderAll();
+        scheduleRenderAll();
     });
     eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
         await captureInlineGenerationFromLatestMessage();
@@ -12122,7 +12301,7 @@ async function init() {
         scheduleAutoHideRecent('message received');
         markVectorIndexDirty('收到新消息');
         syncInjection();
-        renderAll();
+        scheduleRenderAll();
     });
     for (const event of [event_types.MESSAGE_UPDATED, event_types.MESSAGE_DELETED, event_types.MESSAGE_SWIPED]) {
         eventSource.on(event, (...args) => {
@@ -12142,7 +12321,7 @@ async function init() {
             }
             markVectorIndexDirty('消息变更');
             syncInjection();
-            renderAll();
+            scheduleRenderAll();
         });
     }
 }
