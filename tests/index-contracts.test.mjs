@@ -17,7 +17,9 @@ function extractTemplate(name) {
 function extractFunction(name) {
     const start = source.indexOf(`function ${name}(`);
     assert.notEqual(start, -1, `${name} should exist`);
-    const bodyStart = source.indexOf('{', start);
+    const signatureEnd = source.indexOf(') {', start);
+    assert.notEqual(signatureEnd, -1, `${name} should have a function body`);
+    const bodyStart = signatureEnd + 2;
     let depth = 0;
     for (let index = bodyStart; index < source.length; index += 1) {
         if (source[index] === '{') depth += 1;
@@ -106,4 +108,47 @@ test('hot paths use scoped or coalesced rendering', () => {
     const initStart = source.indexOf('async function init()');
     const initSource = source.slice(initStart);
     assert.match(initSource, /scheduleRenderAll\(\)/);
+});
+
+test('closed workbench and background queues avoid heavy DOM rendering', () => {
+    const ensureSource = extractFunction('ensureState');
+    const renderAllSource = extractFunction('renderAll');
+    const queueProgressSource = extractFunction('renderTaskQueueProgress');
+
+    assert.doesNotMatch(ensureSource, /memoryRecords\s*=\s*buildMemoryRecords/);
+    assert.match(renderAllSource, /if \(!isWorkbenchOpen\(\)\)/);
+    assert.ok(
+        renderAllSource.indexOf('if (!isWorkbenchOpen())') < renderAllSource.indexOf('buildMemoryRecords'),
+        'renderAll should return before deriving records when the workbench is closed',
+    );
+    assert.match(renderAllSource, /renderActiveWorkbenchPanel\(/);
+    assert.match(queueProgressSource, /if \(!isWorkbenchOpen\(\)\)/);
+});
+
+test('large-chat scans avoid quadratic lookup and duplicate opening renders', () => {
+    const scanSource = extractFunction('scanBakemonoBlocks');
+    const openSource = extractFunction('openWorkbench');
+
+    assert.match(scanSource, /previousBlockByContent\s*=\s*new Map/);
+    assert.doesNotMatch(scanSource, /previousBlocks\.find\(/);
+    assert.match(scanSource, /preview\.slice\(-maxStoredScanPreviewItems\)/);
+    assert.match(openSource, /scanBakemonoBlocks\(\{ persist: false, render: false \}\)/);
+    assert.equal((openSource.match(/renderAll\(/g) || []).length, 1);
+});
+
+test('derived UI collections stay out of persisted chat metadata', () => {
+    const setTransientStateArray = Function(`return (${extractFunction('setTransientStateArray')})`)();
+    const state = { memoryRecords: ['legacy'] };
+    setTransientStateArray(state, 'memoryRecords', ['derived']);
+
+    assert.deepEqual(state.memoryRecords, ['derived']);
+    assert.equal(Object.prototype.propertyIsEnumerable.call(state, 'memoryRecords'), false);
+    assert.equal(JSON.stringify(state), '{}');
+});
+
+test('timeline pagination creates DOM only for the visible page', () => {
+    const timelineSource = extractFunction('renderTimeline');
+    assert.match(timelineSource, /const rootFactories = \[\]/);
+    assert.match(timelineSource, /rootFactories\.slice\(start, start \+ timelinePageSize\)\.map/);
+    assert.doesNotMatch(timelineSource, /roots\.push\(make(?:Epic|Stage)Node/);
 });

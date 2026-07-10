@@ -843,6 +843,7 @@ const defaultState = {
     classificationRules: defaultClassificationRules,
     previewLayouts: defaultPreviewLayouts,
     scanPreview: [],
+    lastScanMatchCount: 0,
     lastScanAt: null,
     chatGuard: {
         lastPrunedAt: null,
@@ -859,7 +860,12 @@ let inlineCaptureTimer = null;
 let autoHideRecentTimer = null;
 let scheduledRenderHandle = null;
 let scheduledRenderStatus = '';
+const normalizedChatStates = new WeakSet();
+const sanitizedChatLengths = new WeakMap();
 const vectorEmbeddingRuntimeCache = new Map();
+const maxStoredScanPreviewItems = 240;
+const mobileScanPreviewRenderLimit = 60;
+const desktopScanPreviewRenderLimit = 120;
 const previewPageSize = 8;
 const historyPageSize = 10;
 const timelinePageSize = 25;
@@ -1091,6 +1097,29 @@ function migrateBuiltInStructuredPrompt(prompt, fallback, legacyMarkers) {
     return hasAllContinuations ? current : fallback;
 }
 
+function setTransientStateArray(state, key, value = []) {
+    Object.defineProperty(state, key, {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value: Array.isArray(value) ? value : [],
+    });
+}
+
+function sanitizeChatStateWhenStructureChanges(state) {
+    const context = getContext();
+    const sourceChat = context.chat || chat || [];
+    const chatLength = Array.isArray(sourceChat) ? sourceChat.length : 0;
+    const previousLength = sanitizedChatLengths.get(state);
+    if (previousLength === chatLength) {
+        return;
+    }
+    if (previousLength === undefined || chatLength < previousLength) {
+        sanitizeCurrentChatState(state);
+    }
+    sanitizedChatLengths.set(state, chatLength);
+}
+
 function ensureState() {
     const isNewChatState = !chat_metadata[STORAGE_KEY];
     if (!chat_metadata[STORAGE_KEY]) {
@@ -1098,6 +1127,10 @@ function ensureState() {
     }
 
     const state = chat_metadata[STORAGE_KEY];
+    if (normalizedChatStates.has(state)) {
+        sanitizeChatStateWhenStructureChanges(state);
+        return state;
+    }
     if (isNewChatState) {
         applyGlobalActiveConfigToState(state);
     } else if (state.configInitialized === undefined) {
@@ -1174,8 +1207,8 @@ function ensureState() {
     state.history = Array.isArray(state.history) ? state.history : [];
     state.taskQueue = Array.isArray(state.taskQueue) ? state.taskQueue : [];
     state.autoSummaryTransactions = Array.isArray(state.autoSummaryTransactions) ? state.autoSummaryTransactions : [];
-    state.memoryRecords = Array.isArray(state.memoryRecords) ? state.memoryRecords : [];
-    state.scanPreview = Array.isArray(state.scanPreview) ? state.scanPreview : [];
+    setTransientStateArray(state, 'memoryRecords', state.memoryRecords);
+    setTransientStateArray(state, 'scanPreview', (Array.isArray(state.scanPreview) ? state.scanPreview : []).slice(-maxStoredScanPreviewItems));
     const rawGeneratedMemory = String(state.generatedMemory || state.injection?.content || '');
     state.generatedMemory = normalizeInjectionMemoryBody(rawGeneratedMemory, state.injection?.template);
     if (rawGeneratedMemory.trim() && rawGeneratedMemory.trim() !== state.generatedMemory) {
@@ -1323,9 +1356,8 @@ function ensureState() {
     state.chatGuard = state.chatGuard && typeof state.chatGuard === 'object'
         ? state.chatGuard
         : structuredClone(defaultState.chatGuard);
-    sanitizeCurrentChatState(state);
-
-    state.memoryRecords = buildMemoryRecords(state);
+    normalizedChatStates.add(state);
+    sanitizeChatStateWhenStructureChanges(state);
     return state;
 }
 
@@ -3742,12 +3774,13 @@ function shouldPersistScannedBlock(block, state = ensureState()) {
         || [stageSourceModes.RAW, stageSourceModes.MIXED, stageSourceModes.AUTO].includes(state.stageSourceMode);
 }
 
-function scanBakemonoBlocks({ persist = true } = {}) {
+function scanBakemonoBlocks({ persist = true, render = persist } = {}) {
     const state = ensureState();
     const scanned = [];
     const scannedForBlocks = [];
     const preview = [];
     const previousBlocks = state.blocks;
+    const previousBlockByContent = new Map(previousBlocks.map(block => [block.content, block]));
     const context = getContext();
     const sourceChat = context.chat || chat || [];
     const rules = state.scanRules;
@@ -3797,7 +3830,7 @@ function scanBakemonoBlocks({ persist = true } = {}) {
 
     state.blocks = mergeBlocks(state.blocks, scannedForBlocks, state, { replaceScanned: true });
     for (const block of scannedForBlocks) {
-        const previous = previousBlocks.find(item => item.content === block.content && item.hash !== block.hash);
+        const previous = previousBlockByContent.get(block.content);
         if (previous?.hash && state.coveredBlockHashes.includes(previous.hash)) {
             state.coveredBlockHashes = unique([...state.coveredBlockHashes, block.hash]);
         }
@@ -3805,7 +3838,8 @@ function scanBakemonoBlocks({ persist = true } = {}) {
             state.coveredStageHashes = unique([...state.coveredStageHashes, block.hash]);
         }
     }
-    state.scanPreview = preview;
+    state.scanPreview = preview.slice(-maxStoredScanPreviewItems);
+    state.lastScanMatchCount = scanned.length;
     state.lastScanAt = new Date().toISOString();
 
     if (persist) {
@@ -3813,7 +3847,9 @@ function scanBakemonoBlocks({ persist = true } = {}) {
     }
 
     syncInjection();
-    renderAll(`扫描完成：找到 ${scanned.length} 个可总结片段。`);
+    if (render) {
+        renderAll(`扫描完成：找到 ${scanned.length} 个可总结片段。`);
+    }
     return state.blocks;
 }
 
@@ -8856,14 +8892,58 @@ function scheduleRenderAll(statusText = '') {
         : globalThis.setTimeout(flush, 16);
 }
 
+function isWorkbenchOpen() {
+    const root = document.getElementById('bakemono-workbench-root');
+    return !!root
+        && !root.classList.contains('bakemono-workbench-hidden')
+        && root.getAttribute('aria-hidden') !== 'true';
+}
+
+function getActiveWorkbenchTab() {
+    return document.getElementById('bakemono-workbench-root')?.dataset.activeTab || 'overview';
+}
+
 function renderTaskQueueProgress(statusText = '') {
     const state = ensureState();
+    if (!isWorkbenchOpen()) {
+        return;
+    }
     $('#bakemono-memory-count-drafts').text(state.drafts.length);
-    renderDrafts();
-    renderTaskQueue();
+    if (getActiveWorkbenchTab() === 'drafts') {
+        renderDrafts();
+        renderTaskQueue();
+    }
     if (statusText) {
         $('#bakemono-memory-status-line').text(statusText);
         $('#bakemono-memory-injection-badge').text(statusText);
+    }
+}
+
+function renderActiveWorkbenchPanel(tabName, state, blocks) {
+    if (tabName === 'overview') {
+        renderWorkflowGuide(state);
+        renderAutoHideRecentPanel(state);
+        renderMemoryDatabaseSummary(state);
+    } else if (tabName === 'preview') {
+        renderPreviewSections(blocks.story, blocks.stage, blocks.epic);
+    } else if (tabName === 'records') {
+        renderMemoryRecordList();
+    } else if (tabName === 'timeline') {
+        renderTimeline();
+    } else if (tabName === 'drafts') {
+        renderDrafts();
+        renderHistory();
+        renderTaskQueue();
+    } else if (tabName === 'turn-summary' || tabName === 'tables') {
+        renderTurnSummaryPanel(state);
+    } else if (tabName === 'vector') {
+        renderVectorMemoryPanel(state);
+    } else if (tabName === 'scan') {
+        renderScanPreview();
+    } else if (tabName === 'automation') {
+        renderCustomModelOptions(state.automation.customApi?.models || []);
+    } else if (tabName === 'prompts') {
+        renderPromptPresetControls();
     }
 }
 
@@ -8878,7 +8958,13 @@ function renderAll(statusText = '') {
         scheduledRenderStatus = '';
     }
     const state = ensureState();
-    state.memoryRecords = buildMemoryRecords(state);
+    if (!isWorkbenchOpen()) {
+        return;
+    }
+    const activeTab = getActiveWorkbenchTab();
+    if (activeTab === 'overview' || activeTab === 'records') {
+        state.memoryRecords = buildMemoryRecords(state);
+    }
     const storyBlocks = getStoryBlocks();
     const stageBlocks = [
         ...getBlocksByType(blockTypes.STAGE),
@@ -8909,9 +8995,6 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-output-mode').val(state.outputMode || 'bakemono');
     $('#bakemono-memory-strategy-label').text(getMemoryStrategyLabel(state.memoryStrategy));
     $('#bakemono-memory-workflow-label').text(`${getWorkflowModeLabel(state.workflowMode)} / ${getStageSourceModeLabel(getStageSourceMode(state))}`);
-    renderWorkflowGuide(state);
-    renderAutoHideRecentPanel(state);
-    renderMemoryDatabaseSummary(state);
     const injectionParts = getInjectionMemoryParts(state);
     $('#bakemono-memory-injection-stats').text(`注入：多次 ${injectionParts.stats.epic} / 阶段 ${injectionParts.stats.stage} / 普通 ${injectionParts.stats.story} / 表格 ${injectionParts.stats.table || 0} / 向量 ${injectionParts.stats.vector || 0}`);
     const uncoveredStory = state.storySummaries.filter(item => !(state.coveredBlockHashes || []).includes(item.hash)).length;
@@ -8962,18 +9045,11 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-custom-temperature').val(state.automation.customApi?.temperature ?? defaultAutomation.customApi.temperature);
     $('#bakemono-memory-custom-max-tokens').val(state.automation.customApi?.maxTokens ?? defaultAutomation.customApi.maxTokens);
     $('#bakemono-memory-custom-stream').val(String(!!state.automation.customApi?.stream));
-    renderCustomModelOptions(state.automation.customApi?.models || []);
-    renderPromptPresetControls();
-    renderTurnSummaryPanel(state);
-    renderVectorMemoryPanel(state);
-
-    renderPreviewSections(storyBlocks, dedupedStageBlocks, dedupedEpicBlocks);
-    renderScanPreview();
-    renderDrafts();
-    renderHistory();
-    renderTaskQueue();
-    renderTimeline();
-    renderMemoryRecordList();
+    renderActiveWorkbenchPanel(activeTab, state, {
+        story: storyBlocks,
+        stage: dedupedStageBlocks,
+        epic: dedupedEpicBlocks,
+    });
 
     const injected = state.injection.enabled && renderInjectionContent(state) ? '注入开启' : '注入为空或关闭';
     $('#bakemono-memory-status-line').text(statusText || `${injected}。上次扫描：${state.lastScanAt ? new Date(state.lastScanAt).toLocaleString() : '尚未扫描'}。`);
@@ -9051,8 +9127,21 @@ function renderScanPreview() {
         return;
     }
 
+    const renderLimit = window.matchMedia?.('(max-width: 900px)').matches
+        ? mobileScanPreviewRenderLimit
+        : desktopScanPreviewRenderLimit;
+    const visibleItems = state.scanPreview.slice(-renderLimit);
+    const totalMatches = Math.max(Number(state.lastScanMatchCount || 0), state.scanPreview.length);
+    const omittedCount = Math.max(0, totalMatches - visibleItems.length);
+    if (omittedCount) {
+        const notice = document.createElement('div');
+        notice.className = 'bakemono-memory-empty';
+        notice.textContent = `为降低手机内存占用，仅显示最近 ${visibleItems.length} 条扫描结果；其余 ${omittedCount} 条未创建预览节点。`;
+        container.append(notice);
+    }
+
     const fragment = document.createDocumentFragment();
-    state.scanPreview.forEach(item => {
+    visibleItems.forEach(item => {
         const wrapper = document.createElement('div');
         wrapper.className = 'bakemono-memory-debug-item';
 
@@ -9589,17 +9678,17 @@ function renderTimeline() {
         return createTimelineNode(epic, 'epic', children);
     };
 
-    const roots = [];
+    const rootFactories = [];
     const epicCoveredStage = new Set(state.epicSummaries.flatMap(summary => [
         ...(summary.sourceStageHashes || []),
         ...(summary.sourceHashes || []),
     ]));
     for (const epic of state.epicSummaries.filter(summary => !epicCoveredStage.has(summary.hash))) {
-        roots.push(makeEpicNode({ ...summaryToBlock(epic), type: blockTypes.EPIC }));
+        rootFactories.push(() => makeEpicNode({ ...summaryToBlock(epic), type: blockTypes.EPIC }));
     }
 
     for (const stage of state.stageSummaries.filter(summary => !epicCoveredStage.has(summary.hash))) {
-        roots.push(makeStageNode(stage));
+        rootFactories.push(() => makeStageNode(stage));
     }
 
     const coveredStory = new Set([
@@ -9607,14 +9696,14 @@ function renderTimeline() {
         ...state.epicSummaries.flatMap(summary => (summary.sourceHashes || []).filter(hash => byHash.get(hash)?.type === blockTypes.STORY)),
     ]);
     for (const story of storyBlocks.filter(block => !coveredStory.has(block.hash))) {
-        roots.push(createTimelineNode(story, 'story'));
+        rootFactories.push(() => createTimelineNode(story, 'story'));
     }
 
-    const pageCount = Math.max(1, Math.ceil(roots.length / timelinePageSize));
+    const pageCount = Math.max(1, Math.ceil(rootFactories.length / timelinePageSize));
     timelineState.page = Math.min(Math.max(0, timelineState.page || 0), pageCount - 1);
     const start = timelineState.page * timelinePageSize;
-    const visibleRoots = roots.slice(start, start + timelinePageSize);
-    const pager = createTimelinePager(start, roots.length, pageCount);
+    const visibleRoots = rootFactories.slice(start, start + timelinePageSize).map(createRoot => createRoot());
+    const pager = createTimelinePager(start, rootFactories.length, pageCount);
     container.append(pager.cloneNode(true), ...visibleRoots, pager);
 }
 
@@ -10702,11 +10791,11 @@ function switchWorkbenchTab(tabName) {
     root.querySelectorAll('.bakemono-mobile-actions [data-bakemono-nav]').forEach(button => {
         button.classList.toggle('is-active', button.dataset.bakemonoNav === tabName);
     });
+    renderAll();
     requestAnimationFrame(() => setWorkbenchMenuOpen(false));
     syncMobileCollapsibles(root.querySelector(`.bakemono-workbench-panel[data-bakemono-panel="${panelName}"]`) || root);
     if (tabName === 'preview') {
         requestAnimationFrame(() => {
-            renderPreviewSections();
             stabilizeMobilePreviewScroll();
         });
     } else if (tabName === 'prompts') {
@@ -12231,10 +12320,10 @@ function syncTopNavButton() {
 }
 
 function openWorkbench() {
-    scanBakemonoBlocks({ persist: false });
     const root = document.getElementById('bakemono-workbench-root');
     root?.classList.remove('bakemono-workbench-hidden');
     root?.setAttribute('aria-hidden', 'false');
+    scanBakemonoBlocks({ persist: false, render: false });
     renderAll();
 }
 
