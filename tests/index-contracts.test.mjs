@@ -136,14 +136,12 @@ test('large-chat scans avoid quadratic lookup and duplicate opening renders', ()
     assert.equal((openSource.match(/renderAll\(/g) || []).length, 1);
 });
 
-test('derived UI collections stay out of persisted chat metadata', () => {
-    const setTransientStateArray = Function(`return (${extractFunction('setTransientStateArray')})`)();
-    const state = { memoryRecords: ['legacy'] };
-    setTransientStateArray(state, 'memoryRecords', ['derived']);
-
-    assert.deepEqual(state.memoryRecords, ['derived']);
-    assert.equal(Object.prototype.propertyIsEnumerable.call(state, 'memoryRecords'), false);
-    assert.equal(JSON.stringify(state), '{}');
+test('state normalization remains compatible with SillyTavern metadata objects', () => {
+    const ensureSource = extractFunction('ensureState');
+    assert.doesNotMatch(ensureSource, /setTransientStateArray|Object\.defineProperty/);
+    assert.doesNotMatch(ensureSource, /normalizedChatStates/);
+    assert.match(ensureSource, /state\.memoryRecords = Array\.isArray\(state\.memoryRecords\)/);
+    assert.match(ensureSource, /state\.scanPreview = \(Array\.isArray\(state\.scanPreview\)/);
 });
 
 test('timeline pagination creates DOM only for the visible page', () => {

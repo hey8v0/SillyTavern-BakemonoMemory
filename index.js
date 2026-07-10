@@ -860,7 +860,6 @@ let inlineCaptureTimer = null;
 let autoHideRecentTimer = null;
 let scheduledRenderHandle = null;
 let scheduledRenderStatus = '';
-const normalizedChatStates = new WeakSet();
 const sanitizedChatLengths = new WeakMap();
 const vectorEmbeddingRuntimeCache = new Map();
 const maxStoredScanPreviewItems = 240;
@@ -1097,15 +1096,6 @@ function migrateBuiltInStructuredPrompt(prompt, fallback, legacyMarkers) {
     return hasAllContinuations ? current : fallback;
 }
 
-function setTransientStateArray(state, key, value = []) {
-    Object.defineProperty(state, key, {
-        configurable: true,
-        enumerable: false,
-        writable: true,
-        value: Array.isArray(value) ? value : [],
-    });
-}
-
 function sanitizeChatStateWhenStructureChanges(state) {
     const context = getContext();
     const sourceChat = context.chat || chat || [];
@@ -1127,10 +1117,6 @@ function ensureState() {
     }
 
     const state = chat_metadata[STORAGE_KEY];
-    if (normalizedChatStates.has(state)) {
-        sanitizeChatStateWhenStructureChanges(state);
-        return state;
-    }
     if (isNewChatState) {
         applyGlobalActiveConfigToState(state);
     } else if (state.configInitialized === undefined) {
@@ -1207,8 +1193,8 @@ function ensureState() {
     state.history = Array.isArray(state.history) ? state.history : [];
     state.taskQueue = Array.isArray(state.taskQueue) ? state.taskQueue : [];
     state.autoSummaryTransactions = Array.isArray(state.autoSummaryTransactions) ? state.autoSummaryTransactions : [];
-    setTransientStateArray(state, 'memoryRecords', state.memoryRecords);
-    setTransientStateArray(state, 'scanPreview', (Array.isArray(state.scanPreview) ? state.scanPreview : []).slice(-maxStoredScanPreviewItems));
+    state.memoryRecords = Array.isArray(state.memoryRecords) ? state.memoryRecords : [];
+    state.scanPreview = (Array.isArray(state.scanPreview) ? state.scanPreview : []).slice(-maxStoredScanPreviewItems);
     const rawGeneratedMemory = String(state.generatedMemory || state.injection?.content || '');
     state.generatedMemory = normalizeInjectionMemoryBody(rawGeneratedMemory, state.injection?.template);
     if (rawGeneratedMemory.trim() && rawGeneratedMemory.trim() !== state.generatedMemory) {
@@ -1356,7 +1342,6 @@ function ensureState() {
     state.chatGuard = state.chatGuard && typeof state.chatGuard === 'object'
         ? state.chatGuard
         : structuredClone(defaultState.chatGuard);
-    normalizedChatStates.add(state);
     sanitizeChatStateWhenStructureChanges(state);
     return state;
 }
