@@ -8904,12 +8904,31 @@ function renderTaskQueueProgress(statusText = '') {
     }
 }
 
+function renderActivePresetControls(tabName) {
+    if (tabName === 'overview') {
+        renderPresetControlPair('#bakemono-memory-preset-select', '#bakemono-memory-preset-name');
+    } else if (tabName === 'scan') {
+        renderAreaPresetControl(areaPresetScopes.SCAN, '#bakemono-memory-scan-preset-select', '#bakemono-memory-scan-preset-name');
+    } else if (tabName === 'automation') {
+        renderAreaPresetControl(areaPresetScopes.AUTOMATION, '#bakemono-memory-automation-preset-select', '#bakemono-memory-automation-preset-name');
+        renderAreaPresetControl(areaPresetScopes.API, '#bakemono-memory-api-preset-select', '#bakemono-memory-api-preset-name');
+    } else if (tabName === 'prompts') {
+        renderAreaPresetControl(areaPresetScopes.PROMPTS, '#bakemono-memory-prompts-preset-select', '#bakemono-memory-prompts-preset-name');
+    } else if (tabName === 'turn-summary' || tabName === 'tables') {
+        renderAreaPresetControl(areaPresetScopes.TURN, '#bakemono-memory-turn-preset-select', '#bakemono-memory-turn-preset-name');
+    } else if (tabName === 'injection') {
+        renderAreaPresetControl(areaPresetScopes.INJECTION, '#bakemono-memory-injection-preset-select', '#bakemono-memory-injection-preset-name');
+    } else if (tabName === 'vector') {
+        renderAreaPresetControl(areaPresetScopes.VECTOR, '#bakemono-memory-vector-preset-select', '#bakemono-memory-vector-preset-name');
+    }
+}
+
 function renderActiveWorkbenchPanel(tabName, state, blocks) {
+    renderActivePresetControls(tabName);
     if (tabName === 'overview') {
         renderWorkflowGuide(state);
         renderAutoHideRecentPanel(state);
         renderMemoryDatabaseSummary(state);
-        renderPresetControlPair('#bakemono-memory-preset-select', '#bakemono-memory-preset-name');
     } else if (tabName === 'preview') {
         renderPreviewSections(blocks.story, blocks.stage, blocks.epic);
     } else if (tabName === 'records') {
@@ -8928,8 +8947,6 @@ function renderActiveWorkbenchPanel(tabName, state, blocks) {
         renderScanPreview();
     } else if (tabName === 'automation') {
         renderCustomModelOptions(state.automation.customApi?.models || []);
-    } else if (tabName === 'prompts') {
-        renderPromptPresetControls();
     }
 }
 

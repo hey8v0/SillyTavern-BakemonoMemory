@@ -151,11 +151,18 @@ test('timeline pagination creates DOM only for the visible page', () => {
     assert.doesNotMatch(timelineSource, /roots\.push\(make(?:Epic|Stage)Node/);
 });
 
-test('overview renders the full configuration selector it contains', () => {
-    const panelSource = extractFunction('renderActiveWorkbenchPanel');
-    const overviewStart = panelSource.indexOf("tabName === 'overview'");
-    const previewStart = panelSource.indexOf("tabName === 'preview'");
-    const overviewSource = panelSource.slice(overviewStart, previewStart);
-
-    assert.match(overviewSource, /renderPresetControlPair\('#bakemono-memory-preset-select', '#bakemono-memory-preset-name'\)/);
+test('every config-bearing tab refreshes its own preset selectors', () => {
+    const presetSource = extractFunction('renderActivePresetControls');
+    for (const required of [
+        "renderPresetControlPair('#bakemono-memory-preset-select', '#bakemono-memory-preset-name')",
+        "renderAreaPresetControl(areaPresetScopes.SCAN, '#bakemono-memory-scan-preset-select', '#bakemono-memory-scan-preset-name')",
+        "renderAreaPresetControl(areaPresetScopes.AUTOMATION, '#bakemono-memory-automation-preset-select', '#bakemono-memory-automation-preset-name')",
+        "renderAreaPresetControl(areaPresetScopes.API, '#bakemono-memory-api-preset-select', '#bakemono-memory-api-preset-name')",
+        "renderAreaPresetControl(areaPresetScopes.PROMPTS, '#bakemono-memory-prompts-preset-select', '#bakemono-memory-prompts-preset-name')",
+        "renderAreaPresetControl(areaPresetScopes.TURN, '#bakemono-memory-turn-preset-select', '#bakemono-memory-turn-preset-name')",
+        "renderAreaPresetControl(areaPresetScopes.INJECTION, '#bakemono-memory-injection-preset-select', '#bakemono-memory-injection-preset-name')",
+        "renderAreaPresetControl(areaPresetScopes.VECTOR, '#bakemono-memory-vector-preset-select', '#bakemono-memory-vector-preset-name')",
+    ]) {
+        assert.ok(presetSource.includes(required), `missing active-tab preset render: ${required}`);
+    }
 });
