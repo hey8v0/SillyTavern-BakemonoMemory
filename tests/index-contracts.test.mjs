@@ -3,6 +3,16 @@ import fs from 'node:fs';
 import test from 'node:test';
 
 const source = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+const settingsSource = fs.readFileSync(new URL('../settings.html', import.meta.url), 'utf8');
+
+test('workbench menu branding reuses the clapperboard entry icon', () => {
+    assert.match(
+        settingsSource,
+        /class="bakemono-workbench-menu-mark"[^>]*aria-hidden="true"[^>]*>\s*<i class="fa-solid fa-clapperboard"><\/i>\s*<\/div>/,
+    );
+    assert.doesNotMatch(settingsSource, /class="bakemono-workbench-menu-mark"[^>]*>\s*剪\s*<\/div>/);
+    assert.match(source, /icon\.classList\.add\('fa-solid', 'fa-clapperboard', 'extensionsMenuExtensionButton'\)/);
+});
 
 function extractTemplate(name) {
     const marker = `const ${name} = \``;
