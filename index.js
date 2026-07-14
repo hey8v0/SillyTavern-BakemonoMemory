@@ -9093,7 +9093,6 @@ function renderTaskQueueProgress(statusText = '') {
     }
     if (statusText) {
         $('#bakemono-memory-status-line').text(statusText);
-        $('#bakemono-memory-injection-badge').text(statusText);
     }
 }
 
@@ -9309,7 +9308,7 @@ function renderAll(statusText = '') {
 
     const injected = state.injection.enabled && renderInjectionContent(state) ? '注入开启' : '注入为空或关闭';
     $('#bakemono-memory-status-line').text(statusText || `${injected}。上次扫描：${state.lastScanAt ? new Date(state.lastScanAt).toLocaleString() : '尚未扫描'}。`);
-    $('#bakemono-memory-injection-badge').text(statusText || injected);
+    renderWorkbenchHeaderContext(activeTab, state);
     syncPromptHintButtons();
 }
 
@@ -11416,11 +11415,105 @@ function getWorkbenchPanelKicker(tabName, state = ensureState()) {
     return contexts[tabName] || '剧情剪辑台 · 长期记忆';
 }
 
+function getWorkbenchPanelShortKicker(tabName, state = ensureState()) {
+    const currentFloor = Math.max(0, (Array.isArray(chat) ? chat.length : 1) - 1);
+    const recordCount = Array.isArray(state.memoryRecords) ? state.memoryRecords.length : 0;
+    const tableCount = Array.isArray(state.tableDatabase?.tables) ? state.tableDatabase.tables.length : 0;
+    const vectorCount = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records.length : 0;
+    const contexts = {
+        overview: `剧情剪辑 · ${currentFloor.toLocaleString()}楼`,
+        settings: '工作方式',
+        preview: `剧情回看 · ${(state.storySummaries?.length || 0).toLocaleString()}条`,
+        records: `长期记忆 · ${recordCount.toLocaleString()}条`,
+        tables: `表格 · ${tableCount.toLocaleString()}个`,
+        'turn-summary': `正文处理 · ${currentFloor.toLocaleString()}楼`,
+        drafts: `人工确认 · ${(state.drafts?.length || 0).toLocaleString()}个`,
+        timeline: `章节结构 · ${(state.stageSummaries?.length || 0).toLocaleString()}个`,
+        automation: state.automation?.enabled ? '自动总结 · 运行中' : '自动总结 · 未开启',
+        scan: `扫描识别 · ${(state.scanPreview?.length || 0).toLocaleString()}条`,
+        vector: `语义召回 · ${vectorCount.toLocaleString()}个`,
+        injection: `上下文 · ${renderInjectionContent(state).length.toLocaleString()}字`,
+        prompts: '生成风格',
+        maintenance: `安全维护 · ${(state.autoSummaryTransactions?.length || 0).toLocaleString()}条`,
+    };
+    return contexts[tabName] || '剧情剪辑台';
+}
+
+function getWorkbenchInjectionHeaderStatus(state = ensureState()) {
+    if (!state.injection?.enabled) {
+        return { short: '注入关', full: '已关闭' };
+    }
+    const characterCount = renderInjectionContent(state).length;
+    if (!characterCount) {
+        return { short: '注入空', full: '已开启 · 暂无可注入内容' };
+    }
+    return {
+        short: '注入开',
+        full: `已开启 · ${characterCount.toLocaleString()} 字符`,
+    };
+}
+
 function renderWorkbenchHeaderContext(tabName, state = ensureState()) {
+    const fullContext = getWorkbenchPanelKicker(tabName, state);
+    const shortContext = getWorkbenchPanelShortKicker(tabName, state);
+    const pageTitle = getWorkbenchPanelTitle(tabName);
+    const injectionStatus = getWorkbenchInjectionHeaderStatus(state);
     const kicker = document.getElementById('bakemono-workbench-section-title');
     if (kicker) {
-        kicker.textContent = getWorkbenchPanelKicker(tabName, state);
+        kicker.textContent = fullContext;
     }
+    const shortKicker = document.getElementById('bakemono-workbench-section-title-short');
+    if (shortKicker) {
+        shortKicker.textContent = shortContext;
+    }
+    const trigger = document.getElementById('bakemono-workbench-context-trigger');
+    if (trigger) {
+        trigger.title = `${pageTitle} · ${fullContext} · ${injectionStatus.full}`;
+        trigger.setAttribute('aria-label', `查看完整状态：${pageTitle}，${fullContext}，注入${injectionStatus.full}`);
+    }
+    const badge = document.getElementById('bakemono-memory-injection-badge');
+    if (badge) {
+        badge.textContent = injectionStatus.short;
+        badge.title = `注入状态：${injectionStatus.full}`;
+        badge.setAttribute('aria-label', `查看完整状态：注入${injectionStatus.full}`);
+    }
+    const page = document.getElementById('bakemono-workbench-context-page');
+    if (page) {
+        page.textContent = pageTitle;
+    }
+    const progress = document.getElementById('bakemono-workbench-context-progress');
+    if (progress) {
+        progress.textContent = fullContext;
+    }
+    const injection = document.getElementById('bakemono-workbench-context-injection');
+    if (injection) {
+        injection.textContent = injectionStatus.full;
+    }
+}
+
+function setWorkbenchContextOpen(open) {
+    const root = document.getElementById('bakemono-workbench-root');
+    const popover = document.getElementById('bakemono-workbench-context-popover');
+    if (!root || !popover) {
+        return;
+    }
+    const shouldOpen = !!open;
+    if (shouldOpen && root.classList.contains('is-menu-open')) {
+        setWorkbenchMenuOpen(false);
+    }
+    root.classList.toggle('is-context-open', shouldOpen);
+    popover.hidden = !shouldOpen;
+    for (const trigger of [
+        document.getElementById('bakemono-workbench-context-trigger'),
+        document.getElementById('bakemono-memory-injection-badge'),
+    ]) {
+        trigger?.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    }
+}
+
+function toggleWorkbenchContext() {
+    const root = document.getElementById('bakemono-workbench-root');
+    setWorkbenchContextOpen(!root?.classList.contains('is-context-open'));
 }
 
 function switchWorkbenchTab(tabName) {
@@ -11428,6 +11521,7 @@ function switchWorkbenchTab(tabName) {
     if (!root) {
         return;
     }
+    setWorkbenchContextOpen(false);
     if (!tabName) {
         setWorkbenchMenuOpen(false);
         return;
@@ -11469,6 +11563,9 @@ function setWorkbenchMenuOpen(open) {
     const button = document.getElementById('bakemono-memory-menu-toggle');
     if (!root) {
         return;
+    }
+    if (open) {
+        setWorkbenchContextOpen(false);
     }
     root.classList.toggle('is-menu-open', !!open);
     if (button) {
@@ -11774,6 +11871,34 @@ function bindSettingsEvents() {
     $('#bakemono-memory-menu-toggle').off('click').on('click', () => {
         const root = document.getElementById('bakemono-workbench-root');
         setWorkbenchMenuOpen(!root?.classList.contains('is-menu-open'));
+    });
+    $('#bakemono-workbench-context-trigger, #bakemono-memory-injection-badge').off('click.bakemonoContext').on('click.bakemonoContext', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleWorkbenchContext();
+    });
+    $('#bakemono-workbench-context-trigger').off('keydown.bakemonoContext').on('keydown.bakemonoContext', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        toggleWorkbenchContext();
+    });
+    $(document).off('click.bakemonoContext').on('click.bakemonoContext', event => {
+        const root = document.getElementById('bakemono-workbench-root');
+        if (!root?.classList.contains('is-context-open')) {
+            return;
+        }
+        if (event.target.closest('#bakemono-workbench-context-trigger, #bakemono-memory-injection-badge, #bakemono-workbench-context-popover')) {
+            return;
+        }
+        setWorkbenchContextOpen(false);
+    });
+    $(document).off('keydown.bakemonoContext').on('keydown.bakemonoContext', event => {
+        if (event.key === 'Escape') {
+            setWorkbenchContextOpen(false);
+        }
     });
     $('.bakemono-workbench-tab').off('click').on('click', function (event) {
         event?.preventDefault?.();
@@ -13043,6 +13168,7 @@ function syncTopNavButton() {
 
 function openWorkbench() {
     const root = document.getElementById('bakemono-workbench-root');
+    setWorkbenchContextOpen(false);
     root?.classList.remove('bakemono-workbench-hidden');
     root?.setAttribute('aria-hidden', 'false');
     scanBakemonoBlocks({ persist: false, render: false });
@@ -13051,6 +13177,7 @@ function openWorkbench() {
 
 function closeWorkbench() {
     const root = document.getElementById('bakemono-workbench-root');
+    setWorkbenchContextOpen(false);
     setWorkbenchMenuOpen(false);
     root?.classList.add('bakemono-workbench-hidden');
     root?.setAttribute('aria-hidden', 'true');

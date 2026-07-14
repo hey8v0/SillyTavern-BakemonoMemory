@@ -27,6 +27,24 @@ test('workbench menu branding reuses the clapperboard entry icon', () => {
     assert.match(source, /icon\.classList\.add\('fa-solid', 'fa-clapperboard', 'extensionsMenuExtensionButton'\)/);
 });
 
+test('mobile header exposes complete status through one accessible popover', () => {
+    assert.match(settingsSource, /id="bakemono-workbench-context-trigger"[^>]*role="button"[^>]*tabindex="0"[^>]*aria-controls="bakemono-workbench-context-popover"/);
+    assert.match(settingsSource, /id="bakemono-memory-injection-badge"[^>]*aria-controls="bakemono-workbench-context-popover"/);
+    assert.match(settingsSource, /id="bakemono-workbench-context-popover"[^>]*role="dialog"[^>]*hidden/);
+    assert.match(settingsSource, /id="bakemono-workbench-context-page"/);
+    assert.match(settingsSource, /id="bakemono-workbench-context-progress"/);
+    assert.match(settingsSource, /id="bakemono-workbench-context-injection"/);
+    assert.match(source, /function getWorkbenchPanelShortKicker\(/);
+    assert.match(source, /short: '注入开'/);
+    assert.match(source, /short: '注入空'/);
+    assert.match(source, /short: '注入关'/);
+    assert.match(source, /function setWorkbenchContextOpen\(/);
+    assert.match(source, /event\.key === 'Escape'/);
+    assert.match(styleSource, /Compact header status popover/);
+    assert.match(styleSource, /#bakemono-workbench-section-title\s*\{[^}]*display:\s*none;/s);
+    assert.match(styleSource, /\.bakemono-workbench-kicker-short\s*\{[^}]*display:\s*inline;/s);
+});
+
 test('scene workbench keeps the mobile hierarchy compact', () => {
     assert.match(settingsSource, /class="bakemono-memory-scene-meta"/);
     assert.match(settingsSource, /class="bakemono-memory-next-kicker">剧情剪辑<\/span>/);

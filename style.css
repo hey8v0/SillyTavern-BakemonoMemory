@@ -9226,3 +9226,155 @@
     font-size: var(--bk-type-meta) !important;
   }
 }
+
+/* Compact header status popover -----------------------------------------
+ * The phone header keeps only glanceable status. Both status surfaces open
+ * the same anchored card, so complete context is always one tap away.
+ * -------------------------------------------------------------------------- */
+.bakemono-workbench-context-trigger {
+  position: relative;
+  border-radius: 10px;
+  cursor: pointer;
+  outline: none;
+}
+
+.bakemono-workbench-context-trigger:focus-visible,
+.bakemono-memory-badge:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bk-accent) 72%, transparent);
+  outline-offset: 3px;
+}
+
+.bakemono-workbench-kicker-short,
+.bakemono-workbench-context-caret {
+  display: none;
+}
+
+.bakemono-memory-badge {
+  appearance: none;
+  flex: 0 0 auto;
+  margin: 0;
+  background: color-mix(in srgb, var(--bk-paper-raised) 76%, transparent);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.bakemono-workbench-context-popover[hidden] {
+  display: none !important;
+}
+
+.bakemono-workbench-context-popover {
+  position: absolute;
+  z-index: 45;
+  top: 76px;
+  right: 74px;
+  width: min(390px, calc(100% - 104px));
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--bk-accent) 36%, var(--bk-line));
+  border-radius: 16px;
+  color: var(--bk-ink);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--bk-paper-raised) 98%, var(--bk-accent) 2%), var(--bk-paper));
+  box-shadow: 0 16px 42px color-mix(in srgb, #000 28%, transparent);
+}
+
+.bakemono-workbench-context-popover::before {
+  content: '';
+  height: 5px;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--bk-accent) 68%, transparent) 0 14px,
+    transparent 14px 22px
+  );
+}
+
+.bakemono-workbench-context-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 14px;
+  min-width: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--bk-line);
+}
+
+.bakemono-workbench-context-row:last-child {
+  border-bottom: 0;
+}
+
+.bakemono-workbench-context-row span {
+  color: var(--bk-ink-faint);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.bakemono-workbench-context-row strong {
+  min-width: 0;
+  color: var(--bk-ink);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .bakemono-workbench-title-wrap {
+    padding-right: 14px;
+  }
+
+  #bakemono-workbench-section-title {
+    display: none;
+  }
+
+  .bakemono-workbench-kicker-short {
+    display: inline;
+  }
+
+  .bakemono-workbench-context-caret {
+    position: absolute;
+    right: 0;
+    top: 7px;
+    display: block;
+    color: var(--bk-accent);
+    font-size: 8px;
+    transition: transform 160ms ease;
+  }
+
+  .bakemono-workbench-root.is-context-open .bakemono-workbench-context-caret {
+    transform: rotate(180deg);
+  }
+
+  .bakemono-memory-badge {
+    min-width: 58px;
+    max-width: 64px;
+    min-height: 34px;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+  }
+
+  .bakemono-workbench-context-popover {
+    top: 74px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    border-radius: 18px;
+    box-shadow: 0 18px 46px color-mix(in srgb, #000 32%, transparent);
+  }
+
+  .bakemono-workbench-context-row {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 12px;
+    padding: 13px 15px;
+  }
+
+  .bakemono-workbench-context-row span {
+    font-size: 13px;
+  }
+
+  .bakemono-workbench-context-row strong {
+    font-size: 14px;
+  }
+}

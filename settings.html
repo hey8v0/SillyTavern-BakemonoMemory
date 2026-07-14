@@ -5,21 +5,38 @@
       <button class="menu_button bakemono-icon-button bakemono-menu-toggle" id="bakemono-memory-menu-toggle" title="打开菜单" aria-label="打开菜单" aria-expanded="false">
         <i class="fa-solid fa-bars"></i>
       </button>
-      <div class="bakemono-workbench-title-wrap">
+      <div class="bakemono-workbench-title-wrap bakemono-workbench-context-trigger" id="bakemono-workbench-context-trigger" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false" aria-controls="bakemono-workbench-context-popover" title="查看完整页面状态">
         <div class="bakemono-workbench-kicker">
           <span id="bakemono-workbench-section-title">剧情剪辑台</span>
+          <span id="bakemono-workbench-section-title-short" class="bakemono-workbench-kicker-short" aria-hidden="true">剧情剪辑</span>
           <span class="bakemono-workbench-kicker-divider">/</span>
           <span>通用摘要 · 长期记忆 · 楼层剪辑</span>
         </div>
         <h2 id="bakemono-workbench-title">控制台</h2>
+        <i class="fa-solid fa-chevron-down bakemono-workbench-context-caret" aria-hidden="true"></i>
       </div>
       <div class="bakemono-workbench-header-actions">
-        <span id="bakemono-memory-injection-badge" class="bakemono-memory-badge">等待扫描</span>
+        <button type="button" id="bakemono-memory-injection-badge" class="bakemono-memory-badge" aria-haspopup="dialog" aria-expanded="false" aria-controls="bakemono-workbench-context-popover" title="查看完整注入状态">等待</button>
         <button class="menu_button bakemono-icon-button" id="bakemono-memory-close" title="关闭">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
     </header>
+
+    <aside id="bakemono-workbench-context-popover" class="bakemono-workbench-context-popover" role="dialog" aria-label="当前工作台状态" hidden>
+      <div class="bakemono-workbench-context-row">
+        <span>当前页面</span>
+        <strong id="bakemono-workbench-context-page">控制台</strong>
+      </div>
+      <div class="bakemono-workbench-context-row">
+        <span>页面状态</span>
+        <strong id="bakemono-workbench-context-progress">剧情剪辑台</strong>
+      </div>
+      <div class="bakemono-workbench-context-row">
+        <span>注入状态</span>
+        <strong id="bakemono-workbench-context-injection">等待扫描</strong>
+      </div>
+    </aside>
 
     <nav class="bakemono-workbench-tabs" aria-label="剧情剪辑台功能">
       <div class="bakemono-workbench-menu-head">
