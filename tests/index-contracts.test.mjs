@@ -150,3 +150,12 @@ test('timeline pagination creates DOM only for the visible page', () => {
     assert.match(timelineSource, /rootFactories\.slice\(start, start \+ timelinePageSize\)\.map/);
     assert.doesNotMatch(timelineSource, /roots\.push\(make(?:Epic|Stage)Node/);
 });
+
+test('overview renders the full configuration selector it contains', () => {
+    const panelSource = extractFunction('renderActiveWorkbenchPanel');
+    const overviewStart = panelSource.indexOf("tabName === 'overview'");
+    const previewStart = panelSource.indexOf("tabName === 'preview'");
+    const overviewSource = panelSource.slice(overviewStart, previewStart);
+
+    assert.match(overviewSource, /renderPresetControlPair\('#bakemono-memory-preset-select', '#bakemono-memory-preset-name'\)/);
+});

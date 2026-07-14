@@ -8909,6 +8909,7 @@ function renderActiveWorkbenchPanel(tabName, state, blocks) {
         renderWorkflowGuide(state);
         renderAutoHideRecentPanel(state);
         renderMemoryDatabaseSummary(state);
+        renderPresetControlPair('#bakemono-memory-preset-select', '#bakemono-memory-preset-name');
     } else if (tabName === 'preview') {
         renderPreviewSections(blocks.story, blocks.stage, blocks.epic);
     } else if (tabName === 'records') {
