@@ -8823,6 +8823,7 @@
   --bk-type-meta: 12px;
   --bk-type-copy: 13px;
   --bk-type-label: 14px;
+  --bk-ink-soft: color-mix(in srgb, var(--SmartThemeBodyColor) 76%, transparent);
 }
 
 .bakemono-workbench-root .bakemono-workbench-kicker,
@@ -9102,4 +9103,126 @@
 .bakemono-workbench-root .bakemono-memory-injection-preview-card > textarea {
   font-size: var(--bk-type-copy) !important;
   line-height: 1.7;
+}
+
+/* Phone reading distance pass --------------------------------------------
+ * The desktop editorial scale stays compact, while phone labels and metadata
+ * gain one full step so status information no longer reads like footnotes.
+ * -------------------------------------------------------------------------- */
+@media (max-width: 620px) {
+  .bakemono-workbench-root {
+    --bk-type-meta: 13px;
+    --bk-type-copy: 14px;
+    --bk-type-label: 15px;
+  }
+
+  .bakemono-workbench-root .bakemono-workbench-panel p {
+    font-size: var(--bk-type-copy) !important;
+    line-height: 1.65;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-page-intro p {
+    font-size: var(--bk-type-label) !important;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-scene-code,
+  .bakemono-workbench-root .bakemono-memory-stat span,
+  .bakemono-workbench-root .bakemono-memory-action-copy small,
+  .bakemono-workbench-root .bakemono-memory-preview-page-info,
+  .bakemono-workbench-root .bakemono-memory-preview-result-count,
+  .bakemono-workbench-root .bakemono-memory-record-result-count,
+  .bakemono-workbench-root .bakemono-memory-timeline-legend,
+  .bakemono-workbench-root .bakemono-memory-record-main span,
+  .bakemono-workbench-root .bakemono-memory-record-chip,
+  .bakemono-workbench-root .bakemono-memory-workflow-status-hero > span,
+  .bakemono-workbench-root .bakemono-memory-scan-bars b,
+  .bakemono-workbench-root .bakemono-memory-scan-bars em,
+  .bakemono-workbench-root #bakemono-memory-scan-mode-badge {
+    font-size: var(--bk-type-meta) !important;
+    line-height: 1.5;
+  }
+
+  .bakemono-workbench-root .bakemono-preview-type-button,
+  .bakemono-workbench-root .bakemono-preview-type-button strong,
+  .bakemono-workbench-root .bakemono-preview-page-button,
+  .bakemono-workbench-root .bk-notebook-outer > summary,
+  .bakemono-workbench-root .bakemono-memory-card > summary,
+  .bakemono-workbench-root .nh-chap-label,
+  .bakemono-workbench-root .nh-meta,
+  .bakemono-workbench-root .bk-tab-label {
+    font-size: var(--bk-type-copy) !important;
+    line-height: 1.55;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-record-main strong {
+    font-size: var(--bk-type-label) !important;
+    line-height: 1.45;
+  }
+
+  .bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-outer > summary,
+  .bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card > summary {
+    min-height: 76px;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-record-item {
+    grid-template-columns: 40px minmax(0, 1fr);
+    align-items: start;
+    padding: 13px;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-record-index {
+    width: 40px;
+    height: 40px;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-record-chips {
+    grid-column: 2;
+    justify-self: start;
+    margin-top: 4px;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-workflow-card {
+    min-height: 100px;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-scan-bars > span {
+    min-height: 34px;
+    padding-inline: 10px;
+  }
+
+  .bakemono-workbench-root .bakemono-workbench-menu-head span,
+  .bakemono-workbench-root .bakemono-memory-turn-flow-status,
+  .bakemono-workbench-root .bakemono-memory-table-draft-label,
+  .bakemono-workbench-root .bakemono-memory-turn-flow-step > span,
+  .bakemono-workbench-root .bakemono-memory-review-tabs > button strong,
+  .bakemono-workbench-root .bakemono-memory-review-note,
+  .bakemono-workbench-root .bakemono-memory-review-head-action,
+  .bakemono-workbench-root .bakemono-memory-draft-kind,
+  .bakemono-workbench-root .bakemono-memory-draft-meta > span,
+  .bakemono-workbench-root .bakemono-memory-history-main span,
+  .bakemono-workbench-root .bakemono-memory-timeline-counts span,
+  .bakemono-workbench-root #bakemono-memory-injection-source-total {
+    font-size: var(--bk-type-meta) !important;
+    line-height: 1.5;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-draft-preview,
+  .bakemono-workbench-root .bakemono-memory-history-item,
+  .bakemono-workbench-root .bk-inner-text {
+    font-size: var(--bk-type-copy) !important;
+    line-height: 1.65;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-turn-flow-step strong,
+  .bakemono-workbench-root .bakemono-memory-injection-source-stack strong {
+    font-size: var(--bk-type-label) !important;
+  }
+
+  .bakemono-workbench-root .bakemono-workbench-panel details > summary {
+    font-size: var(--bk-type-label) !important;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-vector-result-score {
+    font-size: var(--bk-type-meta) !important;
+  }
 }

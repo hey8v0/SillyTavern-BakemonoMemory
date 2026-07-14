@@ -51,6 +51,16 @@ test('scene workbench keeps the mobile hierarchy compact', () => {
     assert.match(styleSource, /--bk-display:/);
 });
 
+test('phone typography keeps metadata readable without squeezing archive cards', () => {
+    assert.match(styleSource, /Phone reading distance pass/);
+    assert.match(styleSource, /--bk-type-meta:\s*13px/);
+    assert.match(styleSource, /--bk-type-copy:\s*14px/);
+    assert.match(styleSource, /--bk-type-label:\s*15px/);
+    assert.match(styleSource, /\.bakemono-memory-record-main strong\s*\{[^}]*font-size:\s*var\(--bk-type-label\)\s*!important;/s);
+    assert.match(styleSource, /\.bakemono-memory-record-chips\s*\{[^}]*grid-column:\s*2;/s);
+    assert.match(styleSource, /\.bakemono-memory-scan-bars b,[\s\S]*?font-size:\s*var\(--bk-type-meta\)\s*!important;/s);
+});
+
 test('summary page keeps generation, review, and filtering in the demo hierarchy', () => {
     assert.equal((settingsSource.match(/data-bakemono-summary-mode=/g) || []).length, 3);
     assert.match(settingsSource, /id="bakemono-memory-summary-primary-action"[^>]*data-bakemono-action="generate-stage"/);
