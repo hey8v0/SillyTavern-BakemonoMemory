@@ -4,6 +4,19 @@ import test from 'node:test';
 
 const source = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
 const settingsSource = fs.readFileSync(new URL('../settings.html', import.meta.url), 'utf8');
+const styleSource = fs.readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+
+test('workbench markup and stylesheet remain structurally balanced', () => {
+    const ids = [...settingsSource.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
+    const duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
+    const containerOpenCount = (settingsSource.match(/<(?:section|div|header|nav|main|article|details)(?:\s|>)/g) || []).length;
+    const containerCloseCount = (settingsSource.match(/<\/(?:section|div|header|nav|main|article|details)>/g) || []).length;
+    const cssBraceDelta = (styleSource.match(/\{/g) || []).length - (styleSource.match(/\}/g) || []).length;
+
+    assert.deepEqual(duplicateIds, []);
+    assert.equal(containerOpenCount, containerCloseCount);
+    assert.equal(cssBraceDelta, 0);
+});
 
 test('workbench menu branding reuses the clapperboard entry icon', () => {
     assert.match(
@@ -12,6 +25,83 @@ test('workbench menu branding reuses the clapperboard entry icon', () => {
     );
     assert.doesNotMatch(settingsSource, /class="bakemono-workbench-menu-mark"[^>]*>\s*剪\s*<\/div>/);
     assert.match(source, /icon\.classList\.add\('fa-solid', 'fa-clapperboard', 'extensionsMenuExtensionButton'\)/);
+});
+
+test('scene workbench keeps the mobile hierarchy compact', () => {
+    assert.match(settingsSource, /class="bakemono-memory-scene-meta"/);
+    assert.match(settingsSource, /class="bakemono-memory-next-kicker">剧情剪辑<\/span>/);
+    assert.match(settingsSource, /class="bakemono-memory-status-strip"/);
+    assert.match(settingsSource, /class="menu_button bakemono-memory-action-row"/);
+    assert.match(settingsSource, /class="bakemono-memory-console-disclosure bakemono-memory-maintenance-actions"/);
+    assert.doesNotMatch(settingsSource, /id="bakemono-memory-workflow-description"|class="bakemono-memory-scene-steps"/);
+    assert.match(settingsSource, /data-bakemono-tab="settings"/);
+    assert.match(settingsSource, /data-bakemono-panel="settings"/);
+    assert.match(settingsSource, /<option value="backfill">旧正文补课<\/option>/);
+    const mobileNav = settingsSource.match(/<nav class="bakemono-mobile-actions"[\s\S]*?<\/nav>/)?.[0] || '';
+    assert.deepEqual(
+        [...mobileNav.matchAll(/data-bakemono-nav="([^"]+)"/g)].map(match => match[1]),
+        ['overview', 'preview', 'records'],
+    );
+    assert.match(source, /button\.classList\.toggle\('is-workflow-primary', !!isPrimary\)/);
+    assert.match(styleSource, /\.bakemono-memory-control-deck \[hidden\]\s*\{[^}]*display:\s*none !important;/s);
+    assert.match(styleSource, /\.bakemono-workbench-tabs\s*\{[^}]*scrollbar-width:\s*none;/s);
+    assert.match(styleSource, /@media \(max-width: 900px\)[\s\S]*?\.bakemono-mobile-actions\s*\{[^}]*display:\s*grid;/s);
+    assert.equal((settingsSource.match(/bakemono-memory-page-intro/g) || []).length, 13);
+    assert.match(styleSource, /Scene workbench aesthetic/);
+    assert.match(styleSource, /--bk-display:/);
+});
+
+test('summary page keeps generation, review, and filtering in the demo hierarchy', () => {
+    assert.equal((settingsSource.match(/data-bakemono-summary-mode=/g) || []).length, 3);
+    assert.match(settingsSource, /id="bakemono-memory-summary-primary-action"[^>]*data-bakemono-action="generate-stage"/);
+    assert.match(settingsSource, /class="bakemono-memory-section-head bakemono-memory-summary-list-head"/);
+    assert.match(settingsSource, /class="bakemono-memory-console-disclosure bakemono-memory-preview-filter-disclosure"/);
+    assert.match(source, /function renderSummaryGenerationPanel\(/);
+    assert.match(source, /renderSummaryGenerationPanel\(state, blocks\)/);
+    assert.match(styleSource, /Summary demo precision pass/);
+});
+
+test('archive and timeline pages keep the demo hierarchy without dropping controls', () => {
+    assert.match(settingsSource, /class="bakemono-memory-record-search"/);
+    assert.match(settingsSource, /data-bakemono-record-status="all"/);
+    assert.match(settingsSource, /id="bakemono-memory-record-stat-total"/);
+    assert.match(settingsSource, /class="bakemono-memory-record-filter-disclosure/);
+    assert.match(settingsSource, /id="bakemono-memory-record-kind"/);
+    assert.match(settingsSource, /id="bakemono-memory-record-status"/);
+    assert.match(settingsSource, /class="bakemono-memory-timeline-overview"/);
+    assert.match(settingsSource, /id="bakemono-memory-timeline-epic-count"/);
+    assert.match(source, /className = 'bakemono-memory-timeline-copy'/);
+    assert.match(source, /if \(kind === 'epic'\) \{\s*details\.open = true;/);
+    assert.doesNotMatch(source, /if \(kind !== 'story'\) \{\s*details\.open = true;/);
+});
+
+test('review desk keeps drafts first while preserving task and history operations', () => {
+    assert.match(settingsSource, /data-bakemono-review-view="drafts"/);
+    assert.match(settingsSource, /data-bakemono-review-view="tasks"/);
+    assert.match(settingsSource, /data-bakemono-review-view="history"/);
+    assert.match(settingsSource, /data-bakemono-review-panel="drafts"[^>]*role="tabpanel"/);
+    assert.match(settingsSource, /data-bakemono-action="clear-queue"/);
+    assert.match(settingsSource, /data-bakemono-action="undo"/);
+    assert.match(settingsSource, /data-bakemono-action="clear-history"/);
+    assert.match(source, /function renderReviewPanelTabs/);
+    assert.match(source, /data-bakemono-draft-editor-toggle/);
+    assert.match(source, /bakemono-memory-draft-editor-disclosure/);
+    assert.match(source, /data-bakemono-draft-action="commit"/);
+    assert.match(source, /data-bakemono-draft-action="regenerate"/);
+    assert.match(source, /data-bakemono-draft-action="discard"/);
+});
+
+test('automatic memory and tables keep the demo status-first hierarchy', () => {
+    assert.match(settingsSource, /class="bakemono-memory-turn-status-hero bakemono-turn-panel-card"/);
+    assert.match(settingsSource, /id="bakemono-memory-turn-flow-read"/);
+    assert.match(settingsSource, /class="bakemono-memory-turn-settings/);
+    assert.match(settingsSource, /id="bakemono-memory-table-overview-count"/);
+    assert.match(settingsSource, /class="bakemono-memory-table-diff-head/);
+    assert.match(settingsSource, /id="bakemono-memory-table-draft-list"/);
+    assert.match(settingsSource, /class="[^"]*bakemono-memory-table-maintenance/);
+    assert.match(source, /bakemono-memory-turn-runtime-label/);
+    assert.match(source, /bakemono-memory-table-overview-draft-count/);
+    assert.match(source, /className = 'bakemono-memory-table-diff-list'/);
 });
 
 function extractTemplate(name) {

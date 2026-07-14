@@ -183,6 +183,7 @@
   font-size: 24px;
   line-height: 1.1;
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .bakemono-workbench-header-actions {
@@ -231,8 +232,7 @@
   background:
     linear-gradient(160deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, var(--SmartThemeQuoteColor) 2%), color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeBodyColor) 8%));
   box-shadow: 0 24px 56px rgba(0, 0, 0, 0.42);
-  scrollbar-width: thin;
-  scrollbar-color: var(--bk-line) transparent;
+  scrollbar-width: none;
 }
 
 .bakemono-workbench-root.is-menu-open .bakemono-workbench-tabs {
@@ -245,6 +245,10 @@
 .bk-tab-panel::-webkit-scrollbar {
   height: 6px;
   width: 6px;
+}
+
+.bakemono-workbench-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .bakemono-workbench-tabs::-webkit-scrollbar-thumb,
@@ -374,31 +378,48 @@
 
 .bakemono-memory-status-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+}
+
+.bakemono-memory-status-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 14px 0 22px;
+  border-block: 1px solid var(--bk-line-strong);
 }
 
 .bakemono-memory-stat {
   min-width: 0;
-  padding: 12px;
-  border: 1px dashed var(--bk-line);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+  padding: 13px 8px;
+  text-align: center;
+}
+
+.bakemono-memory-stat + .bakemono-memory-stat {
+  border-left: 1px solid var(--bk-line-strong);
 }
 
 .bakemono-memory-stat span {
   display: block;
-  margin-bottom: 6px;
-  font-size: 12px;
-  opacity: 0.78;
+  margin-top: 5px;
+  color: var(--bk-ink-soft);
+  font-size: 10px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .bakemono-memory-stat strong {
-  font-size: 28px;
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  font-size: clamp(18px, 6vw, 24px);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
   line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bakemono-memory-workflow-picker {
@@ -417,9 +438,9 @@
   align-items: start;
   min-height: 112px;
   padding: 14px;
-  border: 1px dashed var(--bk-line);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+  border: 1px solid var(--bk-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -438,7 +459,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px dashed var(--bk-line);
+  border: 1px solid var(--bk-line);
   border-radius: 50%;
 }
 
@@ -518,11 +539,446 @@
   line-height: 1;
 }
 
-.bakemono-memory-next-steps {
-  margin: 0;
-  padding-left: 20px;
+.bakemono-workbench-panel[data-bakemono-panel="overview"] {
+  width: min(100%, 680px);
+  margin-inline: auto;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] > .bakemono-memory-control-deck {
+  display: block;
+  margin-top: 0;
+}
+
+.bakemono-memory-control-deck [hidden] {
+  display: none !important;
+}
+
+.bakemono-memory-scene-panel {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  margin-top: 0;
+  padding: 20px;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 38%, var(--bk-line));
+  border-radius: 22px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, var(--bk-paper)), var(--bk-paper));
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--bk-shadow) 28%, transparent);
+}
+
+.bakemono-memory-scene-panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 120px;
+  height: 8px;
+  opacity: 0.62;
+  background: repeating-linear-gradient(120deg, var(--bk-accent) 0 14px, transparent 14px 25px);
+  pointer-events: none;
+}
+
+.bakemono-memory-scene-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bakemono-memory-scene-panel h3 {
+  margin: 9px 0 0;
+  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  font-size: clamp(23px, 3vw, 29px);
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.bakemono-memory-scene-code {
+  color: color-mix(in srgb, var(--SmartThemeBodyColor) 82%, var(--SmartThemeQuoteColor) 18%);
+  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.bakemono-memory-scene-progress {
+  height: 5px;
+  margin: 17px 0 14px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bk-line) 72%, transparent);
+}
+
+.bakemono-memory-scene-progress > span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--bk-accent);
+  transition: width 220ms var(--bk-ease);
+}
+
+.bakemono-memory-hero-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.bakemono-memory-scene-panel .bakemono-memory-hero-actions .menu_button {
+  width: 100%;
+  min-height: 46px;
+  justify-content: center;
+  border: 1px solid var(--bk-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bk-paper) 92%, transparent);
+  box-shadow: none;
+  font-weight: 750;
+}
+
+.bakemono-memory-scene-panel .bakemono-memory-hero-actions .menu_button.is-workflow-primary {
+  border-color: transparent;
+  background: var(--bk-accent);
+  color: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, white 8%);
+  box-shadow: 0 9px 20px color-mix(in srgb, var(--SmartThemeQuoteColor) 28%, transparent);
+}
+
+.bakemono-memory-workflow-selector > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  cursor: pointer;
+  list-style: none;
   color: var(--bk-ink-soft);
-  line-height: 1.7;
+  font-size: 11px;
+}
+
+.bakemono-memory-workflow-selector > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bakemono-memory-workflow-selector > summary::after {
+  content: "\f078";
+  margin-left: auto;
+  color: var(--bk-accent);
+  font: var(--fa-font-solid);
+}
+
+.bakemono-memory-workflow-selector[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.bakemono-memory-section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 2px 11px;
+}
+
+.bakemono-memory-section-head .bakemono-memory-next-kicker {
+  margin-bottom: 3px;
+}
+
+.bakemono-memory-section-head h3 {
+  margin: 0;
+  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.bakemono-memory-section-head > button {
+  flex: 0 0 auto;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--bk-accent);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.bakemono-memory-action-list {
+  display: grid;
+  gap: 9px;
+}
+
+.bakemono-memory-control-deck .bakemono-memory-action-row.menu_button {
+  width: 100%;
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  justify-content: initial;
+  padding: 10px 13px;
+  border: 1px solid var(--bk-line);
+  border-radius: 17px;
+  background: color-mix(in srgb, var(--bk-paper) 92%, var(--bk-paper-soft));
+  box-shadow: none;
+  color: inherit;
+  text-align: left;
+}
+
+.bakemono-memory-control-deck .bakemono-memory-action-row.menu_button:hover {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 62%, var(--bk-line));
+}
+
+.bakemono-memory-action-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
+  color: var(--bk-accent);
+  font-size: 16px;
+}
+
+.bakemono-memory-action-copy {
+  min-width: 0;
+}
+
+.bakemono-memory-action-copy strong,
+.bakemono-memory-action-copy small {
+  display: block;
+}
+
+.bakemono-memory-action-copy strong {
+  font-size: 13px;
+}
+
+.bakemono-memory-action-copy small {
+  margin-top: 4px;
+  color: var(--bk-ink-soft);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.bakemono-memory-action-chevron {
+  color: var(--bk-ink-soft);
+  font-size: 11px;
+}
+
+.bakemono-memory-console-disclosure {
+  margin-top: 12px;
+  border: 1px solid var(--bk-line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+}
+
+.bakemono-memory-console-disclosure > summary {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.bakemono-memory-console-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bakemono-memory-console-disclosure > summary > span {
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.bakemono-memory-console-disclosure > summary > span i {
+  width: 20px;
+  color: var(--bk-accent);
+  text-align: center;
+}
+
+.bakemono-memory-console-disclosure > summary > small {
+  margin-left: auto;
+  color: var(--bk-ink-soft);
+  font-size: 10px;
+}
+
+.bakemono-memory-console-disclosure > summary::after {
+  content: "\f078";
+  color: var(--bk-ink-soft);
+  font: var(--fa-font-solid);
+  font-size: 10px;
+}
+
+.bakemono-memory-console-disclosure[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.bakemono-memory-maintenance-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.bakemono-memory-maintenance-grid .menu_button {
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px;
+  border: 1px solid var(--bk-line);
+  border-radius: 12px;
+  background: var(--bk-paper);
+  box-shadow: none;
+  white-space: normal;
+}
+
+.bakemono-memory-detail-status .bakemono-memory-status-grid {
+  margin: 0 10px 10px;
+  border-block: 1px solid var(--bk-line);
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel {
+  display: block;
+  margin-top: 0;
+  padding: 20px;
+  border-radius: 22px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-stat {
+  padding: 13px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-stat strong {
+  font-size: clamp(18px, 6vw, 24px);
+}
+
+.bakemono-memory-settings-panel {
+  width: min(100%, 760px);
+  margin-inline: auto;
+}
+
+.bakemono-memory-settings-intro {
+  padding: 5px 4px 14px;
+}
+
+.bakemono-memory-settings-intro h3 {
+  margin: 5px 0 0;
+  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  font-size: clamp(22px, 3vw, 28px);
+  line-height: 1.35;
+}
+
+.bakemono-memory-settings-intro p {
+  margin: 7px 0 0;
+  color: var(--bk-ink-soft);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-settings-panel > details {
+  margin-top: 10px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--bk-line);
+  border-radius: 17px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+  box-shadow: none;
+}
+
+.bakemono-memory-settings-panel > details > summary {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 11px 14px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  list-style: none;
+}
+
+.bakemono-memory-settings-panel > details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bakemono-memory-settings-panel > details > summary > span:first-child,
+.bakemono-memory-settings-panel > details > summary > .bakemono-memory-summary-title {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.bakemono-memory-settings-panel > details > summary > span:first-child i,
+.bakemono-memory-settings-panel > details > summary > .bakemono-memory-summary-title i {
+  width: 22px;
+  color: var(--bk-accent);
+  text-align: center;
+}
+
+.bakemono-memory-settings-panel > details > summary > small {
+  margin-left: auto;
+  color: var(--bk-ink-soft);
+  font-size: 10px;
+}
+
+.bakemono-memory-settings-panel > details > summary::after {
+  content: "\f078";
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--bk-ink-soft);
+  font: var(--fa-font-solid);
+  font-size: 10px;
+}
+
+.bakemono-memory-settings-panel > details[open] > summary {
+  border-bottom: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-settings-panel > details[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.bakemono-memory-settings-panel > details > :not(summary) {
+  margin-left: 12px;
+  margin-right: 12px;
+}
+
+.bakemono-memory-settings-panel > details > :last-child {
+  margin-bottom: 12px;
+}
+
+.bakemono-memory-settings-panel .bakemono-memory-status-grid {
+  margin-top: 12px;
+  border-block: 1px solid var(--bk-line-strong);
+}
+
+.bakemono-memory-settings-panel .bakemono-memory-settings-block-body {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.bakemono-memory-settings-panel > #bakemono-memory-status-line {
+  margin: 12px 2px 0;
+}
+
+.bakemono-memory-workflow-selector {
+  margin-top: 12px;
+  padding: 0 14px;
+  border: 1px solid var(--bk-line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+}
+
+.bakemono-memory-workflow-selector > summary small {
+  margin-left: auto;
+  color: var(--bk-ink-soft);
+  font-size: 11px;
+}
+
+.bakemono-memory-workflow-selector > summary::after {
+  margin-left: 0;
+}
+
+.bakemono-memory-workflow-selector .bakemono-memory-workflow-picker {
+  margin: 0 0 14px;
 }
 
 .bakemono-memory-advanced-options {
@@ -3066,7 +3522,7 @@
     height: min(92dvh, 860px);
     align-self: end;
     border-radius: 18px 18px 0 0;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
   }
 
   .bakemono-workbench-root {
@@ -3144,6 +3600,11 @@
 
   .bakemono-workbench-main {
     padding: 10px;
+    scrollbar-width: none;
+  }
+
+  .bakemono-workbench-main::-webkit-scrollbar {
+    display: none;
   }
 
   .bakemono-workbench-root[data-active-tab="preview"] .bakemono-workbench-main {
@@ -3175,12 +3636,33 @@
   }
 
   .bakemono-memory-status-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .bakemono-memory-workflow-picker,
   .bakemono-memory-next-panel {
     grid-template-columns: 1fr;
+  }
+
+  .bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel {
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .bakemono-memory-scene-panel h3 {
+    font-size: 23px;
+  }
+
+  .bakemono-memory-maintenance-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bakemono-memory-control-deck .bakemono-memory-action-row.menu_button {
+    min-height: 66px;
+  }
+
+  .bakemono-memory-workflow-selector > summary small {
+    display: none;
   }
 
   .bakemono-memory-database-grid {
@@ -3507,51 +3989,42 @@
 
   .bakemono-mobile-actions {
     position: relative;
-    display: none;
-    overflow-x: auto;
-    gap: 8px;
-    padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
-    border-top: 1px solid var(--SmartThemeBorderColor);
+    z-index: 8;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 7px 8px calc(8px + env(safe-area-inset-bottom));
+    overflow: visible;
+    border-top: 1px solid var(--bk-line);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
-    -webkit-overflow-scrolling: touch;
   }
 
   .bakemono-mobile-actions button {
     position: relative;
-    flex: 0 0 58px;
+    flex: 1 1 auto;
     display: inline-flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 3px;
     min-width: 0;
-    min-height: 48px;
-    border: 1px dashed var(--bk-line);
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    min-height: 46px;
+    border: 0;
+    border-radius: 13px;
+    background: transparent;
     color: inherit;
     font-size: 11px;
     transition: background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
   }
 
   .bakemono-mobile-actions button.is-active {
-    border-style: solid;
-    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 72%, var(--SmartThemeBorderColor) 28%);
-    border-top-color: transparent;
-    border-radius: 0 0 12px 12px;
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeQuoteColor) 6%);
-    box-shadow: inset 0 8px 0 color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeQuoteColor) 6%);
+    border-radius: 13px;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
+    box-shadow: none;
   }
 
   .bakemono-mobile-actions button.is-active::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: -9px;
-    height: 10px;
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeQuoteColor) 6%);
-    pointer-events: none;
+    display: none;
   }
 
   .bakemono-mobile-actions button.is-active i,
@@ -3600,7 +4073,16 @@
   }
 
   .bakemono-workbench-title-wrap {
-    max-width: calc(100vw - 178px);
+    max-width: none;
+  }
+
+  .bakemono-memory-badge {
+    max-width: 116px;
+  }
+
+  .bakemono-memory-settings-panel > details > summary > small,
+  .bakemono-memory-console-disclosure > summary > small {
+    display: none;
   }
 
   .bakemono-memory-status-grid {
@@ -3625,4 +4107,4999 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+/* Automatic memory and table desk precision pass --------------------------- */
+
+.bakemono-workbench-root[data-active-tab="turn-summary"] .bakemono-workbench-panel[data-bakemono-panel="turn-summary"].is-active {
+  width: min(100%, 520px);
+  margin-inline: auto;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-workbench-panel[data-bakemono-panel="turn-summary"].is-active {
+  width: min(100%, 720px);
+  display: block;
+  margin-inline: auto;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-workbench-panel[data-bakemono-panel="turn-summary"].is-active > .bakemono-memory-editor-grid {
+  display: block;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-editor-grid > .bakemono-table-panel-card {
+  min-height: 0;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="turn-summary"] > .bakemono-memory-page-intro {
+  margin: 2px 2px 17px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="turn-summary"] > .bakemono-memory-page-intro .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="turn-summary"] > .bakemono-memory-page-intro h3 {
+  margin-top: 5px;
+  font-size: 26px;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="turn-summary"] > .bakemono-memory-page-intro p {
+  margin-top: 7px;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-turn-status-hero {
+  position: relative;
+  display: grid;
+  gap: 7px;
+  margin-bottom: 18px;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 38%, var(--bk-line));
+  border-radius: 20px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 11%, var(--bk-paper-raised)), var(--bk-paper-raised));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--bk-shadow) 14%, transparent);
+}
+
+.bakemono-memory-turn-status-hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 18px;
+  width: 86px;
+  height: 7px;
+  opacity: 0.46;
+  background: repeating-linear-gradient(135deg, var(--SmartThemeQuoteColor) 0 11px, transparent 11px 18px);
+}
+
+.bakemono-memory-turn-runtime-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-turn-runtime-line small {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.bakemono-memory-turn-runtime-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 30%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+}
+
+.bakemono-memory-turn-status-hero.is-running .bakemono-memory-turn-runtime-dot {
+  background: var(--bk-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+  animation: bakemono-runtime-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes bakemono-runtime-pulse {
+  50% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--SmartThemeQuoteColor) 4%, transparent);
+  }
+}
+
+.bakemono-memory-turn-status-hero > strong {
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 21px;
+  line-height: 1.3;
+}
+
+.bakemono-memory-turn-status-hero > p {
+  margin: 0;
+  color: var(--bk-ink-soft);
+  font-size: 10px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-turn-status-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.bakemono-memory-turn-status-actions .menu_button {
+  width: 100%;
+  min-height: 41px;
+  border-radius: 12px;
+  font-size: 9px;
+}
+
+.bakemono-memory-turn-status-actions .bakemono-memory-turn-primary {
+  border-color: var(--SmartThemeBodyColor) !important;
+  background: var(--SmartThemeBodyColor) !important;
+  color: var(--SmartThemeBlurTintColor) !important;
+  font-weight: 850;
+}
+
+.bakemono-memory-turn-flow-head {
+  margin: 0 2px 9px;
+}
+
+.bakemono-memory-turn-flow-head .bakemono-memory-next-kicker,
+.bakemono-memory-table-current-head .bakemono-memory-next-kicker,
+.bakemono-memory-table-diff-head .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-memory-turn-flow-head h3,
+.bakemono-memory-table-current-head h3,
+.bakemono-memory-table-diff-head h3 {
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.bakemono-memory-turn-flow-status,
+.bakemono-memory-table-draft-label {
+  flex: 0 0 auto;
+  min-height: 23px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+  color: var(--bk-accent);
+  font-size: 8px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.bakemono-memory-turn-flow-list {
+  display: grid;
+  margin-bottom: 12px;
+  border-block: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-turn-flow-step {
+  min-width: 0;
+  min-height: 61px;
+  display: grid;
+  grid-template-columns: 29px minmax(0, 1fr) 20px;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 4px;
+}
+
+.bakemono-memory-turn-flow-step + .bakemono-memory-turn-flow-step {
+  border-top: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-turn-flow-step > span {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--bk-line);
+  border-radius: 9px;
+  color: var(--bk-ink-soft);
+  font-family: var(--bk-display);
+  font-size: 9px;
+}
+
+.bakemono-memory-turn-flow-step > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.bakemono-memory-turn-flow-step strong {
+  color: var(--SmartThemeBodyColor);
+  font-size: 10px;
+}
+
+.bakemono-memory-turn-flow-step small {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.bakemono-memory-turn-flow-step > i {
+  color: transparent;
+  font-size: 9px;
+}
+
+.bakemono-memory-turn-flow-step.is-done > span {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 42%, var(--bk-line));
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 11%, transparent);
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-turn-flow-step.is-done > i {
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-turn-flow-step.is-current {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent), transparent);
+}
+
+.bakemono-memory-turn-flow-step.is-current > span {
+  border-color: var(--bk-accent);
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-turn-flow-step.is-waiting {
+  opacity: 0.68;
+}
+
+.bakemono-memory-turn-settings,
+.bakemono-memory-turn-config-section {
+  margin-bottom: 9px;
+  border-radius: 14px;
+}
+
+.bakemono-memory-turn-settings > summary,
+.bakemono-memory-turn-config-section > summary {
+  min-height: 44px;
+  padding: 8px 12px;
+}
+
+.bakemono-memory-turn-settings > .bakemono-memory-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding: 0 10px 9px;
+}
+
+.bakemono-memory-turn-settings > .bakemono-memory-options .bakemono-memory-field:last-child {
+  grid-column: 1 / -1;
+}
+
+.bakemono-memory-turn-settings > .bakemono-memory-inline-actions {
+  padding: 0 10px 10px;
+}
+
+.bakemono-memory-turn-settings > .bakemono-memory-inline-actions .menu_button {
+  width: 100%;
+}
+
+.bakemono-workbench-root[data-active-tab="turn-summary"] .bakemono-memory-editor-grid {
+  display: grid;
+  gap: 9px;
+}
+
+.bakemono-memory-turn-config-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 10px 10px;
+}
+
+.bakemono-memory-turn-config-body .bakemono-memory-prompt-hint {
+  margin: 0;
+}
+
+.bakemono-memory-turn-config-body .bakemono-memory-preset-controls {
+  margin: 0;
+}
+
+.bakemono-memory-table-overview-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 0 17px;
+  padding: 13px 0;
+  border-block: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-table-overview-strip > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  padding-inline: 7px;
+  text-align: center;
+}
+
+.bakemono-memory-table-overview-strip > div + div {
+  border-left: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-table-overview-strip strong {
+  max-width: 100%;
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: clamp(19px, 6vw, 24px);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bakemono-memory-table-overview-strip span {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-editor-grid > .bakemono-table-panel-card {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-editor-grid > .bakemono-table-panel-card > h4 {
+  display: none;
+}
+
+.bakemono-memory-table-current-head,
+.bakemono-memory-table-diff-head {
+  margin: 0 2px 9px;
+}
+
+.bakemono-memory-table-fill-action {
+  flex: 0 0 auto;
+  min-height: 33px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border: 1px solid var(--SmartThemeBodyColor);
+  border-radius: 999px;
+  background: var(--SmartThemeBodyColor);
+  color: var(--SmartThemeBlurTintColor);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 9px;
+  padding: 11px 12px;
+  border-radius: 14px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 7%, var(--bk-paper-raised)), var(--bk-paper-raised));
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-hero > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-hero strong {
+  font-family: var(--bk-display);
+  font-size: 13px;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-hero .bakemono-memory-status-line {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-quick-actions {
+  display: block;
+}
+
+.bakemono-memory-table-inject-toggle {
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid var(--bk-line);
+  border-radius: 999px;
+  font-size: 8px;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-list-primary {
+  max-height: none;
+  margin: 0 0 19px;
+  overflow: visible;
+  padding: 0;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-item {
+  margin: 0 0 8px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 17px;
+  background: linear-gradient(150deg, var(--bk-paper-raised), color-mix(in srgb, var(--bk-paper) 96%, var(--SmartThemeQuoteColor) 4%));
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-item > summary {
+  padding: 12px;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-summary-head {
+  padding: 0 0 8px;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-summary-head strong {
+  font-family: var(--bk-display);
+  font-size: 13px;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-summary-head span,
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-summary-hint {
+  font-size: 8px;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-preview-scroll {
+  max-width: 100%;
+  border-radius: 11px;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-body {
+  padding: 0 10px 10px;
+}
+
+.bakemono-memory-table-diff-head {
+  margin-top: 17px;
+}
+
+.bakemono-memory-table-draft-list {
+  gap: 9px;
+  margin: 0 0 10px;
+}
+
+.bakemono-memory-table-draft-card {
+  display: grid;
+  gap: 9px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 38%, var(--bk-line));
+  border-radius: 17px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, var(--bk-paper-raised)), var(--bk-paper-raised));
+}
+
+.bakemono-memory-table-draft-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bakemono-memory-table-draft-header small {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+}
+
+.bakemono-memory-table-draft-badge {
+  min-height: 23px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 38%, var(--bk-line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+  color: var(--bk-accent);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.bakemono-memory-table-draft-card > h4 {
+  margin: 0;
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.bakemono-memory-table-draft-meta {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+}
+
+.bakemono-memory-table-diff-list {
+  display: grid;
+  gap: 7px;
+}
+
+.bakemono-memory-table-diff-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 27px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 9px;
+  border: 1px solid var(--bk-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+}
+
+.bakemono-memory-table-diff-sign {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 11%, transparent);
+  color: var(--bk-accent);
+  font-family: var(--bk-display);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.bakemono-memory-table-diff-item.is-delete .bakemono-memory-table-diff-sign {
+  background: color-mix(in srgb, #b74b4b 10%, transparent);
+  color: color-mix(in srgb, #b74b4b 72%, var(--SmartThemeBodyColor) 28%);
+}
+
+.bakemono-memory-table-diff-item > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.bakemono-memory-table-diff-item strong {
+  color: var(--SmartThemeBodyColor);
+  font-size: 9px;
+}
+
+.bakemono-memory-table-diff-item p {
+  margin: 0;
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.bakemono-memory-table-diff-more {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+}
+
+.bakemono-memory-table-draft-details {
+  border-radius: 12px;
+}
+
+.bakemono-memory-table-draft-details > summary {
+  min-height: 39px;
+  padding: 7px 10px;
+}
+
+.bakemono-memory-table-draft-details .bakemono-memory-table-draft-editor {
+  width: calc(100% - 20px);
+  min-height: 140px;
+  margin: 0 10px 8px;
+  padding: 9px;
+  border-radius: 10px;
+  font-size: 9px;
+}
+
+.bakemono-memory-table-draft-secondary-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding: 0 10px 10px;
+}
+
+.bakemono-memory-table-draft-secondary-actions .menu_button,
+.bakemono-memory-table-draft-apply {
+  width: 100%;
+  min-height: 38px;
+  font-size: 9px;
+}
+
+.bakemono-memory-table-draft-apply {
+  border-color: var(--SmartThemeBodyColor) !important;
+  background: var(--SmartThemeBodyColor) !important;
+  color: var(--SmartThemeBlurTintColor) !important;
+  font-weight: 850;
+}
+
+.bakemono-memory-table-maintenance,
+.bakemono-memory-table-prompt-settings {
+  margin-top: 9px;
+  border-radius: 14px;
+}
+
+.bakemono-memory-table-maintenance .bakemono-memory-table-quick-actions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding: 0 10px 10px;
+}
+
+.bakemono-memory-table-maintenance .menu_button {
+  width: 100%;
+  min-height: 36px;
+  font-size: 8px;
+}
+
+.bakemono-memory-table-prompt-settings {
+  margin-bottom: 10px;
+}
+
+.bakemono-memory-table-prompt-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 10px 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bakemono-memory-turn-status-hero.is-running .bakemono-memory-turn-runtime-dot {
+    animation: none;
+  }
+}
+
+@media (max-width: 430px) {
+  .bakemono-memory-turn-settings > .bakemono-memory-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bakemono-memory-turn-settings > .bakemono-memory-options .bakemono-memory-field:last-child {
+    grid-column: auto;
+  }
+
+  .bakemono-memory-table-current-head,
+  .bakemono-memory-table-diff-head,
+  .bakemono-memory-turn-flow-head {
+    align-items: end;
+  }
+
+  .bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bakemono-memory-table-inject-toggle {
+    width: 100%;
+  }
+
+  .bakemono-memory-table-maintenance .bakemono-memory-table-quick-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Review desk demo precision pass ------------------------------------------- */
+
+.bakemono-workbench-panel[data-bakemono-panel="drafts"] {
+  width: min(100%, 520px);
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="drafts"] .bakemono-memory-page-intro {
+  margin: 2px 2px 17px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="drafts"] .bakemono-memory-page-intro .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="drafts"] .bakemono-memory-page-intro h3 {
+  margin-top: 5px;
+  font-size: 26px;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="drafts"] .bakemono-memory-page-intro p {
+  margin-top: 7px;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-review-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  margin-bottom: 18px;
+  padding: 3px;
+  border: 1px solid var(--bk-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bk-line) 38%, transparent);
+}
+
+.bakemono-memory-review-tabs > button {
+  min-width: 0;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--bk-ink-soft);
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.bakemono-memory-review-tabs > button strong {
+  min-width: 19px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+  color: inherit;
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bakemono-memory-review-tabs > button.is-active {
+  background: var(--bk-paper-raised);
+  color: var(--bk-accent);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--bk-shadow) 12%, transparent);
+  font-weight: 800;
+}
+
+.bakemono-memory-review-tabs > button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 66%, transparent);
+  outline-offset: -2px;
+}
+
+.bakemono-memory-review-view.is-active {
+  animation: bakemono-review-enter 180ms var(--bk-ease);
+}
+
+@keyframes bakemono-review-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.bakemono-memory-review-section-head {
+  margin: 0 2px 10px;
+}
+
+.bakemono-memory-review-section-head .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-memory-review-section-head h3 {
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.bakemono-memory-review-note,
+.bakemono-memory-review-head-action {
+  flex: 0 0 auto;
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.bakemono-memory-review-head-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--bk-line);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.bakemono-memory-draft-list,
+.bakemono-memory-task-list,
+.bakemono-memory-history-list {
+  gap: 9px;
+  margin-top: 0;
+}
+
+.bakemono-memory-draft-bulk-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-bottom: 2px;
+  padding: 9px;
+  border: 1px solid var(--bk-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.bakemono-memory-draft-bulk-actions .menu_button {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 8px;
+  font-size: 9px;
+}
+
+.bakemono-memory-draft-card {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid var(--bk-line);
+  border-radius: 18px;
+  background: linear-gradient(150deg, var(--bk-paper-raised), color-mix(in srgb, var(--bk-paper) 96%, var(--SmartThemeQuoteColor) 4%));
+  box-shadow: none;
+}
+
+.bakemono-memory-draft-card:first-of-type {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 46%, var(--bk-line));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 9%, var(--bk-paper-raised)), var(--bk-paper-raised));
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--bk-shadow) 12%, transparent);
+}
+
+.bakemono-memory-draft-card:first-of-type::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 16px;
+  width: 78px;
+  height: 6px;
+  opacity: 0.42;
+  background: repeating-linear-gradient(135deg, var(--SmartThemeQuoteColor) 0 10px, transparent 10px 17px);
+}
+
+.bakemono-memory-draft-header {
+  align-items: center;
+  margin: 0;
+}
+
+.bakemono-memory-draft-header small {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+}
+
+.bakemono-memory-draft-kind {
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 34%, var(--bk-line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+  color: var(--bk-accent) !important;
+  font-size: 8px !important;
+  font-weight: 800;
+}
+
+.bakemono-memory-draft-title-field {
+  width: 100%;
+  min-width: 0;
+  display: block;
+  flex: none;
+}
+
+.bakemono-memory-draft-title-field .bakemono-memory-draft-title {
+  width: 100%;
+  height: auto;
+  min-height: 31px;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.bakemono-memory-draft-title-field .bakemono-memory-draft-title:focus {
+  border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 54%, var(--bk-line));
+}
+
+.bakemono-memory-draft-preview {
+  display: -webkit-box;
+  margin: -2px 0 0;
+  color: var(--bk-ink-soft);
+  font-size: 10px;
+  line-height: 1.65;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.bakemono-memory-draft-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.bakemono-memory-draft-meta > span {
+  min-height: 21px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+}
+
+.bakemono-memory-draft-editor-disclosure {
+  margin: 0;
+  border-radius: 13px;
+}
+
+.bakemono-memory-draft-editor-disclosure > summary {
+  min-height: 40px;
+  padding: 7px 10px;
+}
+
+.bakemono-memory-draft-editor-disclosure .bakemono-memory-draft-editor {
+  width: calc(100% - 20px);
+  min-height: 170px;
+  margin: 0 10px 8px;
+  padding: 10px;
+  border-color: var(--bk-line);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--bk-paper) 94%, var(--SmartThemeQuoteColor) 6%);
+  font-size: 10px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-draft-secondary-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding: 0 10px 10px;
+}
+
+.bakemono-memory-draft-secondary-actions .menu_button {
+  width: 100%;
+  min-height: 36px;
+  font-size: 9px;
+}
+
+.bakemono-memory-draft-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bakemono-memory-draft-actions .menu_button {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--bk-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bk-paper-raised) 88%, transparent);
+  color: var(--SmartThemeBodyColor);
+  font-size: 10px;
+}
+
+.bakemono-memory-draft-actions .bakemono-memory-draft-commit {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 66%, var(--bk-line)) !important;
+  background: var(--SmartThemeBodyColor) !important;
+  color: var(--SmartThemeBlurTintColor) !important;
+  font-weight: 850;
+}
+
+.bakemono-memory-task-item {
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 10px;
+  min-height: 62px;
+  padding: 10px 11px;
+  border: 1px solid var(--bk-line);
+  border-radius: 16px;
+  background: linear-gradient(150deg, var(--bk-paper-raised), color-mix(in srgb, var(--bk-paper) 96%, var(--SmartThemeBodyColor) 4%));
+}
+
+.bakemono-memory-task-item.is-running {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 44%, var(--bk-line));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, var(--bk-paper-raised)), var(--bk-paper-raised));
+}
+
+.bakemono-memory-task-marker,
+.bakemono-memory-history-marker {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+  color: var(--bk-accent);
+  font-family: var(--bk-display);
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.bakemono-memory-task-main strong {
+  color: var(--SmartThemeBodyColor);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.bakemono-memory-task-main span,
+.bakemono-memory-task-main em {
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.bakemono-memory-task-actions .menu_button {
+  min-height: 31px;
+  padding: 5px 8px;
+  border-radius: 10px;
+  font-size: 8px;
+}
+
+.bakemono-memory-review-maintenance {
+  margin-bottom: 10px;
+  border-radius: 14px;
+}
+
+.bakemono-memory-review-maintenance > summary {
+  min-height: 42px;
+  padding: 8px 11px;
+}
+
+.bakemono-memory-review-maintenance .bakemono-memory-inline-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding: 0 10px 10px;
+}
+
+.bakemono-memory-review-maintenance .menu_button {
+  width: 100%;
+  min-height: 36px;
+  font-size: 9px;
+}
+
+.bakemono-memory-history-item {
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 10px;
+  min-height: 60px;
+  padding: 10px 11px;
+  border: 1px solid var(--bk-line);
+  border-radius: 15px;
+  background: linear-gradient(150deg, var(--bk-paper-raised), color-mix(in srgb, var(--bk-paper) 96%, var(--SmartThemeBodyColor) 4%));
+  font-size: 9px;
+}
+
+.bakemono-memory-history-main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.bakemono-memory-history-main strong {
+  color: var(--SmartThemeBodyColor);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.bakemono-memory-history-main span,
+.bakemono-memory-history-item time {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+}
+
+.bakemono-memory-history-item time {
+  max-width: 92px;
+  white-space: normal;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.bakemono-memory-history-pager {
+  margin-top: 2px;
+  padding: 5px;
+  border: 1px solid var(--bk-line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bk-paper-raised) 86%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bakemono-memory-review-view.is-active {
+    animation: none;
+  }
+}
+
+@media (max-width: 430px) {
+  .bakemono-memory-review-section-head {
+    align-items: end;
+  }
+
+  .bakemono-memory-draft-bulk-actions,
+  .bakemono-memory-review-maintenance .bakemono-memory-inline-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bakemono-memory-task-actions {
+    display: grid;
+  }
+
+  .bakemono-memory-task-actions .menu_button span {
+    display: none;
+  }
+
+  .bakemono-memory-history-item time {
+    max-width: 72px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Scene workbench aesthetic
+ * The formal UI follows the approved demo while continuing to inherit the
+ * active SillyTavern theme through SmartTheme variables.
+ * -------------------------------------------------------------------------- */
+
+.bakemono-workbench-root {
+  --bk-display: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", serif;
+  --bk-radius-shell: 24px;
+  --bk-radius-card: 18px;
+  --bk-radius-control: 12px;
+  --bk-line: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+  --bk-line-strong: color-mix(in srgb, var(--SmartThemeBodyColor) 30%, transparent);
+  --bk-paper: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, var(--SmartThemeBodyColor) 5%);
+  --bk-paper-soft: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, var(--SmartThemeBodyColor) 12%);
+  --bk-paper-raised: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, var(--SmartThemeQuoteColor) 3%);
+  --bk-ink-soft: color-mix(in srgb, var(--SmartThemeBodyColor) 68%, transparent);
+  --bk-accent: color-mix(in srgb, var(--SmartThemeQuoteColor) 76%, var(--SmartThemeBodyColor) 24%);
+}
+
+.bakemono-workbench {
+  border-color: var(--bk-line-strong);
+  border-radius: var(--bk-radius-shell);
+  background:
+    radial-gradient(circle at 4% 0%, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent), transparent 30%),
+    var(--bk-paper);
+}
+
+.bakemono-workbench-header {
+  border-bottom: 1px solid var(--bk-line);
+  background: color-mix(in srgb, var(--bk-paper-raised) 94%, transparent);
+}
+
+.bakemono-workbench-header h2,
+.bakemono-workbench-menu-head strong,
+.bakemono-memory-page-intro h3,
+.bakemono-memory-card-panel > h4,
+.bakemono-memory-debug > h4,
+.bakemono-memory-section-head h3,
+.bakemono-memory-scene-panel h3,
+.nh-title {
+  font-family: var(--bk-display);
+}
+
+.bakemono-workbench-header h2 {
+  letter-spacing: -0.035em;
+}
+
+.bakemono-workbench-kicker,
+.bakemono-memory-next-kicker {
+  color: var(--bk-accent);
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+
+.bakemono-memory-badge {
+  border-style: solid;
+  border-color: var(--bk-line);
+  background: color-mix(in srgb, var(--bk-paper-raised) 80%, transparent);
+}
+
+.bakemono-icon-button.menu_button {
+  border-color: var(--bk-line);
+  background: var(--bk-paper-raised);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--bk-shadow) 16%, transparent);
+}
+
+.bakemono-workbench-tabs {
+  border-color: var(--bk-line);
+  background: var(--bk-paper-raised);
+}
+
+.bakemono-workbench-menu-head {
+  border-bottom-style: solid;
+  border-bottom-color: var(--bk-line);
+}
+
+.bakemono-workbench-menu-mark {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 24%, var(--bk-line));
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, var(--bk-paper));
+  color: var(--bk-accent);
+  box-shadow: none;
+}
+
+.bakemono-workbench-menu-mark i {
+  display: block;
+  transform: translateY(0);
+  line-height: 1;
+}
+
+.bakemono-workbench-menu-label {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bakemono-workbench-tab {
+  border-radius: 13px;
+}
+
+.bakemono-workbench-tab:hover {
+  transform: none;
+}
+
+.bakemono-workbench-tab.is-active {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 34%, var(--bk-line));
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, var(--bk-paper));
+  box-shadow: inset 3px 0 0 var(--bk-accent);
+}
+
+.bakemono-workbench-main {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 3%, transparent), transparent 190px),
+    color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeBodyColor) 8%);
+}
+
+.bakemono-workbench-panel:not([data-bakemono-panel="overview"]):not([data-bakemono-panel="turn-summary"]) {
+  width: min(100%, 920px);
+  margin-inline: auto;
+}
+
+.bakemono-memory-page-intro {
+  width: 100%;
+  margin: 2px auto 20px;
+  padding: 4px 3px 18px;
+  border-bottom: 1px solid var(--bk-line-strong);
+}
+
+.bakemono-memory-page-intro h3 {
+  margin: 7px 0 6px;
+  font-size: clamp(26px, 3vw, 36px);
+  font-weight: 650;
+  letter-spacing: -0.04em;
+  line-height: 1.18;
+}
+
+.bakemono-memory-page-intro p {
+  max-width: 700px;
+  margin: 0;
+  color: var(--bk-ink-soft);
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.bakemono-table-page-intro {
+  display: none;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-turn-page-intro {
+  display: none;
+}
+
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-table-page-intro {
+  display: block;
+}
+
+.bakemono-memory-card-panel,
+.bakemono-memory-debug,
+.bakemono-memory-advanced-options,
+.bakemono-memory-workflow-selector,
+.bakemono-memory-console-disclosure,
+.bakemono-memory-table-import {
+  border: 1px solid var(--bk-line);
+  border-radius: var(--bk-radius-card);
+  background: color-mix(in srgb, var(--bk-paper-raised) 88%, transparent);
+  box-shadow: none;
+}
+
+.bakemono-memory-card-panel,
+.bakemono-memory-debug {
+  padding: 16px;
+}
+
+.bakemono-memory-card-panel:hover,
+.bakemono-memory-debug:hover {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, var(--bk-line));
+  box-shadow: none;
+  transform: none;
+}
+
+.bakemono-memory-card-panel > h4,
+.bakemono-memory-debug > h4 {
+  margin: 0 0 14px;
+  color: color-mix(in srgb, var(--SmartThemeBodyColor) 90%, var(--SmartThemeQuoteColor) 10%);
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.bakemono-memory-card-panel > h4 i,
+.bakemono-memory-debug > h4 i {
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-editor-grid,
+.bakemono-memory-layout-grid {
+  gap: 12px;
+}
+
+.bakemono-memory-field,
+.bakemono-memory-editor {
+  gap: 7px;
+}
+
+.bakemono-memory-field > span,
+.bakemono-memory-editor > span {
+  color: var(--bk-ink-soft);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.bakemono-workbench input.text_pole,
+.bakemono-workbench select.text_pole,
+.bakemono-workbench textarea.text_pole {
+  min-height: 40px;
+  border: 1px solid var(--bk-line-strong);
+  border-radius: var(--bk-radius-control);
+  background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeBodyColor) 6%);
+  box-shadow: none;
+}
+
+.bakemono-workbench input.text_pole:focus,
+.bakemono-workbench select.text_pole:focus,
+.bakemono-workbench textarea.text_pole:focus {
+  border-color: var(--bk-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
+}
+
+.bakemono-workbench .menu_button {
+  border: 1px solid var(--bk-line);
+  border-radius: var(--bk-radius-control);
+  background: color-mix(in srgb, var(--bk-paper-raised) 92%, var(--SmartThemeQuoteColor) 8%);
+  box-shadow: none;
+}
+
+.bakemono-workbench .menu_button:hover {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 42%, var(--bk-line));
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, var(--bk-paper));
+  box-shadow: none;
+  transform: none;
+}
+
+.bakemono-memory-scene-panel {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 36%, var(--bk-line));
+  border-radius: 22px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, var(--bk-paper-raised)), var(--bk-paper-raised));
+  box-shadow: 0 14px 36px color-mix(in srgb, var(--bk-shadow) 16%, transparent);
+}
+
+.bakemono-memory-scene-panel::before {
+  height: 9px;
+  opacity: 0.55;
+}
+
+.bakemono-memory-scene-panel .bakemono-memory-hero-actions .menu_button.is-workflow-primary {
+  border-color: transparent;
+  background: var(--bk-accent);
+  color: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, white 6%);
+}
+
+.bakemono-memory-status-strip {
+  margin: 16px 0 26px;
+  border-color: var(--bk-line-strong);
+}
+
+.bakemono-memory-stat {
+  background: transparent;
+}
+
+.bakemono-memory-stat + .bakemono-memory-stat {
+  border-left-color: var(--bk-line-strong);
+}
+
+.bakemono-memory-stat strong {
+  font-family: var(--bk-display);
+}
+
+.bakemono-memory-control-deck .bakemono-memory-action-row.menu_button {
+  border-color: var(--bk-line);
+  background: var(--bk-paper-raised);
+}
+
+.bakemono-memory-action-icon {
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, var(--bk-paper));
+}
+
+.bakemono-memory-workflow-selector > summary,
+.bakemono-memory-console-disclosure > summary,
+.bakemono-memory-settings-block > summary,
+.bakemono-memory-advanced-options > summary,
+.bakemono-memory-table-import > summary {
+  min-height: 48px;
+  padding: 11px 14px;
+}
+
+.bakemono-memory-settings-panel > details,
+.bakemono-memory-settings-panel > .bakemono-memory-status-line {
+  margin-top: 12px;
+}
+
+.bakemono-memory-workflow-card {
+  border-style: solid;
+  border-color: var(--bk-line);
+  border-radius: 15px;
+  background: var(--bk-paper-raised);
+}
+
+.bakemono-memory-database-grid > div,
+.bakemono-memory-status-line,
+.bakemono-memory-prompt-hint {
+  border-style: solid;
+  border-color: var(--bk-line);
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.bakemono-memory-preview-type-tabs {
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 5px;
+  border: 1px solid var(--bk-line);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.bakemono-preview-type-button {
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+}
+
+.bakemono-preview-type-button.is-active {
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, var(--bk-paper-raised));
+  box-shadow: none;
+}
+
+.bakemono-memory-preview-toolbar {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid var(--bk-line);
+  border-radius: var(--bk-radius-card);
+  background: var(--bk-paper-raised);
+}
+
+.bakemono-memory-preview-column,
+.bakemono-memory-notebook,
+.bk-notebook-container {
+  border-color: var(--bk-line);
+  border-radius: var(--bk-radius-card);
+  background: var(--bk-paper-raised);
+  box-shadow: none;
+}
+
+.bk-tabs-nav {
+  border-color: var(--bk-line);
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.bk-tab-label {
+  border-radius: 10px;
+}
+
+.bk-tab-label.is-active,
+.bk-tab-label.active {
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, var(--bk-paper));
+}
+
+.bakemono-memory-record-item,
+.bakemono-memory-draft-card,
+.bakemono-memory-history-item,
+.bakemono-memory-task-item,
+.bakemono-memory-vector-hit,
+.bakemono-memory-vector-detail-item,
+.bakemono-memory-table-item,
+.bakemono-memory-table-draft-card,
+.bakemono-memory-timeline-node {
+  border: 1px solid var(--bk-line);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--bk-paper-raised) 94%, transparent);
+  box-shadow: none;
+}
+
+.bakemono-memory-record-item.is-injected,
+.bakemono-memory-task-item.is-running,
+.bakemono-memory-timeline-node.is-epic {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 44%, var(--bk-line));
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 9%, var(--bk-paper-raised));
+}
+
+.bakemono-memory-record-chip {
+  border: 1px solid var(--bk-line);
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+}
+
+.bakemono-memory-timeline-children {
+  border-left-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 34%, var(--bk-line));
+}
+
+.bakemono-memory-table-hero,
+.bakemono-memory-table-scope,
+.bakemono-memory-table-profile,
+.bakemono-memory-table-flags,
+.bakemono-memory-vector-intent-card,
+.bakemono-memory-vector-step {
+  border-color: var(--bk-line);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.bakemono-memory-table-preview-scroll,
+.bakemono-memory-table-scroll {
+  border-color: var(--bk-line);
+  border-radius: 13px;
+}
+
+.bakemono-memory-prompt-editor-item {
+  border: 1px solid var(--bk-line);
+  border-radius: 15px;
+  background: var(--bk-paper-raised);
+}
+
+.bakemono-memory-prompt-editor-item > summary {
+  min-height: 50px;
+  padding: 12px 14px;
+}
+
+@media (min-width: 901px) {
+  .bakemono-workbench {
+    grid-template-columns: 264px minmax(0, 1fr);
+  }
+
+  .bakemono-workbench-header {
+    padding: 16px 22px 14px;
+    backdrop-filter: none;
+  }
+
+  .bakemono-workbench-header h2 {
+    font-size: clamp(27px, 2.1vw, 32px);
+  }
+
+  .bakemono-workbench-tabs {
+    gap: 15px;
+    padding: 20px 16px;
+    border-right: 1px solid var(--bk-line);
+  }
+
+  .bakemono-workbench-main {
+    padding: 24px clamp(22px, 3vw, 42px) 40px;
+  }
+
+  .bakemono-workbench-root[data-active-tab="tables"] .bakemono-workbench-panel[data-bakemono-panel="turn-summary"].is-active > .bakemono-memory-page-intro {
+    grid-column: 1 / -1;
+  }
+
+  .bakemono-workbench-root[data-active-tab="turn-summary"] .bakemono-workbench-panel[data-bakemono-panel="turn-summary"].is-active {
+    width: min(100%, 920px);
+    margin-inline: auto;
+  }
+
+  .bakemono-memory-card-panel,
+  .bakemono-memory-debug {
+    padding: 18px;
+  }
+
+  .bakemono-memory-card-panel:hover,
+  .bakemono-memory-debug:hover {
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, var(--bk-line));
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .bakemono-workbench-root {
+    --bk-radius-shell: 20px;
+    --bk-radius-card: 16px;
+    --bk-radius-control: 11px;
+  }
+
+  .bakemono-workbench {
+    border-radius: var(--bk-radius-shell) var(--bk-radius-shell) 0 0;
+  }
+
+  .bakemono-workbench-header {
+    padding: 10px 12px;
+  }
+
+  .bakemono-workbench-header h2 {
+    font-size: 21px;
+    letter-spacing: -0.03em;
+  }
+
+  .bakemono-workbench-main {
+    padding: 12px 14px 24px;
+  }
+
+  .bakemono-memory-page-intro {
+    margin-bottom: 14px;
+    padding: 2px 2px 13px;
+  }
+
+  .bakemono-memory-page-intro h3 {
+    margin: 5px 0;
+    font-size: 24px;
+  }
+
+  .bakemono-memory-page-intro p {
+    font-size: 11px;
+    line-height: 1.65;
+  }
+
+  .bakemono-memory-card-panel,
+  .bakemono-memory-debug {
+    padding: 11px;
+  }
+
+  .bakemono-memory-card-panel.bakemono-mobile-collapsible {
+    padding: 7px;
+  }
+
+  .bakemono-mobile-collapsible > h4 {
+    border-style: solid;
+    border-color: var(--bk-line);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+  }
+
+  .bakemono-mobile-collapsible.is-mobile-expanded > h4 {
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 38%, var(--bk-line));
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, var(--bk-paper));
+  }
+
+  .bakemono-memory-preview-type-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .bakemono-preview-type-button {
+    min-width: max-content;
+  }
+
+  .bakemono-memory-preview-toolbar {
+    padding: 11px;
+  }
+
+  .bakemono-mobile-actions {
+    border-top-color: var(--bk-line);
+    background: color-mix(in srgb, var(--bk-paper-raised) 96%, transparent);
+  }
+
+  .bakemono-mobile-actions button.is-active {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, var(--bk-paper));
+  }
+}
+
+@media (max-width: 430px) {
+  .bakemono-workbench {
+    border-radius: 0;
+  }
+
+  .bakemono-workbench-main {
+    padding-inline: 12px;
+  }
+}
+
+/* Overview demo precision pass ------------------------------------------------
+ * Keep this layer deliberately narrow: the console is the reference screen
+ * for spacing and type before the same measurements are carried to other tabs.
+ */
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] {
+  width: min(100%, 520px);
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel {
+  padding: 20px;
+  border-radius: 22px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, var(--bk-paper-raised)),
+    var(--bk-paper-raised)
+  );
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--bk-shadow) 18%, transparent);
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel::before {
+  width: 112px;
+  height: 8px;
+  opacity: 0.64;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-code {
+  font-size: 10px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel h3 {
+  margin-top: 9px;
+  font-size: 25px;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-progress {
+  margin: 17px 0 15px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel .bakemono-memory-hero-actions .menu_button {
+  min-height: 48px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-status-strip {
+  margin: 15px 0 21px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-stat {
+  padding: 13px 5px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-stat strong {
+  font-size: clamp(17px, 5vw, 22px);
+  letter-spacing: -0.04em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-stat span {
+  margin-top: 5px;
+  font-size: 9px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-section-head {
+  gap: 12px;
+  margin: 19px 2px 10px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-section-head .bakemono-memory-next-kicker {
+  margin-bottom: 0;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-section-head h3 {
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-section-head > button {
+  padding: 3px 0;
+  font-size: 10px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-control-deck .bakemono-memory-action-row.menu_button {
+  min-height: 70px;
+  grid-template-columns: 42px minmax(0, 1fr) 16px;
+  border-radius: 17px;
+  background: color-mix(in srgb, var(--bk-paper-raised) 92%, var(--bk-paper-soft));
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-action-copy small {
+  font-size: 9px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-console-disclosure {
+  margin-top: 12px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bk-paper-raised) 92%, var(--bk-paper-soft));
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-console-disclosure > summary {
+  min-height: 52px;
+  gap: 8px;
+  padding: 10px 14px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-console-disclosure > summary > span {
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-console-disclosure > summary > small {
+  font-size: 9px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-maintenance-grid {
+  gap: 7px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-maintenance-grid .menu_button {
+  min-height: 38px;
+  border-radius: 11px;
+  font-size: 10px;
+}
+
+@media (min-width: 901px) {
+  .bakemono-workbench-header h2 {
+    font-size: 28px;
+  }
+
+  .bakemono-workbench-panel[data-bakemono-panel="overview"] {
+    padding-block: 2px 24px;
+  }
+}
+
+@media (max-width: 900px) {
+  .bakemono-workbench {
+    grid-template-rows: 82px minmax(0, 1fr) auto;
+  }
+
+  .bakemono-workbench-header {
+    min-height: 82px;
+    gap: 10px;
+    padding: 10px 14px;
+  }
+
+  .bakemono-workbench-title-wrap {
+    display: block;
+  }
+
+  .bakemono-workbench-kicker {
+    display: flex;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+  }
+
+  .bakemono-workbench-kicker-divider,
+  .bakemono-workbench-kicker span:last-child {
+    display: none;
+  }
+
+  .bakemono-workbench-header h2 {
+    margin-top: 2px;
+    font-size: 22px;
+  }
+
+  .bakemono-icon-button {
+    width: 46px;
+    min-width: 46px;
+    height: 46px;
+    border-radius: 15px;
+  }
+
+  .bakemono-memory-badge {
+    max-width: 86px;
+    padding: 6px 9px;
+    font-size: 9px;
+  }
+
+  .bakemono-workbench-main {
+    padding: 15px 14px 28px;
+  }
+
+  .bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel {
+    padding: 20px;
+    border-radius: 22px;
+  }
+
+  .bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel h3 {
+    font-size: 25px;
+  }
+
+  .bakemono-mobile-actions {
+    min-height: 66px;
+    padding: 8px 9px max(9px, env(safe-area-inset-bottom));
+  }
+
+  .bakemono-mobile-actions button {
+    min-height: 49px;
+    border-radius: 14px;
+    font-size: 9px;
+  }
+}
+
+@media (max-width: 430px) {
+  .bakemono-workbench-main {
+    padding-inline: 14px;
+  }
+}
+
+/* Theme-following paper gradient -------------------------------------------- */
+
+.bakemono-workbench {
+  background:
+    radial-gradient(circle at 5% 0%, color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent), transparent 32%),
+    radial-gradient(circle at 100% 100%, color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent), transparent 38%),
+    linear-gradient(155deg, var(--bk-paper-raised), var(--bk-paper));
+}
+
+.bakemono-workbench-header {
+  background: linear-gradient(
+    115deg,
+    color-mix(in srgb, var(--bk-paper-raised) 96%, var(--SmartThemeQuoteColor) 4%),
+    color-mix(in srgb, var(--bk-paper) 96%, transparent)
+  );
+}
+
+.bakemono-workbench-main {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--SmartThemeQuoteColor) 5%, transparent), transparent 30%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bk-paper-soft) 62%, transparent), color-mix(in srgb, var(--bk-paper) 92%, transparent));
+}
+
+.bakemono-workbench-tabs,
+.bakemono-memory-card-panel,
+.bakemono-memory-debug,
+.bakemono-memory-preview-column,
+.bakemono-memory-record-item,
+.bakemono-memory-draft-card,
+.bakemono-memory-history-item,
+.bakemono-memory-task-item {
+  background: linear-gradient(
+    150deg,
+    color-mix(in srgb, var(--bk-paper-raised) 97%, var(--SmartThemeQuoteColor) 3%),
+    color-mix(in srgb, var(--bk-paper) 96%, var(--SmartThemeBodyColor) 4%)
+  );
+}
+
+/* Summary demo precision pass ------------------------------------------------ */
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] {
+  width: min(100%, 520px);
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-page-intro {
+  margin: 2px 2px 17px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-page-intro .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-page-intro h3 {
+  margin-top: 5px;
+  font-size: 26px;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-page-intro p {
+  margin-top: 7px;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-summary-mode-tabs {
+  display: flex;
+  gap: 7px;
+  margin: 0 0 15px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.bakemono-memory-summary-mode-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.bakemono-memory-summary-mode-tabs > button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid var(--bk-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--bk-ink-soft);
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.bakemono-memory-summary-mode-tabs > button.is-active {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 58%, var(--bk-line));
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, transparent);
+  color: var(--bk-accent);
+  font-weight: 800;
+}
+
+.bakemono-memory-summary-generation-panel {
+  padding: 18px;
+  border-radius: 20px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, var(--bk-paper-raised)),
+    var(--bk-paper-raised)
+  );
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--bk-shadow) 16%, transparent);
+}
+
+.bakemono-memory-summary-generation-panel::before {
+  width: 94px;
+  height: 7px;
+  opacity: 0.5;
+}
+
+.bakemono-memory-summary-generation-panel .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-memory-summary-generation-panel .bakemono-memory-scene-code {
+  font-size: 10px;
+}
+
+.bakemono-memory-summary-generation-panel h3 {
+  margin: 9px 0 0;
+  font-size: 22px;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+}
+
+.bakemono-memory-summary-generation-panel p {
+  margin: 7px 0 0;
+  color: var(--bk-ink-soft);
+  font-size: 10px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-summary-generation-panel .bakemono-memory-scene-progress {
+  margin: 14px 0 13px;
+}
+
+.bakemono-memory-summary-generation-panel .bakemono-memory-hero-actions .menu_button {
+  min-height: 46px;
+  border-radius: 13px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.bakemono-memory-summary-list-head {
+  margin: 19px 2px 10px;
+}
+
+.bakemono-memory-summary-list-head .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-memory-summary-list-head h3 {
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-preview-type-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  margin: 0 0 10px;
+  padding: 3px;
+  overflow: visible;
+  border: 0;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bk-line) 42%, transparent);
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-preview-type-button {
+  min-width: 0;
+  min-height: 35px;
+  gap: 5px;
+  padding: 6px 7px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-preview-type-button i {
+  display: none;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-preview-type-button strong {
+  min-width: 18px;
+  padding: 1px 5px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+  font-size: 8px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-preview-type-button.is-active {
+  background: var(--bk-paper-raised);
+  color: var(--bk-accent);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--bk-shadow) 12%, transparent);
+  font-weight: 800;
+}
+
+.bakemono-memory-preview-filter-disclosure {
+  margin: 0 0 10px;
+  border-radius: 14px;
+}
+
+.bakemono-memory-preview-filter-disclosure > summary {
+  min-height: 44px;
+  padding: 8px 12px;
+}
+
+.bakemono-memory-preview-filter-disclosure .bakemono-memory-preview-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px auto;
+  gap: 8px;
+  margin: 0;
+  padding: 0 10px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-preview-column {
+  gap: 8px;
+  border: 0;
+  background: transparent;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-preview-column > h4 {
+  display: none;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-preview-list {
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-preview-pager {
+  position: static;
+  margin-bottom: 9px;
+  padding: 5px;
+  border: 1px solid var(--bk-line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bk-paper-raised) 86%, transparent);
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-preview-page-button {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 9px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-preview-page-info {
+  font-size: 9px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-notebook,
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card {
+  margin: 0 0 9px;
+  border: 0;
+  background: transparent;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-outer > summary,
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card > summary {
+  width: 100%;
+  min-height: 65px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 16px;
+  gap: 11px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--bk-line);
+  border-radius: 16px;
+  background: linear-gradient(150deg, var(--bk-paper-raised), color-mix(in srgb, var(--bk-paper) 96%, var(--SmartThemeBodyColor) 4%));
+  box-shadow: none;
+  color: inherit;
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: left;
+  transform: none;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-outer > summary::before,
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card > summary::before {
+  content: "#";
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, transparent);
+  color: var(--bk-accent);
+  font-family: var(--bk-display);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] [data-bakemono-preview-column="stage"] .bk-notebook-outer > summary::before,
+.bakemono-workbench-panel[data-bakemono-panel="preview"] [data-bakemono-preview-column="stage"] .bakemono-memory-card > summary::before {
+  content: "S";
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] [data-bakemono-preview-column="epic"] .bk-notebook-outer > summary::before,
+.bakemono-workbench-panel[data-bakemono-panel="preview"] [data-bakemono-preview-column="epic"] .bakemono-memory-card > summary::before {
+  content: "E";
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-outer > summary::after,
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card > summary::after {
+  content: "\f054";
+  color: var(--bk-ink-soft);
+  font: var(--fa-font-solid);
+  font-size: 9px;
+  transition: transform 160ms var(--bk-ease);
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-outer[open] > summary,
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card[open] > summary {
+  border-radius: 16px 16px 0 0;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, var(--bk-paper-raised));
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-outer[open] > summary::after,
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-container,
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card-body {
+  margin: -1px 0 9px;
+  padding: 12px;
+  border: 1px solid var(--bk-line);
+  border-radius: 0 0 16px 16px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--bk-paper-raised) 96%, var(--SmartThemeQuoteColor) 4%), var(--bk-paper));
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-container::before {
+  display: none;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .nh-wrap {
+  padding: 9px 8px 12px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .nh-chap-label {
+  margin-bottom: 7px;
+  padding: 3px 9px;
+  border: 1px solid var(--bk-line);
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
+  font-size: 9px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .nh-title {
+  font-size: 18px;
+  font-weight: 750;
+  text-shadow: none;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .nh-title::after {
+  height: 5px;
+  border-bottom-width: 2px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .nh-divider {
+  margin: 10px auto 7px;
+  border-bottom: 1px solid var(--bk-line);
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .nh-meta {
+  font-size: 9px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-tabs-nav {
+  gap: 6px;
+  padding: 3px 1px 9px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-tab-label {
+  padding: 5px 9px;
+  border: 1px solid var(--bk-line);
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 9px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-tab-label.is-active {
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, transparent);
+  color: var(--bk-accent);
+  transform: none;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-tabs-content-wrapper {
+  min-height: 150px;
+  border-color: var(--bk-line);
+  border-radius: 13px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--bk-paper) 94%, var(--SmartThemeQuoteColor) 6%), var(--bk-paper));
+  background-size: auto;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-tab-panel {
+  padding: 13px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-inner-text {
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+@media (max-width: 900px) {
+  .bakemono-memory-preview-filter-disclosure .bakemono-memory-preview-toolbar {
+    grid-template-columns: minmax(0, 1fr) 110px;
+  }
+
+  .bakemono-memory-preview-filter-disclosure .bakemono-memory-preview-toolbar .bakemono-memory-field:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .bakemono-memory-preview-filter-disclosure .bakemono-memory-preview-toolbar .menu_button {
+    width: 100%;
+  }
+}
+
+/* Archive and timeline demo precision pass ---------------------------------- */
+
+.bakemono-workbench-panel[data-bakemono-panel="records"],
+.bakemono-workbench-panel[data-bakemono-panel="timeline"] {
+  width: min(100%, 520px);
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="records"] .bakemono-memory-page-intro,
+.bakemono-workbench-panel[data-bakemono-panel="timeline"] .bakemono-memory-page-intro {
+  margin: 2px 2px 17px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="records"] .bakemono-memory-page-intro .bakemono-memory-next-kicker,
+.bakemono-workbench-panel[data-bakemono-panel="timeline"] .bakemono-memory-page-intro .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="records"] .bakemono-memory-page-intro h3,
+.bakemono-workbench-panel[data-bakemono-panel="timeline"] .bakemono-memory-page-intro h3 {
+  margin-top: 5px;
+  font-size: 26px;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="records"] .bakemono-memory-page-intro p,
+.bakemono-workbench-panel[data-bakemono-panel="timeline"] .bakemono-memory-page-intro p {
+  margin-top: 7px;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-record-search {
+  min-width: 0;
+  height: 46px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 0 14px;
+  border: 1px solid var(--bk-line);
+  border-radius: 15px;
+  background: linear-gradient(145deg, var(--bk-paper-raised), color-mix(in srgb, var(--bk-paper) 96%, var(--SmartThemeQuoteColor) 4%));
+  color: var(--bk-ink-soft);
+}
+
+.bakemono-memory-record-search:focus-within {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 62%, var(--bk-line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+}
+
+.bakemono-memory-record-search .text_pole {
+  width: 100%;
+  height: 42px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--SmartThemeBodyColor);
+  font-size: 11px;
+}
+
+.bakemono-memory-record-quick-filters {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 15px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.bakemono-memory-record-quick-filters::-webkit-scrollbar {
+  display: none;
+}
+
+.bakemono-memory-record-quick-filters > button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--bk-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--bk-ink-soft);
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.bakemono-memory-record-quick-filters > button.is-active {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 58%, var(--bk-line));
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, transparent);
+  color: var(--bk-accent);
+  font-weight: 800;
+}
+
+.bakemono-memory-record-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 0 12px;
+  padding: 13px 0;
+  border-block: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-record-stat-strip > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  padding: 0 7px;
+  text-align: center;
+}
+
+.bakemono-memory-record-stat-strip > div + div {
+  border-left: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-record-stat-strip strong {
+  max-width: 100%;
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: clamp(19px, 6vw, 25px);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bakemono-memory-record-stat-strip span {
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.bakemono-memory-record-filter-disclosure {
+  margin: 0 0 17px;
+  border-radius: 14px;
+}
+
+.bakemono-memory-record-filter-disclosure > summary {
+  min-height: 43px;
+  padding: 8px 12px;
+}
+
+.bakemono-memory-record-filter-disclosure .bakemono-memory-preview-toolbar {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0 10px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.bakemono-memory-record-filter-disclosure .menu_button {
+  width: 100%;
+}
+
+.bakemono-memory-record-section-head,
+.bakemono-memory-timeline-section-head {
+  margin: 0 2px 9px;
+}
+
+.bakemono-memory-record-section-head .bakemono-memory-next-kicker,
+.bakemono-memory-timeline-section-head .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-memory-record-section-head h3,
+.bakemono-memory-timeline-section-head h3 {
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.bakemono-memory-record-result-count,
+.bakemono-memory-timeline-legend {
+  flex: 0 0 auto;
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.bakemono-memory-timeline-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bakemono-memory-timeline-legend i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bk-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+}
+
+.bakemono-memory-record-surface,
+.bakemono-memory-timeline-surface {
+  min-width: 0;
+}
+
+.bakemono-memory-record-list {
+  display: grid;
+  gap: 8px;
+}
+
+.bakemono-memory-record-item {
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 11px;
+  min-height: 64px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: linear-gradient(150deg, var(--bk-paper-raised), color-mix(in srgb, var(--bk-paper) 96%, var(--SmartThemeBodyColor) 4%));
+}
+
+.bakemono-memory-record-item.is-covered,
+.bakemono-memory-record-item.is-archived {
+  opacity: 0.72;
+}
+
+.bakemono-memory-record-index {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, transparent);
+  color: var(--bk-accent);
+  font-family: var(--bk-display);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.bakemono-memory-record-index.is-epic {
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+}
+
+.bakemono-memory-record-main {
+  gap: 3px;
+}
+
+.bakemono-memory-record-main strong {
+  color: var(--SmartThemeBodyColor);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.bakemono-memory-record-main span {
+  display: -webkit-box;
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.bakemono-memory-record-chips {
+  align-self: center;
+  gap: 4px;
+}
+
+.bakemono-memory-record-chip {
+  min-height: 22px;
+  padding: 3px 7px;
+  font-size: 8px;
+}
+
+.bakemono-memory-record-chip:not(:first-child) {
+  display: none;
+}
+
+.bakemono-memory-record-pager,
+.bakemono-memory-timeline-pager {
+  margin-top: 4px;
+  padding: 5px;
+  border: 1px solid var(--bk-line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bk-paper-raised) 86%, transparent);
+}
+
+.bakemono-memory-timeline-overview {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 38%, var(--bk-line));
+  border-radius: 20px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, var(--bk-paper-raised)), var(--bk-paper-raised));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--bk-shadow) 14%, transparent);
+}
+
+.bakemono-memory-timeline-overview::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 18px;
+  width: 94px;
+  height: 7px;
+  opacity: 0.5;
+  background: repeating-linear-gradient(135deg, var(--SmartThemeQuoteColor) 0 12px, transparent 12px 20px);
+}
+
+.bakemono-memory-timeline-overview > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.bakemono-memory-timeline-overview .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-memory-timeline-overview strong {
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.bakemono-memory-timeline-overview small {
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.bakemono-memory-timeline-counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding-top: 12px;
+  border-top: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-timeline-counts span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+}
+
+.bakemono-memory-timeline-counts span + span {
+  border-left: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-timeline-counts b {
+  max-width: 100%;
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bakemono-memory-timeline {
+  position: relative;
+  display: grid;
+  gap: 8px;
+}
+
+.bakemono-memory-timeline-node,
+.bakemono-memory-timeline-node.is-stage,
+.bakemono-memory-timeline-node.is-story {
+  margin-left: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
+}
+
+.bakemono-memory-timeline-node > summary {
+  min-width: 0;
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) 12px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 10px 10px 3px;
+  border-bottom: 1px solid var(--bk-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.bakemono-memory-timeline-node.is-epic > summary {
+  min-height: 78px;
+  padding: 13px 12px;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, var(--bk-line));
+  border-radius: 16px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, var(--bk-paper-raised)), var(--bk-paper-raised));
+}
+
+.bakemono-memory-timeline-dot {
+  width: 9px;
+  height: 9px;
+  display: block;
+  border: 2px solid var(--bk-paper-raised);
+  border-radius: 999px;
+  background: var(--bk-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--SmartThemeQuoteColor) 50%, var(--bk-line));
+}
+
+.bakemono-memory-timeline-node.is-story .bakemono-memory-timeline-dot {
+  width: 7px;
+  height: 7px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 32%, var(--bk-paper));
+}
+
+.bakemono-memory-timeline-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  flex: 1 1 auto !important;
+  color: inherit !important;
+  font-size: inherit !important;
+}
+
+.bakemono-memory-timeline-copy small {
+  color: var(--bk-accent);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.bakemono-memory-timeline-copy strong {
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.bakemono-memory-timeline-node.is-epic .bakemono-memory-timeline-copy strong {
+  font-size: 16px;
+}
+
+.bakemono-memory-timeline-meta {
+  min-width: 0;
+  display: block;
+  flex: 1 1 auto !important;
+  color: var(--bk-ink-soft) !important;
+  font-size: 9px !important;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.bakemono-memory-timeline-toggle {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+  transition: transform 160ms var(--bk-ease);
+}
+
+.bakemono-memory-timeline-node[open] > summary .bakemono-memory-timeline-toggle {
+  transform: rotate(90deg);
+}
+
+.bakemono-memory-timeline-children {
+  gap: 2px;
+  margin: 3px 0 4px 7px;
+  padding: 2px 0 2px 18px;
+  border-left: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 34%, var(--bk-line));
+}
+
+.bakemono-memory-timeline-children:empty {
+  display: none;
+}
+
+@media (max-width: 430px) {
+  .bakemono-memory-record-filter-disclosure .bakemono-memory-preview-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bakemono-memory-record-item {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    gap: 9px;
+    padding-inline: 10px;
+  }
+
+  .bakemono-memory-record-index {
+    width: 36px;
+    height: 36px;
+  }
+
+  .bakemono-memory-record-chip {
+    max-width: 62px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .bakemono-memory-timeline-section-head {
+    align-items: end;
+  }
+}
+
+/* Vector recall and automation demo precision pass ------------------------ */
+
+.bakemono-workbench-panel[data-bakemono-panel="vector"],
+.bakemono-workbench-panel[data-bakemono-panel="automation"] {
+  width: min(100%, 560px);
+  margin-inline: auto;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="vector"] > .bakemono-memory-page-intro,
+.bakemono-workbench-panel[data-bakemono-panel="automation"] > .bakemono-memory-page-intro {
+  margin: 2px 2px 17px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="vector"] > .bakemono-memory-page-intro .bakemono-memory-next-kicker,
+.bakemono-workbench-panel[data-bakemono-panel="automation"] > .bakemono-memory-page-intro .bakemono-memory-next-kicker,
+.bakemono-memory-vector-result-head .bakemono-memory-next-kicker,
+.bakemono-memory-automation-section-head .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="vector"] > .bakemono-memory-page-intro h3,
+.bakemono-workbench-panel[data-bakemono-panel="automation"] > .bakemono-memory-page-intro h3 {
+  margin-top: 5px;
+  font-size: 26px;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="vector"] > .bakemono-memory-page-intro p,
+.bakemono-workbench-panel[data-bakemono-panel="automation"] > .bakemono-memory-page-intro p {
+  margin-top: 7px;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-vector-status-hero,
+.bakemono-memory-automation-hero {
+  position: relative;
+  display: grid;
+  gap: 7px;
+  margin-bottom: 14px;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 38%, var(--bk-line));
+  border-radius: 20px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, var(--bk-paper-raised)), var(--bk-paper-raised));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--bk-shadow) 14%, transparent);
+}
+
+.bakemono-memory-vector-status-hero::before,
+.bakemono-memory-automation-hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 18px;
+  width: 88px;
+  height: 7px;
+  opacity: 0.46;
+  background: repeating-linear-gradient(135deg, var(--SmartThemeQuoteColor) 0 11px, transparent 11px 18px);
+}
+
+.bakemono-memory-vector-runtime-line,
+.bakemono-memory-automation-runtime-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-vector-runtime-line small,
+.bakemono-memory-automation-runtime-line small {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bakemono-memory-vector-runtime-line > span:last-child,
+.bakemono-memory-automation-runtime-line > span:last-child,
+#bakemono-memory-vector-result-count,
+#bakemono-memory-automation-rule-status {
+  flex: 0 0 auto;
+  min-height: 23px;
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+  color: var(--bk-accent);
+  font-size: 8px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.bakemono-memory-vector-runtime-dot,
+.bakemono-memory-automation-runtime-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+}
+
+.bakemono-memory-vector-status-hero.is-healthy .bakemono-memory-vector-runtime-dot,
+.bakemono-memory-automation-hero.is-running .bakemono-memory-automation-runtime-dot {
+  background: var(--bk-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+}
+
+.bakemono-memory-vector-status-hero.is-dirty .bakemono-memory-vector-runtime-dot,
+.bakemono-memory-automation-hero.is-ready .bakemono-memory-automation-runtime-dot {
+  background: color-mix(in srgb, #c48a3d 68%, var(--SmartThemeBodyColor));
+}
+
+.bakemono-memory-vector-status-hero > strong,
+.bakemono-memory-automation-hero > strong {
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.bakemono-memory-vector-status-hero > p,
+.bakemono-memory-automation-hero > p {
+  margin: 0;
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-vector-meter,
+.bakemono-memory-automation-progress {
+  height: 5px;
+  margin: 4px 0 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 9%, transparent);
+}
+
+.bakemono-memory-vector-meter > span,
+.bakemono-memory-automation-progress > span {
+  width: 0;
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--bk-accent), color-mix(in srgb, var(--SmartThemeQuoteColor) 58%, var(--SmartThemeBodyColor)));
+  transition: width 180ms var(--bk-ease);
+}
+
+.bakemono-memory-vector-index-primary,
+.bakemono-memory-automation-primary {
+  width: 100%;
+  min-height: 41px;
+  border-color: var(--SmartThemeBodyColor) !important;
+  border-radius: 12px;
+  background: var(--SmartThemeBodyColor) !important;
+  color: var(--SmartThemeBlurTintColor) !important;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.bakemono-memory-vector-query-shell {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 17px;
+  padding: 7px 8px 7px 12px;
+  border: 1px solid var(--bk-line);
+  border-radius: 14px;
+  background: linear-gradient(145deg, var(--bk-paper-raised), color-mix(in srgb, var(--bk-paper) 96%, var(--SmartThemeQuoteColor) 4%));
+}
+
+.bakemono-memory-vector-query-shell > i {
+  color: var(--bk-accent);
+  font-size: 10px;
+}
+
+.bakemono-memory-vector-query-shell > textarea.text_pole {
+  min-width: 0;
+  min-height: 36px;
+  max-height: 80px;
+  margin: 0;
+  padding: 8px 2px;
+  overflow-y: auto;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--SmartThemeBodyColor);
+  font-size: 9px;
+  line-height: 1.5;
+  resize: none;
+}
+
+.bakemono-memory-vector-query-shell > button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
+  color: var(--bk-accent);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 850;
+}
+
+.bakemono-memory-vector-result-head,
+.bakemono-memory-automation-section-head {
+  margin: 0 2px 9px;
+}
+
+.bakemono-memory-vector-result-head h3,
+.bakemono-memory-automation-section-head h3 {
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.bakemono-memory-vector-result-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 13px;
+}
+
+.bakemono-memory-vector-result-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 45px minmax(0, 1fr);
+  gap: 11px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--bk-line);
+  border-radius: 15px;
+  background: linear-gradient(150deg, var(--bk-paper-raised), color-mix(in srgb, var(--bk-paper) 96%, var(--SmartThemeQuoteColor) 4%));
+}
+
+.bakemono-memory-vector-result-score {
+  width: 43px;
+  height: 43px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+  color: var(--bk-accent);
+  font-family: var(--bk-display);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.bakemono-memory-vector-result-item > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.bakemono-memory-vector-result-item strong {
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.bakemono-memory-vector-result-item p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.bakemono-memory-vector-result-item small {
+  color: var(--bk-accent);
+  font-size: 8px;
+}
+
+.bakemono-memory-vector-result-empty {
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: 35px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  padding: 13px;
+  border: 1px dashed var(--bk-line);
+  border-radius: 15px;
+  color: var(--bk-ink-soft);
+}
+
+.bakemono-memory-vector-result-empty > i {
+  width: 35px;
+  height: 35px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-vector-result-empty > div {
+  display: grid;
+  gap: 3px;
+}
+
+.bakemono-memory-vector-result-empty strong {
+  color: var(--SmartThemeBodyColor);
+  font-size: 10px;
+}
+
+.bakemono-memory-vector-result-empty span {
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="vector"] > .bakemono-memory-editor-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.bakemono-memory-vector-disclosure,
+.bakemono-memory-automation-disclosure {
+  margin-bottom: 8px;
+  border-radius: 14px;
+}
+
+.bakemono-memory-vector-disclosure > summary,
+.bakemono-memory-automation-disclosure > summary {
+  min-height: 44px;
+  padding: 8px 12px;
+}
+
+.bakemono-memory-vector-disclosure-body,
+.bakemono-memory-automation-disclosure-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 10px 10px;
+}
+
+.bakemono-memory-vector-disclosure-body > .bakemono-memory-prompt-hint,
+.bakemono-memory-vector-disclosure-body > .bakemono-memory-preset-controls,
+.bakemono-memory-vector-disclosure-body > .bakemono-memory-inline-actions,
+.bakemono-memory-automation-disclosure-body > .bakemono-memory-preset-controls {
+  margin: 0;
+}
+
+.bakemono-memory-vector-disclosure-body > .bakemono-memory-inline-actions,
+.bakemono-memory-vector-disclosure-body > .bakemono-memory-preset-controls,
+.bakemono-memory-automation-disclosure-body > .bakemono-memory-preset-controls {
+  width: 100%;
+}
+
+.bakemono-memory-vector-recall-card {
+  margin-top: 1px;
+}
+
+.bakemono-memory-automation-hero-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.bakemono-memory-automation-hero-actions .menu_button {
+  width: 100%;
+  min-height: 41px;
+  border-radius: 12px;
+  font-size: 9px;
+}
+
+.bakemono-memory-automation-settings-list {
+  display: grid;
+  margin-bottom: 12px;
+  border-block: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-automation-setting-row {
+  min-width: 0;
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 150px);
+  gap: 12px;
+  align-items: center;
+  padding: 9px 4px;
+}
+
+.bakemono-memory-automation-setting-row[hidden] {
+  display: none;
+}
+
+.bakemono-memory-automation-setting-row + .bakemono-memory-automation-setting-row {
+  border-top: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-automation-setting-row > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.bakemono-memory-automation-setting-row strong {
+  color: var(--SmartThemeBodyColor);
+  font-size: 10px;
+}
+
+.bakemono-memory-automation-setting-row small {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.bakemono-memory-automation-setting-row > .text_pole {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 10px;
+  font-size: 8px;
+}
+
+.bakemono-memory-automation-setting-row > input[type="checkbox"] {
+  width: 34px;
+  height: 18px;
+  justify-self: end;
+  accent-color: var(--SmartThemeQuoteColor);
+}
+
+.bakemono-memory-automation-safety-note {
+  margin: 11px 0 0;
+}
+
+@media (max-width: 430px) {
+  .bakemono-memory-vector-status-hero,
+  .bakemono-memory-automation-hero {
+    padding: 16px;
+  }
+
+  .bakemono-memory-vector-query-shell {
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    padding-left: 10px;
+  }
+
+  .bakemono-memory-vector-query-shell > button {
+    padding-inline: 8px;
+  }
+
+  .bakemono-memory-automation-setting-row {
+    grid-template-columns: minmax(0, 1fr) minmax(88px, 124px);
+    gap: 9px;
+  }
+
+  .bakemono-memory-vector-disclosure-body .bakemono-memory-mini-grid,
+  .bakemono-memory-automation-disclosure-body .bakemono-memory-mini-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Workflow and scan rules demo precision pass ---------------------------- */
+
+.bakemono-workbench-panel[data-bakemono-panel="settings"],
+.bakemono-workbench-panel[data-bakemono-panel="scan"] {
+  width: min(100%, 560px);
+  margin-inline: auto;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="settings"] > .bakemono-memory-page-intro,
+.bakemono-workbench-panel[data-bakemono-panel="scan"] > .bakemono-memory-page-intro {
+  margin: 2px 2px 17px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="settings"] > .bakemono-memory-page-intro .bakemono-memory-next-kicker,
+.bakemono-workbench-panel[data-bakemono-panel="scan"] > .bakemono-memory-page-intro .bakemono-memory-next-kicker,
+.bakemono-memory-workflow-choice-head .bakemono-memory-next-kicker,
+.bakemono-memory-scan-section-head .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="settings"] > .bakemono-memory-page-intro h3,
+.bakemono-workbench-panel[data-bakemono-panel="scan"] > .bakemono-memory-page-intro h3 {
+  margin-top: 5px;
+  font-size: 26px;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="settings"] > .bakemono-memory-page-intro p,
+.bakemono-workbench-panel[data-bakemono-panel="scan"] > .bakemono-memory-page-intro p {
+  margin-top: 7px;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-workflow-selector {
+  margin: 0 0 13px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.bakemono-memory-workflow-choice-head,
+.bakemono-memory-scan-section-head {
+  margin: 0 2px 9px;
+}
+
+.bakemono-memory-workflow-choice-head h3,
+.bakemono-memory-scan-section-head h3 {
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.bakemono-memory-workflow-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 0;
+}
+
+.bakemono-memory-workflow-card {
+  min-width: 0;
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 18px;
+  gap: 11px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid var(--bk-line);
+  border-radius: 16px;
+  background: linear-gradient(150deg, var(--bk-paper-raised), color-mix(in srgb, var(--bk-paper) 96%, var(--SmartThemeQuoteColor) 4%));
+  color: var(--SmartThemeBodyColor);
+  cursor: pointer;
+  text-align: left;
+}
+
+.bakemono-memory-workflow-card > i:first-child {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+  color: var(--bk-accent);
+  font-size: 12px;
+}
+
+.bakemono-memory-workflow-card > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.bakemono-memory-workflow-card strong {
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.bakemono-memory-workflow-card small {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.bakemono-memory-workflow-check {
+  color: transparent;
+  font-size: 9px;
+}
+
+.bakemono-memory-workflow-card.is-active {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 52%, var(--bk-line));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, var(--bk-paper-raised)), var(--bk-paper-raised));
+  box-shadow: inset 3px 0 0 var(--bk-accent);
+}
+
+.bakemono-memory-workflow-card.is-active > i:first-child {
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 17%, transparent);
+}
+
+.bakemono-memory-workflow-card.is-active .bakemono-memory-workflow-check {
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-workflow-status-hero {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 16px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 36%, var(--bk-line));
+  border-radius: 18px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, var(--bk-paper-raised)), var(--bk-paper-raised));
+}
+
+.bakemono-memory-workflow-status-hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 17px;
+  width: 82px;
+  height: 6px;
+  opacity: 0.42;
+  background: repeating-linear-gradient(135deg, var(--SmartThemeQuoteColor) 0 10px, transparent 10px 17px);
+}
+
+.bakemono-memory-workflow-status-hero > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-workflow-status-hero > div small {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 8px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bakemono-memory-workflow-status-hero > strong {
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.bakemono-memory-workflow-status-hero > p {
+  margin: 0;
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.bakemono-memory-workflow-status-hero > span {
+  margin-top: 3px;
+  padding-top: 8px;
+  border-top: 1px solid var(--bk-line);
+  color: var(--bk-accent);
+  font-size: 8px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="settings"] > details {
+  margin-bottom: 8px;
+  border-radius: 14px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="settings"] > details > summary {
+  min-height: 46px;
+  padding: 8px 12px;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="settings"] > #bakemono-memory-status-line {
+  display: none;
+}
+
+.bakemono-memory-scan-status-hero {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 17px;
+  padding: 16px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 36%, var(--bk-line));
+  border-radius: 19px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 11%, var(--bk-paper-raised)), var(--bk-paper-raised));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--bk-shadow) 13%, transparent);
+}
+
+.bakemono-memory-scan-status-hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 18px;
+  width: 86px;
+  height: 7px;
+  opacity: 0.44;
+  background: repeating-linear-gradient(135deg, var(--SmartThemeQuoteColor) 0 11px, transparent 11px 18px);
+}
+
+.bakemono-memory-scan-status-hero > header {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.bakemono-memory-scan-status-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+  color: var(--bk-ink-soft);
+  font-size: 11px;
+}
+
+.bakemono-memory-scan-status-hero.is-healthy .bakemono-memory-scan-status-icon {
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, transparent);
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-scan-status-hero > header > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.bakemono-memory-scan-status-hero > header small {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+}
+
+.bakemono-memory-scan-status-hero > header strong {
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 16px;
+}
+
+.bakemono-memory-scan-status-hero > header > em,
+#bakemono-memory-scan-mode-badge {
+  min-height: 23px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+  color: var(--bk-accent);
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.bakemono-memory-scan-status-hero > p {
+  margin: 0;
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.bakemono-memory-scan-bars {
+  display: grid;
+  gap: 8px;
+}
+
+.bakemono-memory-scan-bars > span {
+  position: relative;
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 0 7px;
+  overflow: hidden;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+}
+
+.bakemono-memory-scan-bars > span > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, transparent), color-mix(in srgb, var(--SmartThemeQuoteColor) 5%, transparent));
+  transition: width 180ms var(--bk-ease);
+}
+
+.bakemono-memory-scan-bars b,
+.bakemono-memory-scan-bars em {
+  position: relative;
+  z-index: 1;
+  color: var(--SmartThemeBodyColor);
+  font-size: 8px;
+  font-style: normal;
+}
+
+.bakemono-memory-scan-bars em {
+  color: var(--bk-accent);
+  font-weight: 850;
+}
+
+.bakemono-memory-scan-primary {
+  width: 100%;
+  min-height: 41px;
+  border-color: var(--SmartThemeBodyColor) !important;
+  border-radius: 12px;
+  background: var(--SmartThemeBodyColor) !important;
+  color: var(--SmartThemeBlurTintColor) !important;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.bakemono-memory-scan-settings-list {
+  display: grid;
+  margin-bottom: 11px;
+  border-block: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-scan-setting-row {
+  min-width: 0;
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(92px, 142px);
+  gap: 12px;
+  align-items: center;
+  padding: 9px 4px;
+}
+
+.bakemono-memory-scan-setting-row + .bakemono-memory-scan-setting-row {
+  border-top: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-scan-setting-row > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.bakemono-memory-scan-setting-row strong {
+  color: var(--SmartThemeBodyColor);
+  font-size: 10px;
+}
+
+.bakemono-memory-scan-setting-row small {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.bakemono-memory-scan-setting-row > .text_pole {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 10px;
+  font-size: 8px;
+}
+
+.bakemono-memory-scan-setting-row > input[type="checkbox"] {
+  width: 34px;
+  height: 18px;
+  justify-self: end;
+  accent-color: var(--SmartThemeQuoteColor);
+}
+
+.bakemono-memory-scan-disclosure {
+  margin-bottom: 8px;
+  border-radius: 14px;
+}
+
+.bakemono-memory-scan-disclosure > summary {
+  min-height: 44px;
+  padding: 8px 12px;
+}
+
+.bakemono-memory-scan-disclosure-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 10px 10px;
+}
+
+.bakemono-memory-scan-disclosure-body > .bakemono-memory-preset-controls,
+.bakemono-memory-scan-disclosure-body > .bakemono-memory-prompt-hint {
+  margin: 0;
+}
+
+.bakemono-memory-scan-disclosure-body .bakemono-memory-layout-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 9px;
+}
+
+.bakemono-memory-scan-save-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 11px 0 8px;
+}
+
+.bakemono-memory-scan-save-actions .menu_button {
+  width: 100%;
+  min-height: 38px;
+  border-radius: 11px;
+  font-size: 8px;
+}
+
+.bakemono-memory-scan-preview-disclosure .bakemono-memory-debug-list {
+  max-height: 340px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bakemono-memory-scan-bars > span > i {
+    transition: none;
+  }
+}
+
+@media (max-width: 430px) {
+  .bakemono-memory-workflow-card {
+    min-height: 65px;
+    grid-template-columns: 36px minmax(0, 1fr) 16px;
+    gap: 9px;
+    padding-inline: 10px;
+  }
+
+  .bakemono-memory-workflow-card > i:first-child {
+    width: 36px;
+    height: 36px;
+  }
+
+  .bakemono-memory-scan-status-hero {
+    padding: 15px;
+  }
+
+  .bakemono-memory-scan-setting-row {
+    grid-template-columns: minmax(0, 1fr) minmax(88px, 120px);
+    gap: 9px;
+  }
+}
+
+/* Prompt studio and injection preview demo precision pass ---------------- */
+
+.bakemono-workbench-panel[data-bakemono-panel="prompts"],
+.bakemono-workbench-panel[data-bakemono-panel="injection"] {
+  width: min(100%, 560px);
+  margin-inline: auto;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="prompts"] > .bakemono-memory-page-intro,
+.bakemono-workbench-panel[data-bakemono-panel="injection"] > .bakemono-memory-page-intro {
+  margin: 2px 2px 17px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="prompts"] > .bakemono-memory-page-intro .bakemono-memory-next-kicker,
+.bakemono-workbench-panel[data-bakemono-panel="injection"] > .bakemono-memory-page-intro .bakemono-memory-next-kicker,
+.bakemono-memory-injection-source-head .bakemono-memory-next-kicker {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="prompts"] > .bakemono-memory-page-intro h3,
+.bakemono-workbench-panel[data-bakemono-panel="injection"] > .bakemono-memory-page-intro h3 {
+  margin-top: 5px;
+  font-size: 26px;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="prompts"] > .bakemono-memory-page-intro p,
+.bakemono-workbench-panel[data-bakemono-panel="injection"] > .bakemono-memory-page-intro p {
+  margin-top: 7px;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-prompts-preset-card {
+  margin-bottom: 13px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 36%, var(--bk-line));
+  border-radius: 17px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 9%, var(--bk-paper-raised)), var(--bk-paper-raised));
+}
+
+.bakemono-memory-prompts-preset-card > summary {
+  min-width: 0;
+  min-height: 78px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 13px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.bakemono-memory-prompts-preset-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bakemono-memory-prompts-preset-card > summary > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.bakemono-memory-prompts-preset-card > summary small {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+}
+
+.bakemono-memory-prompts-preset-card > summary strong {
+  overflow: hidden;
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 15px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bakemono-memory-prompts-preset-card > summary span {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+}
+
+.bakemono-memory-prompts-preset-card > summary em {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 32%, var(--bk-line));
+  border-radius: 999px;
+  color: var(--bk-accent);
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.bakemono-memory-prompts-preset-body {
+  padding: 0 10px 10px;
+}
+
+.bakemono-memory-prompts-preset-body .bakemono-memory-preset-controls {
+  margin: 0;
+}
+
+.bakemono-memory-prompts-chip-row {
+  max-width: 100%;
+  display: flex;
+  gap: 7px;
+  margin-bottom: 12px;
+  padding: 1px 0 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.bakemono-memory-prompts-chip-row::-webkit-scrollbar {
+  display: none;
+}
+
+.bakemono-memory-prompts-chip-row > button {
+  flex: 0 0 auto;
+  min-height: 31px;
+  padding: 5px 10px;
+  border: 1px solid var(--bk-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bk-paper-raised) 84%, transparent);
+  color: var(--bk-ink-soft);
+  cursor: pointer;
+  font-size: 8px;
+}
+
+.bakemono-memory-prompts-chip-row > button.is-active {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 48%, var(--bk-line));
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, var(--bk-paper-raised));
+  color: var(--bk-accent);
+  font-weight: 850;
+}
+
+.bakemono-memory-prompts-preview-card {
+  position: relative;
+  display: grid;
+  gap: 11px;
+  margin-bottom: 10px;
+  padding: 15px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 38%, var(--bk-line));
+  border-radius: 18px;
+  background: linear-gradient(150deg, var(--bk-paper-raised), color-mix(in srgb, var(--bk-paper) 94%, var(--SmartThemeQuoteColor) 6%));
+}
+
+.bakemono-memory-prompts-preview-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 18px;
+  width: 86px;
+  height: 7px;
+  opacity: 0.45;
+  background: repeating-linear-gradient(135deg, var(--SmartThemeQuoteColor) 0 11px, transparent 11px 18px);
+}
+
+.bakemono-memory-prompts-preview-card > header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.bakemono-memory-prompts-preview-card > header > div {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.bakemono-memory-prompts-preview-card > header span {
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 13px;
+}
+
+.bakemono-memory-prompts-preview-card > header small {
+  color: var(--bk-accent);
+  font-size: 8px;
+}
+
+.bakemono-memory-prompts-preview-card > header button {
+  min-height: 29px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid var(--bk-line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--bk-accent);
+  cursor: pointer;
+  font-size: 8px;
+}
+
+.bakemono-memory-prompts-preview-card > pre {
+  max-height: 270px;
+  margin: 0;
+  padding: 13px;
+  overflow: auto;
+  border: 1px solid var(--bk-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+  color: var(--SmartThemeBodyColor);
+  font-family: inherit;
+  font-size: 9px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bakemono-memory-prompts-preview-card > p {
+  margin: 0;
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+  line-height: 1.55;
+}
+
+.bakemono-memory-prompts-editor-disclosure,
+.bakemono-memory-injection-disclosure {
+  margin-bottom: 8px;
+  border-radius: 14px;
+}
+
+.bakemono-memory-prompts-editor-disclosure > summary,
+.bakemono-memory-injection-disclosure > summary {
+  min-height: 44px;
+  padding: 8px 12px;
+}
+
+.bakemono-memory-prompts-editor-body,
+.bakemono-memory-injection-disclosure-body {
+  display: grid;
+  gap: 9px;
+  padding: 0 10px 10px;
+}
+
+.bakemono-memory-prompts-editor-body > .bakemono-memory-prompt-hint,
+.bakemono-memory-injection-disclosure-body > .bakemono-memory-preset-controls {
+  margin: 0;
+}
+
+.bakemono-memory-prompts-editor-body > .bakemono-memory-editor-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.bakemono-memory-prompts-editor-body .bakemono-memory-prompt-editor-item {
+  margin: 0;
+}
+
+.bakemono-memory-prompts-primary-actions {
+  margin: 10px 0 8px;
+}
+
+.bakemono-memory-prompts-primary-actions .menu_button {
+  width: 100%;
+  min-height: 41px;
+  border-color: var(--SmartThemeBodyColor) !important;
+  border-radius: 12px;
+  background: var(--SmartThemeBodyColor) !important;
+  color: var(--SmartThemeBlurTintColor) !important;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.bakemono-memory-prompts-reset-grid,
+.bakemono-memory-injection-maintenance {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.bakemono-memory-prompts-reset-grid .menu_button,
+.bakemono-memory-injection-maintenance .menu_button {
+  width: 100%;
+  min-height: 36px;
+  font-size: 8px;
+}
+
+.bakemono-memory-injection-status-hero {
+  position: relative;
+  display: grid;
+  gap: 7px;
+  margin-bottom: 17px;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 38%, var(--bk-line));
+  border-radius: 20px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 11%, var(--bk-paper-raised)), var(--bk-paper-raised));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--bk-shadow) 14%, transparent);
+}
+
+.bakemono-memory-injection-status-hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 18px;
+  width: 86px;
+  height: 7px;
+  opacity: 0.46;
+  background: repeating-linear-gradient(135deg, var(--SmartThemeQuoteColor) 0 11px, transparent 11px 18px);
+}
+
+.bakemono-memory-injection-status-hero > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-injection-status-hero > div small {
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.bakemono-memory-injection-runtime-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+}
+
+.bakemono-memory-injection-status-hero.is-active .bakemono-memory-injection-runtime-dot {
+  background: var(--bk-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+}
+
+.bakemono-memory-injection-status-hero > strong {
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.bakemono-memory-injection-status-hero > p {
+  margin: 0;
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-injection-source-head {
+  margin: 0 2px 9px;
+}
+
+.bakemono-memory-injection-source-head h3 {
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+#bakemono-memory-injection-source-total {
+  min-height: 23px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+  color: var(--bk-accent);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.bakemono-memory-injection-source-stack {
+  display: grid;
+  margin-bottom: 13px;
+  border-block: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-injection-source-stack > div {
+  min-width: 0;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 4px;
+}
+
+.bakemono-memory-injection-source-stack > div + div {
+  border-top: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-injection-source-stack > div > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+  color: var(--bk-accent);
+  font-size: 10px;
+}
+
+.bakemono-memory-injection-source-stack p {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.bakemono-memory-injection-source-stack strong {
+  color: var(--SmartThemeBodyColor);
+  font-size: 10px;
+}
+
+.bakemono-memory-injection-source-stack small {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+}
+
+.bakemono-memory-injection-source-stack em {
+  min-width: 30px;
+  color: var(--bk-accent);
+  font-family: var(--bk-display);
+  font-size: 14px;
+  font-style: normal;
+  text-align: right;
+}
+
+.bakemono-memory-injection-preview-card {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 10px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 34%, var(--bk-line));
+  border-radius: 17px;
+  background: linear-gradient(150deg, var(--bk-paper-raised), color-mix(in srgb, var(--bk-paper) 95%, var(--SmartThemeQuoteColor) 5%));
+}
+
+.bakemono-memory-injection-preview-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bakemono-memory-injection-preview-card > header span {
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 13px;
+}
+
+.bakemono-memory-injection-preview-card > header small {
+  color: var(--bk-accent);
+  font-size: 8px;
+}
+
+.bakemono-memory-injection-preview-card > textarea.text_pole {
+  width: 100%;
+  min-height: 155px;
+  max-height: 260px;
+  margin: 0;
+  padding: 12px;
+  overflow-y: auto;
+  border: 1px solid var(--bk-line) !important;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent) !important;
+  box-shadow: none !important;
+  color: var(--SmartThemeBodyColor);
+  font-size: 8px;
+  line-height: 1.65;
+  resize: vertical;
+}
+
+.bakemono-memory-injection-preview-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bakemono-memory-injection-preview-actions .menu_button {
+  width: 100%;
+  min-height: 38px;
+  border-radius: 11px;
+  font-size: 8px;
+}
+
+.bakemono-memory-injection-primary {
+  border-color: var(--SmartThemeBodyColor) !important;
+  background: var(--SmartThemeBodyColor) !important;
+  color: var(--SmartThemeBlurTintColor) !important;
+  font-weight: 850;
+}
+
+.bakemono-memory-injection-disclosure-body > .bakemono-memory-editor {
+  margin: 0;
+}
+
+@media (max-width: 430px) {
+  .bakemono-memory-prompts-preview-card,
+  .bakemono-memory-injection-preview-card {
+    padding: 13px;
+  }
+
+  .bakemono-memory-prompts-preview-card > pre {
+    max-height: 230px;
+  }
+
+  .bakemono-memory-prompts-reset-grid,
+  .bakemono-memory-injection-maintenance {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bakemono-memory-injection-status-hero {
+    padding: 16px;
+  }
+}
+
+/* Safety maintenance desk demo precision pass ----------------------------- */
+
+.bakemono-workbench-panel[data-bakemono-panel="maintenance"] {
+  width: min(100%, 560px);
+  margin-inline: auto;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="maintenance"] > .bakemono-memory-page-intro {
+  margin: 0 0 15px;
+  padding: 0 2px 13px;
+  border-bottom-color: var(--bk-line);
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="maintenance"] > .bakemono-memory-page-intro .bakemono-memory-next-kicker {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="maintenance"] > .bakemono-memory-page-intro h3 {
+  margin: 5px 0 4px;
+  font-size: 25px;
+  line-height: 1.15;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="maintenance"] > .bakemono-memory-page-intro p {
+  font-size: 9px;
+  line-height: 1.65;
+}
+
+.bakemono-memory-maintenance-safety-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 17px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, var(--bk-line));
+  border-radius: 19px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 9%, var(--bk-paper-raised)), var(--bk-paper-raised) 68%);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--bk-shadow) 12%, transparent);
+}
+
+.bakemono-memory-maintenance-safety-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 18px;
+  width: 88px;
+  height: 7px;
+  opacity: 0.45;
+  background: repeating-linear-gradient(135deg, var(--SmartThemeQuoteColor) 0 11px, transparent 11px 18px);
+}
+
+.bakemono-memory-maintenance-safety-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, var(--bk-line));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+  color: var(--bk-accent);
+  font-size: 15px;
+}
+
+.bakemono-memory-maintenance-safety-card > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.bakemono-memory-maintenance-safety-card small {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+}
+
+.bakemono-memory-maintenance-safety-card strong {
+  overflow: hidden;
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: 14px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bakemono-memory-maintenance-safety-card p {
+  margin: 0;
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+  line-height: 1.55;
+}
+
+.bakemono-memory-maintenance-safety-card > .menu_button {
+  min-height: 36px;
+  padding-inline: 12px;
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 38%, var(--bk-line)) !important;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--bk-paper-raised) 90%, transparent) !important;
+  color: var(--bk-accent) !important;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.bakemono-memory-maintenance-safety-card > .menu_button:disabled {
+  opacity: 0.45;
+}
+
+.bakemono-memory-maintenance-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 18px;
+  padding-block: 11px;
+  border-block: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-maintenance-metrics > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  place-items: center;
+  padding-inline: 7px;
+  text-align: center;
+}
+
+.bakemono-memory-maintenance-metrics > div + div {
+  border-left: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-maintenance-metrics strong {
+  max-width: 100%;
+  color: var(--SmartThemeBodyColor);
+  font-family: var(--bk-display);
+  font-size: clamp(16px, 5vw, 22px);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.bakemono-memory-maintenance-metrics span {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+  line-height: 1.3;
+}
+
+.bakemono-memory-maintenance-section-head {
+  margin: 0 2px 9px;
+}
+
+.bakemono-memory-maintenance-section-head h3 {
+  margin-top: 3px;
+  font-size: 17px;
+}
+
+#bakemono-memory-maintenance-auto-count {
+  min-height: 23px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+  color: var(--bk-accent);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.bakemono-memory-maintenance-transaction-list,
+.bakemono-memory-maintenance-record-list {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 18px;
+}
+
+.bakemono-memory-maintenance-transaction-list .bakemono-memory-auto-tx-list {
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.bakemono-memory-maintenance-transaction-list .bakemono-memory-auto-tx-item {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 58px;
+  padding: 10px 11px 10px 29px;
+  border: 1px solid var(--bk-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bk-paper-raised) 95%, var(--SmartThemeQuoteColor) 5%);
+}
+
+.bakemono-memory-maintenance-transaction-list .bakemono-memory-auto-tx-item::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--bk-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+  transform: translateY(-50%);
+}
+
+.bakemono-memory-maintenance-transaction-list .bakemono-memory-auto-tx-item.is-needs_review {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 50%, var(--bk-line));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, var(--bk-paper-raised)), var(--bk-paper-raised));
+}
+
+.bakemono-memory-maintenance-transaction-list .bakemono-memory-auto-tx-main strong {
+  font-size: 9px;
+}
+
+.bakemono-memory-maintenance-transaction-list .bakemono-memory-auto-tx-main span,
+.bakemono-memory-maintenance-transaction-list .bakemono-memory-auto-tx-main em {
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.bakemono-memory-maintenance-transaction-list .bakemono-memory-task-actions .menu_button {
+  min-height: 32px;
+  border-radius: 10px;
+  font-size: 8px;
+}
+
+.bakemono-memory-maintenance-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--bk-accent);
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.bakemono-memory-maintenance-record {
+  min-width: 0;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) minmax(72px, auto);
+  gap: 9px;
+  align-items: center;
+  padding: 8px 3px;
+  border-bottom: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-maintenance-record:first-child {
+  border-top: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-maintenance-record-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 9%, transparent);
+  color: var(--bk-accent);
+  font-size: 9px;
+}
+
+.bakemono-memory-maintenance-record-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.bakemono-memory-maintenance-record-copy strong {
+  overflow: hidden;
+  color: var(--SmartThemeBodyColor);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bakemono-memory-maintenance-record-copy small,
+.bakemono-memory-maintenance-record time {
+  color: var(--bk-ink-soft);
+  font-size: 7px;
+  line-height: 1.45;
+}
+
+.bakemono-memory-maintenance-record time {
+  max-width: 108px;
+  text-align: right;
+}
+
+.bakemono-memory-maintenance-empty {
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px;
+  border: 1px dashed var(--bk-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-maintenance-empty > i {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+}
+
+.bakemono-memory-maintenance-empty > span {
+  display: grid;
+  gap: 3px;
+}
+
+.bakemono-memory-maintenance-empty strong {
+  color: var(--SmartThemeBodyColor);
+  font-size: 9px;
+}
+
+.bakemono-memory-maintenance-empty small {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.bakemono-memory-maintenance-danger {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, var(--bk-line));
+  background: linear-gradient(150deg, var(--bk-paper-raised), color-mix(in srgb, var(--SmartThemeQuoteColor) 5%, var(--bk-paper)));
+}
+
+.bakemono-memory-maintenance-danger-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding: 0 10px 10px;
+}
+
+.bakemono-memory-maintenance-danger-grid .menu_button {
+  width: 100%;
+  min-height: 37px;
+  border-radius: 11px;
+  font-size: 8px;
+}
+
+@media (max-width: 520px) {
+  .bakemono-memory-maintenance-safety-card {
+    grid-template-columns: 38px minmax(0, 1fr);
+    padding: 15px;
+  }
+
+  .bakemono-memory-maintenance-safety-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .bakemono-memory-maintenance-safety-card > .menu_button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .bakemono-memory-maintenance-record {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .bakemono-memory-maintenance-record time {
+    grid-column: 2;
+    max-width: none;
+    text-align: left;
+  }
+}
+
+@media (max-width: 400px) {
+  .bakemono-memory-maintenance-danger-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Readability and mobile consistency pass --------------------------------
+ * Keep the editorial demo character, but stop using sub-10px text for
+ * information the user needs to read or operate.
+ * -------------------------------------------------------------------------- */
+
+.bakemono-workbench-root {
+  --bk-type-meta: 12px;
+  --bk-type-copy: 13px;
+  --bk-type-label: 14px;
+}
+
+.bakemono-workbench-root .bakemono-workbench-kicker,
+.bakemono-workbench-root .bakemono-memory-next-kicker,
+.bakemono-workbench-root .bakemono-workbench-menu-label {
+  font-size: var(--bk-type-meta) !important;
+  line-height: 1.4;
+}
+
+.bakemono-workbench-root .bakemono-memory-page-intro p,
+.bakemono-workbench-root .bakemono-memory-scene-subtitle {
+  font-size: var(--bk-type-label) !important;
+  line-height: 1.65;
+}
+
+.bakemono-workbench-root .bakemono-workbench-panel small,
+.bakemono-workbench-root .bakemono-workbench-tab small,
+.bakemono-workbench-root .bakemono-mobile-actions small {
+  font-size: var(--bk-type-meta) !important;
+  line-height: 1.45;
+}
+
+.bakemono-workbench-root .bakemono-memory-field > span,
+.bakemono-workbench-root .bakemono-memory-editor > span,
+.bakemono-workbench-root .bakemono-memory-console-disclosure > summary > span,
+.bakemono-workbench-root .bakemono-memory-vector-result-empty strong,
+.bakemono-workbench-root .bakemono-memory-automation-setting-row strong {
+  font-size: var(--bk-type-label) !important;
+  line-height: 1.45;
+}
+
+.bakemono-workbench-root .text_pole,
+.bakemono-workbench-root select,
+.bakemono-workbench-root textarea,
+.bakemono-workbench-root .bakemono-memory-prompt-hint,
+.bakemono-workbench-root .bakemono-memory-vector-status-hero > p,
+.bakemono-workbench-root .bakemono-memory-automation-hero > p,
+.bakemono-workbench-root .bakemono-memory-vector-result-item p,
+.bakemono-workbench-root .bakemono-memory-vector-result-empty span,
+.bakemono-workbench-root .bakemono-memory-maintenance-safety-card p {
+  font-size: var(--bk-type-copy) !important;
+}
+
+.bakemono-workbench-root .bakemono-workbench-panel pre {
+  font-size: var(--bk-type-copy) !important;
+  line-height: 1.65;
+}
+
+.bakemono-workbench-root .bakemono-workbench-tab,
+.bakemono-workbench-root .bakemono-mobile-actions button,
+.bakemono-workbench-root .bakemono-memory-badge {
+  font-size: var(--bk-type-meta) !important;
+}
+
+.bakemono-workbench-root .menu_button:not(.bakemono-memory-action-row):not(.bakemono-icon-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px !important;
+  font-size: var(--bk-type-copy) !important;
+}
+
+.bakemono-workbench-root .menu_button:not(.bakemono-memory-action-row):not(.bakemono-icon-button) > i {
+  flex: 0 0 auto;
+  margin: 0 !important;
+}
+
+.bakemono-workbench-root .menu_button:not(.bakemono-memory-action-row):not(.bakemono-icon-button) > span {
+  min-width: 0;
+}
+
+.bakemono-workbench-root .bakemono-memory-vector-index-primary,
+.bakemono-workbench-root .bakemono-memory-automation-primary,
+.bakemono-workbench-root .bakemono-memory-automation-hero-actions .menu_button,
+.bakemono-workbench-root .bakemono-memory-maintenance-grid .menu_button,
+.bakemono-workbench-root .bakemono-memory-maintenance-danger-grid .menu_button {
+  font-size: var(--bk-type-copy) !important;
+}
+
+.bakemono-workbench-root .bakemono-memory-vector-runtime-line > span:last-child,
+.bakemono-workbench-root .bakemono-memory-automation-runtime-line > span:last-child,
+.bakemono-workbench-root #bakemono-memory-vector-result-count,
+.bakemono-workbench-root #bakemono-memory-automation-rule-status,
+.bakemono-workbench-root #bakemono-memory-maintenance-auto-count {
+  font-size: var(--bk-type-meta) !important;
+}
+
+/* The legacy workflow icon rule made both icons span two grid rows. */
+.bakemono-workbench-root .bakemono-memory-workflow-card {
+  width: 100%;
+  max-width: 100%;
+  grid-template-columns: 38px minmax(0, 1fr) 18px;
+  align-items: center;
+}
+
+.bakemono-workbench-root .bakemono-memory-workflow-card > i:first-child {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.bakemono-workbench-root .bakemono-memory-workflow-card > span {
+  width: auto;
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 1;
+  writing-mode: horizontal-tb !important;
+  white-space: normal !important;
+}
+
+.bakemono-workbench-root .bakemono-memory-workflow-card > span > strong,
+.bakemono-workbench-root .bakemono-memory-workflow-card > span > small {
+  writing-mode: horizontal-tb !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+.bakemono-workbench-root .bakemono-memory-workflow-card > i.bakemono-memory-workflow-check {
+  width: 18px;
+  height: 18px;
+  grid-column: 3;
+  grid-row: 1;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Dedicated table page: the primary database must never collapse away. */
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-editor-grid > .bakemono-table-panel-card {
+  display: block !important;
+}
+
+/* SillyTavern's global text_pole styles must not escape the archive shell. */
+.bakemono-workbench-root .bakemono-memory-record-search {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.bakemono-workbench-root .bakemono-memory-record-search > .text_pole {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* One spacing rhythm for all vector-memory disclosure cards. */
+.bakemono-workbench-panel[data-bakemono-panel="vector"] > .bakemono-memory-vector-disclosure,
+.bakemono-workbench-panel[data-bakemono-panel="vector"] > .bakemono-memory-editor-grid {
+  margin-top: 0 !important;
+  margin-bottom: 12px !important;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="vector"] > .bakemono-memory-editor-grid {
+  gap: 12px !important;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="vector"] > .bakemono-memory-editor-grid > .bakemono-memory-vector-disclosure {
+  margin: 0 !important;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="vector"] > :is(.bakemono-memory-vector-disclosure, .bakemono-memory-editor-grid):last-child {
+  margin-bottom: 0 !important;
+}
+
+.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-maintenance-grid .menu_button {
+  width: 100% !important;
+  min-width: 0;
+}
+
+@media (max-width: 620px) {
+  .bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-maintenance-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-workflow-card {
+    min-height: 88px;
+    padding: 15px 13px;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-record-search {
+    height: 50px;
+  }
+}
+
+/* Release typography sweep: legacy precision rules also used tiny text on
+ * spans, ems, times and custom buttons, so they need semantic overrides too. */
+.bakemono-workbench-root .bakemono-workbench-panel button:not(.bakemono-icon-button),
+.bakemono-workbench-root .bakemono-workbench-panel label,
+.bakemono-workbench-root .bakemono-workbench-panel .checkbox_label {
+  font-size: var(--bk-type-copy) !important;
+}
+
+.bakemono-workbench-root .bakemono-memory-table-overview-strip span,
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-hero .bakemono-memory-status-line,
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-summary-head span,
+.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-table-summary-hint,
+.bakemono-workbench-root .bakemono-memory-table-draft-badge,
+.bakemono-workbench-root .bakemono-memory-table-draft-meta,
+.bakemono-workbench-root .bakemono-memory-table-diff-more,
+.bakemono-workbench-root .bakemono-memory-review-section-head > span,
+.bakemono-workbench-root .bakemono-memory-draft-badge,
+.bakemono-workbench-root .bakemono-memory-task-main span,
+.bakemono-workbench-root .bakemono-memory-task-main em,
+.bakemono-workbench-root .bakemono-memory-history-item time,
+.bakemono-workbench-root .bakemono-memory-preview-page-info,
+.bakemono-workbench-root .nh-meta,
+.bakemono-workbench-root .bakemono-memory-record-stat-strip span,
+.bakemono-workbench-root .bakemono-memory-record-section-head > span,
+.bakemono-workbench-root .bakemono-memory-record-chip,
+.bakemono-workbench-root .bakemono-memory-timeline-meta,
+.bakemono-workbench-root .bakemono-memory-scan-status-hero > header em,
+.bakemono-workbench-root .bakemono-memory-scan-meter em,
+.bakemono-workbench-root .bakemono-memory-prompts-preset-card > summary span,
+.bakemono-workbench-root .bakemono-memory-prompts-preset-card > summary em,
+.bakemono-workbench-root .bakemono-memory-prompts-type-button,
+.bakemono-workbench-root .bakemono-memory-injection-runtime-badge,
+.bakemono-workbench-root .bakemono-memory-maintenance-metrics span,
+.bakemono-workbench-root .bakemono-memory-maintenance-transaction-list .bakemono-memory-auto-tx-main span,
+.bakemono-workbench-root .bakemono-memory-maintenance-transaction-list .bakemono-memory-auto-tx-main em,
+.bakemono-workbench-root .bakemono-memory-maintenance-record time {
+  font-size: var(--bk-type-meta) !important;
+  line-height: 1.45;
+}
+
+.bakemono-workbench-root .bakemono-memory-turn-status-hero > p,
+.bakemono-workbench-root .bakemono-memory-table-diff-item p,
+.bakemono-workbench-root .bakemono-memory-draft-body p,
+.bakemono-workbench-root .bakemono-memory-summary-generation-panel p,
+.bakemono-workbench-root .bakemono-memory-record-copy p,
+.bakemono-workbench-root .bakemono-memory-workflow-status-hero > p,
+.bakemono-workbench-root .bakemono-memory-scan-status-hero > p,
+.bakemono-workbench-root .bakemono-memory-prompts-preview-card > p,
+.bakemono-workbench-root .bakemono-memory-injection-status-hero > p,
+.bakemono-workbench-root .bakemono-memory-maintenance-empty small {
+  font-size: var(--bk-type-copy) !important;
+  line-height: 1.6;
+}
+
+.bakemono-workbench-root .bakemono-memory-turn-flow-step strong,
+.bakemono-workbench-root .bakemono-memory-table-diff-item strong,
+.bakemono-workbench-root .bakemono-memory-task-main strong,
+.bakemono-workbench-root .bakemono-memory-history-main strong,
+.bakemono-workbench-root .bakemono-memory-record-copy strong,
+.bakemono-workbench-root .bakemono-memory-scan-setting-row strong,
+.bakemono-workbench-root .bakemono-memory-maintenance-transaction-list .bakemono-memory-auto-tx-main strong,
+.bakemono-workbench-root .bakemono-memory-maintenance-record-copy strong,
+.bakemono-workbench-root .bakemono-memory-maintenance-empty strong {
+  font-size: var(--bk-type-label) !important;
+  line-height: 1.4;
+}
+
+.bakemono-workbench-root .bakemono-memory-table-fill-action,
+.bakemono-workbench-root .bakemono-memory-table-inject-toggle,
+.bakemono-workbench-root .bakemono-memory-table-draft-secondary-actions .menu_button,
+.bakemono-workbench-root .bakemono-memory-table-draft-apply,
+.bakemono-workbench-root .bakemono-memory-table-maintenance .menu_button,
+.bakemono-workbench-root .bakemono-memory-review-view-tab,
+.bakemono-workbench-root .bakemono-memory-review-maintenance .menu_button,
+.bakemono-workbench-root .bakemono-memory-scan-primary,
+.bakemono-workbench-root .bakemono-memory-scan-disclosure .menu_button,
+.bakemono-workbench-root .bakemono-memory-prompts-preview-card > header button,
+.bakemono-workbench-root .bakemono-memory-injection-primary,
+.bakemono-workbench-root .bakemono-memory-injection-maintenance .menu_button,
+.bakemono-workbench-root .bakemono-memory-maintenance-export,
+.bakemono-workbench-root .bakemono-memory-maintenance-transaction-list .menu_button {
+  font-size: var(--bk-type-copy) !important;
+}
+
+.bakemono-workbench-root .bakemono-memory-prompts-preview-card > pre,
+.bakemono-workbench-root .bakemono-memory-injection-preview-card > textarea {
+  font-size: var(--bk-type-copy) !important;
+  line-height: 1.7;
 }

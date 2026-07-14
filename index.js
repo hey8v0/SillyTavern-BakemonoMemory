@@ -876,6 +876,14 @@ const previewState = {
         epic: 0,
     },
 };
+let summaryGenerationMode = 'stage';
+let promptPreviewType = 'stage';
+let summaryGenerationSnapshot = {
+    story: [],
+    stage: [],
+    epic: [],
+};
+let reviewPanelView = 'drafts';
 const historyState = {
     page: 0,
 };
@@ -8199,24 +8207,18 @@ function getWorkflowInfo(state = ensureState()) {
     const mode = state.workflowMode || workflowModes.BAKEMONO;
     if (mode === workflowModes.GENERIC) {
         return {
-            title: '补课旧聊天',
-            description: '适合以前没有写摘要的聊天。插件会先把旧楼层分批压缩成补课摘要，再继续做阶段总结。',
-            steps: ['在“批量摘要”里设置每批楼数', '选择旧正文补课并开始批量摘要', '到草稿箱检查并确认保存', '积累几批后生成阶段总结'],
-            actions: ['backfill', 'generate-stage', 'generate-epic', 'undo'],
+            title: '补齐遗漏的旧剧情',
+            actions: ['scan', 'backfill', 'generate-stage', 'generate-epic', 'undo'],
         };
     }
     if (mode === workflowModes.MIXED) {
         return {
-            title: '高级自定义',
-            description: '适合想自己控制标签、排除规则、正文来源、输出格式和注入方式的用户。',
-            steps: ['打开高级设置或扫描规则', '确认扫描预览没有读错内容', '按你的材料来源生成总结', '必要时再调整提示词预设'],
+            title: '按你的方式剪辑剧情',
             actions: ['scan', 'backfill', 'generate-stage', 'generate-epic', 'hide', 'restore', 'undo'],
         };
     }
     return {
-        title: '已有摘要',
-        description: '适合正文里已经有摘要块的聊天。插件只扫描摘要，普通摘要不重复注入，避免浪费 token。',
-        steps: ['点击“扫描摘要”', '确认查看总结里识别正确', '生成阶段总结', '阶段总结确认后再隐藏已覆盖楼层'],
+        title: '整理本幕的新剧情',
         actions: ['scan', 'generate-stage', 'generate-epic', 'hide', 'restore', 'undo'],
     };
 }
@@ -8248,23 +8250,108 @@ function applyWorkflowPreset(mode) {
 function renderWorkflowGuide(state = ensureState()) {
     const info = getWorkflowInfo(state);
     $('#bakemono-memory-workflow-title').text(info.title);
-    $('#bakemono-memory-workflow-description').text(info.description);
-    const list = document.querySelector('#bakemono-memory-next-steps');
-    if (list) {
-        list.innerHTML = '';
-        for (const step of info.steps) {
-            const item = document.createElement('li');
-            item.textContent = step;
-            list.append(item);
-        }
-    }
+    const stageCount = Number($('#bakemono-memory-count-stage').text() || 0);
+    const epicCount = Number($('#bakemono-memory-count-epic').text() || 0);
+    $('#bakemono-memory-scene-code').text(`SC. ${String(stageCount).padStart(2, '0')} / TK. ${String(epicCount).padStart(2, '0')}`);
+    const storySummaries = state.storySummaries || [];
+    const coveredHashes = new Set(state.coveredBlockHashes || []);
+    const coveredCount = storySummaries.filter(summary => summary?.hash && coveredHashes.has(summary.hash)).length;
+    const progress = storySummaries.length ? Math.round((coveredCount / storySummaries.length) * 100) : 0;
+    $('#bakemono-memory-scene-progress-fill').css('width', `${progress}%`);
+    const scanLabel = storySummaries.length ? `扫描摘要 · ${storySummaries.length}` : '扫描摘要';
+    $('#bakemono-memory-scan > span').text(scanLabel);
     document.querySelectorAll('[data-bakemono-workflow-preset]').forEach(card => {
-        card.classList.toggle('is-active', card.dataset.bakemonoWorkflowPreset === (state.workflowMode || workflowModes.BAKEMONO));
+        const isActive = card.dataset.bakemonoWorkflowPreset === (state.workflowMode || workflowModes.BAKEMONO);
+        card.classList.toggle('is-active', isActive);
+        card.setAttribute('aria-pressed', String(isActive));
     });
     const visibleActions = new Set(info.actions);
-    document.querySelectorAll('.bakemono-memory-control-deck [data-bakemono-action]').forEach(button => {
+    const actionButtons = [...document.querySelectorAll('.bakemono-memory-control-deck [data-bakemono-action]')];
+    actionButtons.forEach(button => {
         button.hidden = !visibleActions.has(button.dataset.bakemonoAction);
     });
+    let primaryAssigned = false;
+    actionButtons.forEach(button => {
+        const isPrimary = !primaryAssigned
+            && !button.hidden
+            && button.closest('.bakemono-memory-hero-actions');
+        button.classList.toggle('is-workflow-primary', !!isPrimary);
+        primaryAssigned ||= !!isPrimary;
+    });
+}
+
+function renderSummaryGenerationPanel(state = ensureState(), blocks = null) {
+    if (blocks) {
+        summaryGenerationSnapshot = {
+            story: Array.isArray(blocks.story) ? blocks.story : [],
+            stage: Array.isArray(blocks.stage) ? blocks.stage : [],
+            epic: Array.isArray(blocks.epic) ? blocks.epic : [],
+        };
+    }
+
+    const validModes = new Set(['stage', 'epic', 'batch']);
+    if (!validModes.has(summaryGenerationMode)) {
+        summaryGenerationMode = 'stage';
+    }
+
+    const storyBlocks = summaryGenerationSnapshot.story;
+    const stageBlocks = summaryGenerationSnapshot.stage;
+    const epicBlocks = summaryGenerationSnapshot.epic;
+    const coveredHashes = new Set(state.coveredBlockHashes || []);
+    const coveredStoryCount = storyBlocks.filter(block => block?.hash && coveredHashes.has(block.hash)).length;
+    const uncoveredStoryCount = Math.max(0, storyBlocks.length - coveredStoryCount);
+    const upperLevelMaterialCount = stageBlocks.length + epicBlocks.length;
+
+    const modes = {
+        stage: {
+            action: 'generate-stage',
+            icon: 'fa-wand-magic-sparkles',
+            title: '整理下一段长期记忆',
+            button: '生成阶段总结',
+            code: `${uncoveredStoryCount} 条待整理`,
+            description: `${storyBlocks.length} 条剧情摘要，其中 ${coveredStoryCount} 条已经收入阶段记忆。生成结果会先进入待确认。`,
+            progress: storyBlocks.length ? Math.round((coveredStoryCount / storyBlocks.length) * 100) : 0,
+        },
+        epic: {
+            action: 'generate-epic',
+            icon: 'fa-layer-group',
+            title: '把多个阶段连成时间线',
+            button: '生成多次总结',
+            code: `${upperLevelMaterialCount} 条材料`,
+            description: `${stageBlocks.length} 条阶段总结与 ${epicBlocks.length} 条上层总结可继续压缩，适合整理一卷或一条长期剧情线。`,
+            progress: upperLevelMaterialCount ? Math.min(100, Math.round((epicBlocks.length / upperLevelMaterialCount) * 100)) : 0,
+        },
+        batch: {
+            action: 'batch-summary',
+            icon: 'fa-list-check',
+            title: '把旧聊天分批整理',
+            button: '打开批量生成',
+            code: `${storyBlocks.length} 条已识别`,
+            description: '按楼层范围补写缺失摘要或整理旧正文；任务会分批运行，并统一进入待确认。',
+            progress: 0,
+        },
+    };
+    const current = modes[summaryGenerationMode];
+
+    document.querySelectorAll('[data-bakemono-summary-mode]').forEach(button => {
+        button.classList.toggle('is-active', button.dataset.bakemonoSummaryMode === summaryGenerationMode);
+    });
+    $('#bakemono-memory-summary-generation-title').text(current.title);
+    $('#bakemono-memory-summary-generation-code').text(current.code);
+    $('#bakemono-memory-summary-generation-description').text(current.description);
+    $('#bakemono-memory-summary-generation-progress').css('width', `${current.progress}%`);
+    const primary = document.getElementById('bakemono-memory-summary-primary-action');
+    if (primary) {
+        primary.dataset.bakemonoAction = current.action;
+        const icon = primary.querySelector('i');
+        if (icon) {
+            icon.className = `fa-solid ${current.icon}`;
+        }
+        const label = primary.querySelector('span');
+        if (label) {
+            label.textContent = current.button;
+        }
+    }
 }
 
 function getWorkflowStatusText(state = ensureState(), stats = getInjectionMemoryParts(state).stats, uncoveredStory = 0) {
@@ -8325,6 +8412,9 @@ function renderMemoryDatabaseSummary(state = ensureState()) {
     $('#bakemono-memory-database-injected').text(stats.byStatus[memoryRecordStatuses.INJECTED] || 0);
     $('#bakemono-memory-database-drafts').text(stats.byStatus[memoryRecordStatuses.DRAFT] || 0);
     $('#bakemono-memory-database-queue').text(`${stats.running}/${stats.queued}/${stats.failed}`);
+    $('#bakemono-memory-record-stat-total').text(stats.total);
+    $('#bakemono-memory-record-stat-injected').text(stats.byStatus[memoryRecordStatuses.INJECTED] || 0);
+    $('#bakemono-memory-record-stat-archived').text(stats.byStatus[memoryRecordStatuses.ARCHIVED] || 0);
 
     const description = [
         `剧情摘要 ${stats.byKind[blockTypes.STORY] || 0}`,
@@ -8377,6 +8467,11 @@ function renderMemoryRecordList() {
             || String(a.updatedAt || '').localeCompare(String(b.updatedAt || ''));
     });
     container.innerHTML = '';
+    const activeStatus = String($('#bakemono-memory-record-status').val() || 'all');
+    document.querySelectorAll('[data-bakemono-record-status]').forEach(button => {
+        button.classList.toggle('is-active', button.dataset.bakemonoRecordStatus === activeStatus);
+    });
+    $('#bakemono-memory-record-result-count').text(`${records.length} 条`);
 
     if (!records.length) {
         const empty = document.createElement('div');
@@ -8392,12 +8487,16 @@ function renderMemoryRecordList() {
     const visibleRecords = records.slice(start, start + memoryRecordPageSize);
 
     const pager = createMemoryRecordPager(start, records.length, pageCount);
-    container.append(pager.cloneNode(true));
 
     const fragment = document.createDocumentFragment();
-    visibleRecords.forEach(record => {
+    visibleRecords.forEach((record, visibleIndex) => {
         const row = document.createElement('article');
         row.className = `bakemono-memory-record-item is-${record.status || 'source'}`;
+
+        const marker = document.createElement('span');
+        marker.className = `bakemono-memory-record-index is-${record.kind || 'story'}`;
+        marker.textContent = record.kind === blockTypes.EPIC ? 'E' : record.kind === blockTypes.STAGE ? 'S' : '#';
+        marker.title = `${getKindLabel(record.kind)} · 第 ${start + visibleIndex + 1} 条`;
 
         const main = document.createElement('div');
         main.className = 'bakemono-memory-record-main';
@@ -8426,7 +8525,7 @@ function renderMemoryRecordList() {
             chips.append(sourceChip);
         }
 
-        row.append(main, chips);
+        row.append(marker, main, chips);
         fragment.append(row);
     });
     container.append(fragment, pager);
@@ -8468,7 +8567,15 @@ function renderTurnSummaryPanel(state = ensureState()) {
     $('#bakemono-memory-table-inject-memory').prop('checked', state.tableDatabase.injectMemory !== false);
     $('#bakemono-memory-table-auto-apply').prop('checked', !!state.tableDatabase.autoApply);
     $('#bakemono-memory-table-schema-scope').val(state.tableDatabase.schemaScope || tableSchemaScopes.CHAT);
-    $('#bakemono-memory-table-schema-status').text(`${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)} · ${state.tableDatabase.tables.length} tables · ${getCurrentCharacterSchemaLabel()}`);
+    const tables = state.tableDatabase.tables || [];
+    const tableDrafts = state.tableDatabase.editDrafts || [];
+    const tableRowCount = tables.reduce((total, table) => total + (Array.isArray(table.rows) ? table.rows.length : 0), 0);
+    const tableDraftOperationCount = tableDrafts.reduce((total, draft) => total + (Array.isArray(draft.operations) ? draft.operations.length : 0), 0);
+    $('#bakemono-memory-table-schema-status').text(`${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)} · ${tables.length} 张表 · ${getCurrentCharacterSchemaLabel()}`);
+    $('#bakemono-memory-table-overview-count').text(tables.length);
+    $('#bakemono-memory-table-overview-row-count').text(tableRowCount);
+    $('#bakemono-memory-table-overview-draft-count').text(tableDraftOperationCount);
+    $('#bakemono-memory-table-draft-label').text(`${tableDraftOperationCount} 处`);
     renderTableProfileControls(state);
     $('#bakemono-memory-turn-prompt').val(state.turnSummary.prompt || defaultTurnSummaryPrompt);
     $('#bakemono-memory-table-prompt').val(state.turnSummary.tablePrompt || defaultTableEditPrompt);
@@ -8480,9 +8587,50 @@ function renderTurnSummaryPanel(state = ensureState()) {
     renderInlinePromptPresetControls('summary', '#bakemono-memory-inline-summary-preset-select', '#bakemono-memory-inline-summary-preset-name');
     renderInlinePromptPresetControls('table', '#bakemono-memory-inline-table-preset-select', '#bakemono-memory-inline-table-preset-name');
     const lastId = state.turnSummary.lastProcessedMessageId;
-    $('#bakemono-memory-turn-status').text(lastId === null || lastId === undefined
-        ? '尚未处理正文。'
-        : `上次处理正文楼层：${lastId}`);
+    const hasProcessedTurn = lastId !== null && lastId !== undefined;
+    const turnEnabled = !!state.turnSummary.enabled;
+    const turnAuto = !!state.turnSummary.auto;
+    const tableEnabled = !!state.tableDatabase.enabled;
+    const runtimeLabel = !turnEnabled
+        ? '自动记忆未开启'
+        : turnAuto
+            ? '自动记忆运行中'
+            : '自动记忆已启用';
+    const runtimeTitle = hasProcessedTurn ? `第 ${lastId} 楼已处理` : '等待第一轮正文';
+    const summaryDestination = state.turnSummary.saveMode === 'commit' ? '已直接写入长期记忆' : '摘要会先进入待确认';
+    const tableDestination = tableEnabled
+        ? tableDraftOperationCount
+            ? `表格还有 ${tableDraftOperationCount} 处差异等待确认`
+            : '表格没有待处理差异'
+        : '本轮未启用表格更新';
+    $('#bakemono-memory-turn-runtime-label').text(runtimeLabel);
+    $('#bakemono-memory-turn-runtime-title').text(runtimeTitle);
+    $('#bakemono-memory-turn-status').text(hasProcessedTurn
+        ? `${summaryDestination}；${tableDestination}。`
+        : turnEnabled
+            ? '下一次正文结束后会按当前设置生成摘要。'
+            : '开启后，每轮剧情会先生成草稿，再由你确认是否保存。');
+    $('.bakemono-memory-turn-status-hero').toggleClass('is-running', turnEnabled && turnAuto);
+
+    const setFlowStep = (selector, status) => {
+        const element = document.querySelector(selector);
+        if (!element) {
+            return;
+        }
+        element.classList.toggle('is-done', status === 'done');
+        element.classList.toggle('is-current', status === 'current');
+        element.classList.toggle('is-waiting', status === 'waiting');
+    };
+    setFlowStep('#bakemono-memory-turn-flow-read', hasProcessedTurn ? 'done' : turnEnabled ? 'current' : 'waiting');
+    setFlowStep('#bakemono-memory-turn-flow-summary', hasProcessedTurn && state.turnSummary.processingMode !== turnProcessingModes.TABLE ? 'done' : 'waiting');
+    setFlowStep('#bakemono-memory-turn-flow-table', tableDraftOperationCount ? 'current' : hasProcessedTurn && tableEnabled ? 'done' : 'waiting');
+    $('#bakemono-memory-turn-flow-status').text(tableDraftOperationCount
+        ? `待确认 ${tableDraftOperationCount} 处`
+        : hasProcessedTurn
+            ? '本轮已完成'
+            : turnEnabled
+                ? '等待下一轮'
+                : '尚未开启');
     renderTableList(state);
     renderTableEditDrafts(state);
 }
@@ -8726,29 +8874,71 @@ function renderTableEditDrafts(state = ensureState()) {
     }
     const fragment = document.createDocumentFragment();
     drafts.forEach(draft => {
-        const card = document.createElement('section');
+        const operations = Array.isArray(draft.operations) ? draft.operations : [];
+        const card = document.createElement('article');
         card.className = 'bakemono-memory-table-draft-card';
         card.dataset.tableDraftId = draft.id;
         const header = document.createElement('div');
-        header.className = 'bakemono-memory-draft-header';
-        const title = document.createElement('strong');
-        title.textContent = `表格修改 · ${draft.operations.length} 项`;
+        header.className = 'bakemono-memory-table-draft-header';
+        const badge = document.createElement('span');
+        badge.className = 'bakemono-memory-table-draft-badge';
+        badge.textContent = '表格修改';
+        const time = document.createElement('small');
+        time.textContent = draft.createdAt ? new Date(draft.createdAt).toLocaleString() : '刚刚生成';
+        header.append(badge, time);
+        const title = document.createElement('h4');
+        title.textContent = `${operations.length} 处变化等待应用`;
         const meta = document.createElement('span');
-        meta.textContent = `${formatSourceRange(draft.sourceMessageIds || [])} · ${draft.createdAt ? new Date(draft.createdAt).toLocaleString() : ''}`;
-        header.append(title, meta);
+        meta.className = 'bakemono-memory-table-draft-meta';
+        meta.textContent = formatSourceRange(draft.sourceMessageIds || []) || '本轮正文';
+
+        const preview = document.createElement('div');
+        preview.className = 'bakemono-memory-table-diff-list';
+        operations.slice(0, 4).forEach(operation => {
+            const item = document.createElement('div');
+            item.className = `bakemono-memory-table-diff-item is-${operation.op || 'update'}`;
+            const sign = document.createElement('span');
+            sign.className = 'bakemono-memory-table-diff-sign';
+            sign.textContent = operation.op === 'insert' ? '+' : operation.op === 'delete' ? '−' : '~';
+            const copy = document.createElement('div');
+            const itemTitle = document.createElement('strong');
+            const operationLabel = operation.op === 'insert' ? '新增记录' : operation.op === 'delete' ? '删除记录' : '更新记录';
+            itemTitle.textContent = `表格 #${operation.tableIndex} · ${operationLabel}`;
+            const itemText = document.createElement('p');
+            const dataText = Object.entries(operation.data || {}).map(([key, value]) => `${key}：${value}`).join(' · ');
+            itemText.textContent = dataText || (Number.isFinite(operation.rowIndex) ? `第 ${operation.rowIndex} 行` : '等待查看具体内容');
+            copy.append(itemTitle, itemText);
+            item.append(sign, copy);
+            preview.append(item);
+        });
+        if (operations.length > 4) {
+            const more = document.createElement('small');
+            more.className = 'bakemono-memory-table-diff-more';
+            more.textContent = `另有 ${operations.length - 4} 处修改，可在原始指令中查看。`;
+            preview.append(more);
+        }
+
         const textarea = document.createElement('textarea');
         textarea.className = 'text_pole textarea_compact bakemono-memory-table-draft-editor';
         textarea.rows = 7;
         textarea.spellcheck = false;
         textarea.value = draft.raw || '';
-        const actions = document.createElement('div');
-        actions.className = 'bakemono-memory-inline-actions';
-        actions.innerHTML = `
-            <button type="button" class="menu_button" data-bakemono-table-draft-action="apply"><i class="fa-solid fa-check"></i><span>应用修改</span></button>
+        const details = document.createElement('details');
+        details.className = 'bakemono-memory-table-draft-details bakemono-memory-console-disclosure';
+        details.innerHTML = '<summary><span><i class="fa-solid fa-code"></i> 查看原始修改指令</span><small>重新解析或丢弃</small></summary>';
+        const secondaryActions = document.createElement('div');
+        secondaryActions.className = 'bakemono-memory-table-draft-secondary-actions';
+        secondaryActions.innerHTML = `
             <button type="button" class="menu_button" data-bakemono-table-draft-action="reparse"><i class="fa-solid fa-code"></i><span>重新解析</span></button>
             <button type="button" class="menu_button danger_button" data-bakemono-table-draft-action="discard"><i class="fa-solid fa-trash"></i><span>丢弃</span></button>
         `;
-        card.append(header, textarea, actions);
+        details.append(textarea, secondaryActions);
+        const apply = document.createElement('button');
+        apply.type = 'button';
+        apply.className = 'menu_button bakemono-memory-table-draft-apply';
+        apply.dataset.bakemonoTableDraftAction = 'apply';
+        apply.innerHTML = '<i class="fa-solid fa-check"></i><span>应用修改</span>';
+        card.append(header, title, meta, preview, details, apply);
         fragment.append(card);
     });
     container.append(fragment);
@@ -8898,6 +9088,9 @@ function renderTaskQueueProgress(statusText = '') {
         renderDrafts();
         renderTaskQueue();
     }
+    if (getActiveWorkbenchTab() === 'maintenance') {
+        renderMaintenanceOverview(state);
+    }
     if (statusText) {
         $('#bakemono-memory-status-line').text(statusText);
         $('#bakemono-memory-injection-badge').text(statusText);
@@ -8905,7 +9098,7 @@ function renderTaskQueueProgress(statusText = '') {
 }
 
 function renderActivePresetControls(tabName) {
-    if (tabName === 'overview') {
+    if (tabName === 'settings') {
         renderPresetControlPair('#bakemono-memory-preset-select', '#bakemono-memory-preset-name');
     } else if (tabName === 'scan') {
         renderAreaPresetControl(areaPresetScopes.SCAN, '#bakemono-memory-scan-preset-select', '#bakemono-memory-scan-preset-name');
@@ -8927,9 +9120,13 @@ function renderActiveWorkbenchPanel(tabName, state, blocks) {
     renderActivePresetControls(tabName);
     if (tabName === 'overview') {
         renderWorkflowGuide(state);
+        renderMemoryDatabaseSummary(state);
+    } else if (tabName === 'settings') {
+        renderWorkflowGuide(state);
         renderAutoHideRecentPanel(state);
         renderMemoryDatabaseSummary(state);
     } else if (tabName === 'preview') {
+        renderSummaryGenerationPanel(state, blocks);
         renderPreviewSections(blocks.story, blocks.stage, blocks.epic);
     } else if (tabName === 'records') {
         renderMemoryRecordList();
@@ -8941,13 +9138,64 @@ function renderActiveWorkbenchPanel(tabName, state, blocks) {
         renderTaskQueue();
     } else if (tabName === 'turn-summary' || tabName === 'tables') {
         renderTurnSummaryPanel(state);
+    } else if (tabName === 'injection') {
+        renderInjectionOverview(state);
+    } else if (tabName === 'prompts') {
+        renderPromptOverview(state);
     } else if (tabName === 'vector') {
         renderVectorMemoryPanel(state);
     } else if (tabName === 'scan') {
+        renderScanOverview(state);
         renderScanPreview();
     } else if (tabName === 'automation') {
         renderCustomModelOptions(state.automation.customApi?.models || []);
+    } else if (tabName === 'maintenance') {
+        renderMaintenanceOverview(state);
     }
+}
+
+function renderAutomationOverview(state = ensureState()) {
+    const targets = getUnsummarizedStoryBlocks();
+    const triggerType = state.automation.triggerType || defaultAutomation.triggerType;
+    const currentValue = triggerType === 'chars'
+        ? targets.reduce((sum, block) => sum + String(block.content || '').length, 0)
+        : targets.length;
+    const threshold = triggerType === 'chars'
+        ? Math.max(100, Number(state.automation.charInterval || defaultAutomation.charInterval))
+        : Math.max(1, Number(state.automation.floorInterval || defaultAutomation.floorInterval));
+    const remaining = Math.max(0, threshold - currentValue);
+    const progress = Math.max(0, Math.min(100, Math.round((currentValue / threshold) * 100)));
+    const enabled = !!state.automation.enabled;
+    const ready = enabled && currentValue >= threshold;
+    const mode = state.automation.mode || defaultAutomation.mode;
+    const modeLabel = mode === 'commit_hide' ? '自动保存' : mode === 'draft' ? '生成草稿' : '仅提醒';
+    const triggerLabel = triggerType === 'chars' ? '字数' : '片段';
+    const unit = triggerType === 'chars' ? '字' : '条摘要';
+    const title = !enabled
+        ? '等待开启自动规则'
+        : ready
+            ? '已达到触发条件'
+            : `还差 ${remaining.toLocaleString()} ${unit}`;
+    const destination = mode === 'commit_hide'
+        ? `达到阈值后自动保存阶段总结，并保留最近 ${state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent} 楼正文。`
+        : mode === 'draft'
+            ? '达到阈值后生成阶段总结草稿，先进入待确认，不直接覆盖正文。'
+            : '达到阈值后只提醒你整理，不会自动生成或保存。';
+    $('#bakemono-memory-automation-runtime-label').text(enabled ? '自动总结运行中' : '自动总结未开启');
+    $('#bakemono-memory-automation-mode-badge').text(modeLabel);
+    $('#bakemono-memory-automation-runtime-title').text(title);
+    $('#bakemono-memory-automation-runtime-description').text(destination);
+    $('#bakemono-memory-automation-progress-bar').css('width', `${enabled ? progress : 0}%`);
+    $('#bakemono-memory-automation-rule-status').text(enabled ? `按${triggerLabel} · ${currentValue.toLocaleString()} / ${threshold.toLocaleString()}` : '尚未启用');
+    $('#bakemono-memory-automation-floor-hint').text(`每 ${Number(state.automation.floorInterval || defaultAutomation.floorInterval).toLocaleString()} 个未整理片段`);
+    $('#bakemono-memory-automation-char-hint').text(`每 ${Number(state.automation.charInterval || defaultAutomation.charInterval).toLocaleString()} 字`);
+    $('#bakemono-memory-automation-preserve-hint').text(`最近 ${Number(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent).toLocaleString()} 楼`);
+    $('.bakemono-memory-automation-hero')
+        .toggleClass('is-running', enabled)
+        .toggleClass('is-ready', ready);
+    document.querySelectorAll('[data-bakemono-auto-rule]').forEach(row => {
+        row.hidden = row.dataset.bakemonoAutoRule !== triggerType;
+    });
 }
 
 function renderAll(statusText = '') {
@@ -8965,7 +9213,7 @@ function renderAll(statusText = '') {
         return;
     }
     const activeTab = getActiveWorkbenchTab();
-    if (activeTab === 'overview' || activeTab === 'records') {
+    if (activeTab === 'overview' || activeTab === 'records' || activeTab === 'settings') {
         state.memoryRecords = buildMemoryRecords(state);
     }
     const storyBlocks = getStoryBlocks();
@@ -8979,6 +9227,8 @@ function renderAll(statusText = '') {
     ];
     const dedupedStageBlocks = dedupeByHash(stageBlocks);
     const dedupedEpicBlocks = dedupeByHash(epicBlocks);
+
+    renderWorkbenchHeaderContext(activeTab, state);
 
     $('#bakemono-memory-count-story').text(storyBlocks.length);
     $('#bakemono-memory-count-stage').text(dedupedStageBlocks.length);
@@ -9048,6 +9298,9 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-custom-temperature').val(state.automation.customApi?.temperature ?? defaultAutomation.customApi.temperature);
     $('#bakemono-memory-custom-max-tokens').val(state.automation.customApi?.maxTokens ?? defaultAutomation.customApi.maxTokens);
     $('#bakemono-memory-custom-stream').val(String(!!state.automation.customApi?.stream));
+    if (activeTab === 'automation') {
+        renderAutomationOverview(state);
+    }
     renderActiveWorkbenchPanel(activeTab, state, {
         story: storyBlocks,
         stage: dedupedStageBlocks,
@@ -9112,6 +9365,107 @@ function syncPreviewTypeUi() {
     document.querySelectorAll('.bakemono-memory-preview-column').forEach(column => {
         column.classList.toggle('is-active', column.dataset.bakemonoPreviewColumn === previewState.activeType);
     });
+}
+
+function getPromptPreviewValue(type = promptPreviewType, state = ensureState()) {
+    const config = {
+        story: ['#bakemono-memory-story-prompt', state.generationPrompts.story || defaultStoryGenerationPrompt],
+        missing: ['#bakemono-memory-missing-prompt', state.generationPrompts.missing || defaultMissingSummaryPrompt],
+        stage: ['#bakemono-memory-stage-prompt', state.generationPrompts.stage || defaultStageGenerationPrompt],
+        epic: ['#bakemono-memory-epic-prompt', state.generationPrompts.epic || defaultEpicGenerationPrompt],
+    }[type] || ['#bakemono-memory-stage-prompt', state.generationPrompts.stage || defaultStageGenerationPrompt];
+    const editorValue = String($(config[0]).val() || '').trim();
+    return editorValue || String(config[1] || '').trim();
+}
+
+function getPromptStructureExcerpt(prompt = '') {
+    const lines = String(prompt || '')
+        .replaceAll('{{blocks}}', '')
+        .split(/\r?\n/)
+        .map(line => line.trimEnd())
+        .filter(line => line.trim());
+    const structural = lines.filter(line => /^(?:➤|[-*]\s|\d+[.)]\s|#{1,3}\s|<summary>|【|……|\.\.\.)/.test(line.trim())
+        || /(?:经过：|关键点：|角色进化录|时间线总览|剧情长焦)/.test(line));
+    const selected = structural.length >= 4 ? structural : lines;
+    return selected.slice(0, 14).join('\n') || '当前提示词没有可预览的结构。';
+}
+
+function renderPromptOverview(state = ensureState()) {
+    const validTypes = new Set(['story', 'missing', 'stage', 'epic']);
+    if (!validTypes.has(promptPreviewType)) {
+        promptPreviewType = 'stage';
+    }
+    const meta = {
+        story: { label: '旧聊天补课', description: '把没有摘要的旧正文分批压缩进插件记忆，不写回原楼层。' },
+        missing: { label: '缺失摘要', description: '为漏写摘要的助手楼层补回标准摘要块。' },
+        stage: { label: '阶段总结', description: '把普通摘要整理成带时间轴的阶段记忆。' },
+        epic: { label: '多次总结', description: '把多个阶段继续整理成长期时间线总览。' },
+    }[promptPreviewType];
+    const prompt = getPromptPreviewValue(promptPreviewType, state);
+    const select = document.querySelector('#bakemono-memory-prompts-preset-select');
+    const selectedName = select?.selectedOptions?.[0]?.textContent
+        || String($('#bakemono-memory-prompts-preset-name').val() || '').trim()
+        || '默认提示词';
+    $('#bakemono-memory-prompts-current-name').text(selectedName);
+    $('#bakemono-memory-prompts-preview-label').text(meta.label);
+    $('#bakemono-memory-prompts-preview-description').text(meta.description);
+    $('#bakemono-memory-prompts-structure-preview').text(getPromptStructureExcerpt(prompt));
+    document.querySelectorAll('[data-bakemono-prompt-preview]').forEach(button => {
+        const isActive = button.dataset.bakemonoPromptPreview === promptPreviewType;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-selected', String(isActive));
+    });
+}
+
+function renderInjectionOverview(state = ensureState()) {
+    const parts = getInjectionMemoryParts(state);
+    const stats = parts.stats;
+    const content = renderInjectionContent(state);
+    const total = (stats.epic || 0) + (stats.stage || 0) + (stats.story || 0) + (stats.table || 0) + (stats.vector || 0);
+    const enabled = !!state.injection.enabled;
+    $('#bakemono-memory-injection-runtime-label').text(enabled ? '注入已开启' : '注入未开启');
+    $('#bakemono-memory-injection-runtime-title').text(`本轮共 ${total.toLocaleString()} 条记忆`);
+    $('#bakemono-memory-injection-runtime-description').text(enabled
+        ? `多次总结 ${stats.epic || 0} · 阶段总结 ${stats.stage || 0} · 普通摘要 ${stats.story || 0} · 表格 ${stats.table || 0} · 向量召回 ${stats.vector || 0}`
+        : '当前最终内容不会发送给模型；可在工作流细节中开启剧情记忆注入。');
+    $('#bakemono-memory-injection-source-total').text(`${total.toLocaleString()} 条`);
+    $('#bakemono-memory-injection-source-epic').text(stats.epic || 0);
+    $('#bakemono-memory-injection-source-summary').text((stats.stage || 0) + (stats.story || 0));
+    $('#bakemono-memory-injection-source-table').text(stats.table || 0);
+    $('#bakemono-memory-injection-source-vector').text(stats.vector || 0);
+    $('#bakemono-memory-injection-char-count').text(`约 ${content.length.toLocaleString()} 字符`);
+    const select = document.querySelector('#bakemono-memory-injection-preset-select');
+    $('#bakemono-memory-injection-preset-summary').text(select?.selectedOptions?.[0]?.textContent || '当前配置');
+    $('.bakemono-memory-injection-status-hero').toggleClass('is-active', enabled);
+}
+
+function renderScanOverview(state = ensureState()) {
+    const blocks = Array.isArray(state.blocks) ? state.blocks : [];
+    const counts = {
+        story: blocks.filter(block => block.type === blockTypes.STORY).length,
+        stage: blocks.filter(block => block.type === blockTypes.STAGE).length,
+        epic: blocks.filter(block => block.type === blockTypes.EPIC).length,
+    };
+    const total = Math.max(Number(state.lastScanMatchCount || 0), counts.story + counts.stage + counts.epic);
+    const maxCount = Math.max(1, counts.story, counts.stage, counts.epic);
+    const hasScanned = !!state.lastScanAt;
+    const mode = state.scanRules.mode || defaultScanRules.mode;
+    const includeTags = parseList(state.scanRules.includeTags || defaultScanRules.includeTags);
+    const tagSummary = includeTags.slice(0, 3).join('、') || '未设置读取标签';
+    $('#bakemono-memory-scan-runtime-title').text(hasScanned ? '识别正常' : '尚未扫描');
+    $('#bakemono-memory-scan-runtime-count').text(`${total.toLocaleString()} 条结果`);
+    $('#bakemono-memory-scan-runtime-description').text(hasScanned
+        ? `${mode === 'full' ? '全文管线' : '标签块'} · ${state.scanRules.includeHidden !== false ? '包含隐藏楼层' : '只看可见楼层'} · ${new Date(state.lastScanAt).toLocaleString()}`
+        : '扫描后会在这里显示普通摘要、阶段总结和多次总结的识别数量。');
+    $('#bakemono-memory-scan-story-count').text(counts.story);
+    $('#bakemono-memory-scan-stage-count').text(counts.stage);
+    $('#bakemono-memory-scan-epic-count').text(counts.epic);
+    $('#bakemono-memory-scan-story-bar').css('width', `${Math.round((counts.story / maxCount) * 100)}%`);
+    $('#bakemono-memory-scan-stage-bar').css('width', `${Math.round((counts.stage / maxCount) * 100)}%`);
+    $('#bakemono-memory-scan-epic-bar').css('width', `${Math.round((counts.epic / maxCount) * 100)}%`);
+    $('#bakemono-memory-scan-mode-badge').text(mode === 'full' ? '全文管线' : '标签块');
+    $('#bakemono-memory-scan-tag-summary').text(includeTags.length > 3 ? `${tagSummary} 等 ${includeTags.length} 个` : tagSummary);
+    $('.bakemono-memory-scan-status-hero').toggleClass('is-healthy', hasScanned);
 }
 
 function renderScanPreview() {
@@ -9209,8 +9563,31 @@ function renderVectorMemoryPanel(state = ensureState()) {
     const maxIndexed = Number(state.vectorMemory.maxIndexedMessages || 0);
     const fullHitCount = (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier === 'full').length;
     const summaryHitCount = (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier !== 'full').length;
+    const hitCount = fullHitCount + summaryHitCount;
+    const indexReady = messageRecordCount > 0 && !state.vectorMemory.dirty;
+    const indexTime = state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '';
+    const providerLabel = state.vectorMemory.embeddingProvider === 'custom-openai' ? '自定义向量' : '本地向量';
+    const runtimeLabel = !messageRecordCount
+        ? '尚未建立索引'
+        : state.vectorMemory.dirty
+            ? '索引等待刷新'
+            : '索引健康';
+    const runtimeDescription = !messageRecordCount
+        ? '建立索引后，剪辑台才能从长聊天里找回相关旧剧情。'
+        : `${bodyRecordCount} 个正文片段 · ${summaryRecordCount} 个摘要片段${indexTime ? ` · 最近刷新于 ${indexTime}` : ''}${state.vectorMemory.lastRecallSkippedReason ? ` · 上次跳过：${state.vectorMemory.lastRecallSkippedReason}` : ''}`;
+    $('#bakemono-memory-vector-runtime-label').text(runtimeLabel);
+    $('#bakemono-memory-vector-runtime-badge').text(state.vectorMemory.enabled ? '召回开启' : '召回关闭');
+    $('#bakemono-memory-vector-runtime-title').text(`${messageRecordCount} 楼已索引`);
+    $('#bakemono-memory-vector-runtime-description').text(runtimeDescription);
+    $('#bakemono-memory-vector-meter-bar').css('width', `${!messageRecordCount ? 0 : indexReady ? 100 : 68}%`);
+    $('.bakemono-memory-vector-status-hero')
+        .toggleClass('is-healthy', indexReady)
+        .toggleClass('is-dirty', messageRecordCount > 0 && !indexReady);
+    $('#bakemono-memory-vector-result-count').text(`${hitCount} 条`);
+    $('#bakemono-memory-vector-config-summary').text(`${providerLabel} · 候选 ${state.vectorMemory.rerankCandidateCount ?? state.vectorMemory.topK ?? defaultVectorMemory.rerankCandidateCount} · 最终 ${state.vectorMemory.finalRecallCount ?? state.vectorMemory.maxRecallMessages ?? defaultVectorMemory.finalRecallCount}`);
     $('#bakemono-memory-vector-stats').text(`索引 ${messageRecordCount} 楼 / 正文 ${bodyRecordCount} 条 / 摘要 ${summaryRecordCount} 条 / 召回全文 ${fullHitCount} 条 / 召回摘要 ${summaryHitCount} 条 / 预计 ${state.vectorMemory.estimatedChars || 0} 字 / 裁剪 ${state.vectorMemory.trimmedHitCount || 0} 个 / ${maxIndexed > 0 ? `最多索引最近 ${maxIndexed} 楼 / ` : ''}${state.vectorMemory.lastRecallSkippedReason ? `跳过：${state.vectorMemory.lastRecallSkippedReason}` : state.vectorMemory.dirty ? `待刷新：${state.vectorMemory.dirtyReason || '有变更'}` : state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '尚未建索引'}`);
     $('#bakemono-memory-vector-query-preview').val((state.vectorMemory.lastQueries || []).join('\n') || state.vectorMemory.lastQuery || getVectorQueryText(state));
+    renderVectorResultList(state);
     renderVectorRecallDetails(state);
     renderVectorHitList();
     renderVectorRecordList();
@@ -9370,6 +9747,63 @@ function renderVectorRecordList(state = ensureState()) {
     container.append(fragment);
 }
 
+function renderReviewPanelTabs(state = ensureState()) {
+    const counts = {
+        drafts: state.drafts.length,
+        tasks: state.taskQueue.length,
+        history: state.history.length,
+    };
+    $('#bakemono-memory-review-draft-count').text(counts.drafts);
+    $('#bakemono-memory-review-task-count').text(counts.tasks);
+    $('#bakemono-memory-review-history-count').text(counts.history);
+    document.querySelectorAll('[data-bakemono-review-view]').forEach(button => {
+        const isActive = button.dataset.bakemonoReviewView === reviewPanelView;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-selected', String(isActive));
+    });
+    document.querySelectorAll('[data-bakemono-review-panel]').forEach(panel => {
+        const isActive = panel.dataset.bakemonoReviewPanel === reviewPanelView;
+        panel.classList.toggle('is-active', isActive);
+        panel.hidden = !isActive;
+    });
+}
+
+function renderVectorResultList(state = ensureState()) {
+    const container = document.querySelector('#bakemono-memory-vector-result-list');
+    if (!container) {
+        return;
+    }
+    container.innerHTML = '';
+    const hits = (state.vectorMemory.lastHits || []).slice(0, 4);
+    if (!hits.length) {
+        const empty = document.createElement('div');
+        empty.className = 'bakemono-memory-vector-result-empty';
+        empty.innerHTML = '<i class="fa-solid fa-bullseye"></i><div><strong>还没有召回结果</strong><span>建立索引后输入一段剧情线索，测试最相关的旧记忆。</span></div>';
+        container.append(empty);
+        return;
+    }
+    const fragment = document.createDocumentFragment();
+    hits.forEach(hit => {
+        const scoreValue = Number(hit.rerankScore ?? hit.score ?? hit.similarity ?? 0);
+        const normalizedScore = Number.isFinite(scoreValue) ? scoreValue : 0;
+        const score = Math.max(0, Math.min(100, Math.round(normalizedScore <= 1 ? normalizedScore * 100 : normalizedScore)));
+        const item = document.createElement('article');
+        item.className = 'bakemono-memory-vector-result-item';
+        const tier = hit.recallTier === 'full' ? '全文' : '摘要';
+        const sourceRange = formatSourceRange(hit.sourceMessageIds || [hit.messageId]);
+        item.innerHTML = `
+            <span class="bakemono-memory-vector-result-score">${score}%</span>
+            <div>
+              <strong>${escapeHtml(hit.title || `楼层 ${hit.messageId}`)}</strong>
+              <p>${escapeHtml(hit.preview || hit.text || '暂无预览内容')}</p>
+              <small>${escapeHtml([tier, sourceRange].filter(Boolean).join(' · '))}</small>
+            </div>
+        `;
+        fragment.append(item);
+    });
+    container.append(fragment);
+}
+
 function renderDrafts() {
     const state = ensureState();
     const container = document.querySelector('#bakemono-memory-draft-list');
@@ -9377,6 +9811,7 @@ function renderDrafts() {
         return;
     }
 
+    renderReviewPanelTabs(state);
     container.innerHTML = '';
     const missingDraftCount = state.drafts.filter(draft => draft.metadata?.appendMode === 'missing_summary').length;
     const missingTaskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && ['queued', 'failed', 'done'].includes(task.status)).length;
@@ -9406,29 +9841,44 @@ function renderDrafts() {
 
     const fragment = document.createDocumentFragment();
     state.drafts.forEach(draft => {
-        const card = document.createElement('section');
+        const card = document.createElement('article');
         card.className = 'bakemono-memory-draft-card';
         card.dataset.draftId = draft.id;
 
         const header = document.createElement('div');
         header.className = 'bakemono-memory-draft-header';
+        const badge = document.createElement('span');
+        badge.className = `bakemono-memory-draft-kind is-${draft.kind || 'story'}`;
+        badge.textContent = getKindLabel(draft.kind);
+        const time = document.createElement('small');
+        time.textContent = draft.createdAt ? new Date(draft.createdAt).toLocaleString() : '刚刚生成';
+        header.append(badge, time);
+
         const titleWrap = document.createElement('label');
         titleWrap.className = 'bakemono-memory-draft-title-field';
-        const titleLabel = document.createElement('span');
-        titleLabel.textContent = getKindLabel(draft.kind);
         const titleInput = document.createElement('input');
         titleInput.className = 'text_pole bakemono-memory-draft-title';
         titleInput.type = 'text';
         titleInput.value = draft.title || '';
         titleInput.placeholder = '草稿标题';
-        titleWrap.append(titleLabel, titleInput);
-        const meta = document.createElement('span');
+        titleInput.setAttribute('aria-label', '草稿标题');
+        titleWrap.append(titleInput);
+
+        const preview = document.createElement('p');
+        preview.className = 'bakemono-memory-draft-preview';
+        preview.textContent = String(draft.content || '').replace(/\s+/g, ' ').trim().slice(0, 180) || '草稿尚无正文内容。';
+
+        const meta = document.createElement('div');
+        meta.className = 'bakemono-memory-draft-meta';
         const draftMeta = draft.metadata?.sourceRange
             ? `${draft.metadata.sourceRange}${draft.metadata.batchIndex ? ` · 第 ${draft.metadata.batchIndex}/${draft.metadata.batchTotal || '?'} 批` : ''}`
             : '';
         const appendLabel = draft.metadata?.appendMode === 'missing_summary' ? '确认后追加到原助手楼层' : '';
-        meta.textContent = [draft.trigger || 'manual', appendLabel, draftMeta, draft.createdAt ? new Date(draft.createdAt).toLocaleString() : ''].filter(Boolean).join(' · ');
-        header.append(titleWrap, meta);
+        [draftMeta, appendLabel, draft.trigger || 'manual'].filter(Boolean).forEach(text => {
+            const item = document.createElement('span');
+            item.textContent = text;
+            meta.append(item);
+        });
 
         const textarea = document.createElement('textarea');
         textarea.className = 'text_pole textarea_compact bakemono-memory-draft-editor';
@@ -9436,15 +9886,25 @@ function renderDrafts() {
         textarea.spellcheck = false;
         textarea.value = draft.content || '';
 
-        const actions = document.createElement('div');
-        actions.className = 'bakemono-memory-inline-actions bakemono-memory-draft-actions';
-        actions.innerHTML = `
-            <button class="menu_button" data-bakemono-draft-action="commit"><i class="fa-solid fa-check"></i><span>确认保存</span></button>
+        const editorDetails = document.createElement('details');
+        editorDetails.className = 'bakemono-memory-draft-editor-disclosure bakemono-memory-console-disclosure';
+        editorDetails.innerHTML = '<summary><span><i class="fa-solid fa-pen-to-square"></i> 查看并编辑完整草稿</span><small>修改正文、重新总结或丢弃</small></summary>';
+        const secondaryActions = document.createElement('div');
+        secondaryActions.className = 'bakemono-memory-inline-actions bakemono-memory-draft-secondary-actions';
+        secondaryActions.innerHTML = `
             <button class="menu_button" data-bakemono-draft-action="regenerate"><i class="fa-solid fa-rotate"></i><span>重新总结</span></button>
             <button class="menu_button danger_button" data-bakemono-draft-action="discard"><i class="fa-solid fa-trash"></i><span>丢弃草稿</span></button>
         `;
+        editorDetails.append(textarea, secondaryActions);
 
-        card.append(header, textarea, actions);
+        const actions = document.createElement('div');
+        actions.className = 'bakemono-memory-draft-actions';
+        actions.innerHTML = `
+            <button class="menu_button" type="button" data-bakemono-draft-editor-toggle><i class="fa-solid fa-pen"></i><span>继续编辑</span></button>
+            <button class="menu_button bakemono-memory-draft-commit" data-bakemono-draft-action="commit"><i class="fa-solid fa-check"></i><span>确认保存</span></button>
+        `;
+
+        card.append(header, titleWrap, preview, meta, editorDetails, actions);
         fragment.append(card);
     });
     container.append(fragment);
@@ -9457,6 +9917,7 @@ function renderHistory() {
         return;
     }
 
+    renderReviewPanelTabs(state);
     container.innerHTML = '';
     if (!state.history.length) {
         const empty = document.createElement('div');
@@ -9493,22 +9954,27 @@ function renderHistory() {
     next.innerHTML = '<span>下一页</span><i class="fa-solid fa-chevron-right"></i>';
 
     controls.append(prev, info, next);
-    container.append(controls);
 
     const fragment = document.createDocumentFragment();
     visibleHistory.forEach(item => {
         const row = document.createElement('div');
         row.className = 'bakemono-memory-history-item';
-        const kind = document.createElement('strong');
-        kind.textContent = getKindLabel(item.kind);
-        const title = document.createElement('span');
+        const marker = document.createElement('span');
+        marker.className = `bakemono-memory-history-marker is-${item.kind || 'story'}`;
+        marker.textContent = item.kind === blockTypes.EPIC ? 'E' : item.kind === blockTypes.STAGE ? 'S' : '#';
+        const main = document.createElement('div');
+        main.className = 'bakemono-memory-history-main';
+        const title = document.createElement('strong');
         title.textContent = item.summary?.title || item.draft?.title || item.summaryHash;
+        const kind = document.createElement('span');
+        kind.textContent = getKindLabel(item.kind);
+        main.append(title, kind);
         const time = document.createElement('time');
         time.textContent = item.createdAt ? new Date(item.createdAt).toLocaleString() : '';
-        row.append(kind, title, time);
+        row.append(marker, main, time);
         fragment.append(row);
     });
-    container.append(fragment);
+    container.append(fragment, controls);
 }
 
 function renderTaskQueue() {
@@ -9518,6 +9984,7 @@ function renderTaskQueue() {
         return;
     }
 
+    renderReviewPanelTabs(state);
     container.innerHTML = '';
     const removableTaskStatuses = new Set(['queued', 'failed', 'done']);
     const missingTaskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && removableTaskStatuses.has(task.status)).length;
@@ -9553,6 +10020,18 @@ function renderTaskQueue() {
         row.className = `bakemono-memory-task-item is-${task.status || 'queued'}`;
         row.dataset.taskId = task.id;
 
+        const marker = document.createElement('span');
+        marker.className = 'bakemono-memory-task-marker';
+        const markerIcon = document.createElement('i');
+        markerIcon.className = task.status === 'running'
+            ? 'fa-solid fa-spinner fa-spin'
+            : task.status === 'done'
+                ? 'fa-solid fa-check'
+                : task.status === 'failed'
+                    ? 'fa-solid fa-exclamation'
+                    : 'fa-solid fa-clock';
+        marker.append(markerIcon);
+
         const main = document.createElement('div');
         main.className = 'bakemono-memory-task-main';
         const title = document.createElement('strong');
@@ -9573,13 +10052,13 @@ function renderTaskQueue() {
         }
         const removeLabel = task.status === 'running' ? '强制移除' : '移除';
         actions.insertAdjacentHTML('beforeend', `<button class="menu_button${task.status === 'running' ? ' danger' : ''}" data-bakemono-task-action="remove"><i class="fa-solid fa-xmark"></i><span>${removeLabel}</span></button>`);
-        row.append(main, actions);
+        row.append(marker, main, actions);
         fragment.append(row);
     });
     container.append(fragment);
 }
 
-function renderAutoSummaryTransactions(container, state = ensureState()) {
+function renderAutoSummaryTransactions(container, state = ensureState(), options = {}) {
     const transactions = (state.autoSummaryTransactions || [])
         .filter(transaction => transaction.status !== 'rolled_back')
         .slice(0, 8);
@@ -9589,10 +10068,12 @@ function renderAutoSummaryTransactions(container, state = ensureState()) {
 
     const panel = document.createElement('div');
     panel.className = 'bakemono-memory-auto-tx-list';
-    const title = document.createElement('div');
-    title.className = 'bakemono-memory-auto-tx-title';
-    title.innerHTML = '<i class="fa-solid fa-shield-halved"></i><strong>自动总结回滚</strong><span>只处理自动保存并自动隐藏的总结</span>';
-    panel.append(title);
+    if (options.showTitle !== false) {
+        const title = document.createElement('div');
+        title.className = 'bakemono-memory-auto-tx-title';
+        title.innerHTML = '<i class="fa-solid fa-shield-halved"></i><strong>自动总结回滚</strong><span>只处理自动保存并自动隐藏的总结</span>';
+        panel.append(title);
+    }
 
     for (const transaction of transactions) {
         const item = document.createElement('div');
@@ -9617,6 +10098,134 @@ function renderAutoSummaryTransactions(container, state = ensureState()) {
         panel.append(item);
     }
     container.append(panel);
+}
+
+function getMaintenanceRecordTimestamp(item = {}) {
+    const value = item.createdAt || item.appliedAt || item.rolledBackAt || item.undoneAt || '';
+    const timestamp = value ? new Date(value).getTime() : 0;
+    return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function renderMaintenanceOverview(state = ensureState()) {
+    const latest = state.history?.[0] || null;
+    const autoTransactions = (state.autoSummaryTransactions || []).filter(item => item.status !== 'rolled_back');
+    const latestAuto = latest
+        ? autoTransactions.find(item => item.summaryHash === latest.summaryHash)
+        : null;
+    const sourceIds = unique(getFiniteMessageIds([
+        ...(latest?.summary?.sourceMessageIds || []),
+        ...(latest?.draft?.sourceMessageIds || []),
+    ]));
+    const coveredCount = (latest?.coveredBlockHashes || []).length + (latest?.coveredStageHashes || []).length;
+    const hiddenCount = latestAuto ? getFiniteMessageIds(latestAuto.hiddenMessageIds || []).length : 0;
+    const latestTitle = latest?.summary?.title || latest?.draft?.title || (latest ? getKindLabel(latest.kind) : '暂无可撤回记录');
+    const impact = [];
+    if (latest) {
+        impact.push(`${getKindLabel(latest.kind) || '总结'} 1 条`);
+        if (sourceIds.length) impact.push(`来源 ${sourceIds.length} 楼`);
+        if (coveredCount) impact.push(`覆盖标记 ${coveredCount} 个`);
+        if (hiddenCount) impact.push(`可恢复 ${hiddenCount} 楼`);
+    }
+    $('#bakemono-memory-maintenance-latest-title').text(latestTitle);
+    $('#bakemono-memory-maintenance-latest-impact').text(latest
+        ? `影响：${impact.join('、')}。撤回前仍会再次确认。`
+        : '保存阶段总结或多次总结后，这里会先列出影响范围。');
+    $('#bakemono-memory-maintenance-undo')
+        .prop('disabled', !latest)
+        .attr('title', latest ? `撤回「${latestTitle}」` : '暂无可撤回记录');
+
+    $('#bakemono-memory-maintenance-hidden-count').text(getActualHiddenMessageIds().length.toLocaleString());
+    $('#bakemono-memory-maintenance-task-count').text((state.taskQueue || []).length.toLocaleString());
+    $('#bakemono-memory-maintenance-snapshot-count').text((state.tableDatabase?.undoStack || []).length.toLocaleString());
+    $('#bakemono-memory-maintenance-auto-count').text(`${autoTransactions.length.toLocaleString()} 条`);
+
+    const autoContainer = document.querySelector('#bakemono-memory-maintenance-auto-transactions');
+    if (autoContainer) {
+        autoContainer.innerHTML = '';
+        renderAutoSummaryTransactions(autoContainer, state, { showTitle: false });
+        if (!autoContainer.childElementCount) {
+            const empty = document.createElement('div');
+            empty.className = 'bakemono-memory-maintenance-empty';
+            empty.innerHTML = '<i class="fa-solid fa-shield-heart"></i><span><strong>暂无待处理事务</strong><small>自动保存并隐藏楼层后，可回滚记录会出现在这里。</small></span>';
+            autoContainer.append(empty);
+        }
+    }
+
+    const recordContainer = document.querySelector('#bakemono-memory-maintenance-records');
+    if (!recordContainer) {
+        return;
+    }
+    recordContainer.innerHTML = '';
+    const summaryRecords = (state.history || []).map(item => ({
+        type: 'summary',
+        title: item.summary?.title || item.draft?.title || getKindLabel(item.kind) || '总结保存',
+        meta: `${getKindLabel(item.kind) || '总结'} · 已保存到长期记忆`,
+        createdAt: item.createdAt,
+        icon: 'fa-solid fa-floppy-disk',
+    }));
+    const tableRecords = (state.tableDatabase?.history || []).map(item => ({
+        type: 'table',
+        title: item.title || item.label || '表格记忆已更新',
+        meta: '表格事务 · 已保留撤回快照',
+        createdAt: item.appliedAt || item.createdAt,
+        icon: 'fa-solid fa-table',
+    }));
+    const rollbackRecords = (state.tableDatabase?.rollbackHistory || []).map(item => ({
+        type: 'rollback',
+        title: item.reason || '表格事务已回滚',
+        meta: `${(item.rollbackSnapshotIds || []).length} 个快照 · ${(item.sourceMessageIds || []).length} 个来源楼层`,
+        createdAt: item.createdAt || item.rolledBackAt,
+        icon: 'fa-solid fa-rotate-left',
+    }));
+    const records = [...summaryRecords, ...tableRecords, ...rollbackRecords]
+        .sort((a, b) => getMaintenanceRecordTimestamp(b) - getMaintenanceRecordTimestamp(a))
+        .slice(0, 10);
+    if (!records.length) {
+        const empty = document.createElement('div');
+        empty.className = 'bakemono-memory-maintenance-empty is-quiet';
+        empty.innerHTML = '<i class="fa-solid fa-receipt"></i><span><strong>还没有操作记录</strong><small>保存总结、应用表格或回滚事务后会留下足迹。</small></span>';
+        recordContainer.append(empty);
+        return;
+    }
+    const fragment = document.createDocumentFragment();
+    records.forEach(record => {
+        const row = document.createElement('article');
+        row.className = `bakemono-memory-maintenance-record is-${record.type}`;
+        const time = record.createdAt ? new Date(record.createdAt).toLocaleString() : '时间未记录';
+        row.innerHTML = `
+            <span class="bakemono-memory-maintenance-record-icon"><i class="${record.icon}"></i></span>
+            <span class="bakemono-memory-maintenance-record-copy">
+                <strong>${escapeHtml(record.title)}</strong>
+                <small>${escapeHtml(record.meta)}</small>
+            </span>
+            <time>${escapeHtml(time)}</time>
+        `;
+        fragment.append(row);
+    });
+    recordContainer.append(fragment);
+}
+
+function exportMaintenanceTransactions() {
+    const state = ensureState();
+    const payload = {
+        exportedAt: new Date().toISOString(),
+        summaryHistory: state.history || [],
+        autoSummaryTransactions: state.autoSummaryTransactions || [],
+        tableUndoStack: state.tableDatabase?.undoStack || [],
+        tableRollbackHistory: state.tableDatabase?.rollbackHistory || [],
+        hiddenMessageIds: getActualHiddenMessageIds(),
+        taskQueue: state.taskQueue || [],
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bakemono-transactions-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    toastr.success('事务记录已导出。');
 }
 
 function getTaskStatusLabel(status) {
@@ -9645,6 +10254,9 @@ function renderTimeline() {
         ...state.epicSummaries.map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
     ]);
     const byHash = new Map([...storyBlocks, ...stageBlocks, ...epicBlocks].map(block => [block.hash, block]));
+    $('#bakemono-memory-timeline-story-count').text(storyBlocks.length);
+    $('#bakemono-memory-timeline-stage-count').text(stageBlocks.length);
+    $('#bakemono-memory-timeline-epic-count').text(epicBlocks.length);
 
     container.innerHTML = '';
     if (!storyBlocks.length && !stageBlocks.length && !epicBlocks.length) {
@@ -9735,18 +10347,30 @@ function createTimelinePager(start, total, pageCount) {
 function createTimelineNode(item, kind, children = []) {
     const details = document.createElement('details');
     details.className = `bakemono-memory-timeline-node is-${kind}`;
-    if (kind !== 'story') {
+    if (kind === 'epic') {
         details.open = true;
     }
 
     const summary = document.createElement('summary');
+    const marker = document.createElement('span');
+    marker.className = 'bakemono-memory-timeline-dot';
+    marker.setAttribute('aria-hidden', 'true');
+    const copy = document.createElement('span');
+    copy.className = 'bakemono-memory-timeline-copy';
+    const kindLabel = document.createElement('small');
     const label = document.createElement('strong');
     const kindText = kind === blockTypes.EPIC || kind === 'epic' ? getMultiSummaryLabel(item) : getKindLabel(kind);
-    label.textContent = `${kindText} · ${item.title || getBlockTitle(item.content, '未命名')}`;
+    kindLabel.textContent = kindText;
+    label.textContent = item.title || getBlockTitle(item.content, '未命名');
     const meta = document.createElement('span');
+    meta.className = 'bakemono-memory-timeline-meta';
     const sourceCount = Array.isArray(item.sourceHashes) ? item.sourceHashes.length : 0;
     meta.textContent = getTimelineMetaText(item, sourceCount);
-    summary.append(label, meta);
+    copy.append(kindLabel, label, meta);
+    const toggle = document.createElement('i');
+    toggle.className = 'fa-solid fa-chevron-right bakemono-memory-timeline-toggle';
+    toggle.setAttribute('aria-hidden', 'true');
+    summary.append(marker, copy, toggle);
     details.append(summary);
 
     if (children.length) {
@@ -10751,6 +11375,7 @@ function renderList(selector, blocks, type = 'story') {
 function getWorkbenchPanelTitle(tabName) {
     const titles = {
         overview: '控制台',
+        settings: '工作流设置',
         preview: '总结',
         records: '记忆库',
         tables: '表格',
@@ -10762,8 +11387,40 @@ function getWorkbenchPanelTitle(tabName) {
         vector: '向量记忆',
         injection: '注入内容',
         prompts: '生成提示词',
+        maintenance: '撤回与事务',
     };
     return titles[tabName] || '剧情剪辑台';
+}
+
+function getWorkbenchPanelKicker(tabName, state = ensureState()) {
+    const currentFloor = Math.max(0, (Array.isArray(chat) ? chat.length : 1) - 1);
+    const recordCount = Array.isArray(state.memoryRecords) ? state.memoryRecords.length : 0;
+    const tableCount = Array.isArray(state.tableDatabase?.tables) ? state.tableDatabase.tables.length : 0;
+    const vectorCount = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records.length : 0;
+    const contexts = {
+        overview: `剧情剪辑 · 第 ${currentFloor.toLocaleString()} 楼`,
+        settings: `工作方式 · ${getMemoryStrategyLabel(state.memoryStrategy)}`,
+        preview: `剧情回看 · ${(state.storySummaries?.length || 0).toLocaleString()} 条摘要`,
+        records: `长期记忆 · ${recordCount.toLocaleString()} 条记录`,
+        tables: `结构化记忆 · ${tableCount.toLocaleString()} 个表格`,
+        'turn-summary': `正文后处理 · 第 ${currentFloor.toLocaleString()} 楼`,
+        drafts: `人工确认 · ${(state.drafts?.length || 0).toLocaleString()} 个待办`,
+        timeline: `章节结构 · ${(state.stageSummaries?.length || 0).toLocaleString()} 个阶段`,
+        automation: `后台规则 · ${state.automation?.enabled ? '运行中' : '尚未开启'}`,
+        scan: `扫描识别 · ${(state.scanPreview?.length || 0).toLocaleString()} 条结果`,
+        vector: `语义召回 · ${vectorCount.toLocaleString()} 个片段`,
+        injection: `上下文注入 · ${renderInjectionContent(state).length.toLocaleString()} 字符`,
+        prompts: '生成风格 · 四类提示词',
+        maintenance: `安全维护 · ${(state.autoSummaryTransactions?.length || 0).toLocaleString()} 条事务`,
+    };
+    return contexts[tabName] || '剧情剪辑台 · 长期记忆';
+}
+
+function renderWorkbenchHeaderContext(tabName, state = ensureState()) {
+    const kicker = document.getElementById('bakemono-workbench-section-title');
+    if (kicker) {
+        kicker.textContent = getWorkbenchPanelKicker(tabName, state);
+    }
 }
 
 function switchWorkbenchTab(tabName) {
@@ -10785,6 +11442,7 @@ function switchWorkbenchTab(tabName) {
     if (title) {
         title.textContent = getWorkbenchPanelTitle(tabName);
     }
+    renderWorkbenchHeaderContext(tabName);
     root.querySelectorAll('.bakemono-workbench-tab').forEach(tab => {
         tab.classList.toggle('is-active', tab.dataset.bakemonoTab === tabName);
     });
@@ -11201,6 +11859,24 @@ function bindSettingsEvents() {
     $('#bakemono-workbench-root').off('click.bakemonoWorkflow').on('click.bakemonoWorkflow', '[data-bakemono-workflow-preset]', function () {
         applyWorkflowPreset(this.dataset.bakemonoWorkflowPreset);
     });
+    $('#bakemono-workbench-root').off('click.bakemonoReviewView').on('click.bakemonoReviewView', '[data-bakemono-review-view]', function () {
+        const nextView = String(this.dataset.bakemonoReviewView || 'drafts');
+        if (!['drafts', 'tasks', 'history'].includes(nextView)) {
+            return;
+        }
+        reviewPanelView = nextView;
+        renderReviewPanelTabs();
+        stabilizeMobileWorkbenchScroll('drafts');
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoDraftEditorToggle').on('click.bakemonoDraftEditorToggle', '[data-bakemono-draft-editor-toggle]', function () {
+        const card = this.closest('.bakemono-memory-draft-card');
+        const details = card?.querySelector('.bakemono-memory-draft-editor-disclosure');
+        if (!details) {
+            return;
+        }
+        details.open = true;
+        globalThis.requestAnimationFrame?.(() => details.querySelector('.bakemono-memory-draft-editor')?.focus());
+    });
     $('#bakemono-workbench-root').off('click.bakemonoDraftAction').on('click.bakemonoDraftAction', '[data-bakemono-draft-action]', async function () {
         if (isBusy) {
             toastr.info('已有总结任务正在进行，请稍等。');
@@ -11262,6 +11938,32 @@ function bindSettingsEvents() {
     $('#bakemono-workbench-root').off('click.bakemonoPreviewType').on('click.bakemonoPreviewType', '[data-bakemono-preview-type]', function () {
         previewState.activeType = this.dataset.bakemonoPreviewType || 'story';
         renderPreviewSections();
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoSummaryMode').on('click.bakemonoSummaryMode', '[data-bakemono-summary-mode]', function () {
+        const nextMode = this.dataset.bakemonoSummaryMode || 'stage';
+        if (!['stage', 'epic', 'batch'].includes(nextMode)) {
+            return;
+        }
+        summaryGenerationMode = nextMode;
+        renderSummaryGenerationPanel();
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoPromptPreview').on('click.bakemonoPromptPreview', '[data-bakemono-prompt-preview]', function () {
+        const nextType = this.dataset.bakemonoPromptPreview || 'stage';
+        if (!['story', 'missing', 'stage', 'epic'].includes(nextType)) {
+            return;
+        }
+        promptPreviewType = nextType;
+        renderPromptOverview();
+    });
+    $('#bakemono-workbench-root').off('input.bakemonoPromptPreview').on('input.bakemonoPromptPreview', '#bakemono-memory-story-prompt, #bakemono-memory-missing-prompt, #bakemono-memory-stage-prompt, #bakemono-memory-epic-prompt', () => {
+        renderPromptOverview();
+    });
+    $('#bakemono-memory-copy-prompt-preview').off('click').on('click', async () => {
+        await navigator.clipboard.writeText(getPromptPreviewValue(promptPreviewType));
+        toastr.success('当前提示词已复制。');
+    });
+    $('#bakemono-memory-export-maintenance').off('click').on('click', () => {
+        exportMaintenanceTransactions();
     });
     $('#bakemono-workbench-root').off('click.bakemonoPreviewPage').on('click.bakemonoPreviewPage', '[data-bakemono-preview-page]', function () {
         const type = this.dataset.bakemonoPreviewType || previewState.activeType;
@@ -11875,6 +12577,12 @@ function bindSettingsEvents() {
         renderAll('自动总结设置已应用。');
         toastr.success('自动总结设置已应用。');
     });
+    $('#bakemono-memory-auto-trigger').off('change.bakemonoAutomationUi').on('change.bakemonoAutomationUi', function () {
+        const triggerType = String(this.value || defaultAutomation.triggerType);
+        document.querySelectorAll('[data-bakemono-auto-rule]').forEach(row => {
+            row.hidden = row.dataset.bakemonoAutoRule !== triggerType;
+        });
+    });
     $('#bakemono-memory-fetch-models').off('click').on('click', async () => {
         await fetchCustomApiModels();
     });
@@ -11913,6 +12621,15 @@ function bindSettingsEvents() {
         renderPreviewSections();
     });
     $('#bakemono-memory-record-filter, #bakemono-memory-record-kind, #bakemono-memory-record-status').off('input change').on('input change', () => {
+        memoryRecordState.page = 0;
+        renderMemoryRecordList();
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoRecordQuickFilter').on('click.bakemonoRecordQuickFilter', '[data-bakemono-record-status]', function () {
+        const status = String(this.dataset.bakemonoRecordStatus || 'all');
+        if (!['all', ...Object.values(memoryRecordStatuses)].includes(status)) {
+            return;
+        }
+        $('#bakemono-memory-record-status').val(status);
         memoryRecordState.page = 0;
         renderMemoryRecordList();
     });
@@ -12198,7 +12915,9 @@ function bindSettingsEvents() {
                 template: String($('#bakemono-memory-injection-template').val() || ''),
             },
         };
-        $('#bakemono-memory-injection-content').val(renderInjectionContent(previewState));
+        const content = renderInjectionContent(previewState);
+        $('#bakemono-memory-injection-content').val(content);
+        $('#bakemono-memory-injection-char-count').text(`约 ${content.length.toLocaleString()} 字符`);
     });
 }
 
