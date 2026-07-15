@@ -306,13 +306,22 @@ test('custom themes stay token-only, global, and importable as JSON', () => {
     assert.match(settingsSource, /data-bakemono-panel="appearance"/);
     assert.match(settingsSource, /id="bakemono-memory-theme-json"/);
     assert.match(settingsSource, /id="bakemono-memory-theme-file"[^>]*accept="application\/json,\.json"/);
+    assert.match(settingsSource, /id="bakemono-memory-theme-preset-select"/);
+    assert.match(settingsSource, /id="bakemono-memory-theme-save-as"/);
+    assert.match(settingsSource, /id="bakemono-memory-theme-download-library"/);
+    assert.equal((settingsSource.match(/data-bakemono-theme-section-panel=/g) || []).length, 3);
     assert.match(source, /const CUSTOM_THEME_SCHEMA = 'bakemono-memory-theme\/v1'/);
+    assert.match(source, /const CUSTOM_THEME_LIBRARY_SCHEMA = 'bakemono-memory-theme-library\/v1'/);
     assert.match(source, /function sanitizeCustomTheme\(/);
     assert.match(source, /function applyAppearanceTheme\(/);
     assert.match(source, /function downloadCustomThemeJson\(/);
+    assert.match(source, /function downloadCustomThemeLibraryJson\(/);
     assert.match(source, /function importCustomThemeJson\(/);
     assert.match(source, /settings\.ui\.customTheme = sanitizeCustomTheme/);
+    assert.match(source, /settings\.ui\.themePresets = settings\.ui\.themePresets\.map/);
     assert.match(styleSource, /\.bakemono-workbench-root\.bakemono-custom-theme/);
+    assert.match(styleSource, /v1\.2\.5 compact theme library/);
+    assert.match(styleSource, /\.bakemono-memory-theme-section-panel\[hidden\]\s*\{[^}]*display:\s*none !important;/s);
 });
 
 test('active global config follows existing chats without removing the tavern model path', () => {

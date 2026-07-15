@@ -1844,61 +1844,75 @@
         </div>
 
         <div id="bakemono-memory-custom-theme-editor" class="bakemono-memory-theme-editor" hidden>
-          <article class="bakemono-memory-theme-card bakemono-memory-theme-basics">
-            <header><div><span class="bakemono-memory-next-kicker">主题信息</span><h3>命名与基调</h3></div><i class="fa-solid fa-swatchbook" aria-hidden="true"></i></header>
-            <div class="bakemono-memory-theme-basic-grid">
-              <label class="bakemono-memory-field"><span>主题名称</span><input id="bakemono-memory-theme-name" class="text_pole" type="text" maxlength="80" placeholder="我的自定义主题"></label>
-              <label class="bakemono-memory-field"><span>系统控件基调</span><select id="bakemono-memory-theme-appearance" class="text_pole"><option value="light">浅色控件</option><option value="dark">深色控件</option></select></label>
+          <article class="bakemono-memory-theme-preset-dock">
+            <header><div><span class="bakemono-memory-next-kicker">主题配置库</span><h3>选择一套再微调</h3></div><i class="fa-solid fa-box-archive" aria-hidden="true"></i></header>
+            <label class="bakemono-memory-field"><span>当前配置</span><select id="bakemono-memory-theme-preset-select" class="text_pole"></select></label>
+            <div class="bakemono-memory-theme-preset-actions">
+              <button class="menu_button" type="button" id="bakemono-memory-theme-apply-preset"><i class="fa-solid fa-check"></i><span>使用配置</span></button>
+              <button class="menu_button" type="button" id="bakemono-memory-theme-save"><i class="fa-solid fa-floppy-disk"></i><span>覆盖保存</span></button>
+              <button class="menu_button" type="button" id="bakemono-memory-theme-save-as"><i class="fa-solid fa-copy"></i><span>另存配置</span></button>
+              <button class="menu_button danger_button" type="button" id="bakemono-memory-theme-delete"><i class="fa-solid fa-trash"></i><span>删除配置</span></button>
             </div>
           </article>
 
-          <article class="bakemono-memory-theme-card">
-            <header><div><span class="bakemono-memory-next-kicker">颜色令牌</span><h3>纸张、文字与强调色</h3></div><small>只接受 #RRGGBB</small></header>
-            <div class="bakemono-memory-theme-color-grid">
-              <label><span>主纸张</span><input type="color" data-bakemono-theme-color="paper"><code data-bakemono-theme-color-value="paper">#eee4ce</code></label>
-              <label><span>浮层纸张</span><input type="color" data-bakemono-theme-color="paperRaised"><code data-bakemono-theme-color-value="paperRaised">#f8f1df</code></label>
-              <label><span>次级纸张</span><input type="color" data-bakemono-theme-color="paperSoft"><code data-bakemono-theme-color-value="paperSoft">#ddd0b5</code></label>
-              <label><span>正文</span><input type="color" data-bakemono-theme-color="ink"><code data-bakemono-theme-color-value="ink">#40382b</code></label>
-              <label><span>次要文字</span><input type="color" data-bakemono-theme-color="muted"><code data-bakemono-theme-color-value="muted">#7c715f</code></label>
-              <label><span>主强调</span><input type="color" data-bakemono-theme-color="accent"><code data-bakemono-theme-color-value="accent">#81734a</code></label>
-              <label><span>辅助强调</span><input type="color" data-bakemono-theme-color="secondary"><code data-bakemono-theme-color-value="secondary">#6d775e</code></label>
-              <label><span>深强调</span><input type="color" data-bakemono-theme-color="accentStrong"><code data-bakemono-theme-color-value="accentStrong">#5f5638</code></label>
-              <label><span>边框</span><input type="color" data-bakemono-theme-color="line"><code data-bakemono-theme-color-value="line">#c8baa0</code></label>
-              <label><span>背景遮罩</span><input type="color" data-bakemono-theme-color="backdrop"><code data-bakemono-theme-color-value="backdrop">#302b25</code></label>
-              <label><span>危险操作</span><input type="color" data-bakemono-theme-color="danger"><code data-bakemono-theme-color-value="danger">#a14f45</code></label>
-            </div>
-          </article>
-
-          <article class="bakemono-memory-theme-card">
-            <header><div><span class="bakemono-memory-next-kicker">质感参数</span><h3>渐变、纹理与轮廓</h3></div><small>拖动即可预览</small></header>
-            <div class="bakemono-memory-theme-effect-list">
-              <label><span><strong>渐变浓度</strong><small>0–24%</small></span><input type="range" min="0" max="24" step="1" data-bakemono-theme-effect="gradientStrength"><output data-bakemono-theme-effect-value="gradientStrength">10</output></label>
-              <label><span><strong>渐变角度</strong><small>0–360°</small></span><input type="range" min="0" max="360" step="1" data-bakemono-theme-effect="gradientAngle"><output data-bakemono-theme-effect-value="gradientAngle">145</output></label>
-              <label><span><strong>纸张纹理</strong><small>0–12%</small></span><input type="range" min="0" max="12" step="1" data-bakemono-theme-effect="grain"><output data-bakemono-theme-effect-value="grain">4</output></label>
-              <label><span><strong>阴影深度</strong><small>0–36px</small></span><input type="range" min="0" max="36" step="1" data-bakemono-theme-effect="shadow"><output data-bakemono-theme-effect-value="shadow">18</output></label>
-              <label><span><strong>圆角尺度</strong><small>0–24px</small></span><input type="range" min="0" max="24" step="1" data-bakemono-theme-effect="radius"><output data-bakemono-theme-effect-value="radius">12</output></label>
-            </div>
-          </article>
-
-          <div class="bakemono-memory-theme-primary-actions">
-            <button class="menu_button" type="button" id="bakemono-memory-theme-save"><i class="fa-solid fa-floppy-disk"></i><span>保存并应用</span></button>
-            <button class="menu_button" type="button" id="bakemono-memory-theme-reset"><i class="fa-solid fa-rotate-left"></i><span>恢复主题模板</span></button>
+          <div class="bakemono-memory-theme-section-tabs" role="tablist" aria-label="主题编辑分区">
+            <button type="button" class="is-active" data-bakemono-theme-section="palette" role="tab" aria-selected="true"><i class="fa-solid fa-droplet"></i><span>色板</span></button>
+            <button type="button" data-bakemono-theme-section="texture" role="tab" aria-selected="false"><i class="fa-solid fa-sliders"></i><span>质感</span></button>
+            <button type="button" data-bakemono-theme-section="json" role="tab" aria-selected="false"><i class="fa-solid fa-code"></i><span>JSON</span></button>
           </div>
 
-          <details class="bakemono-memory-theme-ai-card bakemono-memory-console-disclosure">
-            <summary><span><i class="fa-solid fa-code"></i> AI 修改与 JSON 文件</span><small>可完整导出、复制与导入</small></summary>
-            <div class="bakemono-memory-theme-ai-body">
-              <p>把完整 JSON 交给 AI 修改即可。导入时只读取白名单颜色与数值令牌，CSS、脚本和未知字段都不会执行。</p>
-              <textarea id="bakemono-memory-theme-json" class="text_pole textarea_compact" rows="20" spellcheck="false" aria-label="自定义主题 JSON"></textarea>
-              <div class="bakemono-memory-theme-json-actions">
-                <button class="menu_button" type="button" id="bakemono-memory-theme-copy-json"><i class="fa-solid fa-copy"></i><span>复制 JSON</span></button>
-                <button class="menu_button" type="button" id="bakemono-memory-theme-download-json"><i class="fa-solid fa-download"></i><span>下载文件</span></button>
-                <button class="menu_button" type="button" id="bakemono-memory-theme-import-json"><i class="fa-solid fa-file-import"></i><span>导入文本</span></button>
-                <button class="menu_button" type="button" id="bakemono-memory-theme-choose-file"><i class="fa-solid fa-folder-open"></i><span>选择 JSON 文件</span></button>
-                <input id="bakemono-memory-theme-file" type="file" accept="application/json,.json" hidden>
+          <section class="bakemono-memory-theme-section-panel" data-bakemono-theme-section-panel="palette" role="tabpanel">
+            <article class="bakemono-memory-theme-card">
+              <div class="bakemono-memory-theme-basic-grid">
+                <label class="bakemono-memory-field"><span>主题名称</span><input id="bakemono-memory-theme-name" class="text_pole" type="text" maxlength="80" placeholder="我的自定义主题"></label>
+                <label class="bakemono-memory-field"><span>控件基调</span><select id="bakemono-memory-theme-appearance" class="text_pole"><option value="light">浅色控件</option><option value="dark">深色控件</option></select></label>
               </div>
-            </div>
-          </details>
+              <div class="bakemono-memory-theme-color-grid">
+                <label><span>主纸张</span><input type="color" data-bakemono-theme-color="paper"><code data-bakemono-theme-color-value="paper">#eee4ce</code></label>
+                <label><span>浮层纸张</span><input type="color" data-bakemono-theme-color="paperRaised"><code data-bakemono-theme-color-value="paperRaised">#f8f1df</code></label>
+                <label><span>次级纸张</span><input type="color" data-bakemono-theme-color="paperSoft"><code data-bakemono-theme-color-value="paperSoft">#ddd0b5</code></label>
+                <label><span>正文</span><input type="color" data-bakemono-theme-color="ink"><code data-bakemono-theme-color-value="ink">#40382b</code></label>
+                <label><span>次要文字</span><input type="color" data-bakemono-theme-color="muted"><code data-bakemono-theme-color-value="muted">#7c715f</code></label>
+                <label><span>主强调</span><input type="color" data-bakemono-theme-color="accent"><code data-bakemono-theme-color-value="accent">#81734a</code></label>
+                <label><span>辅助强调</span><input type="color" data-bakemono-theme-color="secondary"><code data-bakemono-theme-color-value="secondary">#6d775e</code></label>
+                <label><span>深强调</span><input type="color" data-bakemono-theme-color="accentStrong"><code data-bakemono-theme-color-value="accentStrong">#5f5638</code></label>
+                <label><span>边框</span><input type="color" data-bakemono-theme-color="line"><code data-bakemono-theme-color-value="line">#c8baa0</code></label>
+                <label><span>背景遮罩</span><input type="color" data-bakemono-theme-color="backdrop"><code data-bakemono-theme-color-value="backdrop">#302b25</code></label>
+                <label><span>危险操作</span><input type="color" data-bakemono-theme-color="danger"><code data-bakemono-theme-color-value="danger">#a14f45</code></label>
+              </div>
+            </article>
+          </section>
+
+          <section class="bakemono-memory-theme-section-panel" data-bakemono-theme-section-panel="texture" role="tabpanel" hidden>
+            <article class="bakemono-memory-theme-card">
+              <header><div><span class="bakemono-memory-next-kicker">质感参数</span><h3>渐变、纹理与轮廓</h3></div><small>拖动即可预览</small></header>
+              <div class="bakemono-memory-theme-effect-list">
+                <label><span><strong>渐变浓度</strong><small>0–24%</small></span><input type="range" min="0" max="24" step="1" data-bakemono-theme-effect="gradientStrength"><output data-bakemono-theme-effect-value="gradientStrength">10</output></label>
+                <label><span><strong>渐变角度</strong><small>0–360°</small></span><input type="range" min="0" max="360" step="1" data-bakemono-theme-effect="gradientAngle"><output data-bakemono-theme-effect-value="gradientAngle">145</output></label>
+                <label><span><strong>纸张纹理</strong><small>0–12%</small></span><input type="range" min="0" max="12" step="1" data-bakemono-theme-effect="grain"><output data-bakemono-theme-effect-value="grain">4</output></label>
+                <label><span><strong>阴影深度</strong><small>0–36px</small></span><input type="range" min="0" max="36" step="1" data-bakemono-theme-effect="shadow"><output data-bakemono-theme-effect-value="shadow">18</output></label>
+                <label><span><strong>圆角尺度</strong><small>0–24px</small></span><input type="range" min="0" max="24" step="1" data-bakemono-theme-effect="radius"><output data-bakemono-theme-effect-value="radius">12</output></label>
+              </div>
+              <button class="menu_button bakemono-memory-theme-reset-button" type="button" id="bakemono-memory-theme-reset"><i class="fa-solid fa-rotate-left"></i><span>恢复主题模板</span></button>
+            </article>
+          </section>
+
+          <section class="bakemono-memory-theme-section-panel" data-bakemono-theme-section-panel="json" role="tabpanel" hidden>
+            <article class="bakemono-memory-theme-ai-card">
+              <div class="bakemono-memory-theme-ai-body">
+                <p>导出当前配置交给 AI 修改，或导出全部配置做备份。导入时只读取安全的颜色与数值令牌。</p>
+                <textarea id="bakemono-memory-theme-json" class="text_pole textarea_compact" rows="12" spellcheck="false" aria-label="自定义主题 JSON"></textarea>
+                <div class="bakemono-memory-theme-json-actions">
+                  <button class="menu_button" type="button" id="bakemono-memory-theme-copy-json"><i class="fa-solid fa-copy"></i><span>复制当前</span></button>
+                  <button class="menu_button" type="button" id="bakemono-memory-theme-download-json"><i class="fa-solid fa-download"></i><span>导出当前</span></button>
+                  <button class="menu_button" type="button" id="bakemono-memory-theme-download-library"><i class="fa-solid fa-box-archive"></i><span>导出全部</span></button>
+                  <button class="menu_button" type="button" id="bakemono-memory-theme-import-json"><i class="fa-solid fa-file-import"></i><span>导入文本</span></button>
+                  <button class="menu_button" type="button" id="bakemono-memory-theme-choose-file"><i class="fa-solid fa-folder-open"></i><span>导入文件</span></button>
+                  <input id="bakemono-memory-theme-file" type="file" accept="application/json,.json" hidden>
+                </div>
+              </div>
+            </article>
+          </section>
         </div>
       </section>
 

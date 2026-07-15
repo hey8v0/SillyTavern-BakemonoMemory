@@ -94,6 +94,7 @@ const tableSchemaScopes = {
 };
 
 const CUSTOM_THEME_SCHEMA = 'bakemono-memory-theme/v1';
+const CUSTOM_THEME_LIBRARY_SCHEMA = 'bakemono-memory-theme-library/v1';
 const customThemeColorKeys = [
     'paper',
     'paperRaised',
@@ -171,6 +172,21 @@ function sanitizeCustomTheme(value = {}) {
         },
         constraints: structuredClone(defaultCustomTheme.constraints),
         aiInstructions: String(source.aiInstructions || defaultCustomTheme.aiInstructions).trim().slice(0, 1000) || defaultCustomTheme.aiInstructions,
+    };
+}
+
+function makeCustomThemePresetId(name = 'theme') {
+    return `theme-${getHash(`${Date.now()}|${name}|${Math.random()}`)}`;
+}
+
+function normalizeCustomThemePreset(value = {}, index = 0) {
+    const theme = sanitizeCustomTheme(value);
+    const now = new Date().toISOString();
+    return {
+        ...theme,
+        id: String(value.id || makeCustomThemePresetId(`${theme.name}-${index}`)),
+        createdAt: String(value.createdAt || now),
+        updatedAt: String(value.updatedAt || value.createdAt || now),
     };
 }
 
@@ -981,6 +997,8 @@ const tableUiState = {
     openSection: '',
     focusField: null,
 };
+let appearanceThemeDraft = null;
+let appearanceThemeSection = 'palette';
 
 function cloneDefaultState() {
     return structuredClone(defaultState);
@@ -1001,6 +1019,14 @@ function ensureGlobalSettings() {
         settings.ui.themeMode = 'tavern';
     }
     settings.ui.customTheme = sanitizeCustomTheme(settings.ui.customTheme);
+    if (!Array.isArray(settings.ui.themePresets) || !settings.ui.themePresets.length) {
+        settings.ui.themePresets = [normalizeCustomThemePreset(settings.ui.customTheme)];
+    } else {
+        settings.ui.themePresets = settings.ui.themePresets.map(normalizeCustomThemePreset);
+    }
+    if (!settings.ui.selectedThemePresetId || !settings.ui.themePresets.some(preset => preset.id === settings.ui.selectedThemePresetId)) {
+        settings.ui.selectedThemePresetId = settings.ui.themePresets[0].id;
+    }
     if (!Array.isArray(extension_settings[STORAGE_KEY].promptPresets)) {
         extension_settings[STORAGE_KEY].promptPresets = [structuredClone(defaultPromptPreset), structuredClone(defaultGenericPromptPreset)];
     }
@@ -1754,6 +1780,11 @@ function getAppearanceSettings() {
     return extension_settings[STORAGE_KEY].ui;
 }
 
+function getSelectedCustomThemePreset() {
+    const ui = getAppearanceSettings();
+    return ui.themePresets.find(preset => preset.id === ui.selectedThemePresetId) || ui.themePresets[0] || null;
+}
+
 function applyAppearanceTheme(themeOverride = null, modeOverride = null) {
     const root = document.getElementById('bakemono-workbench-root');
     if (!root) {
@@ -1809,7 +1840,7 @@ function applyAppearanceTheme(themeOverride = null, modeOverride = null) {
 
 function readCustomThemeFromUi() {
     const ui = getAppearanceSettings();
-    const source = structuredClone(ui.customTheme || defaultCustomTheme);
+    const source = structuredClone(appearanceThemeDraft || getSelectedCustomThemePreset() || ui.customTheme || defaultCustomTheme);
     source.name = String($('#bakemono-memory-theme-name').val() || source.name);
     source.appearance = String($('#bakemono-memory-theme-appearance').val() || source.appearance);
     source.tokens = source.tokens || {};
@@ -1829,7 +1860,14 @@ function setCustomThemeJson(theme) {
 
 function renderAppearanceSettings() {
     const ui = getAppearanceSettings();
-    const theme = sanitizeCustomTheme(ui.customTheme);
+    const selectedPreset = getSelectedCustomThemePreset();
+    const theme = sanitizeCustomTheme(appearanceThemeDraft || selectedPreset || ui.customTheme);
+    const presetSelect = $('#bakemono-memory-theme-preset-select');
+    presetSelect.empty();
+    for (const preset of ui.themePresets) {
+        presetSelect.append($('<option>').val(preset.id).text(preset.name));
+    }
+    presetSelect.val(ui.selectedThemePresetId);
     $('[data-bakemono-theme-mode]').each(function () {
         const active = this.dataset.bakemonoThemeMode === ui.themeMode;
         this.classList.toggle('is-active', active);
@@ -1849,11 +1887,20 @@ function renderAppearanceSettings() {
         $(`[data-bakemono-theme-effect-value="${key}"]`).text(theme.effects[key]);
     });
     setCustomThemeJson(theme);
-    applyAppearanceTheme();
+    $('[data-bakemono-theme-section]').each(function () {
+        const active = this.dataset.bakemonoThemeSection === appearanceThemeSection;
+        this.classList.toggle('is-active', active);
+        this.setAttribute('aria-selected', String(active));
+    });
+    $('[data-bakemono-theme-section-panel]').each(function () {
+        this.hidden = this.dataset.bakemonoThemeSectionPanel !== appearanceThemeSection;
+    });
+    applyAppearanceTheme(theme, ui.themeMode);
 }
 
 function previewCustomThemeFromUi() {
     const theme = readCustomThemeFromUi();
+    appearanceThemeDraft = theme;
     $('[data-bakemono-theme-color-value]').each(function () {
         const key = this.dataset.bakemonoThemeColorValue;
         this.textContent = theme.tokens[key];
@@ -1864,6 +1911,62 @@ function previewCustomThemeFromUi() {
     });
     setCustomThemeJson(theme);
     applyAppearanceTheme(theme, 'custom');
+}
+
+function selectCustomThemePreset(presetId) {
+    const ui = getAppearanceSettings();
+    const preset = ui.themePresets.find(item => item.id === presetId);
+    if (!preset) return false;
+    ui.selectedThemePresetId = preset.id;
+    appearanceThemeDraft = sanitizeCustomTheme(preset);
+    saveGlobalSettings();
+    renderAppearanceSettings();
+    return true;
+}
+
+function saveCustomThemePreset(options = {}) {
+    const ui = getAppearanceSettings();
+    const theme = readCustomThemeFromUi();
+    const now = new Date().toISOString();
+    const selectedIndex = ui.themePresets.findIndex(preset => preset.id === ui.selectedThemePresetId);
+    const saveAs = !!options.saveAs || selectedIndex < 0;
+    const preset = normalizeCustomThemePreset({
+        ...theme,
+        id: saveAs ? makeCustomThemePresetId(theme.name) : ui.themePresets[selectedIndex].id,
+        createdAt: saveAs ? now : ui.themePresets[selectedIndex].createdAt,
+        updatedAt: now,
+    });
+    if (saveAs) {
+        ui.themePresets.push(preset);
+    } else {
+        ui.themePresets[selectedIndex] = preset;
+    }
+    ui.selectedThemePresetId = preset.id;
+    ui.customTheme = sanitizeCustomTheme(preset);
+    ui.themeMode = 'custom';
+    appearanceThemeDraft = sanitizeCustomTheme(preset);
+    saveGlobalSettings();
+    renderAppearanceSettings();
+    toastr.success(saveAs ? `已另存主题配置：${preset.name}` : `已保存主题配置：${preset.name}`);
+    return preset;
+}
+
+function deleteSelectedCustomThemePreset() {
+    const ui = getAppearanceSettings();
+    if (ui.themePresets.length <= 1) {
+        toastr.warning('至少保留一个主题配置。');
+        return false;
+    }
+    const preset = getSelectedCustomThemePreset();
+    if (!preset || !confirmDanger(`删除主题配置“${preset.name}”？`, ['不会删除摘要、表格或其他插件配置。'])) return false;
+    ui.themePresets = ui.themePresets.filter(item => item.id !== preset.id);
+    ui.selectedThemePresetId = ui.themePresets[0].id;
+    appearanceThemeDraft = sanitizeCustomTheme(ui.themePresets[0]);
+    ui.customTheme = sanitizeCustomTheme(ui.themePresets[0]);
+    saveGlobalSettings();
+    renderAppearanceSettings();
+    toastr.success('主题配置已删除。');
+    return true;
 }
 
 function parseCustomThemeJson(text) {
@@ -1881,6 +1984,7 @@ function saveCustomTheme(theme, message = '自定义主题已保存。') {
     const ui = getAppearanceSettings();
     ui.themeMode = 'custom';
     ui.customTheme = sanitizeCustomTheme(theme);
+    appearanceThemeDraft = sanitizeCustomTheme(theme);
     saveGlobalSettings();
     renderAppearanceSettings();
     toastr.success(message);
@@ -1900,10 +2004,51 @@ function downloadCustomThemeJson() {
     URL.revokeObjectURL(url);
 }
 
+function downloadCustomThemeLibraryJson() {
+    const ui = getAppearanceSettings();
+    const payload = {
+        $schema: CUSTOM_THEME_LIBRARY_SCHEMA,
+        exportedAt: new Date().toISOString(),
+        selectedThemePresetId: ui.selectedThemePresetId,
+        themes: ui.themePresets.map(preset => sanitizeCustomTheme(preset)),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'bakemono-theme-library.json';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
 function importCustomThemeJson(text, message = '主题已导入并应用。') {
-    const theme = parseCustomThemeJson(text);
-    saveCustomTheme(theme, message);
-    return theme;
+    const parsed = JSON.parse(String(text || ''));
+    const ui = getAppearanceSettings();
+    const importedThemes = parsed?.$schema === CUSTOM_THEME_LIBRARY_SCHEMA
+        ? (Array.isArray(parsed.themes) ? parsed.themes : [])
+        : [parsed];
+    if (!importedThemes.length) {
+        throw new Error('主题配置包中没有可导入的主题。');
+    }
+    const now = new Date().toISOString();
+    const presets = importedThemes.map((item, index) => normalizeCustomThemePreset({
+        ...parseCustomThemeJson(JSON.stringify(item)),
+        id: makeCustomThemePresetId(item?.name || `imported-${index}`),
+        createdAt: now,
+        updatedAt: now,
+    }, index));
+    ui.themePresets.push(...presets);
+    const selected = presets[0];
+    ui.selectedThemePresetId = selected.id;
+    ui.customTheme = sanitizeCustomTheme(selected);
+    ui.themeMode = 'custom';
+    appearanceThemeDraft = sanitizeCustomTheme(selected);
+    saveGlobalSettings();
+    renderAppearanceSettings();
+    toastr.success(importedThemes.length > 1 ? `已导入 ${importedThemes.length} 个主题配置。` : message);
+    return selected;
 }
 
 function getTableSchemaScopeLabel(scope) {
@@ -12248,9 +12393,26 @@ function bindSettingsEvents() {
         saveGlobalSettings();
         renderAppearanceSettings();
     });
+    $('#bakemono-memory-theme-preset-select').off('change').on('change', function () {
+        selectCustomThemePreset(String(this.value || ''));
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoThemeSection').on('click.bakemonoThemeSection', '[data-bakemono-theme-section]', function () {
+        appearanceThemeSection = ['palette', 'texture', 'json'].includes(this.dataset.bakemonoThemeSection)
+            ? this.dataset.bakemonoThemeSection
+            : 'palette';
+        renderAppearanceSettings();
+    });
     $('#bakemono-workbench-root').off('input.bakemonoThemePreview').on('input.bakemonoThemePreview', '[data-bakemono-theme-color], [data-bakemono-theme-effect], #bakemono-memory-theme-name, #bakemono-memory-theme-appearance', previewCustomThemeFromUi);
-    $('#bakemono-memory-theme-save').off('click').on('click', () => saveCustomTheme(readCustomThemeFromUi()));
-    $('#bakemono-memory-theme-reset').off('click').on('click', () => saveCustomTheme(structuredClone(defaultCustomTheme), '已恢复自定义主题模板。'));
+    $('#bakemono-memory-theme-apply-preset').off('click').on('click', () => saveCustomTheme(readCustomThemeFromUi(), '主题配置已应用。'));
+    $('#bakemono-memory-theme-save').off('click').on('click', () => saveCustomThemePreset());
+    $('#bakemono-memory-theme-save-as').off('click').on('click', () => saveCustomThemePreset({ saveAs: true }));
+    $('#bakemono-memory-theme-delete').off('click').on('click', deleteSelectedCustomThemePreset);
+    $('#bakemono-memory-theme-reset').off('click').on('click', () => {
+        appearanceThemeDraft = structuredClone(defaultCustomTheme);
+        renderAppearanceSettings();
+        previewCustomThemeFromUi();
+        toastr.info('已载入主题模板，保存后才会覆盖当前配置。');
+    });
     $('#bakemono-memory-theme-copy-json').off('click').on('click', async () => {
         const theme = readCustomThemeFromUi();
         setCustomThemeJson(theme);
@@ -12258,6 +12420,7 @@ function bindSettingsEvents() {
         toastr.success('主题 JSON 已复制。');
     });
     $('#bakemono-memory-theme-download-json').off('click').on('click', downloadCustomThemeJson);
+    $('#bakemono-memory-theme-download-library').off('click').on('click', downloadCustomThemeLibraryJson);
     $('#bakemono-memory-theme-import-json').off('click').on('click', () => {
         try {
             importCustomThemeJson($('#bakemono-memory-theme-json').val());
