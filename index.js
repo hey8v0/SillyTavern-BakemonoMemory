@@ -4709,7 +4709,7 @@ async function generateStageSummary() {
         saveState();
         renderAll('阶段总结已生成并写入注入内容。');
         toastr.success('阶段总结已生成。');
-    });
+    }, '阶段总结已生成');
 }
 
 async function generateEpicSummary() {
@@ -4781,7 +4781,7 @@ async function generateEpicSummary() {
         saveState();
         renderAll('多次总结已生成并写入注入内容。');
         toastr.success('多次总结已生成。');
-    });
+    }, '多次总结已生成');
 }
 
 function enqueueSummaryTask({ kind, prompt, systemPrompt, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], trigger = 'manual', label = '', metadata = {}, autoStart = true, silent = false }) {
@@ -5094,7 +5094,7 @@ async function generateStageDraft(options = {}) {
         switchWorkbenchTab('drafts');
         renderAll('阶段总结草稿已生成，确认后才会写入长期记忆。');
         toastr.success('阶段总结草稿已生成，请到草稿箱确认。');
-    });
+    }, options.automatic ? '自动阶段总结草稿已生成' : '阶段总结草稿已生成');
 }
 
 async function generateStageBatchTasks() {
@@ -5370,7 +5370,7 @@ async function generateBackfillDrafts() {
         switchWorkbenchTab('drafts');
         renderAll(`已生成 ${batches.length} 个旧正文摘要草稿。`);
         toastr.success(`已生成 ${batches.length} 个旧正文摘要草稿。`);
-    });
+    }, '旧正文摘要草稿已生成');
 }
 
 function buildBackfillBatches(options = {}) {
@@ -5800,57 +5800,109 @@ function isAutoThresholdReached(targets) {
     return targets.length >= Number(state.automation.floorInterval || defaultAutomation.floorInterval);
 }
 
-async function runGeneration(message, action) {
-    const toast = toastr.info(message, '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
-    renderAll(message);
-    setBusy(true);
-    try {
-        await action();
-    } catch (error) {
-        console.error('[BakemonoMemory] generation failed', error);
-        toastr.error(error?.message || String(error), '剧情剪辑台');
-        renderAll(`生成失败：${error?.message || error}`);
-    } finally {
-        setBusy(false);
-        toastr.clear(toast);
-        toast?.remove?.();
+let operationFeedbackTimer = null;
+let activeWorkbenchHelpTrigger = null;
+let operationFeedbackCaptureUntil = 0;
+let operationFeedbackCaptureHandler = null;
+
+function clearOperationFeedback() {
+    if (operationFeedbackTimer) {
+        window.clearTimeout(operationFeedbackTimer);
+        operationFeedbackTimer = null;
     }
+    document.getElementById('bakemono-memory-operation-toast')?.remove();
+    document.getElementById('bakemono-workbench-root')?.classList.remove('is-operation-running');
 }
 
-function setOperationLoading(message = '') {
+function setOperationFeedback(state = '', message = '', timeout = 0) {
     const root = document.getElementById('bakemono-workbench-root');
-    if (!root) {
+    const text = String(message || '').trim();
+    if (!root || !state || !text) {
+        clearOperationFeedback();
         return;
+    }
+    if (operationFeedbackTimer) {
+        window.clearTimeout(operationFeedbackTimer);
+        operationFeedbackTimer = null;
     }
     let toast = document.getElementById('bakemono-memory-operation-toast');
-    const text = String(message || '').trim();
-    if (!text) {
-        toast?.remove();
-        root.classList.remove('is-operation-running');
-        return;
-    }
     if (!toast) {
         toast = document.createElement('div');
         toast.id = 'bakemono-memory-operation-toast';
         toast.className = 'bakemono-memory-operation-toast';
+        toast.setAttribute('role', 'status');
+        toast.setAttribute('aria-live', 'polite');
         root.appendChild(toast);
     }
-    toast.innerHTML = `<span class="bakemono-memory-operation-spinner" aria-hidden="true"></span><span>${escapeHtml(text)}</span>`;
-    root.classList.add('is-operation-running');
+    const icon = state === 'running'
+        ? '<span class="bakemono-memory-operation-spinner" aria-hidden="true"></span>'
+        : `<i class="fa-solid ${state === 'success' ? 'fa-check' : 'fa-triangle-exclamation'}" aria-hidden="true"></i>`;
+    toast.className = `bakemono-memory-operation-toast is-${state}`;
+    toast.innerHTML = `${icon}<span>${escapeHtml(text)}</span>`;
+    root.classList.toggle('is-operation-running', state === 'running');
+    if (timeout > 0) {
+        operationFeedbackTimer = window.setTimeout(clearOperationFeedback, timeout);
+    }
 }
 
-async function runVisibleOperation(message, action) {
-    const toast = toastr.info(message, '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
+function armOperationFeedbackCapture() {
+    operationFeedbackCaptureUntil = Date.now() + 10000;
+}
+
+function captureOperationFeedbackFromStatus(statusText = '') {
+    const text = String(statusText || '').trim();
+    if (!text || Date.now() > operationFeedbackCaptureUntil) {
+        return;
+    }
+    if (/^(已取消|取消)/.test(text)) {
+        operationFeedbackCaptureUntil = 0;
+        clearOperationFeedback();
+        return;
+    }
+    if (/^(正在|开始)/.test(text)) {
+        setOperationFeedback('running', text);
+        return;
+    }
+    operationFeedbackCaptureUntil = 0;
+    const failed = /(失败|错误|异常)/.test(text);
+    setOperationFeedback(failed ? 'error' : 'success', text, failed ? 2600 : 1200);
+}
+
+async function runGeneration(message, action, successMessage = '生成完成') {
+    setOperationFeedback('running', message);
     renderAll(message);
-    setOperationLoading(message);
     setBusy(true);
     try {
-        return await action();
+        await action();
+        setOperationFeedback('success', successMessage, 1200);
+    } catch (error) {
+        console.error('[BakemonoMemory] generation failed', error);
+        const failure = `生成失败：${error?.message || error}`;
+        setOperationFeedback('error', failure, 2600);
+        renderAll(failure);
     } finally {
         setBusy(false);
-        setOperationLoading('');
-        toastr.clear(toast);
-        toast?.remove?.();
+    }
+}
+
+async function runVisibleOperation(message, action, successMessage = '操作完成') {
+    setOperationFeedback('running', message);
+    renderAll(message);
+    setBusy(true);
+    try {
+        const result = await action();
+        if (result === false) {
+            clearOperationFeedback();
+            return result;
+        }
+        setOperationFeedback('success', successMessage, 1200);
+        return result;
+    } catch (error) {
+        const failure = error?.message || String(error);
+        setOperationFeedback('error', failure, 2600);
+        throw error;
+    } finally {
+        setBusy(false);
     }
 }
 
@@ -6496,7 +6548,7 @@ async function regenerateDraft(draftId) {
         saveState();
         renderAll('草稿已重新生成。');
         toastr.success('草稿已重新生成。');
-    });
+    }, '草稿已重新生成');
 }
 
 function undoLastCommit() {
@@ -7509,7 +7561,7 @@ async function processLatestTurnSummary(options = {}) {
         updateInjectionFromSummaries();
         const savedText = state.turnSummary.saveMode === 'commit' ? '已保存到长期记忆。' : '摘要进入草稿箱。';
         renderAll(options.manual ? `最新正文已处理，${savedText}` : `正文摘要已自动生成，${savedText}`);
-    });
+    }, options.manual ? '最新正文已处理' : '正文摘要草稿已生成');
 }
 
 async function processLatestTableEdit(options = {}) {
@@ -7561,7 +7613,7 @@ async function processLatestTableEdit(options = {}) {
         saveState();
         renderAll('表格修改草稿已生成，请确认后应用。');
         switchWorkbenchTab('tables');
-    });
+    }, '表格修改草稿已生成');
 }
 
 function updateInjectionFromSummaries() {
@@ -9310,6 +9362,7 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-status-line').text(statusText || `${injected}。上次扫描：${state.lastScanAt ? new Date(state.lastScanAt).toLocaleString() : '尚未扫描'}。`);
     renderWorkbenchHeaderContext(activeTab, state);
     syncPromptHintButtons();
+    captureOperationFeedbackFromStatus(statusText);
 }
 
 function syncPromptHintButtons() {
@@ -11456,7 +11509,6 @@ function getWorkbenchInjectionHeaderStatus(state = ensureState()) {
 function renderWorkbenchHeaderContext(tabName, state = ensureState()) {
     const fullContext = getWorkbenchPanelKicker(tabName, state);
     const shortContext = getWorkbenchPanelShortKicker(tabName, state);
-    const pageTitle = getWorkbenchPanelTitle(tabName);
     const injectionStatus = getWorkbenchInjectionHeaderStatus(state);
     const kicker = document.getElementById('bakemono-workbench-section-title');
     if (kicker) {
@@ -11466,54 +11518,66 @@ function renderWorkbenchHeaderContext(tabName, state = ensureState()) {
     if (shortKicker) {
         shortKicker.textContent = shortContext;
     }
-    const trigger = document.getElementById('bakemono-workbench-context-trigger');
-    if (trigger) {
-        trigger.title = `${pageTitle} · ${fullContext} · ${injectionStatus.full}`;
-        trigger.setAttribute('aria-label', `查看完整状态：${pageTitle}，${fullContext}，注入${injectionStatus.full}`);
-    }
     const badge = document.getElementById('bakemono-memory-injection-badge');
     if (badge) {
         badge.textContent = injectionStatus.short;
         badge.title = `注入状态：${injectionStatus.full}`;
-        badge.setAttribute('aria-label', `查看完整状态：注入${injectionStatus.full}`);
-    }
-    const page = document.getElementById('bakemono-workbench-context-page');
-    if (page) {
-        page.textContent = pageTitle;
-    }
-    const progress = document.getElementById('bakemono-workbench-context-progress');
-    if (progress) {
-        progress.textContent = fullContext;
-    }
-    const injection = document.getElementById('bakemono-workbench-context-injection');
-    if (injection) {
-        injection.textContent = injectionStatus.full;
+        badge.setAttribute('aria-label', `注入状态：${injectionStatus.full}`);
     }
 }
 
-function setWorkbenchContextOpen(open) {
-    const root = document.getElementById('bakemono-workbench-root');
-    const popover = document.getElementById('bakemono-workbench-context-popover');
-    if (!root || !popover) {
+function closeWorkbenchHelpPopover() {
+    activeWorkbenchHelpTrigger?.setAttribute('aria-expanded', 'false');
+    activeWorkbenchHelpTrigger = null;
+    document.getElementById('bakemono-memory-help-popover')?.remove();
+}
+
+function positionWorkbenchHelpPopover(trigger, popover) {
+    if (!trigger?.isConnected || !popover?.isConnected) {
+        closeWorkbenchHelpPopover();
         return;
     }
-    const shouldOpen = !!open;
-    if (shouldOpen && root.classList.contains('is-menu-open')) {
-        setWorkbenchMenuOpen(false);
-    }
-    root.classList.toggle('is-context-open', shouldOpen);
-    popover.hidden = !shouldOpen;
-    for (const trigger of [
-        document.getElementById('bakemono-workbench-context-trigger'),
-        document.getElementById('bakemono-memory-injection-badge'),
-    ]) {
-        trigger?.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
-    }
+    const margin = 12;
+    const gap = 8;
+    const viewportWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+    const viewportHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+    const triggerRect = trigger.getBoundingClientRect();
+    const width = Math.min(320, viewportWidth - margin * 2);
+    popover.style.width = `${width}px`;
+    const height = popover.getBoundingClientRect().height;
+    const center = triggerRect.left + triggerRect.width / 2;
+    const left = Math.max(margin, Math.min(center - width / 2, viewportWidth - width - margin));
+    const showAbove = triggerRect.bottom + gap + height > viewportHeight - margin && triggerRect.top - gap - height >= margin;
+    const top = showAbove ? triggerRect.top - gap - height : Math.min(triggerRect.bottom + gap, viewportHeight - height - margin);
+    popover.style.left = `${left}px`;
+    popover.style.top = `${Math.max(margin, top)}px`;
+    popover.style.setProperty('--bakemono-help-arrow-left', `${Math.max(18, Math.min(center - left, width - 18))}px`);
+    popover.classList.toggle('is-above', showAbove);
 }
 
-function toggleWorkbenchContext() {
-    const root = document.getElementById('bakemono-workbench-root');
-    setWorkbenchContextOpen(!root?.classList.contains('is-context-open'));
+function toggleWorkbenchHelpPopover(trigger) {
+    if (!trigger) {
+        return;
+    }
+    if (activeWorkbenchHelpTrigger === trigger) {
+        closeWorkbenchHelpPopover();
+        return;
+    }
+    closeWorkbenchHelpPopover();
+    const source = trigger.querySelector('.bakemono-memory-help-content');
+    if (!source) {
+        return;
+    }
+    const popover = document.createElement('div');
+    popover.id = 'bakemono-memory-help-popover';
+    popover.className = 'bakemono-memory-help-popover';
+    popover.setAttribute('role', 'dialog');
+    popover.setAttribute('aria-label', trigger.getAttribute('aria-label') || '帮助说明');
+    popover.innerHTML = source.innerHTML;
+    document.getElementById('bakemono-workbench-root')?.appendChild(popover);
+    activeWorkbenchHelpTrigger = trigger;
+    trigger.setAttribute('aria-expanded', 'true');
+    requestAnimationFrame(() => positionWorkbenchHelpPopover(trigger, popover));
 }
 
 function switchWorkbenchTab(tabName) {
@@ -11521,7 +11585,7 @@ function switchWorkbenchTab(tabName) {
     if (!root) {
         return;
     }
-    setWorkbenchContextOpen(false);
+    closeWorkbenchHelpPopover();
     if (!tabName) {
         setWorkbenchMenuOpen(false);
         return;
@@ -11543,9 +11607,6 @@ function switchWorkbenchTab(tabName) {
     root.querySelectorAll('.bakemono-workbench-panel').forEach(panel => {
         panel.classList.toggle('is-active', panel.dataset.bakemonoPanel === panelName);
     });
-    root.querySelectorAll('.bakemono-mobile-actions [data-bakemono-nav]').forEach(button => {
-        button.classList.toggle('is-active', button.dataset.bakemonoNav === tabName);
-    });
     renderAll();
     requestAnimationFrame(() => setWorkbenchMenuOpen(false));
     syncMobileCollapsibles(root.querySelector(`.bakemono-workbench-panel[data-bakemono-panel="${panelName}"]`) || root);
@@ -11564,9 +11625,7 @@ function setWorkbenchMenuOpen(open) {
     if (!root) {
         return;
     }
-    if (open) {
-        setWorkbenchContextOpen(false);
-    }
+    closeWorkbenchHelpPopover();
     root.classList.toggle('is-menu-open', !!open);
     if (button) {
         button.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -11651,13 +11710,14 @@ async function testVectorMemoryRetrieval() {
     if (!state.vectorMemory.records.length) {
         toastr.warning('还没有索引。请先点击“建立/刷新索引”。');
         renderAll('向量记忆尚未建立索引。');
-        return;
+        return false;
     }
     const query = String($('#bakemono-memory-vector-test-query').val() || '').trim();
     const hits = await retrieveVectorMemoryHits(query, state);
     saveState();
     syncInjection();
     renderAll(hits.length ? `向量召回完成：命中 ${hits.length} 条记忆。` : (state.vectorMemory.lastRecallSkippedReason || '向量召回完成：没有命中。'));
+    return true;
 }
 
 function clearVectorMemoryIndex() {
@@ -11843,13 +11903,13 @@ async function runWorkbenchAction(action) {
     } else if (action === 'vector-apply') {
         await applyVectorMemorySettings();
     } else if (action === 'vector-index') {
-        await runVisibleOperation('正在建立/刷新向量索引...', () => buildVectorMemoryIndex());
+        await runVisibleOperation('正在建立/刷新向量索引...', () => buildVectorMemoryIndex(), '向量索引已刷新');
     } else if (action === 'vector-test') {
-        await runVisibleOperation('正在测试向量召回...', () => testVectorMemoryRetrieval());
+        await runVisibleOperation('正在测试向量召回...', () => testVectorMemoryRetrieval(), '召回测试已完成');
     } else if (action === 'vector-fetch-models') {
-        await runVisibleOperation('正在拉取嵌入向量模型...', () => fetchVectorEmbeddingModels());
+        await runVisibleOperation('正在拉取嵌入向量模型...', () => fetchVectorEmbeddingModels(), '嵌入模型列表已更新');
     } else if (action === 'vector-fetch-query-models') {
-        await runVisibleOperation('正在拉取查询改写模型...', () => fetchVectorQueryModels());
+        await runVisibleOperation('正在拉取查询改写模型...', () => fetchVectorQueryModels(), '查询模型列表已更新');
     } else if (action === 'vector-clear') {
         clearVectorMemoryIndex();
     }
@@ -11858,6 +11918,34 @@ async function runWorkbenchAction(action) {
 function bindSettingsEvents() {
     window.removeEventListener('resize', syncMobileCollapsibles);
     window.addEventListener('resize', syncMobileCollapsibles);
+    const rootElement = document.getElementById('bakemono-workbench-root');
+    if (rootElement && operationFeedbackCaptureHandler) {
+        rootElement.removeEventListener('click', operationFeedbackCaptureHandler, true);
+    }
+    operationFeedbackCaptureHandler = event => {
+        const importantControl = event.target.closest([
+            '[data-bakemono-action]',
+            '[data-bakemono-draft-action]',
+            '[data-bakemono-auto-tx-action]',
+            '[data-bakemono-table-draft-action]',
+            '[data-bakemono-table-action="save-table"]',
+            'button[id*="apply"]',
+            'button[id*="save"]',
+            'button[id*="undo"]',
+            'button[id*="redo"]',
+            'button[id*="restore"]',
+        ].join(','));
+        if (importantControl) {
+            armOperationFeedbackCapture();
+            const captureDeadline = operationFeedbackCaptureUntil;
+            window.setTimeout(() => {
+                if (operationFeedbackCaptureUntil === captureDeadline) {
+                    operationFeedbackCaptureUntil = 0;
+                }
+            }, 2500);
+        }
+    };
+    rootElement?.addEventListener('click', operationFeedbackCaptureHandler, true);
     $('#bakemono-memory-extension-open').off('click').on('click', () => openWorkbench());
     $('#bakemono-memory-show-top-nav').off('change').on('change', function () {
         const settings = extension_settings[STORAGE_KEY];
@@ -11872,34 +11960,6 @@ function bindSettingsEvents() {
         const root = document.getElementById('bakemono-workbench-root');
         setWorkbenchMenuOpen(!root?.classList.contains('is-menu-open'));
     });
-    $('#bakemono-workbench-context-trigger, #bakemono-memory-injection-badge').off('click.bakemonoContext').on('click.bakemonoContext', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleWorkbenchContext();
-    });
-    $('#bakemono-workbench-context-trigger').off('keydown.bakemonoContext').on('keydown.bakemonoContext', event => {
-        if (event.key !== 'Enter' && event.key !== ' ') {
-            return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        toggleWorkbenchContext();
-    });
-    $(document).off('click.bakemonoContext').on('click.bakemonoContext', event => {
-        const root = document.getElementById('bakemono-workbench-root');
-        if (!root?.classList.contains('is-context-open')) {
-            return;
-        }
-        if (event.target.closest('#bakemono-workbench-context-trigger, #bakemono-memory-injection-badge, #bakemono-workbench-context-popover')) {
-            return;
-        }
-        setWorkbenchContextOpen(false);
-    });
-    $(document).off('keydown.bakemonoContext').on('keydown.bakemonoContext', event => {
-        if (event.key === 'Escape') {
-            setWorkbenchContextOpen(false);
-        }
-    });
     $('.bakemono-workbench-tab').off('click').on('click', function (event) {
         event?.preventDefault?.();
         event?.stopPropagation?.();
@@ -11911,27 +11971,37 @@ function bindSettingsEvents() {
     $('#bakemono-workbench-root').off('click.bakemonoNav').on('click.bakemonoNav', '[data-bakemono-nav]', function () {
         switchWorkbenchTab(this.dataset.bakemonoNav);
     });
-    const hintSelector = '.bakemono-memory-card-panel > h4 + .bakemono-memory-prompt-hint, .bakemono-memory-card-panel > h4 > .bakemono-memory-prompt-hint, .bakemono-memory-range-panel > summary .bakemono-memory-prompt-hint, .bakemono-memory-table-advanced > .bakemono-memory-prompt-hint';
-    $('#bakemono-workbench-root').off('click.bakemonoHintToggle').on('click.bakemonoHintToggle', hintSelector, function (event) {
+    $('#bakemono-workbench-root').off('click.bakemonoHelp').on('click.bakemonoHelp', '.bakemono-memory-help-trigger', function (event) {
         event.stopImmediatePropagation();
         event.preventDefault();
-        const root = document.getElementById('bakemono-workbench-root');
-        root?.querySelectorAll('.bakemono-memory-prompt-hint.is-open').forEach(hint => {
-            if (hint !== this) {
-                hint.classList.remove('is-open');
-            }
-        });
-        this.classList.toggle('is-open');
+        toggleWorkbenchHelpPopover(this);
     });
-    $('#bakemono-workbench-root').off('click.bakemonoHintClose').on('click.bakemonoHintClose', function (event) {
-        if (event.target.closest(hintSelector)) {
+    $('#bakemono-workbench-root').off('keydown.bakemonoHelp').on('keydown.bakemonoHelp', '.bakemono-memory-help-trigger', function (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') {
             return;
         }
-        this.querySelectorAll('.bakemono-memory-prompt-hint.is-open').forEach(hint => hint.classList.remove('is-open'));
+        event.stopImmediatePropagation();
+        event.preventDefault();
+        toggleWorkbenchHelpPopover(this);
     });
-    $('#bakemono-workbench-root').off('click.bakemonoTableAdvancedSummary').on('click.bakemonoTableAdvancedSummary', '.bakemono-memory-table-advanced > summary', function () {
-        this.parentElement?.querySelector('.bakemono-memory-prompt-hint.is-open')?.classList.remove('is-open');
+    $('#bakemono-workbench-root').off('toggle.bakemonoHelp').on('toggle.bakemonoHelp', 'details', function () {
+        if (!this.open && activeWorkbenchHelpTrigger && this.contains(activeWorkbenchHelpTrigger)) {
+            closeWorkbenchHelpPopover();
+        }
     });
+    $(document).off('click.bakemonoHelp').on('click.bakemonoHelp', event => {
+        if (!event.target.closest('.bakemono-memory-help-trigger, #bakemono-memory-help-popover')) {
+            closeWorkbenchHelpPopover();
+        }
+    });
+    $(document).off('keydown.bakemonoHelp').on('keydown.bakemonoHelp', event => {
+        if (event.key === 'Escape') {
+            closeWorkbenchHelpPopover();
+        }
+    });
+    window.removeEventListener('resize', closeWorkbenchHelpPopover);
+    window.addEventListener('resize', closeWorkbenchHelpPopover);
+    $('#bakemono-workbench-root .bakemono-workbench-main').off('scroll.bakemonoHelp').on('scroll.bakemonoHelp', closeWorkbenchHelpPopover);
     $('#bakemono-workbench-root').off('click.bakemonoMobileFold').on('click.bakemonoMobileFold', '.bakemono-mobile-collapsible > h4', function () {
         if (!(window.matchMedia?.('(max-width: 900px)').matches ?? false)) {
             return;
@@ -11943,7 +12013,7 @@ function bindSettingsEvents() {
         const expand = panel.classList.contains('is-mobile-collapsed');
         panel.classList.toggle('is-mobile-collapsed', !expand);
         panel.classList.toggle('is-mobile-expanded', expand);
-        panel.querySelectorAll('.bakemono-memory-prompt-hint.is-open').forEach(hint => hint.classList.remove('is-open'));
+        closeWorkbenchHelpPopover();
         stabilizeMobileWorkbenchScroll(document.getElementById('bakemono-workbench-root')?.dataset.activeTab || '');
     });
     $('#bakemono-workbench-root').off('click.bakemonoPromptEditorScroll').on('click.bakemonoPromptEditorScroll', '.bakemono-memory-prompt-editor-item > summary', function () {
@@ -11954,8 +12024,11 @@ function bindSettingsEvents() {
             await runWorkbenchAction(this.dataset.bakemonoAction);
         } catch (error) {
             console.error('[BakemonoMemory] action failed', error);
-            toastr.error(error?.message || String(error), '剧情剪辑台');
-            renderAll(`操作失败：${error?.message || error}`);
+            const failure = `操作失败：${error?.message || error}`;
+            setOperationFeedback('error', failure, 2600);
+            renderAll(failure);
+        } finally {
+            operationFeedbackCaptureUntil = 0;
         }
     });
     $('#bakemono-workbench-root').off('change.bakemonoAutoArchiveToggle').on('change.bakemonoAutoArchiveToggle', '#bakemono-memory-auto-hide-enabled', async function () {
@@ -13168,7 +13241,7 @@ function syncTopNavButton() {
 
 function openWorkbench() {
     const root = document.getElementById('bakemono-workbench-root');
-    setWorkbenchContextOpen(false);
+    closeWorkbenchHelpPopover();
     root?.classList.remove('bakemono-workbench-hidden');
     root?.setAttribute('aria-hidden', 'false');
     scanBakemonoBlocks({ persist: false, render: false });
@@ -13177,7 +13250,8 @@ function openWorkbench() {
 
 function closeWorkbench() {
     const root = document.getElementById('bakemono-workbench-root');
-    setWorkbenchContextOpen(false);
+    closeWorkbenchHelpPopover();
+    clearOperationFeedback();
     setWorkbenchMenuOpen(false);
     root?.classList.add('bakemono-workbench-hidden');
     root?.setAttribute('aria-hidden', 'true');

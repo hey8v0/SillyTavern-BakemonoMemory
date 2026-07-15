@@ -5,7 +5,7 @@
       <button class="menu_button bakemono-icon-button bakemono-menu-toggle" id="bakemono-memory-menu-toggle" title="打开菜单" aria-label="打开菜单" aria-expanded="false">
         <i class="fa-solid fa-bars"></i>
       </button>
-      <div class="bakemono-workbench-title-wrap bakemono-workbench-context-trigger" id="bakemono-workbench-context-trigger" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false" aria-controls="bakemono-workbench-context-popover" title="查看完整页面状态">
+      <div class="bakemono-workbench-title-wrap">
         <div class="bakemono-workbench-kicker">
           <span id="bakemono-workbench-section-title">剧情剪辑台</span>
           <span id="bakemono-workbench-section-title-short" class="bakemono-workbench-kicker-short" aria-hidden="true">剧情剪辑</span>
@@ -13,30 +13,14 @@
           <span>通用摘要 · 长期记忆 · 楼层剪辑</span>
         </div>
         <h2 id="bakemono-workbench-title">控制台</h2>
-        <i class="fa-solid fa-chevron-down bakemono-workbench-context-caret" aria-hidden="true"></i>
       </div>
       <div class="bakemono-workbench-header-actions">
-        <button type="button" id="bakemono-memory-injection-badge" class="bakemono-memory-badge" aria-haspopup="dialog" aria-expanded="false" aria-controls="bakemono-workbench-context-popover" title="查看完整注入状态">等待</button>
+        <span id="bakemono-memory-injection-badge" class="bakemono-memory-badge" role="status" aria-live="polite">等待</span>
         <button class="menu_button bakemono-icon-button" id="bakemono-memory-close" title="关闭">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
     </header>
-
-    <aside id="bakemono-workbench-context-popover" class="bakemono-workbench-context-popover" role="dialog" aria-label="当前工作台状态" hidden>
-      <div class="bakemono-workbench-context-row">
-        <span>当前页面</span>
-        <strong id="bakemono-workbench-context-page">控制台</strong>
-      </div>
-      <div class="bakemono-workbench-context-row">
-        <span>页面状态</span>
-        <strong id="bakemono-workbench-context-progress">剧情剪辑台</strong>
-      </div>
-      <div class="bakemono-workbench-context-row">
-        <span>注入状态</span>
-        <strong id="bakemono-workbench-context-injection">等待扫描</strong>
-      </div>
-    </aside>
 
     <nav class="bakemono-workbench-tabs" aria-label="剧情剪辑台功能">
       <div class="bakemono-workbench-menu-head">
@@ -254,11 +238,7 @@
         </details>
 
         <details class="bakemono-memory-card-panel bakemono-memory-preset-panel bakemono-memory-settings-block">
-          <summary><span><i class="fa-solid fa-box-archive"></i> 整套配置</span><small>保存、复制与导入导出</small></summary>
-          <div class="bakemono-memory-prompt-hint">
-            <i class="fa-solid fa-circle-info"></i>
-            <span id="bakemono-memory-active-config-status">这里保存/导出所有配置：工作流、扫描规则、自动总结、生成提示词和注入模板。</span>
-          </div>
+          <summary><span><i class="fa-solid fa-box-archive"></i> 整套配置</span><small>保存、复制与导入导出</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看整套配置说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span id="bakemono-memory-active-config-status" class="bakemono-memory-help-content">这里保存/导出所有配置：工作流、扫描规则、自动总结、生成提示词和注入模板。</span></button></summary>
           <div class="bakemono-memory-preset-controls">
             <label class="bakemono-memory-field">
               <span>配置</span>
@@ -307,10 +287,7 @@
         <details class="bakemono-memory-card-panel bakemono-memory-range-panel">
           <summary>
             <span class="bakemono-memory-summary-title"><i class="fa-solid fa-file-circle-plus"></i><span>批量摘要</span></span>
-            <span class="bakemono-memory-prompt-hint bakemono-memory-range-summary-hint">
-              <i class="fa-solid fa-circle-info"></i>
-              <span>旧正文补课会把旧聊天压缩进插件；补写缺失摘要会把摘要追加回缺摘要的助手楼层。</span>
-            </span>
+            <button type="button" class="bakemono-memory-help-trigger" aria-label="查看批量摘要说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">旧正文补课会把旧聊天压缩进插件；补写缺失摘要会把摘要追加回缺摘要的助手楼层。</span></button>
           </summary>
           <div class="bakemono-memory-batch-panel">
             <div class="bakemono-memory-batch-fields">
@@ -404,10 +381,7 @@
         <details class="bakemono-memory-card-panel bakemono-memory-range-panel">
           <summary>
             <span class="bakemono-memory-summary-title"><i class="fa-solid fa-box-archive"></i><span>楼层收纳</span></span>
-            <span class="bakemono-memory-prompt-hint bakemono-memory-range-summary-hint">
-            <i class="fa-solid fa-circle-info"></i>
-            <span>开启自动收纳后，插件会像隐藏助手一样持续只保留最近 N 楼正文；手动范围隐藏/恢复仍然可用。</span>
-            </span>
+            <button type="button" class="bakemono-memory-help-trigger" aria-label="查看楼层收纳说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">开启自动收纳后，插件会像隐藏助手一样持续只保留最近 N 楼正文；手动范围隐藏/恢复仍然可用。</span></button>
           </summary>
           <div class="bakemono-memory-auto-archive-main">
             <label class="checkbox_label bakemono-memory-switch bakemono-memory-auto-archive-switch">
@@ -623,12 +597,8 @@
 
         <div class="bakemono-memory-editor-grid">
           <details class="bakemono-memory-turn-config-section bakemono-memory-console-disclosure bakemono-turn-panel-card">
-            <summary><span><i class="fa-solid fa-book-atlas"></i> 参考上下文</span><small>角色、世界书与手动资料</small></summary>
+            <summary><span><i class="fa-solid fa-book-atlas"></i> 参考上下文</span><small>角色、世界书与手动资料</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看参考上下文说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">这些资料只帮助摘要器理解人设和世界观，不会被当作本轮新剧情。世界书会按最近正文触发，失败时自动跳过。</span></button></summary>
             <div class="bakemono-memory-turn-config-body">
-            <div class="bakemono-memory-prompt-hint">
-              <i class="fa-solid fa-circle-info"></i>
-              <span>这些资料只帮助摘要器理解人设和世界观，不会被当作本轮新剧情。世界书会按最近正文触发，失败时自动跳过。</span>
-            </div>
             <label class="bakemono-memory-field">
               <span>世界书扫描上限</span>
               <input id="bakemono-memory-turn-world-max-context" class="text_pole" type="number" min="1024" step="512">
@@ -794,11 +764,7 @@
             </details>
 
             <details class="bakemono-memory-table-import bakemono-memory-table-advanced">
-              <summary><i class="fa-solid fa-layer-group"></i><span>表格框架与表格组</span></summary>
-              <div class="bakemono-memory-prompt-hint">
-                <i class="fa-solid fa-circle-info"></i>
-                <span>这里管理表格框架保存在哪个范围，以及切换不同表格组。日常查看和填表不需要展开。</span>
-              </div>
+              <summary><i class="fa-solid fa-layer-group"></i><span>表格框架与表格组</span><button type="button" class="bakemono-memory-help-trigger" aria-label="查看表格框架说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">这里管理表格框架保存在哪个范围，以及切换不同表格组。日常查看和填表不需要展开。</span></button></summary>
               <div class="bakemono-memory-table-scope">
                 <label class="bakemono-memory-field">
                   <span>表格框架作用域</span>
@@ -1372,7 +1338,7 @@
         </details>
 
         <details class="bakemono-memory-scan-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-notes-medical"></i> 手账分段</span><small>只影响摘要详情的展示结构</small></summary>
+          <summary><span><i class="fa-solid fa-notes-medical"></i> 手账分段</span><small>只影响摘要详情的展示结构</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看手账分段说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">格式：<code>标签名|正文标题关键词|样式</code>。样式可填 <code>normal</code>、<code>tag</code> 或 <code>bubble</code>。</span></button></summary>
           <div class="bakemono-memory-scan-disclosure-body">
             <div class="bakemono-memory-editor-grid bakemono-memory-layout-grid">
             <label class="bakemono-memory-editor">
@@ -1387,10 +1353,6 @@
               <span>多次总结分段</span>
               <textarea id="bakemono-memory-layout-epic" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
             </label>
-            </div>
-            <div class="bakemono-memory-prompt-hint">
-              <i class="fa-solid fa-circle-info"></i>
-              <span>格式：<code>标签名|正文标题关键词|样式</code>。样式可填 <code>normal</code>、<code>tag</code> 或 <code>bubble</code>。</span>
             </div>
           </div>
         </details>
@@ -1448,12 +1410,8 @@
         <div id="bakemono-memory-vector-result-list" class="bakemono-memory-vector-result-list"></div>
 
         <details class="bakemono-memory-vector-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-sliders"></i> 向量配置</span><small id="bakemono-memory-vector-config-summary">本地向量 · 召回 0 条</small></summary>
+          <summary><span><i class="fa-solid fa-sliders"></i> 向量配置</span><small id="bakemono-memory-vector-config-summary">本地向量 · 召回 0 条</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看向量配置说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">先把当前剧情改写成多条检索句，再用向量相似度初筛、重排分档；高相关内容发全文，较相关内容发摘要，避免召回过多撑爆上下文。</span></button></summary>
           <div class="bakemono-memory-vector-disclosure-body">
-          <div class="bakemono-memory-prompt-hint">
-            <i class="fa-solid fa-circle-info"></i>
-            <span>先把当前剧情改写成多条检索句，再用向量相似度初筛、重排分档；高相关内容发全文，较相关内容发摘要，避免召回过多撑爆上下文。</span>
-          </div>
           <div class="bakemono-memory-inline-actions">
             <button class="menu_button" data-bakemono-action="vector-apply">
               <i class="fa-solid fa-floppy-disk"></i>
@@ -1651,12 +1609,8 @@
         </details>
 
         <details class="bakemono-memory-vector-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-network-wired"></i> 嵌入向量接口</span><small>默认使用本地哈希向量</small></summary>
+          <summary><span><i class="fa-solid fa-network-wired"></i> 嵌入向量接口</span><small>默认使用本地哈希向量</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看嵌入向量接口说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">默认使用本地哈希向量，不消耗接口额度；选择自定义嵌入向量后会请求兼容的向量接口，失败会自动回退本地向量。</span></button></summary>
           <div class="bakemono-memory-vector-disclosure-body">
-          <div class="bakemono-memory-prompt-hint">
-            <i class="fa-solid fa-circle-info"></i>
-            <span>默认使用本地哈希向量，不消耗接口额度；选择自定义嵌入向量后会请求兼容的向量接口，失败会自动回退本地向量。</span>
-          </div>
           <label class="bakemono-memory-field">
               <span>嵌入向量来源</span>
             <select id="bakemono-memory-vector-provider" class="text_pole">
@@ -1689,12 +1643,8 @@
         </details>
 
         <details class="bakemono-memory-vector-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-pen-nib"></i> 查询改写接口</span><small>聊天模型与独立密钥</small></summary>
+          <summary><span><i class="fa-solid fa-pen-nib"></i> 查询改写接口</span><small>聊天模型与独立密钥</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看查询改写接口说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">查询改写需要聊天模型，不是嵌入向量模型。接口地址和密钥留空时，会复用上面的嵌入向量接口地址和密钥；模型请填写可对话的小模型。</span></button></summary>
           <div class="bakemono-memory-vector-disclosure-body">
-          <div class="bakemono-memory-prompt-hint">
-            <i class="fa-solid fa-circle-info"></i>
-            <span>查询改写需要聊天模型，不是嵌入向量模型。接口地址和密钥留空时，会复用上面的嵌入向量接口地址和密钥；模型请填写可对话的小模型。</span>
-          </div>
           <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
             <label class="bakemono-memory-field">
               <span>改写接口地址</span>
@@ -1833,12 +1783,8 @@
         </article>
 
         <details class="bakemono-memory-prompts-editor-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-feather-pointed"></i> 编辑完整提示词</span><small>四类任务分别保存</small></summary>
+          <summary><span><i class="fa-solid fa-feather-pointed"></i> 编辑完整提示词</span><small>四类任务分别保存</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看完整提示词说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">旧正文补课保存到插件记忆；补写缺失摘要会追加回原助手楼层。使用 <code>{{blocks}}</code> 放置待总结内容。</span></button></summary>
           <div class="bakemono-memory-prompts-editor-body">
-            <div class="bakemono-memory-prompt-hint">
-              <i class="fa-solid fa-circle-info"></i>
-              <span>旧正文补课保存到插件记忆；补写缺失摘要会追加回原助手楼层。使用 <code>{{blocks}}</code> 放置待总结内容。</span>
-            </div>
             <div class="bakemono-memory-editor-grid">
               <details class="bakemono-memory-prompt-editor-item">
                 <summary><i class="fa-solid fa-box-archive"></i><span>旧正文批次摘要提示词</span></summary>
@@ -1934,19 +1880,5 @@
       </section>
     </main>
 
-    <nav class="bakemono-mobile-actions" aria-label="移动端导航">
-      <button type="button" data-bakemono-nav="overview" title="控制台">
-        <i class="fa-solid fa-table-cells-large"></i>
-        <span>控制台</span>
-      </button>
-      <button type="button" data-bakemono-nav="preview" title="总结">
-        <i class="fa-solid fa-book-open"></i>
-        <span>总结</span>
-      </button>
-      <button type="button" data-bakemono-nav="records" title="档案">
-        <i class="fa-solid fa-database"></i>
-        <span>档案</span>
-      </button>
-    </nav>
   </section>
 </div>

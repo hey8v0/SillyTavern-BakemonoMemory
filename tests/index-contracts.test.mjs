@@ -27,20 +27,16 @@ test('workbench menu branding reuses the clapperboard entry icon', () => {
     assert.match(source, /icon\.classList\.add\('fa-solid', 'fa-clapperboard', 'extensionsMenuExtensionButton'\)/);
 });
 
-test('mobile header exposes complete status through one accessible popover', () => {
-    assert.match(settingsSource, /id="bakemono-workbench-context-trigger"[^>]*role="button"[^>]*tabindex="0"[^>]*aria-controls="bakemono-workbench-context-popover"/);
-    assert.match(settingsSource, /id="bakemono-memory-injection-badge"[^>]*aria-controls="bakemono-workbench-context-popover"/);
-    assert.match(settingsSource, /id="bakemono-workbench-context-popover"[^>]*role="dialog"[^>]*hidden/);
-    assert.match(settingsSource, /id="bakemono-workbench-context-page"/);
-    assert.match(settingsSource, /id="bakemono-workbench-context-progress"/);
-    assert.match(settingsSource, /id="bakemono-workbench-context-injection"/);
+test('mobile header keeps one compact static injection state', () => {
+    assert.match(settingsSource, /id="bakemono-memory-injection-badge"[^>]*role="status"[^>]*aria-live="polite"/);
+    assert.doesNotMatch(settingsSource, /bakemono-workbench-context-trigger|bakemono-workbench-context-popover|bakemono-workbench-context-caret/);
     assert.match(source, /function getWorkbenchPanelShortKicker\(/);
     assert.match(source, /short: '注入开'/);
     assert.match(source, /short: '注入空'/);
     assert.match(source, /short: '注入关'/);
-    assert.match(source, /function setWorkbenchContextOpen\(/);
-    assert.match(source, /event\.key === 'Escape'/);
-    assert.match(styleSource, /Compact header status popover/);
+    assert.doesNotMatch(source, /function setWorkbenchContextOpen\(/);
+    assert.match(styleSource, /grid-template-rows:\s*70px minmax\(0, 1fr\)/);
+    assert.match(styleSource, /\.bakemono-workbench-header\s*\{[^}]*min-height:\s*70px;/s);
     assert.match(styleSource, /#bakemono-workbench-section-title\s*\{[^}]*display:\s*none;/s);
     assert.match(styleSource, /\.bakemono-workbench-kicker-short\s*\{[^}]*display:\s*inline;/s);
 });
@@ -55,28 +51,38 @@ test('scene workbench keeps the mobile hierarchy compact', () => {
     assert.match(settingsSource, /data-bakemono-tab="settings"/);
     assert.match(settingsSource, /data-bakemono-panel="settings"/);
     assert.match(settingsSource, /<option value="backfill">旧正文补课<\/option>/);
-    const mobileNav = settingsSource.match(/<nav class="bakemono-mobile-actions"[\s\S]*?<\/nav>/)?.[0] || '';
-    assert.deepEqual(
-        [...mobileNav.matchAll(/data-bakemono-nav="([^"]+)"/g)].map(match => match[1]),
-        ['overview', 'preview', 'records'],
-    );
+    assert.doesNotMatch(settingsSource, /<nav class="bakemono-mobile-actions"/);
     assert.match(source, /button\.classList\.toggle\('is-workflow-primary', !!isPrimary\)/);
     assert.match(styleSource, /\.bakemono-memory-control-deck \[hidden\]\s*\{[^}]*display:\s*none !important;/s);
     assert.match(styleSource, /\.bakemono-workbench-tabs\s*\{[^}]*scrollbar-width:\s*none;/s);
-    assert.match(styleSource, /@media \(max-width: 900px\)[\s\S]*?\.bakemono-mobile-actions\s*\{[^}]*display:\s*grid;/s);
+    assert.match(styleSource, /\.bakemono-mobile-actions,[\s\S]*?display:\s*none !important;/s);
     assert.equal((settingsSource.match(/bakemono-memory-page-intro/g) || []).length, 13);
     assert.match(styleSource, /Scene workbench aesthetic/);
     assert.match(styleSource, /--bk-display:/);
 });
 
-test('phone typography keeps metadata readable without squeezing archive cards', () => {
-    assert.match(styleSource, /Phone reading distance pass/);
-    assert.match(styleSource, /--bk-type-meta:\s*13px/);
-    assert.match(styleSource, /--bk-type-copy:\s*14px/);
-    assert.match(styleSource, /--bk-type-label:\s*15px/);
+test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
+    assert.match(styleSource, /v1\.2\.3 mobile refinement/);
+    assert.match(styleSource, /--bk-type-meta:\s*12px/);
+    assert.match(styleSource, /--bk-type-copy:\s*13px/);
+    assert.match(styleSource, /--bk-type-label:\s*14px/);
     assert.match(styleSource, /\.bakemono-memory-record-main strong\s*\{[^}]*font-size:\s*var\(--bk-type-label\)\s*!important;/s);
-    assert.match(styleSource, /\.bakemono-memory-record-chips\s*\{[^}]*grid-column:\s*2;/s);
-    assert.match(styleSource, /\.bakemono-memory-scan-bars b,[\s\S]*?font-size:\s*var\(--bk-type-meta\)\s*!important;/s);
+    assert.match(styleSource, /\.bakemono-memory-page-intro p,[\s\S]*?font-size:\s*13px\s*!important;/s);
+    assert.match(styleSource, /\.bakemono-memory-timeline-meta,[\s\S]*?font-size:\s*12px\s*!important;/s);
+});
+
+test('expanded disclosures expose anchored help and important operations expose live feedback', () => {
+    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 10);
+    assert.match(settingsSource, /class="bakemono-memory-help-content"/);
+    assert.match(source, /function toggleWorkbenchHelpPopover\(/);
+    assert.match(source, /function positionWorkbenchHelpPopover\(/);
+    assert.match(source, /event\.key === 'Escape'/);
+    assert.match(styleSource, /details\[open\] > summary > \.bakemono-memory-help-trigger\s*\{[^}]*display:\s*inline-flex;/s);
+    assert.match(styleSource, /\.bakemono-memory-help-popover::before/);
+    assert.match(source, /toast\.setAttribute\('role', 'status'\)/);
+    assert.match(source, /toast\.setAttribute\('aria-live', 'polite'\)/);
+    assert.match(source, /setOperationFeedback\('success'/);
+    assert.match(source, /setOperationFeedback\('error'/);
 });
 
 test('summary page keeps generation, review, and filtering in the demo hierarchy', () => {

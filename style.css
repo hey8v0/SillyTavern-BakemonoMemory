@@ -9109,7 +9109,7 @@
  * The desktop editorial scale stays compact, while phone labels and metadata
  * gain one full step so status information no longer reads like footnotes.
  * -------------------------------------------------------------------------- */
-@media (max-width: 620px) {
+@media (max-width: 0px) {
   .bakemono-workbench-root {
     --bk-type-meta: 13px;
     --bk-type-copy: 14px;
@@ -9376,5 +9376,300 @@
 
   .bakemono-workbench-context-row strong {
     font-size: 14px;
+  }
+}
+
+/* v1.2.3 mobile refinement -----------------------------------------------
+ * A restrained clapper-paper hierarchy: readable at phone distance without
+ * turning every supporting note into a heading.
+ * -------------------------------------------------------------------------- */
+
+.bakemono-mobile-actions,
+.bakemono-workbench-context-popover,
+.bakemono-workbench-context-caret {
+  display: none !important;
+}
+
+.bakemono-memory-badge {
+  cursor: default;
+  user-select: none;
+}
+
+.bakemono-memory-help-trigger {
+  position: absolute;
+  right: 38px;
+  top: 50%;
+  translate: 0 -50%;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--bk-accent) 86%, var(--bk-ink) 14%);
+  background: color-mix(in srgb, var(--bk-accent) 10%, transparent);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.bakemono-workbench-root details > summary:has(> .bakemono-memory-help-trigger) {
+  position: relative;
+}
+
+.bakemono-workbench-root details[open] > summary:has(> .bakemono-memory-help-trigger) {
+  padding-right: 72px;
+}
+
+details[open] > summary > .bakemono-memory-help-trigger {
+  display: inline-flex;
+}
+
+.bakemono-memory-help-trigger:hover,
+.bakemono-memory-help-trigger:focus-visible,
+.bakemono-memory-help-trigger[aria-expanded="true"] {
+  color: var(--bk-ink);
+  background: color-mix(in srgb, var(--bk-accent) 20%, transparent);
+  outline: none;
+}
+
+.bakemono-memory-help-trigger:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bk-accent) 42%, transparent);
+}
+
+.bakemono-memory-help-content {
+  display: none !important;
+}
+
+.bakemono-memory-help-popover {
+  --bakemono-help-arrow-left: 50%;
+  position: fixed;
+  z-index: 40120;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--bk-accent) 36%, var(--bk-line));
+  border-radius: 12px;
+  color: var(--bk-ink);
+  background: color-mix(in srgb, var(--bk-paper-raised) 96%, transparent);
+  box-shadow: 0 12px 32px color-mix(in srgb, #000 24%, transparent);
+  backdrop-filter: blur(14px);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  animation: bakemono-help-pop-in 150ms var(--bk-ease) both;
+}
+
+.bakemono-memory-help-popover::before {
+  content: '';
+  position: absolute;
+  left: var(--bakemono-help-arrow-left);
+  top: -6px;
+  width: 10px;
+  height: 10px;
+  translate: -50% 0;
+  rotate: 45deg;
+  border-left: 1px solid color-mix(in srgb, var(--bk-accent) 36%, var(--bk-line));
+  border-top: 1px solid color-mix(in srgb, var(--bk-accent) 36%, var(--bk-line));
+  background: color-mix(in srgb, var(--bk-paper-raised) 96%, transparent);
+}
+
+.bakemono-memory-help-popover.is-above::before {
+  top: auto;
+  bottom: -6px;
+  border: 0;
+  border-right: 1px solid color-mix(in srgb, var(--bk-accent) 36%, var(--bk-line));
+  border-bottom: 1px solid color-mix(in srgb, var(--bk-accent) 36%, var(--bk-line));
+}
+
+@keyframes bakemono-help-pop-in {
+  from { opacity: 0; scale: 0.98; }
+  to { opacity: 1; scale: 1; }
+}
+
+.bakemono-memory-operation-toast {
+  top: max(82px, calc(env(safe-area-inset-top, 0px) + 76px));
+  width: min(360px, calc(100vw - 28px));
+  justify-content: flex-start;
+  border-radius: 14px;
+  padding: 10px 13px;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.bakemono-memory-operation-toast > span:last-child {
+  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.bakemono-memory-operation-toast.is-success {
+  border-color: color-mix(in srgb, #62a877 42%, var(--bk-line));
+}
+
+.bakemono-memory-operation-toast.is-success > i {
+  color: color-mix(in srgb, #62a877 78%, var(--bk-ink) 22%);
+}
+
+.bakemono-memory-operation-toast.is-error {
+  border-color: color-mix(in srgb, #c65f69 44%, var(--bk-line));
+}
+
+.bakemono-memory-operation-toast.is-error > i {
+  color: color-mix(in srgb, #c65f69 80%, var(--bk-ink) 20%);
+}
+
+@media (max-width: 900px) {
+  .bakemono-workbench-root {
+    --bk-type-meta: 12px;
+    --bk-type-copy: 13px;
+    --bk-type-label: 14px;
+  }
+
+  .bakemono-workbench {
+    grid-template-rows: 70px minmax(0, 1fr);
+  }
+
+  .bakemono-workbench-header {
+    min-height: 70px;
+    gap: 9px;
+    padding: 8px 12px;
+  }
+
+  .bakemono-icon-button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    border-radius: 13px;
+  }
+
+  .bakemono-workbench-title-wrap {
+    padding-right: 0;
+  }
+
+  .bakemono-workbench-kicker {
+    font-size: 12px !important;
+    line-height: 1.35;
+    letter-spacing: 0.04em;
+  }
+
+  #bakemono-workbench-section-title {
+    display: none;
+  }
+
+  .bakemono-workbench-kicker-short {
+    display: inline;
+  }
+
+  .bakemono-workbench-header h2 {
+    margin-top: 1px;
+    font-size: 20px;
+    line-height: 1.08;
+  }
+
+  .bakemono-memory-badge {
+    min-width: 0;
+    max-width: 62px;
+    min-height: 30px;
+    padding: 5px 8px;
+    font-size: 12px !important;
+    font-weight: 650;
+  }
+
+  .bakemono-workbench-main {
+    padding: 13px 13px max(24px, env(safe-area-inset-bottom));
+  }
+
+  .bakemono-workbench-tabs {
+    top: 62px;
+    max-height: min(calc(100dvh - 76px), 680px);
+  }
+
+  .bakemono-workbench-menu-head {
+    grid-template-columns: 50px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .bakemono-workbench-menu-mark {
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+  }
+
+  .bakemono-workbench-menu-head span {
+    font-size: 12px !important;
+    line-height: 1.45;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-page-intro p,
+  .bakemono-workbench-root .bakemono-memory-scene-subtitle,
+  .bakemono-workbench-root .bakemono-memory-vector-status-hero > p,
+  .bakemono-workbench-root .bakemono-memory-automation-hero > p,
+  .bakemono-workbench-root .bakemono-memory-turn-status-hero > p,
+  .bakemono-workbench-root .bakemono-memory-workflow-status-hero > p,
+  .bakemono-workbench-root .bakemono-memory-scan-status-hero > p,
+  .bakemono-workbench-root .bakemono-memory-injection-status-hero > p,
+  .bakemono-workbench-root .bakemono-memory-prompts-preview-card > p,
+  .bakemono-workbench-root .bakemono-memory-empty,
+  .bakemono-workbench-root .bakemono-memory-vector-result-empty span {
+    font-size: 13px !important;
+    line-height: 1.55;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-stat span,
+  .bakemono-workbench-root .bakemono-memory-action-copy small,
+  .bakemono-workbench-root .bakemono-memory-preview-page-info,
+  .bakemono-workbench-root .bakemono-memory-preview-result-count,
+  .bakemono-workbench-root .bakemono-memory-record-result-count,
+  .bakemono-workbench-root .bakemono-memory-record-main span,
+  .bakemono-workbench-root .bakemono-memory-record-chip,
+  .bakemono-workbench-root .bakemono-memory-draft-meta > span,
+  .bakemono-workbench-root .bakemono-memory-history-main span,
+  .bakemono-workbench-root .bakemono-memory-timeline-meta,
+  .bakemono-workbench-root .bakemono-memory-timeline-counts span,
+  .bakemono-workbench-root .bakemono-memory-table-draft-meta,
+  .bakemono-workbench-root .bakemono-memory-table-overview-strip span,
+  .bakemono-workbench-root .bakemono-memory-record-stat-strip span,
+  .bakemono-workbench-root .nh-meta,
+  .bakemono-workbench-root time {
+    font-size: 12px !important;
+    line-height: 1.4;
+  }
+
+  .bakemono-workbench-root .bakemono-workbench-panel details > summary,
+  .bakemono-workbench-root .bakemono-memory-field > span,
+  .bakemono-workbench-root .bakemono-memory-editor > span,
+  .bakemono-workbench-root .bakemono-memory-console-disclosure > summary > span,
+  .bakemono-workbench-root .menu_button:not(.bakemono-icon-button),
+  .bakemono-workbench-root .bakemono-memory-record-main strong,
+  .bakemono-workbench-root .bakemono-memory-action-copy strong {
+    font-size: 14px !important;
+    line-height: 1.45;
+  }
+
+  .bakemono-workbench-root .bk-inner-text,
+  .bakemono-workbench-root .bakemono-memory-draft-preview,
+  .bakemono-workbench-root .bakemono-memory-prompts-preview-card > pre,
+  .bakemono-workbench-root .bakemono-memory-injection-preview-card > textarea {
+    font-size: 14px !important;
+    line-height: 1.68;
+  }
+
+  .bakemono-workbench-root .bakemono-memory-workflow-card {
+    min-height: 88px;
+  }
+
+  .bakemono-memory-operation-toast {
+    top: max(78px, calc(env(safe-area-inset-top, 0px) + 74px));
+    bottom: auto;
   }
 }
