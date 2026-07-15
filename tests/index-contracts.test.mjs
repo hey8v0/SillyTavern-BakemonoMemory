@@ -56,7 +56,7 @@ test('scene workbench keeps the mobile hierarchy compact', () => {
     assert.match(styleSource, /\.bakemono-memory-control-deck \[hidden\]\s*\{[^}]*display:\s*none !important;/s);
     assert.match(styleSource, /\.bakemono-workbench-tabs\s*\{[^}]*scrollbar-width:\s*none;/s);
     assert.match(styleSource, /\.bakemono-mobile-actions,[\s\S]*?display:\s*none !important;/s);
-    assert.equal((settingsSource.match(/bakemono-memory-page-intro/g) || []).length, 13);
+    assert.equal((settingsSource.match(/bakemono-memory-page-intro/g) || []).length, 14);
     assert.match(styleSource, /Scene workbench aesthetic/);
     assert.match(styleSource, /--bk-display:/);
 });
@@ -299,4 +299,26 @@ test('every config-bearing tab refreshes its own preset selectors', () => {
     ]) {
         assert.ok(presetSource.includes(required), `missing active-tab preset render: ${required}`);
     }
+});
+
+test('custom themes stay token-only, global, and importable as JSON', () => {
+    assert.match(settingsSource, /data-bakemono-tab="appearance"/);
+    assert.match(settingsSource, /data-bakemono-panel="appearance"/);
+    assert.match(settingsSource, /id="bakemono-memory-theme-json"/);
+    assert.match(settingsSource, /id="bakemono-memory-theme-file"[^>]*accept="application\/json,\.json"/);
+    assert.match(source, /const CUSTOM_THEME_SCHEMA = 'bakemono-memory-theme\/v1'/);
+    assert.match(source, /function sanitizeCustomTheme\(/);
+    assert.match(source, /function applyAppearanceTheme\(/);
+    assert.match(source, /function downloadCustomThemeJson\(/);
+    assert.match(source, /function importCustomThemeJson\(/);
+    assert.match(source, /settings\.ui\.customTheme = sanitizeCustomTheme/);
+    assert.match(styleSource, /\.bakemono-workbench-root\.bakemono-custom-theme/);
+});
+
+test('active global config follows existing chats without removing the tavern model path', () => {
+    assert.match(source, /function getActiveGlobalConfigSignature\(/);
+    assert.match(source, /function syncGlobalActiveConfigToState\(/);
+    assert.equal((source.match(/syncGlobalActiveConfigToState\(ensureState\(\)\)/g) || []).length, 2);
+    assert.match(source, /if \(state\.automation\.apiProvider !== 'custom'\) \{\s*return await generateRaw/s);
+    assert.match(source, /state\.activeConfigSignature = getActiveGlobalConfigSignature/);
 });

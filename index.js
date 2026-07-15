@@ -93,6 +93,87 @@ const tableSchemaScopes = {
     GLOBAL: 'global',
 };
 
+const CUSTOM_THEME_SCHEMA = 'bakemono-memory-theme/v1';
+const customThemeColorKeys = [
+    'paper',
+    'paperRaised',
+    'paperSoft',
+    'ink',
+    'muted',
+    'accent',
+    'secondary',
+    'accentStrong',
+    'line',
+    'backdrop',
+    'danger',
+];
+const defaultCustomTheme = {
+    $schema: CUSTOM_THEME_SCHEMA,
+    name: '我的自定义主题',
+    appearance: 'light',
+    tokens: {
+        paper: '#eee4ce',
+        paperRaised: '#f8f1df',
+        paperSoft: '#ddd0b5',
+        ink: '#40382b',
+        muted: '#7c715f',
+        accent: '#81734a',
+        secondary: '#6d775e',
+        accentStrong: '#5f5638',
+        line: '#c8baa0',
+        backdrop: '#302b25',
+        danger: '#a14f45',
+    },
+    effects: {
+        gradientStrength: 10,
+        gradientAngle: 145,
+        grain: 4,
+        shadow: 18,
+        radius: 12,
+    },
+    constraints: {
+        opaqueSurfaces: true,
+        contrast: 'WCAG AA',
+        doNotChange: ['layout', 'plugin logic', 'configuration structure', 'memory data'],
+    },
+    aiInstructions: '只修改 tokens、effects、name 与 appearance，保留 $schema 和字段结构；返回完整 JSON，不要加入 CSS、脚本或解释文字。所有颜色必须为六位十六进制色值。',
+};
+
+function normalizeThemeHex(value, fallback) {
+    const color = String(value || '').trim();
+    return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : fallback;
+}
+
+function clampThemeNumber(value, fallback, min, max) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
+}
+
+function sanitizeCustomTheme(value = {}) {
+    const source = value && typeof value === 'object' ? value : {};
+    const sourceTokens = source.tokens && typeof source.tokens === 'object' ? source.tokens : {};
+    const sourceEffects = source.effects && typeof source.effects === 'object' ? source.effects : {};
+    const tokens = {};
+    for (const key of customThemeColorKeys) {
+        tokens[key] = normalizeThemeHex(sourceTokens[key], defaultCustomTheme.tokens[key]);
+    }
+    return {
+        $schema: CUSTOM_THEME_SCHEMA,
+        name: String(source.name || defaultCustomTheme.name).trim().slice(0, 80) || defaultCustomTheme.name,
+        appearance: source.appearance === 'dark' ? 'dark' : 'light',
+        tokens,
+        effects: {
+            gradientStrength: clampThemeNumber(sourceEffects.gradientStrength, defaultCustomTheme.effects.gradientStrength, 0, 24),
+            gradientAngle: clampThemeNumber(sourceEffects.gradientAngle, defaultCustomTheme.effects.gradientAngle, 0, 360),
+            grain: clampThemeNumber(sourceEffects.grain, defaultCustomTheme.effects.grain, 0, 12),
+            shadow: clampThemeNumber(sourceEffects.shadow, defaultCustomTheme.effects.shadow, 0, 36),
+            radius: clampThemeNumber(sourceEffects.radius, defaultCustomTheme.effects.radius, 0, 24),
+        },
+        constraints: structuredClone(defaultCustomTheme.constraints),
+        aiInstructions: String(source.aiInstructions || defaultCustomTheme.aiInstructions).trim().slice(0, 1000) || defaultCustomTheme.aiInstructions,
+    };
+}
+
 const turnProcessingModes = {
     SUMMARY: 'summary',
     TABLE: 'table',
@@ -916,6 +997,10 @@ function ensureGlobalSettings() {
     if (settings.ui.showTopNavButton === undefined) {
         settings.ui.showTopNavButton = false;
     }
+    if (!['tavern', 'custom'].includes(settings.ui.themeMode)) {
+        settings.ui.themeMode = 'tavern';
+    }
+    settings.ui.customTheme = sanitizeCustomTheme(settings.ui.customTheme);
     if (!Array.isArray(extension_settings[STORAGE_KEY].promptPresets)) {
         extension_settings[STORAGE_KEY].promptPresets = [structuredClone(defaultPromptPreset), structuredClone(defaultGenericPromptPreset)];
     }
@@ -1664,6 +1749,163 @@ function saveGlobalSettings() {
     saveSettingsDebounced();
 }
 
+function getAppearanceSettings() {
+    ensureGlobalSettings();
+    return extension_settings[STORAGE_KEY].ui;
+}
+
+function applyAppearanceTheme(themeOverride = null, modeOverride = null) {
+    const root = document.getElementById('bakemono-workbench-root');
+    if (!root) {
+        return;
+    }
+    const ui = getAppearanceSettings();
+    const mode = ['tavern', 'custom'].includes(modeOverride) ? modeOverride : ui.themeMode;
+    const theme = sanitizeCustomTheme(themeOverride || ui.customTheme);
+    const variableMap = {
+        paper: '--bakemono-theme-paper',
+        paperRaised: '--bakemono-theme-paper-raised',
+        paperSoft: '--bakemono-theme-paper-soft',
+        ink: '--bakemono-theme-ink',
+        muted: '--bakemono-theme-muted',
+        accent: '--bakemono-theme-accent',
+        secondary: '--bakemono-theme-secondary',
+        accentStrong: '--bakemono-theme-accent-strong',
+        line: '--bakemono-theme-line',
+        backdrop: '--bakemono-theme-backdrop',
+        danger: '--bakemono-theme-danger',
+    };
+    root.classList.toggle('bakemono-custom-theme', mode === 'custom');
+    root.dataset.bakemonoThemeMode = mode;
+    root.dataset.bakemonoThemeAppearance = mode === 'custom' ? theme.appearance : '';
+    root.style.colorScheme = mode === 'custom' ? theme.appearance : '';
+    for (const [key, cssVariable] of Object.entries(variableMap)) {
+        if (mode === 'custom') {
+            root.style.setProperty(cssVariable, theme.tokens[key]);
+        } else {
+            root.style.removeProperty(cssVariable);
+        }
+    }
+    const effectVariables = {
+        gradientStrength: ['--bakemono-theme-gradient-strength', '%'],
+        gradientAngle: ['--bakemono-theme-gradient-angle', 'deg'],
+        grain: ['--bakemono-theme-grain', '%'],
+        shadow: ['--bakemono-theme-shadow', 'px'],
+        radius: ['--bakemono-theme-radius', 'px'],
+    };
+    for (const [key, [cssVariable, unit]] of Object.entries(effectVariables)) {
+        if (mode === 'custom') {
+            root.style.setProperty(cssVariable, `${theme.effects[key]}${unit}`);
+        } else {
+            root.style.removeProperty(cssVariable);
+        }
+    }
+    if (mode === 'custom') {
+        root.style.setProperty('--bakemono-theme-shadow-blur', `${theme.effects.shadow * 2.8}px`);
+    } else {
+        root.style.removeProperty('--bakemono-theme-shadow-blur');
+    }
+}
+
+function readCustomThemeFromUi() {
+    const ui = getAppearanceSettings();
+    const source = structuredClone(ui.customTheme || defaultCustomTheme);
+    source.name = String($('#bakemono-memory-theme-name').val() || source.name);
+    source.appearance = String($('#bakemono-memory-theme-appearance').val() || source.appearance);
+    source.tokens = source.tokens || {};
+    source.effects = source.effects || {};
+    $('[data-bakemono-theme-color]').each(function () {
+        source.tokens[this.dataset.bakemonoThemeColor] = this.value;
+    });
+    $('[data-bakemono-theme-effect]').each(function () {
+        source.effects[this.dataset.bakemonoThemeEffect] = Number(this.value);
+    });
+    return sanitizeCustomTheme(source);
+}
+
+function setCustomThemeJson(theme) {
+    $('#bakemono-memory-theme-json').val(JSON.stringify(sanitizeCustomTheme(theme), null, 2));
+}
+
+function renderAppearanceSettings() {
+    const ui = getAppearanceSettings();
+    const theme = sanitizeCustomTheme(ui.customTheme);
+    $('[data-bakemono-theme-mode]').each(function () {
+        const active = this.dataset.bakemonoThemeMode === ui.themeMode;
+        this.classList.toggle('is-active', active);
+        this.setAttribute('aria-pressed', String(active));
+    });
+    $('#bakemono-memory-custom-theme-editor').prop('hidden', ui.themeMode !== 'custom');
+    $('#bakemono-memory-theme-name').val(theme.name);
+    $('#bakemono-memory-theme-appearance').val(theme.appearance);
+    $('[data-bakemono-theme-color]').each(function () {
+        const key = this.dataset.bakemonoThemeColor;
+        this.value = theme.tokens[key];
+        $(`[data-bakemono-theme-color-value="${key}"]`).text(theme.tokens[key]);
+    });
+    $('[data-bakemono-theme-effect]').each(function () {
+        const key = this.dataset.bakemonoThemeEffect;
+        this.value = theme.effects[key];
+        $(`[data-bakemono-theme-effect-value="${key}"]`).text(theme.effects[key]);
+    });
+    setCustomThemeJson(theme);
+    applyAppearanceTheme();
+}
+
+function previewCustomThemeFromUi() {
+    const theme = readCustomThemeFromUi();
+    $('[data-bakemono-theme-color-value]').each(function () {
+        const key = this.dataset.bakemonoThemeColorValue;
+        this.textContent = theme.tokens[key];
+    });
+    $('[data-bakemono-theme-effect-value]').each(function () {
+        const key = this.dataset.bakemonoThemeEffectValue;
+        this.textContent = theme.effects[key];
+    });
+    setCustomThemeJson(theme);
+    applyAppearanceTheme(theme, 'custom');
+}
+
+function parseCustomThemeJson(text) {
+    const parsed = JSON.parse(String(text || ''));
+    if (!parsed || typeof parsed !== 'object' || !parsed.tokens || typeof parsed.tokens !== 'object') {
+        throw new Error('主题 JSON 缺少 tokens 对象。');
+    }
+    if (parsed.$schema && parsed.$schema !== CUSTOM_THEME_SCHEMA) {
+        throw new Error(`不支持的主题格式：${parsed.$schema}`);
+    }
+    return sanitizeCustomTheme(parsed);
+}
+
+function saveCustomTheme(theme, message = '自定义主题已保存。') {
+    const ui = getAppearanceSettings();
+    ui.themeMode = 'custom';
+    ui.customTheme = sanitizeCustomTheme(theme);
+    saveGlobalSettings();
+    renderAppearanceSettings();
+    toastr.success(message);
+}
+
+function downloadCustomThemeJson() {
+    const theme = readCustomThemeFromUi();
+    const blob = new Blob([JSON.stringify(theme, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeName = theme.name.replace(/[\\/:*?"<>|]+/g, '-').slice(0, 48) || 'bakemono-theme';
+    link.href = url;
+    link.download = `${safeName}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+function importCustomThemeJson(text, message = '主题已导入并应用。') {
+    const theme = parseCustomThemeJson(text);
+    saveCustomTheme(theme, message);
+    return theme;
+}
+
 function getTableSchemaScopeLabel(scope) {
     if (scope === tableSchemaScopes.GLOBAL) return '全局表格框架';
     if (scope === tableSchemaScopes.CHARACTER) return '当前角色表格框架';
@@ -2305,6 +2547,19 @@ function getActiveGlobalConfig() {
     return extension_settings[STORAGE_KEY].activeConfig || null;
 }
 
+function getActiveGlobalConfigSignature(config = getActiveGlobalConfig()) {
+    if (!config) {
+        return '';
+    }
+    return `${String(config.id || '')}|${String(config.updatedAt || '')}`;
+}
+
+function markStateGlobalConfigApplied(state, config = getActiveGlobalConfig()) {
+    state.configInitialized = true;
+    state.activeConfigId = config?.id || '';
+    state.activeConfigSignature = getActiveGlobalConfigSignature(config);
+}
+
 function setActiveGlobalConfig(preset) {
     ensureGlobalSettings();
     const presets = extension_settings[STORAGE_KEY].promptPresets || [];
@@ -2325,7 +2580,7 @@ function setActiveGlobalConfig(preset) {
 function applyGlobalActiveConfigToState(state) {
     const config = getActiveGlobalConfig();
     if (!config) {
-        state.configInitialized = true;
+        markStateGlobalConfigApplied(state, null);
         return;
     }
     applyPromptPresetToState(config, {
@@ -2333,11 +2588,24 @@ function applyGlobalActiveConfigToState(state) {
         silent: true,
         skipScan: true,
         skipInjection: true,
+        skipVectorSchedule: true,
         skipRender: true,
         skipSave: true,
     });
-    state.configInitialized = true;
-    state.activeConfigId = config.id || '';
+    markStateGlobalConfigApplied(state, config);
+}
+
+function syncGlobalActiveConfigToState(state, options = {}) {
+    const config = getActiveGlobalConfig();
+    const signature = getActiveGlobalConfigSignature(config);
+    if (!config || (!options.force && state.activeConfigSignature === signature)) {
+        return false;
+    }
+    applyGlobalActiveConfigToState(state);
+    if (!options.skipSave) {
+        saveState();
+    }
+    return true;
 }
 
 function makeAreaPresetId(scope, name) {
@@ -9200,6 +9468,8 @@ function renderActiveWorkbenchPanel(tabName, state, blocks) {
         renderScanPreview();
     } else if (tabName === 'automation') {
         renderCustomModelOptions(state.automation.customApi?.models || []);
+    } else if (tabName === 'appearance') {
+        renderAppearanceSettings();
     } else if (tabName === 'maintenance') {
         renderMaintenanceOverview(state);
     }
@@ -11036,7 +11306,8 @@ function usePromptPresetAsGlobalDefault(preset, options = {}) {
     }
     const state = ensureState();
     applyPromptPresetToState(preset, { state, silent: true });
-    setActiveGlobalConfig(preset);
+    const config = setActiveGlobalConfig(preset);
+    markStateGlobalConfigApplied(state, config);
     saveState();
     renderAll(options.message || `已使用并设为全局默认：${preset.name || '未命名配置'}`);
     toastr.success('已切换配置，并设为新聊天默认。');
@@ -11439,6 +11710,7 @@ function getWorkbenchPanelTitle(tabName) {
         vector: '向量记忆',
         injection: '注入内容',
         prompts: '生成提示词',
+        appearance: '自定义主题',
         maintenance: '撤回与事务',
     };
     return titles[tabName] || '剧情剪辑台';
@@ -11463,6 +11735,7 @@ function getWorkbenchPanelKicker(tabName, state = ensureState()) {
         vector: `语义召回 · ${vectorCount.toLocaleString()} 个片段`,
         injection: `上下文注入 · ${renderInjectionContent(state).length.toLocaleString()} 字符`,
         prompts: '生成风格 · 四类提示词',
+        appearance: `外观主题 · ${getAppearanceSettings().themeMode === 'custom' ? '自定义' : '跟随酒馆'}`,
         maintenance: `安全维护 · ${(state.autoSummaryTransactions?.length || 0).toLocaleString()} 条事务`,
     };
     return contexts[tabName] || '剧情剪辑台 · 长期记忆';
@@ -11487,6 +11760,7 @@ function getWorkbenchPanelShortKicker(tabName, state = ensureState()) {
         vector: `语义召回 · ${vectorCount.toLocaleString()}个`,
         injection: `上下文 · ${renderInjectionContent(state).length.toLocaleString()}字`,
         prompts: '生成风格',
+        appearance: '外观主题',
         maintenance: `安全维护 · ${(state.autoSummaryTransactions?.length || 0).toLocaleString()}条`,
     };
     return contexts[tabName] || '剧情剪辑台';
@@ -11967,6 +12241,41 @@ function bindSettingsEvents() {
     });
     $('#bakemono-workbench-root').off('click.bakemonoHubTab').on('click.bakemonoHubTab', '.menu_button[data-bakemono-tab]', function () {
         switchWorkbenchTab(this.dataset.bakemonoTab);
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoThemeMode').on('click.bakemonoThemeMode', '[data-bakemono-theme-mode]', function () {
+        const ui = getAppearanceSettings();
+        ui.themeMode = this.dataset.bakemonoThemeMode === 'custom' ? 'custom' : 'tavern';
+        saveGlobalSettings();
+        renderAppearanceSettings();
+    });
+    $('#bakemono-workbench-root').off('input.bakemonoThemePreview').on('input.bakemonoThemePreview', '[data-bakemono-theme-color], [data-bakemono-theme-effect], #bakemono-memory-theme-name, #bakemono-memory-theme-appearance', previewCustomThemeFromUi);
+    $('#bakemono-memory-theme-save').off('click').on('click', () => saveCustomTheme(readCustomThemeFromUi()));
+    $('#bakemono-memory-theme-reset').off('click').on('click', () => saveCustomTheme(structuredClone(defaultCustomTheme), '已恢复自定义主题模板。'));
+    $('#bakemono-memory-theme-copy-json').off('click').on('click', async () => {
+        const theme = readCustomThemeFromUi();
+        setCustomThemeJson(theme);
+        await navigator.clipboard.writeText(JSON.stringify(theme, null, 2));
+        toastr.success('主题 JSON 已复制。');
+    });
+    $('#bakemono-memory-theme-download-json').off('click').on('click', downloadCustomThemeJson);
+    $('#bakemono-memory-theme-import-json').off('click').on('click', () => {
+        try {
+            importCustomThemeJson($('#bakemono-memory-theme-json').val());
+        } catch (error) {
+            toastr.error(error?.message || String(error), '主题导入失败');
+        }
+    });
+    $('#bakemono-memory-theme-choose-file').off('click').on('click', () => $('#bakemono-memory-theme-file').trigger('click'));
+    $('#bakemono-memory-theme-file').off('change').on('change', async function () {
+        const file = this.files?.[0];
+        if (!file) return;
+        try {
+            importCustomThemeJson(await file.text(), `已导入主题：${file.name}`);
+        } catch (error) {
+            toastr.error(error?.message || String(error), '主题文件导入失败');
+        } finally {
+            this.value = '';
+        }
     });
     $('#bakemono-workbench-root').off('click.bakemonoNav').on('click.bakemonoNav', '[data-bakemono-nav]', function () {
         switchWorkbenchTab(this.dataset.bakemonoNav);
@@ -12884,7 +13193,9 @@ function bindSettingsEvents() {
         const preset = isBuiltInPresetId(selectedId) || !selected
             ? saveCurrentConfigPreset(name)
             : saveCurrentConfigPreset(name, { replaceId: selectedId });
-        setActiveGlobalConfig(preset);
+        const config = setActiveGlobalConfig(preset);
+        markStateGlobalConfigApplied(ensureState(), config);
+        saveState();
         renderAll(isBuiltInPresetId(selectedId) || !selected ? `已另存并设为全局默认：${preset.name}` : `已覆盖并设为全局默认：${preset.name}`);
     });
     $('#bakemono-memory-save-as-preset').off('click').on('click', () => {
@@ -12894,7 +13205,9 @@ function bindSettingsEvents() {
             return;
         }
         const preset = saveCurrentConfigPreset(name);
-        setActiveGlobalConfig(preset);
+        const config = setActiveGlobalConfig(preset);
+        markStateGlobalConfigApplied(ensureState(), config);
+        saveState();
         renderAll(`已另存并设为全局默认：${preset.name}`);
     });
     $('#bakemono-memory-delete-preset').off('click').on('click', () => {
@@ -12916,7 +13229,10 @@ function bindSettingsEvents() {
             const fallback = extension_settings[STORAGE_KEY].promptPresets.find(preset => preset.id === defaultPromptPreset.id)
                 || extension_settings[STORAGE_KEY].promptPresets[0]
                 || structuredClone(defaultPromptPreset);
-            setActiveGlobalConfig(fallback);
+            const config = setActiveGlobalConfig(fallback);
+            applyGlobalActiveConfigToState(ensureState());
+            markStateGlobalConfigApplied(ensureState(), config);
+            saveState();
         }
         setSelectedPromptPresetId(defaultPromptPreset.id);
         saveGlobalSettings();
@@ -13127,6 +13443,7 @@ async function initWorkbench() {
 
     document.getElementById('bakemono-workbench-root')?.remove();
     $('body').append(await response.text());
+    applyAppearanceTheme();
     await addExtensionSettingsBlock();
     await addWandButton();
     syncTopNavButton();
@@ -13284,7 +13601,7 @@ function waitForElement(selector, timeout = 10000) {
 
 async function init() {
     ensureGlobalSettings();
-    ensureState();
+    syncGlobalActiveConfigToState(ensureState());
     await initWorkbench();
     syncInjection();
     if (ensureState().vectorMemory.enabled) {
@@ -13299,7 +13616,7 @@ async function init() {
     scheduleAutoHideRecent('init');
 
     eventSource.on(event_types.CHAT_CHANGED, () => {
-        ensureState();
+        syncGlobalActiveConfigToState(ensureState());
         scheduleAutoHideRecent('chat changed');
         markVectorIndexDirty('切换聊天');
         syncInjection();
