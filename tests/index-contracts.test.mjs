@@ -331,3 +331,20 @@ test('active global config follows existing chats without removing the tavern mo
     assert.match(source, /if \(state\.automation\.apiProvider !== 'custom'\) \{\s*return await generateRaw/s);
     assert.match(source, /state\.activeConfigSignature = getActiveGlobalConfigSignature/);
 });
+
+test('vector model fetch preserves unsaved fields and reports failures accurately', () => {
+    const operationSource = extractFunction('runVisibleOperation');
+    const persistSource = extractFunction('persistVectorMemoryFieldsFromUi');
+    const actionSource = extractFunction('runWorkbenchAction');
+    const embeddingSource = extractFunction('fetchVectorEmbeddingModels');
+    const querySource = extractFunction('fetchVectorQueryModels');
+
+    assert.doesNotMatch(operationSource, /renderAll\(/);
+    assert.match(persistSource, /readVectorMemoryFieldsFromUi\(state\)/);
+    assert.match(persistSource, /saveState\(\)/);
+    assert.equal((actionSource.match(/persistVectorMemoryFieldsFromUi\(\)/g) || []).length, 2);
+    assert.match(embeddingSource, /if \(!baseUrl\)[\s\S]*?return false;/);
+    assert.match(querySource, /if \(!baseUrl\)[\s\S]*?return false;/);
+    assert.match(embeddingSource, /return true;[\s\S]*?catch \(error\)[\s\S]*?return false;/);
+    assert.match(querySource, /return true;[\s\S]*?catch \(error\)[\s\S]*?return false;/);
+});

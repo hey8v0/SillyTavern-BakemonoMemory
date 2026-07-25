@@ -6300,7 +6300,6 @@ async function runGeneration(message, action, successMessage = '生成完成') {
 
 async function runVisibleOperation(message, action, successMessage = '操作完成') {
     setOperationFeedback('running', message);
-    renderAll(message);
     setBusy(true);
     try {
         const result = await action();
@@ -6481,7 +6480,7 @@ async function fetchVectorEmbeddingModels() {
     const apiKey = String(config.apiKey || '').trim();
     if (!baseUrl) {
         toastr.warning('请先填写嵌入向量接口地址。');
-        return;
+        return false;
     }
     const toast = toastr.info('正在拉取嵌入向量模型列表...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
     try {
@@ -6509,8 +6508,10 @@ async function fetchVectorEmbeddingModels() {
         renderVectorModelOptions(state.vectorMemory.customApi.models);
         saveState();
         toastr.success(`已拉取 ${state.vectorMemory.customApi.models.length} 个嵌入向量模型。`);
+        return true;
     } catch (error) {
         toastr.error(error?.message || String(error), '嵌入向量模型拉取失败');
+        return false;
     } finally {
         toastr.clear(toast);
     }
@@ -6525,7 +6526,7 @@ async function fetchVectorQueryModels() {
     const apiKey = String(queryConfig.apiKey || embeddingConfig.apiKey || '').trim();
     if (!baseUrl) {
         toastr.warning('请先填写改写接口地址，或填写上方嵌入向量接口地址以便复用。');
-        return;
+        return false;
     }
     const toast = toastr.info('正在拉取改写模型列表...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
     try {
@@ -6553,8 +6554,10 @@ async function fetchVectorQueryModels() {
         renderVectorQueryModelOptions(state.vectorMemory.queryCustomApi.models);
         saveState();
         toastr.success(`已拉取 ${state.vectorMemory.queryCustomApi.models.length} 个改写模型。`);
+        return true;
     } catch (error) {
         toastr.error(error?.message || String(error), '改写模型拉取失败');
+        return false;
     } finally {
         toastr.clear(toast);
     }
@@ -11187,6 +11190,13 @@ function readVectorMemoryFieldsFromUi(state = ensureState()) {
     return state;
 }
 
+function persistVectorMemoryFieldsFromUi() {
+    const state = ensureState();
+    readVectorMemoryFieldsFromUi(state);
+    saveState();
+    return state;
+}
+
 function readConfigFieldsFromUi(state = ensureState()) {
     readRuleFieldsFromUi(state);
     readAutomationFieldsFromUi(state);
@@ -12326,8 +12336,10 @@ async function runWorkbenchAction(action) {
     } else if (action === 'vector-test') {
         await runVisibleOperation('正在测试向量召回...', () => testVectorMemoryRetrieval(), '召回测试已完成');
     } else if (action === 'vector-fetch-models') {
+        persistVectorMemoryFieldsFromUi();
         await runVisibleOperation('正在拉取嵌入向量模型...', () => fetchVectorEmbeddingModels(), '嵌入模型列表已更新');
     } else if (action === 'vector-fetch-query-models') {
+        persistVectorMemoryFieldsFromUi();
         await runVisibleOperation('正在拉取查询改写模型...', () => fetchVectorQueryModels(), '查询模型列表已更新');
     } else if (action === 'vector-clear') {
         clearVectorMemoryIndex();
