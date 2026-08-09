@@ -7686,6 +7686,119 @@ function getWorkflowInfo(state = ensureState()) {
     };
 }
 
+function getOverviewRecommendation(state = ensureState()) {
+    const storySummaries = Array.isArray(state.storySummaries) ? state.storySummaries : [];
+    const stageSummaries = Array.isArray(state.stageSummaries) ? state.stageSummaries : [];
+    const drafts = Array.isArray(state.drafts) ? state.drafts : [];
+    const taskQueue = Array.isArray(state.taskQueue) ? state.taskQueue : [];
+    const coveredStoryHashes = new Set(state.coveredBlockHashes || []);
+    const coveredStageHashes = new Set(state.coveredStageHashes || []);
+    const coveredStoryCount = storySummaries.filter(summary => summary?.hash && coveredStoryHashes.has(summary.hash)).length;
+    const uncoveredStoryCount = Math.max(0, storySummaries.length - coveredStoryCount);
+    const uncoveredStageCount = stageSummaries.filter(summary => summary?.hash && !coveredStageHashes.has(summary.hash)).length;
+    const activeTaskCount = taskQueue.filter(task => ['queued', 'running'].includes(task?.status)).length;
+    const progress = storySummaries.length
+        ? Math.max(0, Math.min(100, Math.round((coveredStoryCount / storySummaries.length) * 100)))
+        : 0;
+
+    if (drafts.length) {
+        return {
+            stateLabel: '等待确认',
+            statusLabel: `${drafts.length.toLocaleString()} 条待办`,
+            title: '先确认刚生成的内容',
+            copy: '生成结果还没有写入长期记忆，确认后再继续整理。',
+            kind: 'nav',
+            target: 'drafts',
+            buttonLabel: '查看待确认',
+            icon: 'fa-inbox',
+            progress,
+        };
+    }
+
+    if (activeTaskCount) {
+        return {
+            stateLabel: '正在处理',
+            statusLabel: `${activeTaskCount.toLocaleString()} 个任务`,
+            title: '查看正在处理的任务',
+            copy: '任务会在后台继续运行，可以到待确认页查看进度。',
+            kind: 'nav',
+            target: 'drafts',
+            buttonLabel: '查看任务进度',
+            icon: 'fa-list-check',
+            progress,
+        };
+    }
+
+    if ((state.workflowMode || workflowModes.BAKEMONO) === workflowModes.GENERIC) {
+        const currentFloor = Math.max(0, (Array.isArray(chat) ? chat.length : 1) - 1);
+        return {
+            stateLabel: '旧聊天补课',
+            statusLabel: `${currentFloor.toLocaleString()} 楼`,
+            title: '给旧聊天补上记忆',
+            copy: '先选择要整理的楼层范围，再让剪辑台分批处理。',
+            kind: 'nav',
+            target: 'settings',
+            buttonLabel: '设置补课范围',
+            icon: 'fa-box-archive',
+            progress,
+        };
+    }
+
+    if (!storySummaries.length) {
+        return {
+            stateLabel: '新聊天',
+            statusLabel: '准备开始',
+            title: '建立第一段剧情记忆',
+            copy: '还没有找到剧情摘要，先扫描一次当前聊天。',
+            kind: 'action',
+            target: 'scan',
+            buttonLabel: '扫描当前聊天',
+            icon: 'fa-magnifying-glass',
+            progress: 0,
+        };
+    }
+
+    if (uncoveredStoryCount) {
+        return {
+            stateLabel: '已有摘要',
+            statusLabel: `${uncoveredStoryCount.toLocaleString()} 条待整理`,
+            title: '整理下一段长期记忆',
+            copy: `${uncoveredStoryCount.toLocaleString()} 条剧情摘要还没有进入阶段记忆。`,
+            kind: 'action',
+            target: 'generate-stage',
+            buttonLabel: '生成阶段总结',
+            icon: 'fa-wand-magic-sparkles',
+            progress,
+        };
+    }
+
+    if (uncoveredStageCount >= 2) {
+        return {
+            stateLabel: '阶段已整理',
+            statusLabel: `${uncoveredStageCount.toLocaleString()} 段可汇总`,
+            title: '把阶段记忆串成时间线',
+            copy: '已有多段阶段记忆，可以继续生成一份多次总结。',
+            kind: 'action',
+            target: 'generate-epic',
+            buttonLabel: '生成多次总结',
+            icon: 'fa-layer-group',
+            progress: 100,
+        };
+    }
+
+    return {
+        stateLabel: '进度正常',
+        statusLabel: '已经同步',
+        title: '继续整理这段剧情',
+        copy: '已识别的摘要都已收入长期记忆，可以扫描最新楼层。',
+        kind: 'action',
+        target: 'scan',
+        buttonLabel: '扫描最新剧情',
+        icon: 'fa-magnifying-glass',
+        progress: 100,
+    };
+}
+
 function applyWorkflowPreset(mode) {
     const state = ensureState();
     if (mode === workflowModes.MIXED) {
@@ -7712,34 +7825,45 @@ function applyWorkflowPreset(mode) {
 
 function renderWorkflowGuide(state = ensureState()) {
     const info = getWorkflowInfo(state);
-    $('#bakemono-memory-workflow-title').text(info.title);
-    const stageCount = Number($('#bakemono-memory-count-stage').text() || 0);
-    const epicCount = Number($('#bakemono-memory-count-epic').text() || 0);
+    const recommendation = getOverviewRecommendation(state);
+    $('#bakemono-memory-overview-state-label').text(recommendation.stateLabel);
+    $('#bakemono-memory-overview-status-label').text(recommendation.statusLabel);
+    $('#bakemono-memory-workflow-title').text(recommendation.title);
+    $('#bakemono-memory-overview-next-copy').text(recommendation.copy);
+    const stageCount = Array.isArray(state.stageSummaries) ? state.stageSummaries.length : 0;
+    const epicCount = Array.isArray(state.epicSummaries) ? state.epicSummaries.length : 0;
     $('#bakemono-memory-scene-code').text(`SC. ${String(stageCount).padStart(2, '0')} / TK. ${String(epicCount).padStart(2, '0')}`);
-    const storySummaries = state.storySummaries || [];
-    const coveredHashes = new Set(state.coveredBlockHashes || []);
-    const coveredCount = storySummaries.filter(summary => summary?.hash && coveredHashes.has(summary.hash)).length;
-    const progress = storySummaries.length ? Math.round((coveredCount / storySummaries.length) * 100) : 0;
-    $('#bakemono-memory-scene-progress-fill').css('width', `${progress}%`);
-    const scanLabel = storySummaries.length ? `扫描摘要 · ${storySummaries.length}` : '扫描摘要';
-    $('#bakemono-memory-scan > span').text(scanLabel);
+    $('#bakemono-memory-scene-progress-fill').css('width', `${recommendation.progress}%`);
+
+    const primaryButton = document.getElementById('bakemono-memory-scan');
+    if (primaryButton) {
+        primaryButton.removeAttribute('data-bakemono-action');
+        primaryButton.removeAttribute('data-bakemono-nav');
+        primaryButton.setAttribute(recommendation.kind === 'nav' ? 'data-bakemono-nav' : 'data-bakemono-action', recommendation.target);
+        primaryButton.hidden = false;
+        primaryButton.classList.add('is-workflow-primary');
+        const icon = primaryButton.querySelector('i');
+        if (icon) {
+            icon.className = `fa-solid ${recommendation.icon}`;
+        }
+        const label = primaryButton.querySelector('span');
+        if (label) {
+            label.textContent = recommendation.buttonLabel;
+        }
+    }
+
     document.querySelectorAll('[data-bakemono-workflow-preset]').forEach(card => {
         const isActive = card.dataset.bakemonoWorkflowPreset === (state.workflowMode || workflowModes.BAKEMONO);
         card.classList.toggle('is-active', isActive);
         card.setAttribute('aria-pressed', String(isActive));
     });
     const visibleActions = new Set(info.actions);
-    const actionButtons = [...document.querySelectorAll('.bakemono-memory-control-deck [data-bakemono-action]')];
+    const actionButtons = [...document.querySelectorAll('.bakemono-memory-control-deck [data-bakemono-action]:not(#bakemono-memory-scan)')];
     actionButtons.forEach(button => {
         button.hidden = !visibleActions.has(button.dataset.bakemonoAction);
     });
-    let primaryAssigned = false;
     actionButtons.forEach(button => {
-        const isPrimary = !primaryAssigned
-            && !button.hidden
-            && button.closest('.bakemono-memory-hero-actions');
-        button.classList.toggle('is-workflow-primary', !!isPrimary);
-        primaryAssigned ||= !!isPrimary;
+        button.classList.remove('is-workflow-primary');
     });
 }
 
@@ -7805,6 +7929,7 @@ function renderSummaryGenerationPanel(state = ensureState(), blocks = null) {
     $('#bakemono-memory-summary-generation-progress').css('width', `${current.progress}%`);
     const primary = document.getElementById('bakemono-memory-summary-primary-action');
     if (primary) {
+        primary.hidden = summaryGenerationMode === 'batch';
         primary.dataset.bakemonoAction = current.action;
         const icon = primary.querySelector('i');
         if (icon) {
@@ -7813,6 +7938,13 @@ function renderSummaryGenerationPanel(state = ensureState(), blocks = null) {
         const label = primary.querySelector('span');
         if (label) {
             label.textContent = current.button;
+        }
+    }
+    const batchPanel = document.querySelector('[data-bakemono-owned-section="batch"]');
+    if (batchPanel) {
+        batchPanel.hidden = summaryGenerationMode !== 'batch';
+        if (summaryGenerationMode === 'batch') {
+            batchPanel.open = true;
         }
     }
 }
@@ -8547,6 +8679,7 @@ function renderTaskQueueProgress(statusText = '') {
         return;
     }
     $('#bakemono-memory-count-drafts').text(state.drafts.length);
+    $('#bakemono-memory-menu-draft-count').text(state.drafts.length.toLocaleString());
     if (getActiveWorkbenchTab() === 'drafts') {
         renderDrafts();
         renderTaskQueue();
@@ -8559,13 +8692,227 @@ function renderTaskQueueProgress(statusText = '') {
     }
 }
 
+const helpGuideCategories = {
+    start: ['workflow-choice', 'memory-levels', 'backfill'],
+    flow: ['fresh-flow', 'active-flow', 'review-flow'],
+    feature: ['summary-feature', 'archive-feature', 'automatic-feature', 'retrieval-feature', 'setup-feature', 'safety-feature'],
+    faq: ['injection-empty', 'chat-config', 'mobile-lag', 'main-model'],
+};
+
+const helpGuideArticles = {
+    'quick-start': {
+        number: '01', category: '快速开始', title: '整理好第一段剧情', tag: '入门', audience: '适合第一次使用', duration: '约 3 分钟',
+        lead: '先从一次扫描开始。剪辑台会识别现有摘要，再把适合长期保留的内容交给你确认。',
+        steps: [
+            ['扫描最新剧情', '回到剪辑台，点击主卡片上的扫描按钮。'],
+            ['生成阶段总结', '积累一段剧情后，再把摘要整理成长期记忆。'],
+            ['先确认，再保存', '自动生成的内容会进入待确认，不会悄悄覆盖记忆。'],
+        ],
+        note: ['已有几百楼聊天？', '从工作流设置选择“补课旧聊天”，不需要从第一楼手工整理。'],
+    },
+    'workflow-choice': {
+        number: '02', category: '快速开始', title: '我应该选择哪种工作方式？', tag: '基础', audience: '按聊天现状选择', duration: '约 2 分钟',
+        lead: '工作方式只决定剪辑台从哪里取材料、怎样整理，不会删除原聊天。',
+        steps: [
+            ['已有摘要', '正文里已经有摘要块时使用，适合继续生成阶段总结。'],
+            ['补课旧聊天', '旧档缺少摘要时使用，可以先限定楼层范围再分批处理。'],
+            ['自定义', '需要混合摘要、正文或自定义输出时再启用。'],
+        ],
+        note: ['拿不准时', '先选“已有摘要”。剪辑台会根据实际扫描结果继续推荐下一步。'],
+    },
+    'memory-levels': {
+        number: '03', category: '快速开始', title: '摘要、阶段总结和长期记忆', tag: '概念', audience: '理解三层记忆', duration: '约 2 分钟',
+        lead: '剪辑台把长剧情分层压缩，目的是既保留细节，又避免每轮重复塞入全部旧聊天。',
+        steps: [
+            ['剧情摘要', '记录较短范围内发生了什么，是后续整理的原材料。'],
+            ['阶段总结', '把一段章节整理成可长期使用的记忆。'],
+            ['多次总结', '把多个阶段串成更长的时间线，适合超长聊天。'],
+        ],
+        note: ['记忆档案', '这里只回答“已经保存了什么”；生成和回看统一放在总结页。'],
+    },
+    backfill: {
+        number: '04', category: '快速开始', title: '怎样给几百楼的旧聊天补课？', tag: '进阶', audience: '适合旧档迁移', duration: '约 3 分钟',
+        lead: '旧聊天不用一次性全部处理。先选范围，再让批量摘要按组运行，可以减少手机压力。',
+        steps: [
+            ['切换工作方式', '在工作流设置选择“补课旧聊天”。'],
+            ['限定楼层范围', '到“总结 → 批量生成”先处理一段较小范围，确认结果符合预期。'],
+            ['分批确认', '生成结果进入待确认；确认后再继续下一段。'],
+        ],
+        note: ['手机端建议', '几百楼以上的聊天先用较小批次，避免一次渲染和请求过多内容。'],
+    },
+    'fresh-flow': {
+        number: '01', category: '推荐流程', title: '新聊天：从第一次扫描开始', tag: '流程', audience: '尚无摘要', duration: '约 1 分钟',
+        lead: '新聊天不需要先配置全部功能，只要让剪辑台识别到第一批摘要。',
+        steps: [['打开剪辑台', '主卡会显示“建立第一段剧情记忆”。'], ['扫描聊天', '扫描只读取与识别，不会自动改写记忆。'], ['继续游玩', '摘要积累后，剪辑台会提示生成阶段总结。']],
+    },
+    'active-flow': {
+        number: '02', category: '推荐流程', title: '已有摘要：继续整理新楼层', tag: '流程', audience: '日常使用', duration: '约 1 分钟',
+        lead: '日常流程只需要关心剪辑台推荐的一件事，不必反复进入配置页。',
+        steps: [['扫描最新内容', '确认新增摘要数量。'], ['生成阶段总结', '有未覆盖摘要时，主按钮会自动切换。'], ['继续扫描', '全部摘要已经整理后，主按钮会回到扫描最新剧情。']],
+    },
+    'review-flow': {
+        number: '03', category: '推荐流程', title: '保存前：检查待确认内容', tag: '流程', audience: '生成完成后', duration: '约 1 分钟',
+        lead: '自动生成的内容先进入待确认，避免不合适的总结直接写入长期记忆。',
+        steps: [['查看草稿', '检查标题、时间、人物和事件是否准确。'], ['修改或重做', '需要时先编辑或重新生成。'], ['确认保存', '只有确认后才进入长期记忆。']],
+        note: ['剪辑台会提醒', '存在草稿时，剪辑台会优先推荐“查看待确认”。'],
+    },
+    'summary-feature': {
+        number: '01', category: '功能说明', title: '总结、回看与摘要树', tag: '总结', audience: '剧情整理', duration: '约 2 分钟',
+        lead: '总结页负责生成与回看；摘要树负责按层级浏览，不把配置和危险操作混进来。',
+        steps: [['总结与时间线', '生成阶段总结、多次总结，并回看已有结果。'], ['摘要树', '按多次总结、阶段总结和剧情摘要逐级展开。'], ['批量生成', '旧档或大量缺口才需要使用，日常流程不必展开。']],
+    },
+    'archive-feature': {
+        number: '02', category: '功能说明', title: '记忆档案与待确认', tag: '记忆', audience: '查看保存结果', duration: '约 2 分钟',
+        lead: '记忆档案回答“保存了什么”，待确认负责保存前的人工检查。',
+        steps: [['记忆档案', '搜索事件、角色、地点和楼层，查看已保存记录。'], ['待确认', '集中处理草稿、任务和变更记录。'], ['状态筛选', '注入中与已归档用于区分当前记忆状态。']],
+    },
+    'automatic-feature': {
+        number: '03', category: '功能说明', title: '自动记忆、表格与自动总结', tag: '自动', audience: '减少重复操作', duration: '约 3 分钟',
+        lead: '这些功能用于正文后处理和结构化记录；每个功能只保留自己的参数，不再复制到设置中心。',
+        steps: [['自动记忆', '每轮正文结束后生成摘要，生成方式与保存策略在本页调整。'], ['剧情表格', '持续记录角色、地点、物品与关系变化，框架和提示词由表格页管理。'], ['自动总结规则', '根据片段或字数触发提醒、草稿或自动保存，阈值只在自动总结页出现。']],
+    },
+    'retrieval-feature': {
+        number: '04', category: '功能说明', title: '向量记忆与上下文注入', tag: '召回', audience: '长聊天检索', duration: '约 3 分钟',
+        lead: '向量记忆负责找回相关旧剧情，注入内容展示模型这一轮实际会收到什么。',
+        steps: [['建立索引', '将可检索记忆转换为向量记录。'], ['测试召回', '输入剧情线索，检查最相关结果。'], ['检查注入', '确认字符数、模板和最终正文，再决定是否调整参数。']],
+        note: ['先看结果，再调参数', '嵌入接口、重写模型和召回阈值都在向量记忆页的折叠设置里，只在结果不理想时展开。'],
+    },
+    'setup-feature': {
+        number: '05', category: '功能说明', title: '设置中心与整套配置', tag: '配置', audience: '按需调整', duration: '约 3 分钟',
+        lead: '设置中心只放会影响多个功能的共用偏好；某个功能独有的阈值和接口留在它自己的页面。',
+        steps: [['日常设置', '工作流、扫描、注入、默认生成模型和外观按实际需要调整。'], ['生成提示词', '从“默认生成模型”进入四类提示词编辑，不再占用设置中心的一行。'], ['整套配置', '集中保存、复制、导入或导出跨聊天复用的完整配置。']],
+    },
+    'safety-feature': {
+        number: '06', category: '功能说明', title: '撤回、事务与楼层收纳', tag: '安全', audience: '维护与恢复', duration: '约 2 分钟',
+        lead: '危险维护集中在最后。操作前先看影响范围，避免把普通工作与清理动作混在一起。',
+        steps: [['撤回保存', '恢复最近一次可回滚的总结保存。'], ['楼层收纳', '在安全维护页集中自动或手动收纳旧楼层，原聊天不会被删除。'], ['事务记录', '查看自动保存、隐藏楼层和表格快照；清理工具统一放在页面末尾。']],
+    },
+    'injection-empty': {
+        number: '01', category: '常见问题', title: '为什么没有可注入内容？', tag: '排查', audience: '显示“注入空”', duration: '约 1 分钟',
+        lead: '“注入空”表示注入功能已开启，但当前没有符合条件的长期记忆，不代表配置或数据丢失。',
+        steps: [['检查记忆档案', '确认至少有一条已保存且未归档的长期记忆。'], ['检查注入预览', '查看是否被模板、状态或字符预算过滤。'], ['重新扫描', '如果聊天刚新增内容，先完成摘要与阶段总结。']],
+    },
+    'chat-config': {
+        number: '02', category: '常见问题', title: '换聊天后配置会不会丢？', tag: '配置', audience: '切换聊天', duration: '约 2 分钟',
+        lead: '整套预设保存在全局设置中，但每个聊天仍可保留自己的插件状态。',
+        steps: [['全局预设', '在“设置中心 → 整套配置”保存后，可以在其他聊天选择并应用。'], ['聊天状态', '已经使用过插件的聊天会保留当时的设置。'], ['需要同步时', '重新选择整套配置即可，不会覆盖聊天正文或记忆数据。']],
+    },
+    'mobile-lag': {
+        number: '03', category: '常见问题', title: '手机上卡顿时先检查什么？', tag: '性能', audience: 'Termux 与长聊天', duration: '约 2 分钟',
+        lead: '几百楼聊天的压力通常来自大量楼层、批量渲染和同时运行的任务。',
+        steps: [['缩小批次', '补课或批量生成时先减少每批楼数。'], ['检查任务队列', '清理失败或卡住的旧任务，避免重复运行。'], ['收纳旧楼层', '确认长期记忆保存正确后，再隐藏已总结的旧楼层。']],
+        note: ['先保留现场', '出现反复回到启动状态时，先记录操作步骤和任务数量，不要立刻清空数据。'],
+    },
+    'main-model': {
+        number: '04', category: '常见问题', title: '什么时候使用酒馆主模型？', tag: 'API', audience: '生成接口', duration: '约 1 分钟',
+        lead: '选择酒馆主模型时，生成请求沿用当前酒馆连接；自定义接口只在需要独立模型时启用。',
+        steps: [['选择来源', '在“设置中心 → 默认生成模型”选择酒馆主模型。'], ['提示词', '同一页面可以继续进入生成提示词；功能独有接口仍留在对应功能页。'], ['自定义接口', '需要独立模型时再填写地址和密钥，拉取模型后保存配置。']],
+    },
+};
+
+let activeHelpGuideCategory = 'start';
+let activeHelpGuideArticle = '';
+
+function getHelpGuideArticleOrder() {
+    return ['quick-start', ...Object.values(helpGuideCategories).flat()];
+}
+
+function renderHelpGuideArticle(articleId) {
+    const article = helpGuideArticles[articleId];
+    if (!article) {
+        return;
+    }
+    $('#bakemono-memory-help-article-number').text(`${article.number} / ${article.category}`);
+    $('#bakemono-memory-help-article-title').text(article.title);
+    $('#bakemono-memory-help-article-meta').html(`<span>${escapeHtml(article.audience)}</span><span>${escapeHtml(article.duration)}</span>`);
+    $('#bakemono-memory-help-article-lead').text(article.lead);
+    $('#bakemono-memory-help-article-steps').html(article.steps.map(([title, copy], index) => `
+        <li><span>${String(index + 1).padStart(2, '0')}</span><div><h5>${escapeHtml(title)}</h5><p>${escapeHtml(copy)}</p></div></li>
+    `).join(''));
+
+    const note = document.getElementById('bakemono-memory-help-article-note');
+    if (note) {
+        note.hidden = !article.note;
+        if (article.note) {
+            note.querySelector('p').innerHTML = `<strong>${escapeHtml(article.note[0])}</strong>${escapeHtml(article.note[1])}`;
+        }
+    }
+
+    const order = getHelpGuideArticleOrder();
+    const nextId = order[order.indexOf(articleId) + 1];
+    const nextButton = document.getElementById('bakemono-memory-help-next');
+    if (nextButton) {
+        nextButton.hidden = !nextId;
+        if (nextId) {
+            nextButton.dataset.bakemonoHelpArticle = nextId;
+            nextButton.querySelector('strong').textContent = helpGuideArticles[nextId].title;
+        }
+    }
+}
+
+function renderHelpGuide() {
+    const category = helpGuideCategories[activeHelpGuideCategory] ? activeHelpGuideCategory : 'start';
+    const hub = document.querySelector('[data-bakemono-help-view="hub"]');
+    const reader = document.querySelector('[data-bakemono-help-view="article"]');
+    const article = helpGuideArticles[activeHelpGuideArticle];
+    const panel = document.querySelector('.bakemono-memory-help-panel');
+    if (hub) hub.hidden = !!article;
+    if (reader) reader.hidden = !article;
+    panel?.classList.toggle('is-reading', !!article);
+
+    if (document.getElementById('bakemono-workbench-root')?.dataset.activeTab === 'help') {
+        const title = document.getElementById('bakemono-workbench-title');
+        const kicker = document.getElementById('bakemono-workbench-section-title');
+        const shortKicker = document.getElementById('bakemono-workbench-section-title-short');
+        if (title) title.textContent = article?.title || '使用说明';
+        if (kicker) kicker.textContent = article ? `使用说明 · ${article.number} / ${article.category}` : '帮助中心 · 随时可查';
+        if (shortKicker) shortKicker.textContent = article ? `说明 · ${article.number}` : '帮助中心';
+    }
+
+    document.querySelectorAll('[data-bakemono-help-category]').forEach(button => {
+        const isActive = button.dataset.bakemonoHelpCategory === category;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
+    });
+
+    const list = document.getElementById('bakemono-memory-help-list');
+    if (list) {
+        list.innerHTML = helpGuideCategories[category].map(articleId => {
+            const item = helpGuideArticles[articleId];
+            return `<button type="button" data-bakemono-help-article="${articleId}">
+                <span>${escapeHtml(item.number)}</span><strong>${escapeHtml(item.title)}</strong><em>${escapeHtml(item.tag)}</em><i class="fa-solid fa-arrow-right"></i>
+            </button>`;
+        }).join('');
+    }
+
+    if (article) {
+        renderHelpGuideArticle(activeHelpGuideArticle);
+    }
+}
+
+function openHelpGuideArticle(articleId) {
+    if (!helpGuideArticles[articleId]) {
+        return;
+    }
+    activeHelpGuideArticle = articleId;
+    renderHelpGuide();
+    document.querySelector('.bakemono-workbench-main')?.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+function closeHelpGuideArticle() {
+    activeHelpGuideArticle = '';
+    renderHelpGuide();
+    document.querySelector('.bakemono-workbench-main')?.scrollTo({ top: 0, behavior: 'auto' });
+}
+
 function renderActivePresetControls(tabName) {
-    if (tabName === 'settings') {
+    if (tabName === 'config') {
         renderPresetControlPair('#bakemono-memory-preset-select', '#bakemono-memory-preset-name');
     } else if (tabName === 'scan') {
         renderAreaPresetControl(areaPresetScopes.SCAN, '#bakemono-memory-scan-preset-select', '#bakemono-memory-scan-preset-name');
     } else if (tabName === 'automation') {
         renderAreaPresetControl(areaPresetScopes.AUTOMATION, '#bakemono-memory-automation-preset-select', '#bakemono-memory-automation-preset-name');
+    } else if (tabName === 'generation') {
         renderAreaPresetControl(areaPresetScopes.API, '#bakemono-memory-api-preset-select', '#bakemono-memory-api-preset-name');
     } else if (tabName === 'prompts') {
         renderAreaPresetControl(areaPresetScopes.PROMPTS, '#bakemono-memory-prompts-preset-select', '#bakemono-memory-prompts-preset-name');
@@ -8583,10 +8930,13 @@ function renderActiveWorkbenchPanel(tabName, state, blocks) {
     if (tabName === 'overview') {
         renderWorkflowGuide(state);
         renderMemoryDatabaseSummary(state);
+    } else if (tabName === 'data-hub') {
+        renderWorkbenchHubPanels(state);
+        renderMemoryDatabaseSummary(state);
+    } else if (tabName === 'settings-hub') {
+        renderWorkbenchHubPanels(state);
     } else if (tabName === 'settings') {
         renderWorkflowGuide(state);
-        renderAutoHideRecentPanel(state);
-        renderMemoryDatabaseSummary(state);
     } else if (tabName === 'preview') {
         renderSummaryGenerationPanel(state, blocks);
         renderPreviewSections(blocks.story, blocks.stage, blocks.epic);
@@ -8609,13 +8959,58 @@ function renderActiveWorkbenchPanel(tabName, state, blocks) {
     } else if (tabName === 'scan') {
         renderScanOverview(state);
         renderScanPreview();
-    } else if (tabName === 'automation') {
+    } else if (tabName === 'generation') {
         renderCustomModelOptions(state.automation.customApi?.models || []);
     } else if (tabName === 'appearance') {
         renderAppearanceSettings();
     } else if (tabName === 'maintenance') {
+        renderAutoHideRecentPanel(state);
         renderMaintenanceOverview(state);
+    } else if (tabName === 'help') {
+        renderHelpGuide();
     }
+}
+
+function renderWorkbenchHubPanels(state = ensureState()) {
+    const turnEnabled = !!state.turnSummary?.enabled;
+    const automationEnabled = !!state.automation?.enabled;
+    const tableEnabled = !!state.tableDatabase?.enabled;
+    const vectorEnabled = !!state.vectorMemory?.enabled;
+    const enabledCount = [turnEnabled, automationEnabled, tableEnabled, vectorEnabled].filter(Boolean).length;
+    const tableCount = Array.isArray(state.tableDatabase?.tables) ? state.tableDatabase.tables.length : 0;
+    const vectorCount = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records.length : 0;
+    const triggerType = state.automation?.triggerType || defaultAutomation.triggerType;
+    const triggerValue = triggerType === 'chars'
+        ? Number(state.automation?.charInterval || defaultAutomation.charInterval)
+        : Number(state.automation?.floorInterval || defaultAutomation.floorInterval);
+    const automationMode = state.automation?.mode || defaultAutomation.mode;
+    const automationModeLabel = automationMode === 'commit_hide' ? '自动保存' : automationMode === 'draft' ? '生成草稿' : '仅提醒';
+    const injectionStatus = getWorkbenchInjectionHeaderStatus(state);
+    const scanMode = state.scanRules?.mode || defaultScanRules.mode;
+    const themeMode = getAppearanceSettings().themeMode;
+    const apiProvider = state.automation?.apiProvider || defaultAutomation.apiProvider;
+    const selectedConfig = getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
+
+    $('#bakemono-memory-data-hub-title').text(enabledCount ? '记忆工作正常' : '等待启用后台工具');
+    $('#bakemono-memory-data-hub-enabled').text(`${enabledCount} 项开启`);
+    $('#bakemono-memory-data-hub-turn-state').text(turnEnabled ? '已开启' : '未开启').toggleClass('is-on', turnEnabled);
+    $('#bakemono-memory-data-hub-auto-state').text(automationEnabled ? automationModeLabel : '未开启').toggleClass('is-on', automationEnabled);
+    $('#bakemono-memory-data-hub-auto-copy').text(automationEnabled
+        ? `每 ${triggerValue.toLocaleString()} ${triggerType === 'chars' ? '字' : '条摘要'}`
+        : '后台整理规则');
+    $('#bakemono-memory-data-hub-table-count').text(tableCount.toLocaleString());
+    $('#bakemono-memory-data-hub-vector-count').text(vectorCount.toLocaleString());
+    $('#bakemono-memory-data-hub-vector-copy').text(vectorEnabled
+        ? (vectorCount ? '索引健康' : '等待建立索引')
+        : '尚未开启');
+    $('#bakemono-memory-settings-hub-workflow').text(getWorkflowModeLabel(state.workflowMode));
+    $('#bakemono-memory-settings-hub-scan').text(scanMode === 'full' ? '全文管线' : '标签块');
+    $('#bakemono-memory-settings-hub-injection').text(injectionStatus.short);
+    $('#bakemono-memory-settings-hub-generation').text(apiProvider === 'custom'
+        ? (String(state.automation?.customApi?.model || '').trim() || '自定义接口')
+        : '酒馆主模型');
+    $('#bakemono-memory-settings-hub-theme').text(themeMode === 'custom' ? '自定义' : '跟随酒馆');
+    $('#bakemono-memory-settings-hub-config').text(selectedConfig?.name || '导入导出');
 }
 
 function renderAutomationOverview(state = ensureState()) {
@@ -8677,7 +9072,7 @@ function renderAll(statusText = '') {
         return;
     }
     const activeTab = getActiveWorkbenchTab();
-    if (activeTab === 'overview' || activeTab === 'records' || activeTab === 'settings') {
+    if (activeTab === 'overview' || activeTab === 'records' || activeTab === 'data-hub') {
         state.memoryRecords = buildMemoryRecords(state);
     }
     const storyBlocks = getStoryBlocks();
@@ -8698,6 +9093,7 @@ function renderAll(statusText = '') {
     $('#bakemono-memory-count-stage').text(dedupedStageBlocks.length);
     $('#bakemono-memory-count-epic').text(dedupedEpicBlocks.length);
     $('#bakemono-memory-count-drafts').text(state.drafts.length);
+    $('#bakemono-memory-menu-draft-count').text(state.drafts.length.toLocaleString());
     $('#bakemono-memory-tab-count-story').text(storyBlocks.length);
     $('#bakemono-memory-tab-count-stage').text(dedupedStageBlocks.length);
     $('#bakemono-memory-tab-count-epic').text(dedupedEpicBlocks.length);
@@ -10835,7 +11231,9 @@ function renderList(selector, blocks, type = 'story') {
 
 function getWorkbenchPanelTitle(tabName) {
     const titles = {
-        overview: '控制台',
+        overview: '剪辑台',
+        'data-hub': '自动与数据',
+        'settings-hub': '设置中心',
         settings: '工作流设置',
         preview: '总结',
         records: '记忆库',
@@ -10847,9 +11245,12 @@ function getWorkbenchPanelTitle(tabName) {
         scan: '扫描规则',
         vector: '向量记忆',
         injection: '注入内容',
+        generation: '默认生成模型',
         prompts: '生成提示词',
+        config: '整套配置',
         appearance: '自定义主题',
         maintenance: '撤回与事务',
+        help: '使用说明',
     };
     return titles[tabName] || '剧情剪辑台';
 }
@@ -10861,6 +11262,8 @@ function getWorkbenchPanelKicker(tabName, state = ensureState()) {
     const vectorCount = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records.length : 0;
     const contexts = {
         overview: `剧情剪辑 · 第 ${currentFloor.toLocaleString()} 楼`,
+        'data-hub': '后台工作 · 4 个工具',
+        'settings-hub': '偏好与规则 · 当前聊天',
         settings: `工作方式 · ${getMemoryStrategyLabel(state.memoryStrategy)}`,
         preview: `剧情回看 · ${(state.storySummaries?.length || 0).toLocaleString()} 条摘要`,
         records: `长期记忆 · ${recordCount.toLocaleString()} 条记录`,
@@ -10872,9 +11275,12 @@ function getWorkbenchPanelKicker(tabName, state = ensureState()) {
         scan: `扫描识别 · ${(state.scanPreview?.length || 0).toLocaleString()} 条结果`,
         vector: `语义召回 · ${vectorCount.toLocaleString()} 个片段`,
         injection: `上下文注入 · ${renderInjectionContent(state).length.toLocaleString()} 字符`,
+        generation: `默认模型 · ${(state.automation?.apiProvider || defaultAutomation.apiProvider) === 'custom' ? '自定义接口' : '酒馆主模型'}`,
         prompts: '生成风格 · 四类提示词',
+        config: '配置预设 · 跨聊天复用',
         appearance: `外观主题 · ${getAppearanceSettings().themeMode === 'custom' ? '自定义' : '跟随酒馆'}`,
         maintenance: `安全维护 · ${(state.autoSummaryTransactions?.length || 0).toLocaleString()} 条事务`,
+        help: '帮助中心 · 随时可查',
     };
     return contexts[tabName] || '剧情剪辑台 · 长期记忆';
 }
@@ -10886,6 +11292,8 @@ function getWorkbenchPanelShortKicker(tabName, state = ensureState()) {
     const vectorCount = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records.length : 0;
     const contexts = {
         overview: `剧情剪辑 · ${currentFloor.toLocaleString()}楼`,
+        'data-hub': '后台工作 · 4个工具',
+        'settings-hub': '偏好与规则',
         settings: '工作方式',
         preview: `剧情回看 · ${(state.storySummaries?.length || 0).toLocaleString()}条`,
         records: `长期记忆 · ${recordCount.toLocaleString()}条`,
@@ -10897,9 +11305,12 @@ function getWorkbenchPanelShortKicker(tabName, state = ensureState()) {
         scan: `扫描识别 · ${(state.scanPreview?.length || 0).toLocaleString()}条`,
         vector: `语义召回 · ${vectorCount.toLocaleString()}个`,
         injection: `上下文 · ${renderInjectionContent(state).length.toLocaleString()}字`,
+        generation: (state.automation?.apiProvider || defaultAutomation.apiProvider) === 'custom' ? '默认模型 · 自定义' : '默认模型 · 酒馆',
         prompts: '生成风格',
+        config: '整套配置',
         appearance: '外观主题',
         maintenance: `安全维护 · ${(state.autoSummaryTransactions?.length || 0).toLocaleString()}条`,
+        help: '帮助中心',
     };
     return contexts[tabName] || '剧情剪辑台';
 }
@@ -10992,6 +11403,19 @@ function toggleWorkbenchHelpPopover(trigger) {
     requestAnimationFrame(() => positionWorkbenchHelpPopover(trigger, popover));
 }
 
+function getWorkbenchMenuTab(tabName) {
+    if (['turn-summary', 'tables', 'automation', 'vector'].includes(tabName)) {
+        return 'data-hub';
+    }
+    if (['settings', 'scan', 'injection', 'generation', 'prompts', 'appearance', 'config', 'maintenance'].includes(tabName)) {
+        return 'settings-hub';
+    }
+    if (tabName === 'timeline') {
+        return 'preview';
+    }
+    return tabName;
+}
+
 function switchWorkbenchTab(tabName) {
     const root = document.getElementById('bakemono-workbench-root');
     if (!root) {
@@ -11013,8 +11437,9 @@ function switchWorkbenchTab(tabName) {
         title.textContent = getWorkbenchPanelTitle(tabName);
     }
     renderWorkbenchHeaderContext(tabName);
+    const menuTabName = getWorkbenchMenuTab(tabName);
     root.querySelectorAll('.bakemono-workbench-tab').forEach(tab => {
-        tab.classList.toggle('is-active', tab.dataset.bakemonoTab === tabName);
+        tab.classList.toggle('is-active', tab.dataset.bakemonoTab === menuTabName);
     });
     root.querySelectorAll('.bakemono-workbench-panel').forEach(panel => {
         panel.classList.toggle('is-active', panel.dataset.bakemonoPanel === panelName);
@@ -11438,6 +11863,17 @@ function bindSettingsEvents() {
     $('#bakemono-workbench-root').off('click.bakemonoNav').on('click.bakemonoNav', '[data-bakemono-nav]', function () {
         switchWorkbenchTab(this.dataset.bakemonoNav);
     });
+    $('#bakemono-workbench-root').off('click.bakemonoHelpCategory').on('click.bakemonoHelpCategory', '[data-bakemono-help-category]', function () {
+        activeHelpGuideCategory = helpGuideCategories[this.dataset.bakemonoHelpCategory]
+            ? this.dataset.bakemonoHelpCategory
+            : 'start';
+        activeHelpGuideArticle = '';
+        renderHelpGuide();
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoHelpArticle').on('click.bakemonoHelpArticle', '[data-bakemono-help-article]', function () {
+        openHelpGuideArticle(this.dataset.bakemonoHelpArticle);
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoHelpBack').on('click.bakemonoHelpBack', '[data-bakemono-help-back]', closeHelpGuideArticle);
     $('#bakemono-workbench-root').off('click.bakemonoHelp').on('click.bakemonoHelp', '.bakemono-memory-help-trigger', function (event) {
         event.stopImmediatePropagation();
         event.preventDefault();
@@ -12593,6 +13029,31 @@ function bindSettingsEvents() {
     });
 }
 
+function organizeWorkbenchOwnedSections() {
+    const ownership = [
+        ['database', 'bakemono-memory-data-status-slot'],
+        ['config', 'bakemono-memory-config-settings-slot'],
+        ['batch', 'bakemono-memory-batch-summary-slot'],
+        ['archive', 'bakemono-memory-floor-archive-slot'],
+        ['generation', 'bakemono-memory-generation-settings-slot'],
+    ];
+    for (const [sectionName, slotId] of ownership) {
+        const section = document.querySelector(`[data-bakemono-owned-section="${sectionName}"]`);
+        const slot = document.getElementById(slotId);
+        if (!section || !slot) {
+            continue;
+        }
+        slot.append(section);
+        section.classList.toggle('bakemono-memory-owned-primary', ['config', 'generation'].includes(sectionName));
+        if (['config', 'generation'].includes(sectionName)) {
+            section.open = true;
+        }
+        if (sectionName === 'batch') {
+            section.hidden = summaryGenerationMode !== 'batch';
+        }
+    }
+}
+
 async function initWorkbench() {
     const response = await fetch(`${extensionFolderPath}/settings.html`);
     if (!response.ok) {
@@ -12601,6 +13062,7 @@ async function initWorkbench() {
 
     document.getElementById('bakemono-workbench-root')?.remove();
     $('body').append(await response.text());
+    organizeWorkbenchOwnedSections();
     applyAppearanceTheme();
     await addExtensionSettingsBlock();
     await addWandButton();

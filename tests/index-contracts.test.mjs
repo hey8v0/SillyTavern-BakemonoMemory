@@ -48,22 +48,43 @@ test('mobile header keeps one compact static injection state', () => {
 
 test('scene workbench keeps the mobile hierarchy compact', () => {
     assert.match(settingsSource, /class="bakemono-memory-scene-meta"/);
-    assert.match(settingsSource, /class="bakemono-memory-next-kicker">剧情剪辑<\/span>/);
+    assert.match(settingsSource, /class="bakemono-memory-next-kicker">常用工作<\/span>/);
     assert.match(settingsSource, /class="bakemono-memory-status-strip"/);
     assert.match(settingsSource, /class="menu_button bakemono-memory-action-row"/);
-    assert.match(settingsSource, /class="bakemono-memory-console-disclosure bakemono-memory-maintenance-actions"/);
+    assert.match(settingsSource, /class="menu_button bakemono-memory-action-row bakemono-memory-maintenance-entry"[^>]*data-bakemono-nav="maintenance"/);
     assert.doesNotMatch(settingsSource, /id="bakemono-memory-workflow-description"|class="bakemono-memory-scene-steps"/);
-    assert.match(settingsSource, /data-bakemono-tab="settings"/);
+    assert.match(settingsSource, /data-bakemono-tab="settings-hub"/);
+    assert.match(settingsSource, /data-bakemono-nav="settings"/);
     assert.match(settingsSource, /data-bakemono-panel="settings"/);
     assert.match(settingsSource, /<option value="backfill">旧正文补课<\/option>/);
     assert.doesNotMatch(settingsSource, /<nav class="bakemono-mobile-actions"/);
-    assert.match(source, /button\.classList\.toggle\('is-workflow-primary', !!isPrimary\)/);
+    assert.match(source, /primaryButton\.classList\.add\('is-workflow-primary'\)/);
     assert.match(styleSource, /\.bakemono-memory-control-deck \[hidden\]\s*\{[^}]*display:\s*none !important;/s);
     assert.match(styleSource, /\.bakemono-workbench-tabs\s*\{[^}]*scrollbar-width:\s*none;/s);
     assert.match(styleSource, /\.bakemono-mobile-actions,[\s\S]*?display:\s*none !important;/s);
-    assert.equal((settingsSource.match(/bakemono-memory-page-intro/g) || []).length, 14);
+    assert.ok((settingsSource.match(/bakemono-memory-page-intro/g) || []).length >= 16);
     assert.match(styleSource, /Scene workbench aesthetic/);
     assert.match(styleSource, /--bk-display:/);
+});
+
+test('settings center owns global preferences while feature settings stay with their tools', () => {
+    assert.match(settingsSource, /data-bakemono-nav="generation"[^>]*>[\s\S]*?<strong>默认生成模型<\/strong>/);
+    assert.match(settingsSource, /data-bakemono-nav="config"[^>]*>[\s\S]*?<strong>整套配置<\/strong>/);
+    assert.match(settingsSource, /data-bakemono-panel="generation"/);
+    assert.match(settingsSource, /data-bakemono-panel="config"/);
+    assert.match(settingsSource, /data-bakemono-owned-section="database"/);
+    assert.match(settingsSource, /data-bakemono-owned-section="batch"/);
+    assert.match(settingsSource, /data-bakemono-owned-section="archive"/);
+    assert.match(settingsSource, /data-bakemono-owned-section="generation"/);
+    assert.match(settingsSource, /data-bakemono-owned-section="config"/);
+    assert.match(source, /function organizeWorkbenchOwnedSections\(/);
+    assert.match(source, /\['database', 'bakemono-memory-data-status-slot'\]/);
+    assert.match(source, /\['batch', 'bakemono-memory-batch-summary-slot'\]/);
+    assert.match(source, /\['archive', 'bakemono-memory-floor-archive-slot'\]/);
+    assert.match(source, /\['generation', 'bakemono-memory-generation-settings-slot'\]/);
+    assert.match(source, /\['config', 'bakemono-memory-config-settings-slot'\]/);
+    assert.doesNotMatch(settingsSource, /id="bakemono-memory-undo"|id="bakemono-memory-hide"|id="bakemono-memory-restore"/);
+    assert.doesNotMatch(settingsSource, />专家设置</);
 });
 
 test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
@@ -355,7 +376,7 @@ test('every config-bearing tab refreshes its own preset selectors', () => {
 });
 
 test('custom themes stay token-only, global, and importable as JSON', () => {
-    assert.match(settingsSource, /data-bakemono-tab="appearance"/);
+    assert.match(settingsSource, /data-bakemono-nav="appearance"/);
     assert.match(settingsSource, /data-bakemono-panel="appearance"/);
     assert.match(settingsSource, /id="bakemono-memory-theme-json"/);
     assert.match(settingsSource, /id="bakemono-memory-theme-file"[^>]*accept="application\/json,\.json"/);
