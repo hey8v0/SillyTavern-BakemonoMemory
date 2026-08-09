@@ -1,8 +1,40 @@
 # 剧情剪辑台开发交接文档
 
-更新时间：2026-07-25
+更新时间：2026-08-10
 
 这份文档是给后续 Codex / 新窗口 / 压缩上下文后的自己看的项目记忆。先读它，再改插件。
+
+## 2026-08-10 / 模块化工程十四批完成（本地，尚未发布）
+
+- 以 `1.2.6 / 36e8ad5` 为完整回退点，并建立本地分支 `backup/pre-modularization-1.2.6`。
+- 新建 `src/shared/text.js`，承接哈希、列表解析、标签过滤、关键词匹配和搜索归一化等纯文本函数。
+- 新建 `src/vector/math.js`，承接本地向量分词、哈希向量和余弦相似度等纯数学函数。
+- `index.js` 只改为导入上述函数；没有修改聊天状态结构、配置字段、摘要流程、表格事务、注入逻辑或 UI。
+- 新增 `tests/pure-modules.test.mjs` 和 `tests/parser-modules.test.mjs` 作为纯模块行为保护。
+- 第二批新建 `src/tables/operation-parser.js` 与 `src/vector/query-parser.js`；表格修改语句和查询改写结果的“解析”已与真正的数据执行、保存和 UI 反馈分开。
+- 第三批新建 `src/tables/rollback-plan.js` 与 `src/summary/target-selection.js`；表格级联回退边界、总结目标选择和分批规则已经与真正的状态修改、生成及保存分开。
+- 新增 `tests/planning-modules.test.mjs`，并把旧契约测试的表格回退断言改为读取新模块，避免后续完整测试因函数搬家失效。
+- 第四批新建 `src/summary/source-metadata.js` 与 `src/shared/prompt-utils.js`；来源楼层、排序键、提示词模板替换、旧内置提示词迁移和结构预览均已与状态及 UI 分开。
+- `src/summary/target-selection.js` 现在复用统一的来源元数据模块，不再自行维护第二套楼层排序逻辑；新增 `tests/prompt-metadata-modules.test.mjs`。
+- 第五批新建 `src/tables/schema-utils.js` 与 `src/shared/injection-template.js`；多种表格 JSON 的归一化、schema 匹配、旧行保留、注入模板剥离与套壳均已变成无副作用模块。
+- 第六批新建 `src/vector/provider-config.js` 与 `src/summary/draft-parser.js`；OpenAI 兼容接口地址和模型列表解析、补课摘要草稿解析已经与请求、状态保存和 UI 分开。端点构造刻意保持旧行为，避免无意改变 Termux 与自定义代理兼容性。
+- 新增 `tests/schema-injection-modules.test.mjs` 与 `tests/provider-draft-modules.test.mjs`。用户同意采用“每个模块批次跑少量定向测试，最后只跑一次完整测试”的节省 token 策略。第一阶段完整契约检查点已运行，现有 7 个测试文件合计 41/41 通过。
+- 第七批开始进入状态服务层，新建 `src/core/config-sync.js`，承接全局配置读取、版本签名、聊天配置同步判定和已应用标记；实际读取酒馆存储、套用配置和保存仍由 `index.js` 编排。新增 `tests/state-config-sync.test.mjs`，新模块 3/3、与入口契约联合定向测试 26/26 通过。
+- 第八批新建 `src/vector/storage.js` 与 `src/core/persistence.js`；embedding 压缩、向量文本裁剪、保存前缓存/记录瘦身和 debounced 保存调用次序已从入口分离。`saveState()` 仍在每次调用时读取当前 `chat_metadata`，不会缓存聊天状态引用。
+- 新增 `tests/persistence-modules.test.mjs`，新模块 4/4；第七、八批状态模块与入口契约联合定向测试 31/31 通过，入口和两个新模块语法检查通过。
+- 第九批新建 `src/core/chat-switch.js`，聊天切换的配置同步、自动收纳、向量失效、注入刷新和延迟渲染顺序已集中；`CHAT_CHANGED` 事件注册仍留在入口，原因字符串与 fail-fast 行为保持不变。
+- 新增 `tests/chat-switch-flow.test.mjs`，协调器 3/3；第七至九批状态模块与入口契约联合定向测试 35/35 通过，入口和新模块语法检查通过。
+- 第十批新建 `src/core/state-shape.js`，统一只补 `undefined` 的深拷贝默认值和数组字段形状修复；`ensureState()` 中直接数组修复已归零，机械的默认值循环只剩按生成目标类型遍历的一处。
+- 新增 `tests/state-shape.test.mjs`，工具 2/2；第七至十批状态模块与入口契约联合定向测试 37/37 通过，入口和新模块语法检查通过。
+- 第十一批在 `src/core/state-shape.js` 增加嵌套对象容器补全，替换自动收纳、自动化、生成目标、正文后处理、表格、向量和聊天保护状态中的重复三元表达式；为兼容旧存档，数组仍按既有规则视作对象。
+- 状态形状工具 3/3；第七至十一批状态模块与入口契约联合定向测试 38/38 通过。
+- 第十二批新建 `src/core/workflow-mode.js`，集中四套枚举和 `memoryStrategy`、`workflowMode`、`stageSourceMode`、`outputMode` 的关联回退顺序；有效下游选择继续保留，不会因其他无效字段被整套重置。
+- 工作方式策略 3/3；第七至十二批状态模块与入口契约联合定向测试 41/41 通过。
+- 第十三批新建 `src/core/prompt-migrations.js`，集中旧补课/通用提示词、阶段与多次总结时间轴、正文后处理、向量查询改写和全局预设的迁移编排；默认提示词与用户自定义文本的保留语义未改。迁移编排 4/4，提示词相关联合定向测试 34/34 通过。
+- 第十四批不再拆代码，完整运行 13 个测试文件共 64/64 通过；`index.js` 与 19 个模块合计 20 个 JavaScript 文件语法检查通过，`git diff --check` 无内容错误（只有 LF/CRLF 提示）。
+- 当前 `index.js` 为 12,824 行，形成 19 个职责模块；`renderAll(` 静态出现 155 处。SillyTavern API、DOM/事件、异步业务编排、表格 profile 合并和聊天引用清理继续留在入口，不能再按纯搬家方式安全拆分。
+- 本轮纯工程模块化正式结束。下一阶段转向降低学习成本的新手引导与工作流首页；不要继续为了减少行数而拆入口。
+- 这些改动尚未同步到本地酒馆、尚未提交、尚未推送，也没有运行浏览器验证。
 
 ## 2026-07-25 / v1.2.6
 

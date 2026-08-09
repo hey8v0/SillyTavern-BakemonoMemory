@@ -5,6 +5,11 @@ import test from 'node:test';
 const source = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
 const settingsSource = fs.readFileSync(new URL('../settings.html', import.meta.url), 'utf8');
 const styleSource = fs.readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+const chatSwitchSource = fs.readFileSync(new URL('../src/core/chat-switch.js', import.meta.url), 'utf8');
+const configSyncSource = fs.readFileSync(new URL('../src/core/config-sync.js', import.meta.url), 'utf8');
+const promptMigrationsSource = fs.readFileSync(new URL('../src/core/prompt-migrations.js', import.meta.url), 'utf8');
+const stateShapeSource = fs.readFileSync(new URL('../src/core/state-shape.js', import.meta.url), 'utf8');
+const workflowModeSource = fs.readFileSync(new URL('../src/core/workflow-mode.js', import.meta.url), 'utf8');
 
 test('workbench markup and stylesheet remain structurally balanced', () => {
     const ids = [...settingsSource.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
@@ -205,8 +210,13 @@ test('stage and multi-summary defaults use the requested event timeline format',
     assert.match(epic, /关键点：一句话总结该事件对剧情推进或角色关系造成的重大影响\/转折。/);
 });
 
-test('structured prompt migration only refreshes recognizable built-in prompts', () => {
-    const migrateBuiltInStructuredPrompt = Function(`return (${extractFunction('migrateBuiltInStructuredPrompt')})`)();
+test('structured prompt migration only refreshes recognizable built-in prompts', async () => {
+    const metadataSource = fs.readFileSync(new URL('../src/summary/source-metadata.js', import.meta.url), 'utf8');
+    const metadataUrl = `data:text/javascript;base64,${Buffer.from(metadataSource, 'utf8').toString('base64')}`;
+    const promptSource = fs.readFileSync(new URL('../src/shared/prompt-utils.js', import.meta.url), 'utf8')
+        .replace("'../summary/source-metadata.js'", `'${metadataUrl}'`);
+    const promptUrl = `data:text/javascript;base64,${Buffer.from(promptSource, 'utf8').toString('base64')}`;
+    const { migrateBuiltInStructuredPrompt } = await import(promptUrl);
     const fallback = 'new built-in prompt';
     const markers = ['built-in heading', 'built-in section'];
     const customized = 'built-in heading\n用户自己写的段落';
@@ -216,8 +226,25 @@ test('structured prompt migration only refreshes recognizable built-in prompts',
     assert.equal(migrateBuiltInStructuredPrompt(legacyBuiltIn, fallback, markers), fallback);
 });
 
-test('table rollback plan cascades through newer dependent transactions', () => {
-    const buildTableRollbackPlan = Function(`return (${extractFunction('buildTableRollbackPlan')})`)();
+test('prompt migration orchestration stays outside the entry state adapter', () => {
+    const ensureSource = extractFunction('ensureState');
+    const settingsSource = extractFunction('ensureGlobalSettings');
+
+    assert.match(source, /from '.\/src\/core\/prompt-migrations\.js'/);
+    assert.match(ensureSource, /migrateGenerationPrompts\(state\.generationPrompts/);
+    assert.match(ensureSource, /migrateTurnSummaryPrompt\(state\.turnSummary/);
+    assert.match(ensureSource, /migrateInlineSummaryPrompt\(state\.inlineGeneration/);
+    assert.match(ensureSource, /migrateVectorQueryRewritePrompt\(state\.vectorMemory/);
+    assert.match(settingsSource, /migratePromptPresetTimelines\(preset/);
+    assert.doesNotMatch(ensureSource, /可以不用 <bakemono> 标签，也不用 HTML|only\\s\+output\\s\+the\\s\+queries/);
+    assert.match(promptMigrationsSource, /const storyPromptMarkers = \[/);
+    assert.match(promptMigrationsSource, /const legacyVectorQueryRewritePattern =/);
+});
+
+test('table rollback plan cascades through newer dependent transactions', async () => {
+    const moduleSource = fs.readFileSync(new URL('../src/tables/rollback-plan.js', import.meta.url), 'utf8');
+    const moduleUrl = `data:text/javascript;base64,${Buffer.from(moduleSource, 'utf8').toString('base64')}`;
+    const { buildTableRollbackPlan } = await import(moduleUrl);
     const stack = [
         { id: 'newest', profileKey: 'chat:a', sourceMessageIds: [30], tables: [{ rows: [['before-30']] }] },
         { id: 'affected', profileKey: 'chat:a', sourceMessageIds: [20], tables: [{ rows: [['before-20']] }] },
@@ -274,8 +301,34 @@ test('state normalization remains compatible with SillyTavern metadata objects',
     const ensureSource = extractFunction('ensureState');
     assert.doesNotMatch(ensureSource, /setTransientStateArray|Object\.defineProperty/);
     assert.doesNotMatch(ensureSource, /normalizedChatStates/);
-    assert.match(ensureSource, /state\.memoryRecords = Array\.isArray\(state\.memoryRecords\)/);
+    assert.match(source, /from '.\/src\/core\/state-shape\.js'/);
+    assert.match(ensureSource, /fillMissingDefaults\(state, defaultState\)/);
+    assert.match(ensureSource, /normalizeArrayFields\(state, \['drafts', 'history', 'taskQueue', 'autoSummaryTransactions', 'memoryRecords'\]\)/);
+    assert.match(ensureSource, /ensureObjectField\(state, 'automation', defaultAutomation\)/);
     assert.match(ensureSource, /state\.scanPreview = \(Array\.isArray\(state\.scanPreview\)/);
+    assert.match(stateShapeSource, /target\[key\] === undefined/);
+    assert.match(stateShapeSource, /target\[key\] = structuredClone\(value\)/);
+    assert.match(stateShapeSource, /!current \|\| typeof current !== 'object'/);
+    assert.match(stateShapeSource, /target\[key\] = structuredClone\(defaultValue\)/);
+    assert.match(stateShapeSource, /target\[key\] = Array\.isArray\(target\[key\]\) \? target\[key\] : \[\]/);
+    assert.match(source, /from '.\/src\/core\/workflow-mode\.js'/);
+    assert.match(ensureSource, /normalizeWorkflowState\(state\)/);
+    assert.doesNotMatch(ensureSource, /Object\.values\(memoryStrategies\)\.includes\(state\.memoryStrategy\)/);
+    assert.match(workflowModeSource, /state\.workflowMode = state\.memoryStrategy === memoryStrategies\.GENERIC/);
+    assert.match(workflowModeSource, /state\.stageSourceMode = state\.workflowMode === workflowModes\.GENERIC/);
+    assert.match(workflowModeSource, /state\.outputMode = state\.workflowMode === workflowModes\.GENERIC/);
+});
+
+test('persistence reads the current chat at save time and keeps tavern debounced adapters', () => {
+    const chatSaveSource = extractFunction('saveState');
+    const globalSaveSource = extractFunction('saveGlobalSettings');
+
+    assert.match(source, /from '.\/src\/core\/persistence\.js'/);
+    assert.match(source, /from '.\/src\/vector\/storage\.js'/);
+    assert.match(chatSaveSource, /persistChatState\(chat_metadata\?\.\[STORAGE_KEY\] \|\| null/);
+    assert.match(chatSaveSource, /slimVectorMemoryForSave\(state\?\.vectorMemory, defaultVectorMemory\)/);
+    assert.match(chatSaveSource, /save:\s*saveMetadataDebounced/);
+    assert.match(globalSaveSource, /persistGlobalSettings\(saveSettingsDebounced\)/);
 });
 
 test('timeline pagination creates DOM only for the visible page', () => {
@@ -325,11 +378,27 @@ test('custom themes stay token-only, global, and importable as JSON', () => {
 });
 
 test('active global config follows existing chats without removing the tavern model path', () => {
-    assert.match(source, /function getActiveGlobalConfigSignature\(/);
+    assert.match(source, /from '.\/src\/core\/config-sync\.js'/);
+    assert.match(configSyncSource, /export function getActiveConfigSignature\(/);
+    assert.match(configSyncSource, /export function shouldSyncActiveConfig\(/);
     assert.match(source, /function syncGlobalActiveConfigToState\(/);
-    assert.equal((source.match(/syncGlobalActiveConfigToState\(ensureState\(\)\)/g) || []).length, 2);
+    assert.equal((source.match(/syncGlobalActiveConfigToState\(ensureState\(\)\)/g) || []).length, 1);
+    assert.match(source, /syncConfig:\s*syncGlobalActiveConfigToState/);
     assert.match(source, /if \(state\.automation\.apiProvider !== 'custom'\) \{\s*return await generateRaw/s);
-    assert.match(source, /state\.activeConfigSignature = getActiveGlobalConfigSignature/);
+    assert.match(configSyncSource, /state\.activeConfigSignature = getActiveConfigSignature/);
+});
+
+test('chat changes keep their side effects in one ordered coordinator', () => {
+    assert.match(source, /from '.\/src\/core\/chat-switch\.js'/);
+    assert.match(source, /eventSource\.on\(event_types\.CHAT_CHANGED, \(\) => runChatSwitchFlow\(\{/);
+    assert.match(source, /getState:\s*ensureState/);
+    assert.match(source, /scheduleAutoHide:\s*scheduleAutoHideRecent/);
+    assert.match(source, /markVectorDirty:\s*markVectorIndexDirty/);
+    assert.match(source, /syncInjection,\s*scheduleRender:\s*scheduleRenderAll/);
+    assert.match(
+        chatSwitchSource,
+        /flow\.syncConfig\(state\)[\s\S]*flow\.scheduleAutoHide\(chatSwitchReasons\.autoHide\)[\s\S]*flow\.markVectorDirty\(chatSwitchReasons\.vectorDirty\)[\s\S]*flow\.syncInjection\(\)[\s\S]*flow\.scheduleRender\(\)/,
+    );
 });
 
 test('vector model fetch preserves unsaved fields and reports failures accurately', () => {

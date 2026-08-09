@@ -1,6 +1,25 @@
 import { chat, chat_metadata, extension_prompt_roles, extension_prompt_types, eventSource, event_types, generateRaw, saveChatConditional, saveSettingsDebounced, setExtensionPrompt } from '../../../../script.js';
 import { extension_settings, getContext, saveMetadataDebounced } from '../../../extensions.js';
 import { hideChatMessageRange } from '../../../chats.js';
+import { runChatSwitchFlow } from './src/core/chat-switch.js';
+import { markActiveConfigApplied, readActiveConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
+import { persistChatState, persistGlobalSettings } from './src/core/persistence.js';
+import { migrateGenerationPrompts, migrateInlineSummaryPrompt, migratePromptPresetTimelines, migrateTurnSummaryPrompt, migrateVectorQueryRewritePrompt } from './src/core/prompt-migrations.js';
+import { ensureObjectField, fillMissingDefaults, normalizeArrayFields } from './src/core/state-shape.js';
+import { memoryStrategies, normalizeWorkflowState, stageSourceModes, workflowModes } from './src/core/workflow-mode.js';
+import { normalizeInjectionMemoryBody, normalizeLineEndings, renderInjectionTemplate } from './src/shared/injection-template.js';
+import { formatBlocksForPrompt, getPromptStructureExcerpt, migrateBuiltInStructuredPrompt, migrateEpicPromptTimeSpan, migrateStagePromptTimeSpan, renderGenerationPrompt, stripPostProcessNoise } from './src/shared/prompt-utils.js';
+import { countKeywordHits, extractAllTaggedBlocks, extractConfiguredTagBlocks, extractTaggedContent, getHash, matchesAnyKeyword, normalizeSearchText, parseList, stripConfiguredTags, stripTableEditTags } from './src/shared/text.js';
+import { parseMissingSummaryBatchResult } from './src/summary/draft-parser.js';
+import { formatSourceRange, getBlockSortKey, getFiniteMessageIds, getSourceEnd, getSourceMessageIdsFromBlocks, getSourceStart, getSummarySortKey, sortSummariesBySource } from './src/summary/source-metadata.js';
+import { parseTableEditOperations } from './src/tables/operation-parser.js';
+import { buildTableRollbackPlan } from './src/tables/rollback-plan.js';
+import { findMatchingTable, mergeTableSchemaWithRows, normalizeImportedTablesFromJson, normalizeTableSchemas, normalizeTableText, toTableSchema } from './src/tables/schema-utils.js';
+import { defaultGenerationTargets, getSortedTargetBlocks, parseLooseNumberRange, partitionGenerationTargets, selectGenerationTargets, targetSelectionModes } from './src/summary/target-selection.js';
+import { cosineSimilarity, createLocalEmbedding } from './src/vector/math.js';
+import { extractCustomModelIds, getCustomChatCompletionsUrl, getCustomEmbeddingsUrl, getCustomModelsUrl, normalizeCustomApiBaseUrl } from './src/vector/provider-config.js';
+import { extractChatCompletionText, parseVectorQueryRewritePayload } from './src/vector/query-parser.js';
+import { compactEmbedding, getClippedVectorText, slimVectorMemoryForSave } from './src/vector/storage.js';
 
 const EXT_ID = 'BakemonoMemory';
 const STORAGE_KEY = 'bakemonoMemory';
@@ -41,31 +60,6 @@ const blockTypes = {
     STORY: 'story',
     STAGE: 'stage',
     EPIC: 'epic',
-};
-
-const memoryStrategies = {
-    BAKEMONO: 'bakemono',
-    GENERIC: 'generic',
-};
-
-const workflowModes = {
-    BAKEMONO: 'bakemono',
-    GENERIC: 'generic',
-    MIXED: 'mixed',
-};
-
-const stageSourceModes = {
-    SUMMARIES: 'summaries',
-    BACKFILL: 'backfill',
-    RAW: 'raw',
-    MIXED: 'mixed',
-    AUTO: 'auto',
-};
-
-const targetSelectionModes = {
-    ALL: 'all',
-    OLDEST: 'oldest',
-    RANGE: 'range',
 };
 
 const memoryRecordStatuses = {
@@ -754,19 +748,6 @@ const defaultAutomation = {
     lastAutoAt: null,
 };
 
-const defaultGenerationTargets = {
-    stage: {
-        mode: targetSelectionModes.ALL,
-        count: 20,
-        range: '',
-    },
-    epic: {
-        mode: targetSelectionModes.ALL,
-        count: 5,
-        range: '',
-    },
-};
-
 const defaultVectorQueryRewritePrompt = `你是剧情记忆检索器。请只根据最近剧情，写出需要回忆的旧剧情问题。
 
 输出必须严格为 6 行：
@@ -1043,12 +1024,13 @@ function ensureGlobalSettings() {
         if (preset.missing === undefined) {
             preset.missing = defaultMissingSummaryPrompt;
         }
-        if (preset.stage !== undefined) {
-            preset.stage = migrateStagePromptTimeSpan(preset.stage);
-        }
-        if (preset.epic !== undefined) {
-            preset.epic = migrateEpicPromptTimeSpan(preset.epic);
-        }
+        migratePromptPresetTimelines(preset, {
+            stage: defaultStageGenerationPrompt,
+            epic: defaultEpicGenerationPrompt,
+        }, {
+            migrateStagePromptTimeSpan,
+            migrateEpicPromptTimeSpan,
+        });
         if (preset.id === defaultGenericPromptPreset.id) {
             preset.story = defaultGenericStoryGenerationPrompt;
             preset.missing = defaultMissingSummaryPrompt;
@@ -1179,42 +1161,6 @@ function ensureGlobalSettings() {
     }
 }
 
-function migrateStagePromptTimeSpan(prompt) {
-    const migrated = String(prompt || defaultStageGenerationPrompt)
-        .replace('★ 当前时间点：XXX ☆', '★ 时间跨度：XXX-XXX ☆')
-        .replace('概括每章节内容，让后续可清晰了解之前章节具体发生过什么', '概括每章节内容（包括时间），让后续可清晰了解之前章节具体发生过什么');
-    if (
-        migrated.includes('详细提炼本阶段的“起、承、转、合”')
-        || migrated.includes('最能定义本卷灵魂的三句台词')
-    ) {
-        return defaultStageGenerationPrompt;
-    }
-    return migrated;
-}
-
-function migrateEpicPromptTimeSpan(prompt) {
-    const migrated = String(prompt || defaultEpicGenerationPrompt)
-        .replace('★ 当前时间点：XXX ☆', '★ 时间跨度：XXX-XXX ☆')
-        .replace('按时间顺序整理输入材料覆盖的核心事件，保留足够细节，避免只剩空泛主题', '按时间顺序整理输入材料覆盖的核心事件（标注时间），保留足够细节，避免只剩空泛主题');
-    if (migrated.includes('[事件一名称]：……') || migrated.includes('[事件二名称]：……')) {
-        return defaultEpicGenerationPrompt;
-    }
-    return migrated;
-}
-
-function migrateBuiltInStructuredPrompt(prompt, fallback, legacyMarkers) {
-    const current = String(prompt || fallback);
-    const markers = Array.isArray(legacyMarkers) ? legacyMarkers : [legacyMarkers];
-    if (!markers.every(marker => current.includes(marker))) {
-        return current;
-    }
-    const sections = current.split(/(?=^➤)/m).slice(1);
-    const hasAllContinuations = sections.every(section => (
-        section.split(/\r?\n/, 1)[0].includes('第四面墙') || /^……$/m.test(section)
-    ));
-    return hasAllContinuations ? current : fallback;
-}
-
 function sanitizeChatStateWhenStructureChanges(state) {
     const context = getContext();
     const sourceChat = context.chat || chat || [];
@@ -1241,226 +1187,94 @@ function ensureState() {
     } else if (state.configInitialized === undefined) {
         state.configInitialized = true;
     }
-    for (const [key, value] of Object.entries(defaultState)) {
-        if (state[key] === undefined) {
-            state[key] = structuredClone(value);
-        }
-    }
-    for (const [key, value] of Object.entries(defaultState.injection)) {
-        if (state.injection[key] === undefined) {
-            state.injection[key] = structuredClone(value);
-        }
-    }
+    fillMissingDefaults(state, defaultState);
+    fillMissingDefaults(state.injection, defaultState.injection);
     if (!state.generationPrompts) {
         state.generationPrompts = structuredClone(defaultState.generationPrompts);
     }
-    for (const [key, value] of Object.entries(defaultState.generationPrompts)) {
-        if (state.generationPrompts[key] === undefined) {
-            state.generationPrompts[key] = structuredClone(value);
-        }
-    }
-    if (String(state.generationPrompts.story || '').includes('请把以下聊天正文压缩成一个可继续用于后续阶段总结的剧情摘要')) {
-        state.generationPrompts.story = defaultStoryGenerationPrompt;
-    }
-    if (
-        String(state.generationPrompts.story || '').includes('旧正文补课摘要模式')
-        && String(state.generationPrompts.story || '').includes('第x章：旧正文补课')
-        && !String(state.generationPrompts.story || '').includes('{{suggestedTitle}}')
-    ) {
-        state.generationPrompts.story = defaultStoryGenerationPrompt;
-    }
-    if (String(state.generationPrompts.story || '').includes('可以不用 <bakemono> 标签，也不用 HTML')) {
-        state.generationPrompts.story = defaultGenericStoryGenerationPrompt;
-        state.generationPrompts.missing = defaultMissingSummaryPrompt;
-        state.generationPrompts.stage = defaultGenericStageGenerationPrompt;
-        state.generationPrompts.epic = defaultGenericEpicGenerationPrompt;
-    }
-    state.generationPrompts.stage = migrateStagePromptTimeSpan(state.generationPrompts.stage);
-    state.generationPrompts.epic = migrateEpicPromptTimeSpan(state.generationPrompts.epic);
-    state.generationPrompts.story = migrateBuiltInStructuredPrompt(state.generationPrompts.story, defaultStoryGenerationPrompt, [
-        '# 👾旧正文补课摘要模式！',
-        '➤ 🎬 【场记打板】（流水账形式记录本批次已经发生的全部事件',
-        '➤ 💡 【第四面墙】（用👾视角记录角色不知道',
-    ]);
-    state.generationPrompts.missing = migrateBuiltInStructuredPrompt(state.generationPrompts.missing, defaultMissingSummaryPrompt, [
-        '你是剧情剪辑台的缺失摘要补写器',
-        '每个楼层必须严格使用以下格式',
-        '➤ 🪢 【剧本暗线】（伏笔系统',
-    ]);
+    fillMissingDefaults(state.generationPrompts, defaultState.generationPrompts);
+    migrateGenerationPrompts(state.generationPrompts, {
+        story: defaultStoryGenerationPrompt,
+        genericStory: defaultGenericStoryGenerationPrompt,
+        missing: defaultMissingSummaryPrompt,
+        stage: defaultStageGenerationPrompt,
+        genericStage: defaultGenericStageGenerationPrompt,
+        epic: defaultEpicGenerationPrompt,
+        genericEpic: defaultGenericEpicGenerationPrompt,
+    }, {
+        migrateBuiltInStructuredPrompt,
+        migrateStagePromptTimeSpan,
+        migrateEpicPromptTimeSpan,
+    });
     for (const key of ['scanRules', 'classificationRules', 'previewLayouts']) {
         if (!state[key]) {
             state[key] = structuredClone(defaultState[key]);
         }
-        for (const [nestedKey, value] of Object.entries(defaultState[key])) {
-            if (state[key][nestedKey] === undefined) {
-                state[key][nestedKey] = structuredClone(value);
-            }
-        }
+        fillMissingDefaults(state[key], defaultState[key]);
     }
 
-    state.blocks = Array.isArray(state.blocks) ? state.blocks : [];
-    state.storySummaries = Array.isArray(state.storySummaries) ? state.storySummaries : [];
-    state.stageSummaries = Array.isArray(state.stageSummaries) ? state.stageSummaries : [];
-    state.epicSummaries = Array.isArray(state.epicSummaries) ? state.epicSummaries : [];
+    normalizeArrayFields(state, ['blocks', 'storySummaries', 'stageSummaries', 'epicSummaries']);
     state.storySummaries.forEach(summary => { summary.level = getSummaryLevel({ ...summary, type: blockTypes.STORY }); });
     state.stageSummaries.forEach(summary => { summary.level = getSummaryLevel({ ...summary, type: blockTypes.STAGE }); });
     state.epicSummaries.forEach(summary => { summary.level = getSummaryLevel({ ...summary, type: blockTypes.EPIC }); });
     sortSummariesBySource(state.storySummaries);
     sortSummariesBySource(state.stageSummaries);
     sortSummariesBySource(state.epicSummaries);
-    state.drafts = Array.isArray(state.drafts) ? state.drafts : [];
-    state.history = Array.isArray(state.history) ? state.history : [];
-    state.taskQueue = Array.isArray(state.taskQueue) ? state.taskQueue : [];
-    state.autoSummaryTransactions = Array.isArray(state.autoSummaryTransactions) ? state.autoSummaryTransactions : [];
-    state.memoryRecords = Array.isArray(state.memoryRecords) ? state.memoryRecords : [];
+    normalizeArrayFields(state, ['drafts', 'history', 'taskQueue', 'autoSummaryTransactions', 'memoryRecords']);
     state.scanPreview = (Array.isArray(state.scanPreview) ? state.scanPreview : []).slice(-maxStoredScanPreviewItems);
     const rawGeneratedMemory = String(state.generatedMemory || state.injection?.content || '');
-    state.generatedMemory = normalizeInjectionMemoryBody(rawGeneratedMemory, state.injection?.template);
+    state.generatedMemory = normalizeInjectionMemoryBody(rawGeneratedMemory, state.injection?.template, defaultInjectionTemplate);
     if (rawGeneratedMemory.trim() && rawGeneratedMemory.trim() !== state.generatedMemory) {
         state.injection.content = renderInjectionContent(state);
         saveState();
     }
-    state.coveredBlockHashes = Array.isArray(state.coveredBlockHashes) ? state.coveredBlockHashes : [];
-    state.coveredStageHashes = Array.isArray(state.coveredStageHashes) ? state.coveredStageHashes : [];
-    state.hiddenMessageIds = Array.isArray(state.hiddenMessageIds) ? state.hiddenMessageIds : [];
-    state.customHiddenMessageIds = Array.isArray(state.customHiddenMessageIds) ? state.customHiddenMessageIds : [];
-    state.autoHideRecent = state.autoHideRecent && typeof state.autoHideRecent === 'object'
-        ? state.autoHideRecent
-        : structuredClone(defaultState.autoHideRecent);
-    for (const [key, value] of Object.entries(defaultState.autoHideRecent)) {
-        if (state.autoHideRecent[key] === undefined) {
-            state.autoHideRecent[key] = structuredClone(value);
-        }
-    }
+    normalizeArrayFields(state, ['coveredBlockHashes', 'coveredStageHashes', 'hiddenMessageIds', 'customHiddenMessageIds']);
+    ensureObjectField(state, 'autoHideRecent', defaultState.autoHideRecent);
+    fillMissingDefaults(state.autoHideRecent, defaultState.autoHideRecent);
     state.autoHideRecent.preserveRecent = Math.max(0, Number(state.autoHideRecent.preserveRecent ?? defaultState.autoHideRecent.preserveRecent));
     state.autoHideRecent.managedMessageIds = getFiniteMessageIds(state.autoHideRecent.managedMessageIds || []);
-    if (!Object.values(memoryStrategies).includes(state.memoryStrategy)) {
-        state.memoryStrategy = memoryStrategies.BAKEMONO;
-    }
-    if (!Object.values(workflowModes).includes(state.workflowMode)) {
-        state.workflowMode = state.memoryStrategy === memoryStrategies.GENERIC ? workflowModes.GENERIC : workflowModes.BAKEMONO;
-    }
-    if (!Object.values(stageSourceModes).includes(state.stageSourceMode)) {
-        state.stageSourceMode = state.workflowMode === workflowModes.GENERIC ? stageSourceModes.BACKFILL : stageSourceModes.SUMMARIES;
-    }
-    if (!['bakemono', 'plain', 'custom'].includes(state.outputMode)) {
-        state.outputMode = state.workflowMode === workflowModes.GENERIC ? 'plain' : 'bakemono';
-    }
-    state.automation = state.automation && typeof state.automation === 'object' ? state.automation : structuredClone(defaultAutomation);
-    for (const [key, value] of Object.entries(defaultAutomation)) {
-        if (state.automation[key] === undefined) {
-            state.automation[key] = structuredClone(value);
-        }
-    }
-    state.automation.customApi = state.automation.customApi && typeof state.automation.customApi === 'object'
-        ? state.automation.customApi
-        : structuredClone(defaultAutomation.customApi);
-    for (const [key, value] of Object.entries(defaultAutomation.customApi)) {
-        if (state.automation.customApi[key] === undefined) {
-            state.automation.customApi[key] = structuredClone(value);
-        }
-    }
-    state.generationTargets = state.generationTargets && typeof state.generationTargets === 'object'
-        ? state.generationTargets
-        : structuredClone(defaultGenerationTargets);
+    normalizeWorkflowState(state);
+    ensureObjectField(state, 'automation', defaultAutomation);
+    fillMissingDefaults(state.automation, defaultAutomation);
+    ensureObjectField(state.automation, 'customApi', defaultAutomation.customApi);
+    fillMissingDefaults(state.automation.customApi, defaultAutomation.customApi);
+    ensureObjectField(state, 'generationTargets', defaultGenerationTargets);
     for (const [kind, defaults] of Object.entries(defaultGenerationTargets)) {
-        state.generationTargets[kind] = state.generationTargets[kind] && typeof state.generationTargets[kind] === 'object'
-            ? state.generationTargets[kind]
-            : structuredClone(defaults);
-        for (const [key, value] of Object.entries(defaults)) {
-            if (state.generationTargets[kind][key] === undefined) {
-            state.generationTargets[kind][key] = structuredClone(value);
-            }
-        }
+        ensureObjectField(state.generationTargets, kind, defaults);
+        fillMissingDefaults(state.generationTargets[kind], defaults);
     }
-    state.turnSummary = state.turnSummary && typeof state.turnSummary === 'object'
-        ? state.turnSummary
-        : structuredClone(defaultState.turnSummary);
-    for (const [key, value] of Object.entries(defaultState.turnSummary)) {
-        if (state.turnSummary[key] === undefined) {
-            state.turnSummary[key] = structuredClone(value);
-        }
-    }
-    state.turnSummary.prompt = migrateBuiltInStructuredPrompt(state.turnSummary.prompt, defaultTurnSummaryPrompt, [
-        '你是剧情剪辑台的正文摘要器',
-        '输出必须放在 <summaryDraft>',
-        '➤ 🎙️ 【高光收音】',
-    ]);
-    state.tableDatabase = state.tableDatabase && typeof state.tableDatabase === 'object'
-        ? state.tableDatabase
-        : structuredClone(defaultState.tableDatabase);
-    for (const [key, value] of Object.entries(defaultState.tableDatabase)) {
-        if (state.tableDatabase[key] === undefined) {
-            state.tableDatabase[key] = structuredClone(value);
-        }
-    }
+    ensureObjectField(state, 'turnSummary', defaultState.turnSummary);
+    fillMissingDefaults(state.turnSummary, defaultState.turnSummary);
+    migrateTurnSummaryPrompt(state.turnSummary, defaultTurnSummaryPrompt, migrateBuiltInStructuredPrompt);
+    ensureObjectField(state, 'tableDatabase', defaultState.tableDatabase);
+    fillMissingDefaults(state.tableDatabase, defaultState.tableDatabase);
     if (!Object.values(tableSchemaScopes).includes(state.tableDatabase.schemaScope)) {
         ensureGlobalSettings();
         state.tableDatabase.schemaScope = extension_settings[STORAGE_KEY].defaultTableSchemaScope || tableSchemaScopes.CHAT;
     }
-    state.tableDatabase.tables = Array.isArray(state.tableDatabase.tables) ? state.tableDatabase.tables : [];
-    state.tableDatabase.editDrafts = Array.isArray(state.tableDatabase.editDrafts) ? state.tableDatabase.editDrafts : [];
-    state.tableDatabase.history = Array.isArray(state.tableDatabase.history) ? state.tableDatabase.history : [];
-    state.tableDatabase.undoStack = Array.isArray(state.tableDatabase.undoStack) ? state.tableDatabase.undoStack : [];
-    state.tableDatabase.redoStack = Array.isArray(state.tableDatabase.redoStack) ? state.tableDatabase.redoStack : [];
-    state.tableDatabase.rollbackHistory = Array.isArray(state.tableDatabase.rollbackHistory) ? state.tableDatabase.rollbackHistory : [];
+    normalizeArrayFields(state.tableDatabase, ['tables', 'editDrafts', 'history', 'undoStack', 'redoStack', 'rollbackHistory']);
     state.tableDatabase.lastAppliedSourceMessageIds = getFiniteMessageIds(state.tableDatabase.lastAppliedSourceMessageIds || []);
-    state.tableDatabase.chatProfiles = Array.isArray(state.tableDatabase.chatProfiles) ? state.tableDatabase.chatProfiles : [];
-    state.tableDatabase.profileRows = state.tableDatabase.profileRows && typeof state.tableDatabase.profileRows === 'object' ? state.tableDatabase.profileRows : {};
+    normalizeArrayFields(state.tableDatabase, ['chatProfiles']);
+    ensureObjectField(state.tableDatabase, 'profileRows', {});
     ensureTableProfileForScope(state.tableDatabase.schemaScope, state);
     mergeScopedTableSchemasIntoState(state);
-    state.inlineGeneration = state.inlineGeneration && typeof state.inlineGeneration === 'object'
-        ? state.inlineGeneration
-        : structuredClone(defaultState.inlineGeneration);
-    for (const [key, value] of Object.entries(defaultState.inlineGeneration)) {
-        if (state.inlineGeneration[key] === undefined) {
-            state.inlineGeneration[key] = structuredClone(value);
-        }
-    }
-    state.inlineGeneration.summaryPrompt = migrateBuiltInStructuredPrompt(state.inlineGeneration.summaryPrompt, defaultInlineSummaryPrompt, [
-        '请在本次回复正文结束后',
-        '推荐格式：',
-        '<summary>📋 剧情摘要</summary>',
-    ]);
+    ensureObjectField(state, 'inlineGeneration', defaultState.inlineGeneration);
+    fillMissingDefaults(state.inlineGeneration, defaultState.inlineGeneration);
+    migrateInlineSummaryPrompt(state.inlineGeneration, defaultInlineSummaryPrompt, migrateBuiltInStructuredPrompt);
     if (state.inlineGeneration.hideTableEditMigratedToRegex !== true) {
         state.inlineGeneration.hideTableEdit = false;
         state.inlineGeneration.hideTableEditMigratedToRegex = true;
     }
-    state.vectorMemory = state.vectorMemory && typeof state.vectorMemory === 'object'
-        ? state.vectorMemory
-        : structuredClone(defaultVectorMemory);
-    for (const [key, value] of Object.entries(defaultVectorMemory)) {
-        if (state.vectorMemory[key] === undefined) {
-            state.vectorMemory[key] = structuredClone(value);
-        }
-    }
-    if (/JSON\s*字符串数组|JSON\s*对象|3\s*到\s*5\s*条.*中文查询句|一个检索意图\s*\+\s*3\s*到\s*5\s*条|适合检索旧剧情记忆|recent\s+plot|old\s+memories|create\s+queries|only\s+output\s+the\s+queries/i.test(String(state.vectorMemory.queryRewritePrompt || ''))) {
-        state.vectorMemory.queryRewritePrompt = defaultVectorMemory.queryRewritePrompt;
-    }
-    state.vectorMemory.customApi = state.vectorMemory.customApi && typeof state.vectorMemory.customApi === 'object'
-        ? state.vectorMemory.customApi
-        : structuredClone(defaultVectorMemory.customApi);
-    for (const [key, value] of Object.entries(defaultVectorMemory.customApi)) {
-        if (state.vectorMemory.customApi[key] === undefined) {
-            state.vectorMemory.customApi[key] = structuredClone(value);
-        }
-    }
-    state.vectorMemory.queryCustomApi = state.vectorMemory.queryCustomApi && typeof state.vectorMemory.queryCustomApi === 'object'
-        ? state.vectorMemory.queryCustomApi
-        : structuredClone(defaultVectorMemory.queryCustomApi);
-    for (const [key, value] of Object.entries(defaultVectorMemory.queryCustomApi)) {
-        if (state.vectorMemory.queryCustomApi[key] === undefined) {
-            state.vectorMemory.queryCustomApi[key] = structuredClone(value);
-        }
-    }
-    state.vectorMemory.records = Array.isArray(state.vectorMemory.records) ? state.vectorMemory.records : [];
-    state.vectorMemory.embeddingCache = state.vectorMemory.embeddingCache && typeof state.vectorMemory.embeddingCache === 'object' ? state.vectorMemory.embeddingCache : {};
-    state.vectorMemory.lastHits = Array.isArray(state.vectorMemory.lastHits) ? state.vectorMemory.lastHits : [];
-    state.vectorMemory.lastEmbeddingCandidates = Array.isArray(state.vectorMemory.lastEmbeddingCandidates) ? state.vectorMemory.lastEmbeddingCandidates : [];
-    state.vectorMemory.lastRerankCandidates = Array.isArray(state.vectorMemory.lastRerankCandidates) ? state.vectorMemory.lastRerankCandidates : [];
-    state.chatGuard = state.chatGuard && typeof state.chatGuard === 'object'
-        ? state.chatGuard
-        : structuredClone(defaultState.chatGuard);
+    ensureObjectField(state, 'vectorMemory', defaultVectorMemory);
+    fillMissingDefaults(state.vectorMemory, defaultVectorMemory);
+    migrateVectorQueryRewritePrompt(state.vectorMemory, defaultVectorMemory.queryRewritePrompt);
+    ensureObjectField(state.vectorMemory, 'customApi', defaultVectorMemory.customApi);
+    fillMissingDefaults(state.vectorMemory.customApi, defaultVectorMemory.customApi);
+    ensureObjectField(state.vectorMemory, 'queryCustomApi', defaultVectorMemory.queryCustomApi);
+    fillMissingDefaults(state.vectorMemory.queryCustomApi, defaultVectorMemory.queryCustomApi);
+    normalizeArrayFields(state.vectorMemory, ['records', 'lastHits', 'lastEmbeddingCandidates', 'lastRerankCandidates']);
+    ensureObjectField(state.vectorMemory, 'embeddingCache', {});
+    ensureObjectField(state, 'chatGuard', defaultState.chatGuard);
     sanitizeChatStateWhenStructureChanges(state);
     return state;
 }
@@ -1640,60 +1454,10 @@ function sanitizeCurrentChatState(state) {
     return prunedCount > 0;
 }
 
-function normalizeLineEndings(value) {
-    return String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-}
-
 function escapeHtml(value) {
     const div = document.createElement('div');
     div.textContent = String(value ?? '');
     return div.innerHTML;
-}
-
-function stripLeadingText(value, prefix) {
-    let text = normalizeLineEndings(value).trim();
-    const normalizedPrefix = normalizeLineEndings(prefix).trim();
-    if (!normalizedPrefix) {
-        return text;
-    }
-
-    while (text.startsWith(normalizedPrefix)) {
-        text = text.slice(normalizedPrefix.length).trim();
-    }
-    return text;
-}
-
-function stripTrailingText(value, suffix) {
-    let text = normalizeLineEndings(value).trim();
-    const normalizedSuffix = normalizeLineEndings(suffix).trim();
-    if (!normalizedSuffix) {
-        return text;
-    }
-
-    while (text.endsWith(normalizedSuffix)) {
-        text = text.slice(0, -normalizedSuffix.length).trim();
-    }
-    return text;
-}
-
-function normalizeInjectionMemoryBody(value, template = defaultInjectionTemplate) {
-    let text = normalizeLineEndings(value).trim();
-    if (!text) {
-        return '';
-    }
-
-    const templates = unique([template, defaultInjectionTemplate].map(item => normalizeLineEndings(item || '')).filter(Boolean));
-    for (const currentTemplate of templates) {
-        if (currentTemplate.includes('{{memory}}')) {
-            const [prefix, ...rest] = currentTemplate.split('{{memory}}');
-            text = stripLeadingText(text, prefix);
-            text = stripTrailingText(text, rest.join('{{memory}}'));
-        } else {
-            text = stripLeadingText(text, currentTemplate);
-        }
-    }
-
-    return text.trim();
 }
 
 function confirmDanger(title, lines = [], confirmText = '确认继续吗？') {
@@ -1705,30 +1469,6 @@ function confirmDanger(title, lines = [], confirmText = '确认继续吗？') {
     ].join('\n'));
 }
 
-function compactEmbedding(values = [], dimensions = defaultVectorMemory.embeddingDimensions) {
-    const source = Array.isArray(values) ? values.map(Number).filter(Number.isFinite) : [];
-    const targetSize = Math.max(32, Math.min(384, Number(dimensions || defaultVectorMemory.embeddingDimensions)));
-    if (!source.length) {
-        return [];
-    }
-    const normalize = vector => {
-        const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0)) || 1;
-        return vector.map(value => Number((value / norm).toFixed(6)));
-    };
-    if (source.length <= targetSize) {
-        return normalize(source);
-    }
-    const compact = [];
-    for (let index = 0; index < targetSize; index++) {
-        const start = Math.floor(index * source.length / targetSize);
-        const end = Math.max(start + 1, Math.floor((index + 1) * source.length / targetSize));
-        const slice = source.slice(start, end);
-        const average = slice.reduce((sum, value) => sum + value, 0) / slice.length;
-        compact.push(average);
-    }
-    return normalize(compact);
-}
-
 function pruneVectorRuntimeCache(limit = 120) {
     while (vectorEmbeddingRuntimeCache.size > limit) {
         const firstKey = vectorEmbeddingRuntimeCache.keys().next().value;
@@ -1736,43 +1476,15 @@ function pruneVectorRuntimeCache(limit = 120) {
     }
 }
 
-function getClippedVectorText(value, limit = defaultVectorMemory.maxStoredTextChars) {
-    const text = String(value || '');
-    const max = Math.max(240, Number(limit || defaultVectorMemory.maxStoredTextChars));
-    return text.length > max ? `${text.slice(0, max)}...` : text;
-}
-
-function slimVectorMemoryForSave(vectorMemory = null) {
-    if (!vectorMemory || typeof vectorMemory !== 'object') {
-        return;
-    }
-    const dimensions = Math.max(32, Number(vectorMemory.embeddingDimensions || defaultVectorMemory.embeddingDimensions));
-    const textLimit = Math.max(240, Number(vectorMemory.maxStoredTextChars || defaultVectorMemory.maxStoredTextChars));
-    vectorMemory.embeddingCache = {};
-    vectorMemory.records = Array.isArray(vectorMemory.records)
-        ? vectorMemory.records.map(record => ({
-            ...record,
-            text: getClippedVectorText(record.text, textLimit),
-            matchedText: getClippedVectorText(record.matchedText, Math.min(textLimit, 480)),
-            embedding: compactEmbedding(record.embedding, dimensions),
-        }))
-        : [];
-    vectorMemory.lastHits = Array.isArray(vectorMemory.lastHits)
-        ? vectorMemory.lastHits.map(hit => ({
-            ...hit,
-            text: getClippedVectorText(hit.text, Math.max(textLimit, Number(vectorMemory.perMessageMaxChars || defaultVectorMemory.perMessageMaxChars))),
-            matchedText: getClippedVectorText(hit.matchedText, Math.min(textLimit, 480)),
-        }))
-        : [];
-}
-
 function saveState() {
-    slimVectorMemoryForSave(chat_metadata?.[STORAGE_KEY]?.vectorMemory);
-    saveMetadataDebounced();
+    persistChatState(chat_metadata?.[STORAGE_KEY] || null, {
+        prepare: state => slimVectorMemoryForSave(state?.vectorMemory, defaultVectorMemory),
+        save: saveMetadataDebounced,
+    });
 }
 
 function saveGlobalSettings() {
-    saveSettingsDebounced();
+    persistGlobalSettings(saveSettingsDebounced);
 }
 
 function getAppearanceSettings() {
@@ -2091,38 +1803,6 @@ function createTableProfile(name = '未命名表格组', tables = []) {
     };
 }
 
-function toTableSchema(table, fallbackIndex = 0) {
-    const columns = Array.isArray(table?.columns) ? table.columns.map(col => String(col || '')) : [];
-    const tableIndex = Number.isFinite(Number(table?.tableIndex)) ? Number(table.tableIndex) : fallbackIndex;
-    const readOnly = !!table?.readOnly;
-    return {
-        id: table?.id || `table-${getHash(`${table?.name || tableIndex}|${tableIndex}`)}`,
-        tableIndex,
-        name: String(table?.name || `表格 ${tableIndex}`),
-        columns,
-        columnPrompts: Array.isArray(table?.columnPrompts)
-            ? table.columnPrompts.map(text => String(text || '')).slice(0, columns.length)
-            : columns.map(() => ''),
-        note: String(table?.note || ''),
-        initNode: String(table?.initNode || ''),
-        insertNode: String(table?.insertNode || ''),
-        updateNode: String(table?.updateNode || ''),
-        deleteNode: String(table?.deleteNode || ''),
-        rows: [],
-        required: !!table?.required,
-        readOnly,
-        inject: true,
-        injectLimit: Math.max(0, Number(table?.injectLimit ?? 1200)),
-        allowAiEdit: !readOnly && (table?.allowAiEdit !== undefined ? !!table.allowAiEdit : true),
-    };
-}
-
-function normalizeTableSchemas(tables = []) {
-    return (Array.isArray(tables) ? tables : [])
-        .map((table, index) => toTableSchema(table, index))
-        .filter(table => table.columns.length || table.name.trim());
-}
-
 function getScopedTableSchemas(scope = tableSchemaScopes.CHAT, state = chat_metadata[STORAGE_KEY]) {
     if (!state?.tableDatabase) {
         return [];
@@ -2231,22 +1911,6 @@ function loadActiveTableProfileRows(state = ensureState()) {
     const savedTables = state.tableDatabase.profileRows?.[key] || [];
     const schemas = normalizeTableSchemas(profile?.tables || []);
     state.tableDatabase.tables = schemas.map(schema => mergeTableSchemaWithRows(schema, findMatchingTable(schema, savedTables)));
-}
-
-function findMatchingTable(schema, tables = []) {
-    return tables.find(table => schema.id && table.id === schema.id)
-        || tables.find(table => Number(table.tableIndex) === Number(schema.tableIndex))
-        || tables.find(table => String(table.name || '') === String(schema.name || ''));
-}
-
-function mergeTableSchemaWithRows(schema, existing) {
-    const rows = Array.isArray(existing?.rows)
-        ? existing.rows.map(row => schema.columns.map((_, index) => String(row?.[index] ?? '')))
-        : [];
-    return {
-        ...schema,
-        rows,
-    };
 }
 
 function mergeScopedTableSchemasIntoState(state) {
@@ -2386,53 +2050,6 @@ function getAppliedTableHistoriesForMessage(messageId, state = ensureState()) {
 
 function hasAppliedTableEditForMessage(messageId, state = ensureState()) {
     return getAppliedTableHistoriesForMessage(messageId, state).length > 0;
-}
-
-function buildTableRollbackPlan(undoStack = [], messageIds = [], profileKey = '') {
-    const affectedIds = new Set((Array.isArray(messageIds) ? messageIds : [])
-        .map(Number)
-        .filter(id => Number.isInteger(id) && id >= 0));
-    if (!affectedIds.size) {
-        return null;
-    }
-    const relevant = (Array.isArray(undoStack) ? undoStack : []).filter(snapshot => (
-        snapshot && (!profileKey || !snapshot.profileKey || snapshot.profileKey === profileKey)
-    ));
-    const affectedPositions = relevant
-        .map((snapshot, index) => ({
-            index,
-            affected: (Array.isArray(snapshot.sourceMessageIds) ? snapshot.sourceMessageIds : [])
-                .map(Number)
-                .some(id => affectedIds.has(id)),
-        }))
-        .filter(item => item.affected)
-        .map(item => item.index);
-    if (!affectedPositions.length) {
-        return null;
-    }
-    const cutoff = Math.max(...affectedPositions);
-    const rollbackSnapshots = relevant.slice(0, cutoff + 1);
-    const affectedSnapshotIds = new Set(rollbackSnapshots
-        .filter(snapshot => (Array.isArray(snapshot.sourceMessageIds) ? snapshot.sourceMessageIds : [])
-            .map(Number)
-            .some(id => affectedIds.has(id)))
-        .map(snapshot => snapshot.id));
-    const cascadedSourceMessageIds = [...new Set(rollbackSnapshots
-        .filter(snapshot => !affectedSnapshotIds.has(snapshot.id))
-        .flatMap(snapshot => Array.isArray(snapshot.sourceMessageIds) ? snapshot.sourceMessageIds : [])
-        .map(Number)
-        .filter(id => Number.isInteger(id) && id >= 0))]
-        .sort((a, b) => a - b);
-    const cascadedSnapshotIds = rollbackSnapshots
-        .filter(snapshot => !affectedSnapshotIds.has(snapshot.id))
-        .map(snapshot => snapshot.id);
-    return {
-        restoreSnapshot: relevant[cutoff],
-        rollbackSnapshotIds: rollbackSnapshots.map(snapshot => snapshot.id),
-        affectedSnapshotIds: [...affectedSnapshotIds],
-        cascadedSnapshotIds,
-        cascadedSourceMessageIds,
-    };
 }
 
 function rollbackTableOperationsForMessages(messageIds = [], state = ensureState(), options = {}) {
@@ -2689,20 +2306,7 @@ function makePresetId(name) {
 
 function getActiveGlobalConfig() {
     ensureGlobalSettings();
-    return extension_settings[STORAGE_KEY].activeConfig || null;
-}
-
-function getActiveGlobalConfigSignature(config = getActiveGlobalConfig()) {
-    if (!config) {
-        return '';
-    }
-    return `${String(config.id || '')}|${String(config.updatedAt || '')}`;
-}
-
-function markStateGlobalConfigApplied(state, config = getActiveGlobalConfig()) {
-    state.configInitialized = true;
-    state.activeConfigId = config?.id || '';
-    state.activeConfigSignature = getActiveGlobalConfigSignature(config);
+    return readActiveConfig(extension_settings[STORAGE_KEY]);
 }
 
 function setActiveGlobalConfig(preset) {
@@ -2725,7 +2329,7 @@ function setActiveGlobalConfig(preset) {
 function applyGlobalActiveConfigToState(state) {
     const config = getActiveGlobalConfig();
     if (!config) {
-        markStateGlobalConfigApplied(state, null);
+        markActiveConfigApplied(state, null);
         return;
     }
     applyPromptPresetToState(config, {
@@ -2737,13 +2341,12 @@ function applyGlobalActiveConfigToState(state) {
         skipRender: true,
         skipSave: true,
     });
-    markStateGlobalConfigApplied(state, config);
+    markActiveConfigApplied(state, config);
 }
 
 function syncGlobalActiveConfigToState(state, options = {}) {
     const config = getActiveGlobalConfig();
-    const signature = getActiveGlobalConfigSignature(config);
-    if (!config || (!options.force && state.activeConfigSignature === signature)) {
+    if (!shouldSyncActiveConfig(state, config, options)) {
         return false;
     }
     applyGlobalActiveConfigToState(state);
@@ -2755,48 +2358,6 @@ function syncGlobalActiveConfigToState(state, options = {}) {
 
 function makeAreaPresetId(scope, name) {
     return `${scope}-${getHash(`${Date.now()}|${scope}|${name || 'preset'}`)}`;
-}
-
-function getHash(text) {
-    let hash = 2166136261;
-    for (let index = 0; index < text.length; index++) {
-        hash ^= text.charCodeAt(index);
-        hash = Math.imul(hash, 16777619);
-    }
-    return (hash >>> 0).toString(16).padStart(8, '0');
-}
-
-function parseList(value) {
-    return String(value || '')
-        .split(/[,，\n]/)
-        .map(item => item.trim())
-        .filter(Boolean);
-}
-
-function escapeRegExp(value) {
-    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function stripConfiguredTags(text, tags) {
-    let result = String(text || '');
-    for (const tag of tags) {
-        const pattern = new RegExp(`<${escapeRegExp(tag)}\\b[^>]*>[\\s\\S]*?<\\/${escapeRegExp(tag)}>`, 'gi');
-        result = result.replace(pattern, '');
-    }
-    return result;
-}
-
-function extractConfiguredTagBlocks(text, tags) {
-    const source = String(text || '');
-    const blocks = [];
-    tags.forEach(tag => {
-        const pattern = new RegExp(`<${escapeRegExp(tag)}\\b[^>]*>[\\s\\S]*?<\\/${escapeRegExp(tag)}>`, 'gi');
-        const matches = source.match(pattern) || [];
-        matches.forEach(content => {
-            blocks.push({ content: content.trim(), matchedTag: tag });
-        });
-    });
-    return blocks.filter(block => block.content);
 }
 
 function extractConfiguredSegments(text, rules = ensureState().scanRules) {
@@ -2847,11 +2408,6 @@ function classifyBlock(block) {
     return blockTypes.STORY;
 }
 
-function matchesAnyKeyword(text, keywords) {
-    const source = String(text || '').toLowerCase();
-    return keywords.some(keyword => source.includes(String(keyword).toLowerCase()));
-}
-
 function getBlockTitle(block, fallback) {
     const summaryMatch = block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i);
     if (summaryMatch?.[1]) {
@@ -2877,14 +2433,6 @@ function toPlainPreview(value, maxLength = 420) {
     return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
 }
 
-function normalizeSearchText(value) {
-    return String(value || '')
-        .toLowerCase()
-        .replace(/\s+/g, '')
-        .replace(/[：:：]/g, ':')
-        .trim();
-}
-
 function getBlockPlainText(block) {
     return stripHtml(String(block || '')
         .replace(/<\/?(bakemono|details)[^>]*>/gi, '')
@@ -2892,47 +2440,6 @@ function getBlockPlainText(block) {
         .replace(/\r\n/g, '\n')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
-}
-
-function tokenizeForVector(text) {
-    const normalized = String(text || '')
-        .toLowerCase()
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/[^\p{L}\p{N}\u4e00-\u9fff]+/gu, ' ')
-        .trim();
-    const tokens = normalized.match(/[\p{L}\p{N}]{2,}|[\u4e00-\u9fff]/gu) || [];
-    const compact = normalized.replace(/\s+/g, '');
-    for (let index = 0; index + 2 <= compact.length; index++) {
-        tokens.push(compact.slice(index, index + 2));
-    }
-    for (let index = 0; index + 3 <= compact.length; index += 2) {
-        tokens.push(compact.slice(index, index + 3));
-    }
-    return tokens;
-}
-
-function createLocalEmbedding(text, dimensions = 192) {
-    const vector = Array(dimensions).fill(0);
-    for (const token of tokenizeForVector(text)) {
-        const hash = parseInt(getHash(token), 16);
-        const index = hash % dimensions;
-        const sign = hash & 1 ? 1 : -1;
-        vector[index] += sign * (1 + Math.min(token.length, 6) / 10);
-    }
-    const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0)) || 1;
-    return vector.map(value => Number((value / norm).toFixed(6)));
-}
-
-function cosineSimilarity(a = [], b = []) {
-    const length = Math.min(a.length, b.length);
-    if (!length) {
-        return 0;
-    }
-    let sum = 0;
-    for (let index = 0; index < length; index++) {
-        sum += Number(a[index] || 0) * Number(b[index] || 0);
-    }
-    return sum;
 }
 
 function splitTextIntoChunks(text, chunkSize = defaultVectorMemory.chunkSize, overlap = defaultVectorMemory.overlap) {
@@ -3024,156 +2531,6 @@ function getVectorQueryText(state = ensureState(), explicitQuery = '') {
     return [current, keywords].filter(Boolean).join('\n\n关键词提示：');
 }
 
-function parseVectorQueryRewritePayload(raw) {
-    let source = String(raw || '')
-        .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
-        .replace(/<analysis\b[^>]*>[\s\S]*?<\/analysis>/gi, '')
-        .replace(/<reasoning\b[^>]*>[\s\S]*?<\/reasoning>/gi, '')
-        .replace(/```(?:json|text)?/gi, '')
-        .replace(/```/g, '')
-        .trim();
-    if (!source) {
-        return { intent: '', queries: [] };
-    }
-    const linePayload = parseVectorQueryRewriteLines(source);
-    if (linePayload.queries.length || linePayload.intent) {
-        return linePayload;
-    }
-    const jsonMatch = source.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
-    try {
-        const parsed = JSON.parse((jsonMatch?.[1] || source).trim());
-        if (Array.isArray(parsed)) {
-            return { intent: '', queries: normalizeVectorRewriteQueries(parsed) };
-        }
-        if (Array.isArray(parsed?.queries)) {
-            return {
-                intent: normalizeVectorRewriteIntent(parsed.intent || parsed.searchIntent || parsed.goal || ''),
-                queries: normalizeVectorRewriteQueries(parsed.queries),
-            };
-        }
-        if (Array.isArray(parsed?.query)) {
-            return {
-                intent: normalizeVectorRewriteIntent(parsed.intent || parsed.searchIntent || parsed.goal || ''),
-                queries: normalizeVectorRewriteQueries(parsed.query),
-            };
-        }
-        if (typeof parsed?.query === 'string') {
-            return {
-                intent: normalizeVectorRewriteIntent(parsed.intent || parsed.searchIntent || parsed.goal || ''),
-                queries: normalizeVectorRewriteQueries([parsed.query]),
-            };
-        }
-    } catch {
-        // The rewrite prompt allows plain line output; JSON is only a convenience.
-    }
-    return {
-        intent: '',
-        queries: normalizeVectorRewriteQueries(source
-            .split(/\r?\n/)
-            .map(line => line
-                .replace(/^\s*(?:[-*]|\d+[.)、]|[（(]?\d+[）)])\s*/, '')
-                .replace(/^\s*(?:query|查询|检索句|关键词|线索)\s*[:：]\s*/i, '')
-                .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
-                .trim())
-            .filter(Boolean)),
-    };
-}
-
-function parseVectorQueryRewriteLines(source) {
-    const lines = String(source || '')
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(Boolean);
-    let intent = '';
-    const queries = [];
-    for (const line of lines) {
-        const intentMatch = line.match(/^\s*INTENT\s*[:：]\s*(.+)$/i);
-        if (intentMatch) {
-            intent = normalizeVectorRewriteIntent(intentMatch[1]);
-            continue;
-        }
-        const queryMatch = line.match(/^\s*Q\s*([1-5])\s*[:：]\s*(.+)$/i);
-        if (queryMatch) {
-            const query = normalizeVectorRewriteQueryItem(queryMatch[2]);
-            if (query) {
-                queries.push(query);
-            }
-        }
-    }
-    return { intent, queries: unique(queries) };
-}
-
-function parseVectorQueryRewriteResult(raw) {
-    return parseVectorQueryRewritePayload(raw).queries;
-}
-
-function normalizeVectorRewriteIntent(item) {
-    const text = normalizeVectorRewriteQueryItem(item);
-    if (!text || isVectorRewriteInstructionLine(text)) {
-        return '';
-    }
-    return text.slice(0, 220);
-}
-
-function normalizeVectorRewriteQueries(items = []) {
-    return items
-        .map(item => normalizeVectorRewriteQueryItem(item))
-        .filter(Boolean)
-        .filter(item => !isVectorRewriteInstructionLine(item));
-}
-
-function normalizeVectorRewriteQueryItem(item) {
-    let text = String(item || '').trim();
-    if (!text) {
-        return '';
-    }
-    text = text
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(line => line && !isVectorRewriteInstructionLine(line))
-        .join(' ')
-        .replace(/^\s*(?:INTENT|Q\s*[1-5])\s*[:：]\s*/i, '')
-        .replace(/^\s*(?:Q\s*)?\d+\s*[.)、:：-]\s*/i, '')
-        .replace(/^\s*(?:clue|query)\s*\d+\s*(?:\([^)]*\))?\s*[:：*-]?\s*/i, '')
-        .replace(/^\s*(?:[-*]|\d+[.)、]|[（(]?\d+[）)])\s*/, '')
-        .replace(/^\s*(?:query|查询|检索句|关键词|线索)\s*[:：]\s*/i, '')
-        .replace(/^[\s*_`#>]+|[\s*_`#>]+$/g, '')
-        .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
-        .trim();
-    if (!hasVectorRewriteQueryLanguage(text) || isVectorRewriteInstructionLine(text)) {
-        return '';
-    }
-    return text;
-}
-
-function hasVectorRewriteQueryLanguage(text) {
-    const value = String(text || '');
-    const cjkCount = (value.match(/[\u3400-\u9fff\u3040-\u30ff]/g) || []).length;
-    if (cjkCount < 4) {
-        return false;
-    }
-    const latinCount = (value.match(/[A-Za-z]/g) || []).length;
-    if (latinCount && cjkCount / Math.max(1, cjkCount + latinCount) < 0.32) {
-        return false;
-    }
-    return true;
-}
-
-function isVectorRewriteInstructionLine(text) {
-    const value = String(text || '').trim();
-    if (!value) {
-        return true;
-    }
-    if (value.length < 4) {
-        return true;
-    }
-    return /^(?:thinking\s*process|analy[sz]e\s+the\s+request|role\s*:|task\s*:|constraints?\s*:|requirements?\s*:|output\s*:|only\s+output|do\s+not|system\s*:|assistant\s*:|user\s*:|recent\s+plot|search\s+queries?|queries?\s*:|intent\s*:|intent[`'"]?\s+and\s+[`'"]?queries|keep\s+only\s+facts|one\s+query\s+per\s+line|no\s+explanations?|language\s*:|convert\s+recent\s+plot|clue\s*\d+|query\s*\d+)/i.test(value)
-        || /^(?:以下|输出|检索|要求|约束|任务|角色|输入|目标|规则|格式|最近剧情|当前剧情|检索意图)(?:[:：\s]|$)/.test(value)
-        || /(?:only\s+return|return\s+json|json\s+array|json\s+object|do\s+not\s+output|must\s+be\s+in\s+chinese|must\s+be\s+specific|specific\s+questions?|searching\s+old\s+plot|focus\s+on\s+what\s+old\s+memories|current\s+context|determine\s+the\s+retrieval|retrieval\s+intent|pain\s+connection|the\s+text\s+mentions|the\s+current\s+scene|old\s+memories\s+need\s+to\s+be\s+recalled|characters,\s*relationships,\s*locations|unresolved\s+foreshadowing|不要解释|不要输出步骤|不要输出分析|每行一条|只返回|只输出|必须使用中文|输出必须|只能包含|不要把最近剧情)/i.test(value)
-        || /^\*\*(?:analy[sz]e|role|task|constraints?|output|thinking|goal|input)[\s\S]*\*\*$/i.test(value)
-        || /^(?:input|goal|analy[sz]e|chapter\s*\d+|recent\s+plot\s+chapters|current\s+context|determine\s+the\s+retrieval|the\s+current\s+scene)\b/i.test(value);
-}
-
 function getVectorRewriteIntentText(baseQuery = '') {
     const clean = String(baseQuery || '')
         .split(/\n\n关键词提示：/)[0]
@@ -3183,25 +2540,6 @@ function getVectorRewriteIntentText(baseQuery = '') {
     const userLine = [...clean].reverse().find(line => /^用户\s*#?\d*\s*[:：]/.test(line));
     const lastLine = userLine || clean.at(-1) || '';
     return toPlainPreview(lastLine.replace(/^(?:用户|助手)\s*#?\d*\s*[:：]\s*/, '').trim(), 220);
-}
-
-function extractChatCompletionText(data) {
-    const choice = data?.choices?.[0] || {};
-    const message = choice.message || {};
-    const content = message.content ?? choice.text ?? data?.output_text ?? '';
-    if (Array.isArray(content)) {
-        return content.map(part => {
-            if (typeof part === 'string') {
-                return part;
-            }
-            return part?.text || part?.content || '';
-        }).join('\n').trim();
-    }
-    const text = String(content || '').trim();
-    if (text) {
-        return text;
-    }
-    return String(message.reasoning_content || message.reasoning || choice.reasoning_content || '').trim();
 }
 
 async function callVectorQueryRewriteModel(prompt, systemPrompt, state = ensureState()) {
@@ -3290,14 +2628,6 @@ Q5: 第五条旧记忆检索线索`;
         throw new Error('查询重写没有生成有效检索句。');
     }
     return queries;
-}
-
-function countKeywordHits(text, keywords = []) {
-    const source = String(text || '').toLowerCase();
-    return keywords.reduce((count, keyword) => {
-        const needle = String(keyword || '').trim().toLowerCase();
-        return needle && source.includes(needle) ? count + 1 : count;
-    }, 0);
 }
 
 function getAssistantMessageCount() {
@@ -3561,12 +2891,6 @@ async function getEmbeddingForText(text, state = ensureState()) {
     vectorEmbeddingRuntimeCache.set(cacheKey, embedding);
     pruneVectorRuntimeCache();
     return embedding;
-}
-
-function getCustomEmbeddingsUrl(baseUrl) {
-    let clean = normalizeCustomApiBaseUrl(baseUrl);
-    clean = clean.replace(/\/chat\/completions$/i, '').replace(/\/embeddings$/i, '');
-    return `${clean}/embeddings`;
 }
 
 async function fetchCustomEmbedding(text, state = ensureState()) {
@@ -4259,60 +3583,6 @@ function scanBakemonoBlocks({ persist = true, render = persist } = {}) {
     return state.blocks;
 }
 
-function getFiniteMessageIds(ids = []) {
-    return (ids || [])
-        .map(id => Number(id))
-        .filter(id => Number.isFinite(id) && id < Number.MAX_SAFE_INTEGER);
-}
-
-function getSourceMessageIdsFromBlocks(blocks = []) {
-    return unique(blocks.flatMap(block => getFiniteMessageIds([block?.messageId, ...(block?.sourceMessageIds || [])])));
-}
-
-function getSourceStart(ids = []) {
-    const finite = getFiniteMessageIds(ids);
-    return finite.length ? Math.min(...finite) : Number.MAX_SAFE_INTEGER;
-}
-
-function getSourceEnd(ids = []) {
-    const finite = getFiniteMessageIds(ids);
-    return finite.length ? Math.max(...finite) : Number.MAX_SAFE_INTEGER;
-}
-
-function formatSourceRange(ids = []) {
-    const start = getSourceStart(ids);
-    const end = getSourceEnd(ids);
-    if (!Number.isFinite(start) || start >= Number.MAX_SAFE_INTEGER) {
-        return '来源楼层未知';
-    }
-    return start === end ? `楼层 ${start}` : `楼层 ${start}-${end}`;
-}
-
-function getBlockSortKey(block) {
-    const direct = Number(block?.messageId);
-    if (Number.isFinite(direct) && direct < Number.MAX_SAFE_INTEGER) {
-        return direct;
-    }
-    const sourceStart = getSourceStart(block?.sourceMessageIds || []);
-    return Number.isFinite(sourceStart) ? sourceStart : Number.MAX_SAFE_INTEGER;
-}
-
-function getSummarySortKey(summary) {
-    const explicit = Number(summary?.sourceSortKey);
-    if (Number.isFinite(explicit)) {
-        return explicit;
-    }
-    return getBlockSortKey(summary);
-}
-
-function sortSummariesBySource(summaries = []) {
-    return summaries.sort((a, b) => (
-        getSummarySortKey(a) - getSummarySortKey(b)
-        || String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
-        || String(a.hash || '').localeCompare(String(b.hash || ''))
-    ));
-}
-
 function isPersistentMemoryBlock(block, state = ensureState()) {
     const summaryHashes = new Set([
         ...state.storySummaries,
@@ -4453,70 +3723,6 @@ function getMultiSummaryLabel(levelOrItem = 2) {
         return '长期总览';
     }
     return `长期总览 L${level}`;
-}
-
-function getSortedTargetBlocks(blocks = []) {
-    return [...blocks].sort((a, b) => (getBlockSortKey(a) - getBlockSortKey(b)) || (a.blockIndex - b.blockIndex));
-}
-
-function parseLooseNumberRange(value) {
-    const ids = new Set();
-    const invalid = [];
-    for (const rawPart of String(value || '').split(/[,，\s]+/).map(item => item.trim()).filter(Boolean)) {
-        const match = rawPart.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
-        if (!match) {
-            invalid.push(rawPart);
-            continue;
-        }
-        let start = Number(match[1]);
-        let end = Number(match[2] || match[1]);
-        if (start > end) {
-            [start, end] = [end, start];
-        }
-        for (let id = Math.max(0, start); id <= end; id++) {
-            ids.add(id);
-        }
-    }
-    return { ids, invalid };
-}
-
-function blockTouchesRange(block, ids) {
-    const sourceIds = getFiniteMessageIds([block?.messageId, ...(block?.sourceMessageIds || [])]);
-    return sourceIds.some(id => ids.has(id));
-}
-
-function selectGenerationTargets(blocks = [], config = {}) {
-    const sorted = getSortedTargetBlocks(blocks);
-    const mode = Object.values(targetSelectionModes).includes(config.mode) ? config.mode : targetSelectionModes.ALL;
-    if (mode === targetSelectionModes.OLDEST) {
-        const count = Math.max(1, Number(config.count || 1));
-        return sorted.slice(0, count);
-    }
-    if (mode === targetSelectionModes.RANGE) {
-        const { ids } = parseLooseNumberRange(config.range || '');
-        if (!ids.size) {
-            return sorted;
-        }
-        return sorted.filter(block => blockTouchesRange(block, ids));
-    }
-    return sorted;
-}
-
-function partitionGenerationTargets(blocks = [], kind = 'stage', config = {}) {
-    const sorted = getSortedTargetBlocks(blocks);
-    const mode = Object.values(targetSelectionModes).includes(config.mode) ? config.mode : targetSelectionModes.ALL;
-    if (mode === targetSelectionModes.OLDEST) {
-        return [selectGenerationTargets(sorted, config)].filter(batch => batch.length);
-    }
-
-    const pool = mode === targetSelectionModes.RANGE ? selectGenerationTargets(sorted, config) : sorted;
-    const defaultCount = defaultGenerationTargets[kind]?.count || (kind === 'epic' ? 5 : 20);
-    const batchSize = Math.max(1, Number(config.count || defaultCount));
-    const batches = [];
-    for (let index = 0; index < pool.length; index += batchSize) {
-        batches.push(pool.slice(index, index + batchSize));
-    }
-    return batches.filter(batch => batch.length);
 }
 
 function getAutoStageTargets(targets = []) {
@@ -5264,7 +4470,7 @@ async function processTaskQueue() {
                     continue;
                 }
                 if (task.trigger === 'missing_summary_batch') {
-                    const items = parseMissingSummaryBatchResult(rawResult, task);
+                    const items = parseMissingSummaryBatchResult(rawResult, task, normalizeGeneratedBakemono);
                     if (!items.length) {
                         throw new Error('这一批没有解析出任何楼层摘要。请检查模型是否按“===楼层#数字===”分隔输出。');
                     }
@@ -5971,36 +5177,6 @@ function buildMissingSummaryBatchPrompt(blocks, metadata = {}, state = ensureSta
     return rendered.trim();
 }
 
-function parseMissingSummaryBatchResult(result, task) {
-    const text = String(result || '')
-        .replace(/<think(?:ing)?[\s>][\s\S]*?<\/think(?:ing)?>/gi, '')
-        .trim();
-    const segments = text.split(/={2,}\s*(?:楼层|消息|message|floor)\s*#?\s*(\d+)\s*={2,}/gi);
-    const parsed = [];
-    const expected = new Map((task.metadata?.missingTargets || []).map(target => [Number(target.messageId), target]));
-
-    if (segments.length > 1) {
-        for (let index = 1; index < segments.length; index += 2) {
-            const messageId = Number(segments[index]);
-            const target = expected.get(messageId);
-            const rawContent = String(segments[index + 1] || '').trim();
-            if (!target || !rawContent) {
-                continue;
-            }
-            const legacyContent = extractTaggedContent(rawContent, 'summaryDraft');
-            parsed.push({ target, content: normalizeGeneratedBakemono(legacyContent || rawContent) });
-        }
-    }
-
-    if (!parsed.length && expected.size === 1 && text) {
-        const [target] = expected.values();
-        const legacyContent = extractTaggedContent(text, 'summaryDraft');
-        parsed.push({ target, content: normalizeGeneratedBakemono(legacyContent || text) });
-    }
-
-    return parsed;
-}
-
 function createMissingSummaryDraftFromBatchItem(item, task) {
     return createDraft({
         kind: blockTypes.STORY,
@@ -6369,24 +5545,6 @@ async function callGenerationModel({ prompt, systemPrompt }) {
     return content;
 }
 
-function normalizeCustomApiBaseUrl(value) {
-    return String(value || '').trim().replace(/\/+$/, '');
-}
-
-function getCustomChatCompletionsUrl(baseUrl) {
-    const clean = normalizeCustomApiBaseUrl(baseUrl);
-    if (/\/chat\/completions$/i.test(clean)) {
-        return clean;
-    }
-    return `${clean}/chat/completions`;
-}
-
-function getCustomModelsUrl(baseUrl) {
-    let clean = normalizeCustomApiBaseUrl(baseUrl);
-    clean = clean.replace(/\/chat\/completions$/i, '');
-    return `${clean}/models`;
-}
-
 async function readOpenAIStream(response) {
     if (!response.body?.getReader) {
         throw new Error('当前浏览器无法读取自定义 API 的流式响应，请改用非流式。');
@@ -6451,13 +5609,11 @@ async function fetchCustomApiModels() {
             throw new Error(`拉取模型失败：${response.status} ${response.statusText}`);
         }
         const data = await response.json();
-        const models = Array.isArray(data?.data)
-            ? data.data.map(item => item?.id || item?.name).filter(Boolean)
-            : [];
+        const models = extractCustomModelIds(data);
         if (!models.length) {
             throw new Error('接口返回里没有找到模型 ID。');
         }
-        state.automation.customApi.models = unique(models.map(item => String(item).trim()).filter(Boolean)).sort();
+        state.automation.customApi.models = models;
         if (!String(state.automation.customApi.model || '').trim()) {
             state.automation.customApi.model = state.automation.customApi.models[0];
             $('#bakemono-memory-custom-model').val(state.automation.customApi.model);
@@ -6494,13 +5650,11 @@ async function fetchVectorEmbeddingModels() {
             throw new Error(`拉取模型失败：${response.status} ${response.statusText}`);
         }
         const data = await response.json();
-        const models = Array.isArray(data?.data)
-            ? data.data.map(item => item?.id || item?.name).filter(Boolean)
-            : [];
+        const models = extractCustomModelIds(data);
         if (!models.length) {
             throw new Error('接口返回里没有找到模型 ID。');
         }
-        state.vectorMemory.customApi.models = unique(models.map(item => String(item).trim()).filter(Boolean)).sort();
+        state.vectorMemory.customApi.models = models;
         if (!String(state.vectorMemory.customApi.model || '').trim()) {
             state.vectorMemory.customApi.model = state.vectorMemory.customApi.models[0];
             $('#bakemono-memory-vector-model').val(state.vectorMemory.customApi.model);
@@ -6540,13 +5694,11 @@ async function fetchVectorQueryModels() {
             throw new Error(`拉取模型失败：${response.status} ${response.statusText}`);
         }
         const data = await response.json();
-        const models = Array.isArray(data?.data)
-            ? data.data.map(item => item?.id || item?.name).filter(Boolean)
-            : [];
+        const models = extractCustomModelIds(data);
         if (!models.length) {
             throw new Error('接口返回里没有找到模型 ID。');
         }
-        state.vectorMemory.queryCustomApi.models = unique(models.map(item => String(item).trim()).filter(Boolean)).sort();
+        state.vectorMemory.queryCustomApi.models = models;
         if (!String(state.vectorMemory.queryCustomApi.model || '').trim()) {
             state.vectorMemory.queryCustomApi.model = state.vectorMemory.queryCustomApi.models[0];
             $('#bakemono-memory-vector-query-model').val(state.vectorMemory.queryCustomApi.model);
@@ -7269,52 +6421,6 @@ function buildStoryUserPrompt(blocks, context = {}) {
     return renderGenerationPrompt(ensureState().generationPrompts.story || defaultStoryGenerationPrompt, blocks, context);
 }
 
-function renderGenerationPrompt(template, blocks, context = {}) {
-    const blockText = formatBlocksForPrompt(blocks, context);
-    const prompt = String(template || '').trim();
-    if (!prompt) {
-        return blockText;
-    }
-    const hadBlocksPlaceholder = prompt.includes('{{blocks}}');
-    const sourceStart = context.sourceStart ?? getSourceStart(blocks.map(block => block.messageId));
-    const sourceEnd = context.sourceEnd ?? getSourceEnd(blocks.map(block => block.messageId));
-    const replacements = {
-        blocks: blockText,
-        batchIndex: context.batchIndex ?? '',
-        batchTotal: context.batchTotal ?? '',
-        sourceRange: context.sourceRange || formatSourceRange(blocks.map(block => block.messageId)),
-        startFloor: Number.isFinite(sourceStart) && sourceStart < Number.MAX_SAFE_INTEGER ? sourceStart : '未知',
-        endFloor: Number.isFinite(sourceEnd) && sourceEnd < Number.MAX_SAFE_INTEGER ? sourceEnd : '未知',
-        suggestedTitle: context.suggestedTitle || '',
-    };
-    let rendered = prompt;
-    for (const [key, value] of Object.entries(replacements)) {
-        rendered = rendered.replaceAll(`{{${key}}}`, String(value));
-    }
-    return hadBlocksPlaceholder ? rendered.trim() : `${rendered}\n\n${blockText}`.trim();
-}
-
-function formatBlocksForPrompt(blocks, context = {}) {
-    const header = [
-        context.batchIndex ? `批次：${context.batchIndex} / ${context.batchTotal || '?'}` : '',
-        context.sourceRange ? `覆盖楼层：${context.sourceRange}` : '',
-        context.suggestedTitle ? `推荐标题：${context.suggestedTitle}` : '',
-    ].filter(Boolean).join('\n');
-    const body = blocks.map((block, index) => {
-        const messageLabel = Number.isFinite(block.messageId) ? `message ${block.messageId}` : 'message unknown';
-        return `--- #${index + 1} | ${messageLabel} | ${block.title} ---\n${block.content}`;
-    }).join('\n\n');
-    return [header, body].filter(Boolean).join('\n\n');
-}
-
-function stripPostProcessNoise(text) {
-    return String(text || '')
-        .replace(/<tableThink>[\s\S]*?<\/tableThink>/gi, '')
-        .replace(/<tableEdit>[\s\S]*?<\/tableEdit>/gi, '')
-        .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-        .trim();
-}
-
 function findLatestAssistantTurn() {
     const sourceChat = getContext().chat || chat || [];
     for (let index = sourceChat.length - 1; index >= 0; index--) {
@@ -7372,24 +6478,6 @@ function buildLatestTurnBlocks(state = ensureState()) {
         content: stripPostProcessNoise(turn.assistantMessage.mes || ''),
     });
     return blocks.filter(block => block.content.trim());
-}
-
-function extractTaggedContent(text, tagName) {
-    const pattern = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'i');
-    const match = String(text || '').match(pattern);
-    return match ? match[1].trim() : '';
-}
-
-function extractAllTaggedBlocks(text, tagName) {
-    const pattern = new RegExp(`<${tagName}[^>]*>[\\s\\S]*?<\\/${tagName}>`, 'gi');
-    return String(text || '').match(pattern) || [];
-}
-
-function stripTableEditTags(text) {
-    return String(text || '')
-        .replace(/<tableThink>[\s\S]*?<\/tableThink>/gi, '')
-        .replace(/<tableEdit>[\s\S]*?<\/tableEdit>/gi, '')
-        .trim();
 }
 
 async function captureInlineGenerationFromLatestMessage() {
@@ -7622,58 +6710,6 @@ async function buildTurnReferenceSystemPrompt(blocks, purpose = 'summary', state
         : base;
 }
 
-function normalizeTableText(value) {
-    return String(value || '').replace(/[\r\n]+/g, ' ').replace(/"/g, '').replace(/,/g, ' / ').trim();
-}
-
-function normalizeImportedTablesFromJson(raw) {
-    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    if (Array.isArray(parsed?.tables)) {
-        return parsed.tables.map((table, index) => ({
-            ...toTableSchema(table, index),
-            rows: Array.isArray(table.rows) ? table.rows.map(row => Array.isArray(row) ? row.map(cell => String(cell ?? '')) : []) : [],
-        }));
-    }
-    if (Array.isArray(parsed?.tableStructure)) {
-        return parsed.tableStructure.map((table, index) => toTableSchema({
-            id: `table-${getHash(`${table.tableIndex ?? index}|${table.tableName || table.name || index}`)}`,
-            tableIndex: Number.isFinite(Number(table.tableIndex)) ? Number(table.tableIndex) : index,
-            name: String(table.tableName || table.name || `表格 ${index}`),
-            columns: Array.isArray(table.columns) ? table.columns.map(col => String(col || '')) : [],
-            columnPrompts: Array.isArray(table.columnPrompts) ? table.columnPrompts.map(text => String(text || '')) : [],
-            note: String(table.note || ''),
-            initNode: String(table.initNode || ''),
-            insertNode: String(table.insertNode || ''),
-            updateNode: String(table.updateNode || ''),
-            deleteNode: String(table.deleteNode || ''),
-            rows: [],
-            required: !!table.Required || !!table.required,
-        }, index));
-    }
-
-    const sheets = Object.values(parsed || {})
-        .filter(item => item && typeof item === 'object' && item.name && Array.isArray(item.content))
-        .sort((a, b) => (Number(a.orderNo ?? 999) - Number(b.orderNo ?? 999)) || String(a.name).localeCompare(String(b.name)));
-    return sheets.map((sheet, index) => {
-        const header = Array.isArray(sheet.content?.[0]) ? sheet.content[0] : [];
-        return {
-            ...toTableSchema({
-            id: sheet.uid || `sheet-${getHash(`${sheet.name}|${index}`)}`,
-            tableIndex: index,
-            name: String(sheet.name || `表格 ${index}`),
-            columns: header.slice(1).map(col => String(col || '')),
-            columnPrompts: header.slice(1).map(() => ''),
-            note: String(sheet.sourceData?.note || ''),
-            initNode: String(sheet.sourceData?.initNode || ''),
-            insertNode: String(sheet.sourceData?.insertNode || ''),
-            updateNode: String(sheet.sourceData?.updateNode || ''),
-            deleteNode: String(sheet.sourceData?.deleteNode || ''),
-            }, index),
-            rows: (sheet.content || []).slice(1).filter(Array.isArray).map(row => row.slice(1).map(cell => String(cell ?? ''))),
-        };
-    });
-}
-
 function formatTableGuideForPrompt(state = ensureState()) {
     const tables = state.tableDatabase.tables || [];
     if (!tables.length) {
@@ -7793,43 +6829,6 @@ function getTableSchemasForPreset(state = ensureState()) {
 function getNextTableIndex(state = ensureState()) {
     const indexes = (state.tableDatabase.tables || []).map(table => Number(table.tableIndex)).filter(Number.isFinite);
     return indexes.length ? Math.max(...indexes) + 1 : 0;
-}
-
-function stripHtmlCommentShell(value) {
-    return String(value || '').replace(/<!--/g, '').replace(/-->/g, '').trim();
-}
-
-function parseTableObjectLiteral(value) {
-    const cleaned = stripHtmlCommentShell(value)
-        .replace(/([{,]\s*)(\d+)\s*:/g, '$1"$2":')
-        .replace(/"\s+(?="\d+"\s*:)/g, '", ');
-    try {
-        return JSON.parse(cleaned);
-    } catch (error) {
-        const fallback = cleaned
-            .replace(/([{,]\s*)'([^'"]+)'\s*:/g, '$1"$2":')
-            .replace(/:\s*'([^']*)'/g, (_, inner) => `:${JSON.stringify(inner)}`);
-        return JSON.parse(fallback);
-    }
-}
-
-function parseTableEditOperations(raw) {
-    const text = stripHtmlCommentShell(extractTaggedContent(raw, 'tableEdit') || raw);
-    const operations = [];
-    const insertRe = /insertRow\s*\(\s*(\d+)\s*,\s*(\{[\s\S]*?\})\s*\)/g;
-    const updateRe = /updateRow\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\{[\s\S]*?\})\s*\)/g;
-    const deleteRe = /deleteRow\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)/g;
-    let match;
-    while ((match = insertRe.exec(text))) {
-        operations.push({ op: 'insert', tableIndex: Number(match[1]), data: parseTableObjectLiteral(match[2]) });
-    }
-    while ((match = updateRe.exec(text))) {
-        operations.push({ op: 'update', tableIndex: Number(match[1]), rowIndex: Number(match[2]), data: parseTableObjectLiteral(match[3]) });
-    }
-    while ((match = deleteRe.exec(text))) {
-        operations.push({ op: 'delete', tableIndex: Number(match[1]), rowIndex: Number(match[2]) });
-    }
-    return operations;
 }
 
 function createTableEditDraft(raw, blocks, state = ensureState()) {
@@ -8114,11 +7113,7 @@ function syncInlineGenerationPrompts(state = ensureState()) {
 
 function renderInjectionContent(state = ensureState()) {
     const template = String(state.injection.template || defaultInjectionTemplate);
-    const memory = normalizeInjectionMemoryBody(state.generatedMemory || '', template);
-    if (!memory) {
-        return '';
-    }
-    return template.includes('{{memory}}') ? template.replaceAll('{{memory}}', memory).trim() : `${template.trim()}\n\n${memory}`.trim();
+    return renderInjectionTemplate(state.generatedMemory || '', template, defaultInjectionTemplate);
 }
 
 async function hideCoveredMessages(options = {}) {
@@ -9848,18 +8843,6 @@ function getPromptPreviewValue(type = promptPreviewType, state = ensureState()) 
     return editorValue || String(config[1] || '').trim();
 }
 
-function getPromptStructureExcerpt(prompt = '') {
-    const lines = String(prompt || '')
-        .replaceAll('{{blocks}}', '')
-        .split(/\r?\n/)
-        .map(line => line.trimEnd())
-        .filter(line => line.trim());
-    const structural = lines.filter(line => /^(?:➤|[-*]\s|\d+[.)]\s|#{1,3}\s|<summary>|【|……|\.\.\.)/.test(line.trim())
-        || /(?:经过：|关键点：|角色进化录|时间线总览|剧情长焦)/.test(line));
-    const selected = structural.length >= 4 ? structural : lines;
-    return selected.slice(0, 14).join('\n') || '当前提示词没有可预览的结构。';
-}
-
 function renderPromptOverview(state = ensureState()) {
     const validTypes = new Set(['story', 'missing', 'stage', 'epic']);
     if (!validTypes.has(promptPreviewType)) {
@@ -11462,7 +10445,7 @@ function usePromptPresetAsGlobalDefault(preset, options = {}) {
     const state = ensureState();
     applyPromptPresetToState(preset, { state, silent: true });
     const config = setActiveGlobalConfig(preset);
-    markStateGlobalConfigApplied(state, config);
+    markActiveConfigApplied(state, config);
     saveState();
     renderAll(options.message || `已使用并设为全局默认：${preset.name || '未命名配置'}`);
     toastr.success('已切换配置，并设为新聊天默认。');
@@ -12977,7 +11960,7 @@ function bindSettingsEvents() {
     $('#bakemono-memory-apply-injection').off('click').on('click', () => {
         const state = ensureState();
         state.injection.template = String($('#bakemono-memory-injection-template').val() || defaultInjectionTemplate);
-        state.generatedMemory = normalizeInjectionMemoryBody($('#bakemono-memory-source-content').val() || '', state.injection.template);
+        state.generatedMemory = normalizeInjectionMemoryBody($('#bakemono-memory-source-content').val() || '', state.injection.template, defaultInjectionTemplate);
         syncInjection();
         saveState();
         renderAll('注入内容已应用。');
@@ -13369,7 +12352,7 @@ function bindSettingsEvents() {
             ? saveCurrentConfigPreset(name)
             : saveCurrentConfigPreset(name, { replaceId: selectedId });
         const config = setActiveGlobalConfig(preset);
-        markStateGlobalConfigApplied(ensureState(), config);
+        markActiveConfigApplied(ensureState(), config);
         saveState();
         renderAll(isBuiltInPresetId(selectedId) || !selected ? `已另存并设为全局默认：${preset.name}` : `已覆盖并设为全局默认：${preset.name}`);
     });
@@ -13381,7 +12364,7 @@ function bindSettingsEvents() {
         }
         const preset = saveCurrentConfigPreset(name);
         const config = setActiveGlobalConfig(preset);
-        markStateGlobalConfigApplied(ensureState(), config);
+        markActiveConfigApplied(ensureState(), config);
         saveState();
         renderAll(`已另存并设为全局默认：${preset.name}`);
     });
@@ -13406,7 +12389,7 @@ function bindSettingsEvents() {
                 || structuredClone(defaultPromptPreset);
             const config = setActiveGlobalConfig(fallback);
             applyGlobalActiveConfigToState(ensureState());
-            markStateGlobalConfigApplied(ensureState(), config);
+            markActiveConfigApplied(ensureState(), config);
             saveState();
         }
         setSelectedPromptPresetId(defaultPromptPreset.id);
@@ -13790,13 +12773,14 @@ async function init() {
 
     scheduleAutoHideRecent('init');
 
-    eventSource.on(event_types.CHAT_CHANGED, () => {
-        syncGlobalActiveConfigToState(ensureState());
-        scheduleAutoHideRecent('chat changed');
-        markVectorIndexDirty('切换聊天');
-        syncInjection();
-        scheduleRenderAll();
-    });
+    eventSource.on(event_types.CHAT_CHANGED, () => runChatSwitchFlow({
+        getState: ensureState,
+        syncConfig: syncGlobalActiveConfigToState,
+        scheduleAutoHide: scheduleAutoHideRecent,
+        markVectorDirty: markVectorIndexDirty,
+        syncInjection,
+        scheduleRender: scheduleRenderAll,
+    }));
     eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
         await captureInlineGenerationFromLatestMessage();
         scheduleInlineGenerationCapture('收到新回复');
