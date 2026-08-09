@@ -17,6 +17,7 @@ import { buildTableRollbackPlan } from './src/tables/rollback-plan.js';
 import { findMatchingTable, mergeTableSchemaWithRows, normalizeImportedTablesFromJson, normalizeTableSchemas, normalizeTableText, toTableSchema } from './src/tables/schema-utils.js';
 import { defaultGenerationTargets, getSortedTargetBlocks, parseLooseNumberRange, partitionGenerationTargets, selectGenerationTargets, targetSelectionModes } from './src/summary/target-selection.js';
 import { cosineSimilarity, createLocalEmbedding } from './src/vector/math.js';
+import { computeHybridRerankScore, selectHybridCandidates } from './src/vector/hybrid-retrieval.js';
 import { extractCustomModelIds, getCustomChatCompletionsUrl, getCustomEmbeddingsUrl, getCustomModelsUrl, normalizeCustomApiBaseUrl } from './src/vector/provider-config.js';
 import { extractChatCompletionText, parseVectorQueryRewritePayload } from './src/vector/query-parser.js';
 import { compactEmbedding, getClippedVectorText, slimVectorMemoryForSave } from './src/vector/storage.js';
@@ -2001,7 +2002,7 @@ function undoLastTableOperation(state = ensureState()) {
     state.tableDatabase.redoStack = state.tableDatabase.redoStack.slice(0, 20);
     state.tableDatabase.tables = structuredClone(snapshot.tables || []);
     persistCurrentTableDatabase(state);
-    renderAll(`已撤销表格操作：${snapshot.label || '表格操作'}`);
+    renderWorkbenchScope(workbenchRenderScopes.TABLES, `已撤销表格操作：${snapshot.label || '表格操作'}`);
     toastr.success('已撤销上次表格操作。');
     return true;
 }
@@ -2033,7 +2034,7 @@ function redoLastTableOperation(state = ensureState()) {
     state.tableDatabase.undoStack = state.tableDatabase.undoStack.slice(0, 20);
     state.tableDatabase.tables = structuredClone(snapshot.redoTables || []);
     persistCurrentTableDatabase(state);
-    renderAll(`已重做表格操作：${snapshot.label || '表格操作'}`);
+    renderWorkbenchScope(workbenchRenderScopes.TABLES, `已重做表格操作：${snapshot.label || '表格操作'}`);
     toastr.success('已重做上次表格操作。');
     return true;
 }
@@ -2712,26 +2713,11 @@ function makeVectorRecordSummary(text, maxChars = defaultVectorMemory.summaryMax
     return getClippedVectorText(clean, Math.max(120, Number(maxChars || defaultVectorMemory.summaryMaxChars)));
 }
 
-function getVectorQueryTerms(queries = [], state = ensureState()) {
-    const keywordTerms = parseList(state.vectorMemory.keywordTriggers);
-    const queryTerms = queries.flatMap(query => normalizeSearchText(query)
-        .split(/[\s,，.。!！?？;；:：、"'“”‘’()[\]{}<>《》【】]+/)
-        .map(term => term.trim())
-        .filter(term => term.length >= 2));
-    return unique([...keywordTerms, ...queryTerms]).slice(0, 80);
-}
-
 function computeVectorRerankScore(item, queries = [], state = ensureState()) {
-    const terms = getVectorQueryTerms(queries, state);
-    const haystack = normalizeSearchText(`${item.title || ''}\n${item.summary || ''}\n${item.text || ''}`);
-    const termHits = terms.length
-        ? terms.filter(term => haystack.includes(normalizeSearchText(term))).length / terms.length
-        : 0;
-    const keywordHits = countKeywordHits(haystack, parseList(state.vectorMemory.keywordTriggers));
-    const keywordBonus = keywordHits ? Math.min(0.12, keywordHits * 0.03) : 0;
-    const normalizedEmbedding = Math.max(0, Math.min(1, Number(item.embeddingScore || item.similarity || 0)));
-    const score = normalizedEmbedding * 0.72 + termHits * 0.2 + keywordBonus;
-    return Math.max(0, Math.min(1, score));
+    return computeHybridRerankScore(item, {
+        keywordBoost: state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost,
+        explicitKeywordCount: parseList(state.vectorMemory.keywordTriggers).length,
+    });
 }
 
 function clearVectorRecall(reason = '', state = ensureState()) {
@@ -2766,6 +2752,9 @@ function serializeVectorRecallItem(item, options = {}) {
         matchedText: getClippedVectorText(item.matchedText || item.text || '', 360),
         matchedChunks: item.matchedChunks || 1,
         keywordHits: item.keywordHitsTotal || item.keywordHits || 0,
+        lexicalScore: Number((item.lexicalScore || 0).toFixed(4)),
+        matchedTerms: Array.isArray(item.matchedTerms) ? item.matchedTerms.slice(0, 8) : [],
+        matchedKeywords: Array.isArray(item.matchedKeywords) ? item.matchedKeywords.slice(0, 8) : [],
         score,
         similarity,
         rerankScore: Number((item.rerankScore ?? score).toFixed(4)),
@@ -3031,7 +3020,7 @@ async function buildVectorMemoryIndex({ silent = false } = {}) {
     await retrieveVectorMemoryHits('', state);
     saveState();
     syncInjection();
-    renderAll(silent ? '' : `向量索引完成：${records.length} 个原文片段。`);
+    renderWorkbenchScope(workbenchRenderScopes.VECTOR, silent ? '' : `向量索引完成：${records.length} 个原文片段。`);
     if (!silent) {
         toastr.success(`已建立 ${records.length} 个向量片段。`);
     }
@@ -3089,14 +3078,21 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
         };
     });
 
-    scored.sort((a, b) => (b.embeddingScore - a.embeddingScore) || (b.keywordHits - a.keywordHits) || (Number(b.messageId) - Number(a.messageId)));
-    let embeddingCandidates = scored.filter(item => item.embeddingScore >= embeddingThreshold || item.keywordHits > 0);
+    let embeddingCandidates = selectHybridCandidates(scored, queries, keywords, {
+        embeddingThreshold,
+        candidateCount: rerankCandidateCount,
+        keywordBoost: state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost,
+    });
     if (!embeddingCandidates.length) {
         const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
         const recentVisibleIds = getRecentVisibleConversationMessageIds(contextWindowMessages);
         const fallbackCandidates = scored.filter(item => item.isHidden || !recentVisibleIds.has(Number(item.messageId)));
         if (fallbackCandidates.length) {
-            embeddingCandidates = fallbackCandidates.slice(0, rerankCandidateCount);
+            embeddingCandidates = selectHybridCandidates(fallbackCandidates, queries, keywords, {
+                embeddingThreshold: 0,
+                candidateCount: rerankCandidateCount,
+                keywordBoost: state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost,
+            });
         }
     }
     state.vectorMemory.lastEmbeddingCandidates = embeddingCandidates
@@ -3106,7 +3102,9 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
     for (const item of embeddingCandidates.slice(0, Math.max(rerankCandidateCount * 2, rerankCandidateCount))) {
         const key = String(item.messageId);
         const existing = byMessage.get(key);
-        const rerankScore = computeVectorRerankScore(item, queries, state);
+        const rerankScore = Number.isFinite(Number(item.hybridScore))
+            ? Number(item.hybridScore)
+            : computeVectorRerankScore(item, queries, state);
         const enriched = {
             ...item,
             rerankScore,
@@ -3200,6 +3198,9 @@ async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(
         similarity: Number((hit.embeddingScore ?? hit.similarity ?? 0).toFixed(4)),
         rerankScore: Number((hit.rerankScore ?? hit.score ?? 0).toFixed(4)),
         keywordHits: hit.keywordHits,
+        lexicalScore: Number((hit.lexicalScore || 0).toFixed(4)),
+        matchedTerms: Array.isArray(hit.matchedTerms) ? hit.matchedTerms.slice(0, 8) : [],
+        matchedKeywords: Array.isArray(hit.matchedKeywords) ? hit.matchedKeywords.slice(0, 8) : [],
     }));
     state.vectorMemory.estimatedChars = state.vectorMemory.lastHits.reduce((sum, hit) => sum + String(hit.text || '').length, 0);
     state.vectorMemory.trimmedHitCount = Math.max(0, embeddingCandidates.length - hits.length);
@@ -3578,7 +3579,7 @@ function scanBakemonoBlocks({ persist = true, render = persist } = {}) {
 
     syncInjection();
     if (render) {
-        renderAll(`扫描完成：找到 ${scanned.length} 个可总结片段。`);
+        renderWorkbenchScope(workbenchRenderScopes.SCAN, `扫描完成：找到 ${scanned.length} 个可总结片段。`);
     }
     return state.blocks;
 }
@@ -4053,7 +4054,7 @@ function confirmGenerationTargets(kind, targets, totalLength) {
         '确认生成吗？',
     );
     if (!confirmed) {
-        renderAll(`已取消${kindLabel}生成。`);
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `已取消${kindLabel}生成。`);
     }
     return confirmed;
 }
@@ -4283,7 +4284,7 @@ async function generateStageSummary() {
     const state = ensureState();
     const targets = getUnsummarizedStoryBlocks();
     if (!targets.length) {
-        renderAll('没有新的剧情摘要需要生成阶段总结。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有新的剧情摘要需要生成阶段总结。');
         toastr.info('没有新的剧情摘要需要生成阶段总结。');
         return;
     }
@@ -4326,7 +4327,7 @@ async function generateStageSummary() {
         }]);
         updateInjectionFromSummaries();
         saveState();
-        renderAll('阶段总结已生成并写入注入内容。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '阶段总结已生成并写入注入内容。');
         toastr.success('阶段总结已生成。');
     }, '阶段总结已生成');
 }
@@ -4345,7 +4346,7 @@ async function generateEpicSummary() {
     const nextLevel = getNextMultiSummaryLevel(targets);
 
     if (!targets.length) {
-        renderAll('没有可用于生成多次总结的内容。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有可用于生成多次总结的内容。');
         toastr.info('没有可用于生成多次总结的内容。');
         return;
     }
@@ -4362,7 +4363,7 @@ async function generateEpicSummary() {
         '这个操作会把更高层级总结写入长期记忆。确认继续吗？',
     ].join('\n'));
     if (!confirmed) {
-        renderAll('已取消多次总结生成。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消多次总结生成。');
         return;
     }
 
@@ -4398,7 +4399,7 @@ async function generateEpicSummary() {
         }]);
         updateInjectionFromSummaries();
         saveState();
-        renderAll('多次总结已生成并写入注入内容。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '多次总结已生成并写入注入内容。');
         toastr.success('多次总结已生成。');
     }, '多次总结已生成');
 }
@@ -4424,7 +4425,7 @@ function enqueueSummaryTask({ kind, prompt, systemPrompt, sourceHashes = [], sou
     state.taskQueue.push(task);
     saveState();
     if (!silent) {
-        renderAll('任务已加入队列。');
+        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '任务已加入队列。');
     }
     if (autoStart) {
         processTaskQueue();
@@ -4551,7 +4552,7 @@ async function processTaskQueue() {
             : autoCommitted
                 ? `任务队列处理完成，已自动保存 ${autoCommitted} 个阶段总结，另有 ${createdDrafts} 个草稿待确认。`
                 : '任务队列处理完成，生成结果已进入草稿箱。';
-        renderAll(message);
+        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, message);
     } finally {
         toastr.clear(toast);
         isQueueRunning = false;
@@ -4570,7 +4571,7 @@ function retryQueueTask(taskId) {
     task.error = '';
     task.updatedAt = new Date().toISOString();
     saveState();
-    renderAll('失败任务已重新排队。');
+    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '失败任务已重新排队。');
     processTaskQueue();
 }
 
@@ -4598,7 +4599,7 @@ function removeQueueTask(taskId) {
     }
     state.taskQueue = state.taskQueue.filter(task => task.id !== taskId);
     saveState();
-    renderAll(isRunningTask ? '已解除卡住的队列任务。' : '任务已从队列移除。');
+    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, isRunningTask ? '已解除卡住的队列任务。' : '任务已从队列移除。');
     processTaskQueue();
 }
 
@@ -4618,7 +4619,7 @@ function clearFinishedQueueTasks() {
     }
     state.taskQueue = state.taskQueue.filter(task => !['done', 'failed'].includes(task.status));
     saveState();
-    renderAll('已清理完成/失败的队列记录。');
+    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '已清理完成/失败的队列记录。');
 }
 
 function clearHistoryRecords() {
@@ -4634,7 +4635,7 @@ function clearHistoryRecords() {
     state.history = [];
     historyState.page = 0;
     saveState();
-    renderAll('保存记录已清理。');
+    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '保存记录已清理。');
     toastr.success('保存记录已清理。');
 }
 
@@ -4647,7 +4648,7 @@ async function generateStageDraft(options = {}) {
     const state = ensureState();
     const allTargets = getUnsummarizedStoryBlocks();
     if (!allTargets.length) {
-        renderAll('没有新的剧情摘要需要生成阶段总结。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有新的剧情摘要需要生成阶段总结。');
         toastr.info('没有新的剧情摘要需要生成阶段总结。');
         return;
     }
@@ -4656,7 +4657,7 @@ async function generateStageDraft(options = {}) {
         readGenerationTargetSettings();
         targetConfig = await promptGenerationTargetSelection('stage', allTargets.length);
         if (!targetConfig) {
-            renderAll('已取消阶段总结生成。');
+            renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消阶段总结生成。');
             return;
         }
     }
@@ -4664,7 +4665,7 @@ async function generateStageDraft(options = {}) {
         ? getAutoStageTargets(allTargets)
         : selectGenerationTargets(allTargets, targetConfig);
     if (!targets.length) {
-        renderAll('当前生成范围没有匹配到可总结摘要。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '当前生成范围没有匹配到可总结摘要。');
         toastr.warning('当前生成范围没有匹配到可总结摘要。');
         return;
     }
@@ -4711,7 +4712,7 @@ async function generateStageDraft(options = {}) {
         ensureState().automation.lastAutoAt = options.automatic ? new Date().toISOString() : ensureState().automation.lastAutoAt;
         saveState();
         switchWorkbenchTab('drafts');
-        renderAll('阶段总结草稿已生成，确认后才会写入长期记忆。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '阶段总结草稿已生成，确认后才会写入长期记忆。');
         toastr.success('阶段总结草稿已生成，请到草稿箱确认。');
     }, options.automatic ? '自动阶段总结草稿已生成' : '阶段总结草稿已生成');
 }
@@ -4726,21 +4727,21 @@ async function generateStageBatchTasks() {
     readGenerationTargetSettings();
     const allTargets = getUnsummarizedStoryBlocks();
     if (!allTargets.length) {
-        renderAll('没有新的剧情摘要需要生成阶段总结。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有新的剧情摘要需要生成阶段总结。');
         toastr.info('没有新的剧情摘要需要生成阶段总结。');
         return;
     }
 
     const targetConfig = await promptGenerationTargetSelection('stage', allTargets.length, { batch: true });
     if (!targetConfig) {
-        renderAll('已取消批量阶段总结。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量阶段总结。');
         return;
     }
 
     const config = targetConfig || state.generationTargets.stage || defaultGenerationTargets.stage;
     const batches = partitionGenerationTargets(allTargets, 'stage', config);
     if (!batches.length) {
-        renderAll('当前批量范围没有匹配到可总结摘要。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '当前批量范围没有匹配到可总结摘要。');
         toastr.warning('当前批量范围没有匹配到可总结摘要。');
         return;
     }
@@ -4755,7 +4756,7 @@ async function generateStageBatchTasks() {
         ],
     );
     if (!confirmed) {
-        renderAll('已取消批量阶段总结。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量阶段总结。');
         return;
     }
 
@@ -4785,7 +4786,7 @@ async function generateStageBatchTasks() {
         });
     });
 
-    renderAll(`已加入 ${batches.length} 个阶段总结批次任务。`);
+    renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `已加入 ${batches.length} 个阶段总结批次任务。`);
     toastr.success(`已加入 ${batches.length} 个阶段总结批次任务。`);
     processTaskQueue();
 }
@@ -4801,7 +4802,7 @@ async function generateEpicDraft(options = {}) {
     const allMultiTargets = getUnsummarizedMultiSummaryBlocks();
     const allStoryFallback = getStoryMaterialBlocks().filter(block => !state.coveredBlockHashes.includes(block.hash));
     if (!allStageTargets.length && !allMultiTargets.length && !allStoryFallback.length) {
-        renderAll('没有可用于生成多次总结的内容。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有可用于生成多次总结的内容。');
         toastr.info('没有可用于生成多次总结的内容。');
         return;
     }
@@ -4810,7 +4811,7 @@ async function generateEpicDraft(options = {}) {
         readGenerationTargetSettings();
         targetConfig = await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length || allStoryFallback.length);
         if (!targetConfig) {
-            renderAll('已取消多次总结生成。');
+            renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消多次总结生成。');
             return;
         }
     }
@@ -4822,7 +4823,7 @@ async function generateEpicDraft(options = {}) {
     const sourcePoolSize = stageTargets.length ? allStageTargets.length : multiTargets.length ? allMultiTargets.length : allStoryFallback.length;
 
     if (!targets.length) {
-        renderAll('当前生成范围没有匹配到可用于多次总结的内容。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '当前生成范围没有匹配到可用于多次总结的内容。');
         toastr.warning('当前生成范围没有匹配到可用于多次总结的内容。');
         return;
     }
@@ -4841,7 +4842,7 @@ async function generateEpicDraft(options = {}) {
             '这只会生成待确认草稿，确认保存后才会写入长期记忆。继续吗？',
         ].join('\n'));
         if (!confirmed) {
-            renderAll('已取消多次总结生成。');
+            renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消多次总结生成。');
             return;
         }
     }
@@ -4880,21 +4881,21 @@ async function generateEpicBatchTasks() {
     const allStoryFallback = getStoryMaterialBlocks().filter(block => !state.coveredBlockHashes.includes(block.hash));
     const sourceBlocks = allStageTargets.length ? allStageTargets : allMultiTargets.length ? allMultiTargets : allStoryFallback;
     if (!sourceBlocks.length) {
-        renderAll('没有可用于生成多次总结的内容。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有可用于生成多次总结的内容。');
         toastr.info('没有可用于生成多次总结的内容。');
         return;
     }
 
     const targetConfig = await promptGenerationTargetSelection('epic', sourceBlocks.length, { batch: true });
     if (!targetConfig) {
-        renderAll('已取消批量多次总结。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量多次总结。');
         return;
     }
 
     const config = targetConfig || state.generationTargets.epic || defaultGenerationTargets.epic;
     const batches = partitionGenerationTargets(sourceBlocks, 'epic', config);
     if (!batches.length) {
-        renderAll('当前批量范围没有匹配到可用于多次总结的内容。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '当前批量范围没有匹配到可用于多次总结的内容。');
         toastr.warning('当前批量范围没有匹配到可用于多次总结的内容。');
         return;
     }
@@ -4910,7 +4911,7 @@ async function generateEpicBatchTasks() {
         ],
     );
     if (!confirmed) {
-        renderAll('已取消批量多次总结。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量多次总结。');
         return;
     }
 
@@ -4942,7 +4943,7 @@ async function generateEpicBatchTasks() {
         });
     });
 
-    renderAll(`已加入 ${batches.length} 个多次总结批次任务。`);
+    renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `已加入 ${batches.length} 个多次总结批次任务。`);
     toastr.success(`已加入 ${batches.length} 个多次总结批次任务。`);
     processTaskQueue();
 }
@@ -4954,7 +4955,7 @@ async function generateBackfillDrafts() {
 
     const batches = buildBackfillBatches();
     if (!batches.length) {
-        renderAll('没有找到可补课的旧正文。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有找到可补课的旧正文。');
         toastr.info('没有找到可补课的旧正文。');
         return;
     }
@@ -4987,7 +4988,7 @@ async function generateBackfillDrafts() {
         }
         saveState();
         switchWorkbenchTab('drafts');
-        renderAll(`已生成 ${batches.length} 个旧正文摘要草稿。`);
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `已生成 ${batches.length} 个旧正文摘要草稿。`);
         toastr.success(`已生成 ${batches.length} 个旧正文摘要草稿。`);
     }, '旧正文摘要草稿已生成');
 }
@@ -5242,7 +5243,7 @@ async function generateMissingSummaryQueue(options = {}) {
     const state = ensureState();
     const targets = buildMissingSummaryTargets(options);
     if (!targets.length) {
-        renderAll('没有找到缺失摘要的助手楼层。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有找到缺失摘要的助手楼层。');
         toastr.info('没有找到缺失摘要的助手楼层。');
         return;
     }
@@ -5259,7 +5260,7 @@ async function generateMissingSummaryQueue(options = {}) {
         ],
     );
     if (!confirmed) {
-        renderAll('已取消补写缺失摘要。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消补写缺失摘要。');
         return;
     }
 
@@ -5285,7 +5286,7 @@ async function generateMissingSummaryQueue(options = {}) {
             },
         });
     }
-    renderAll(`已加入 ${batches.length} 个缺失摘要批次任务。`);
+    renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `已加入 ${batches.length} 个缺失摘要批次任务。`);
     toastr.success(`已加入 ${batches.length} 个补写批次任务。`);
 }
 
@@ -5296,7 +5297,7 @@ async function generateBackfillQueue(options = {}) {
 
     const batches = buildBackfillBatches(options);
     if (!batches.length) {
-        renderAll('没有找到可补课的旧正文。');
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有找到可补课的旧正文。');
         toastr.info('没有找到可补课的旧正文。');
         return;
     }
@@ -5323,7 +5324,7 @@ async function generateBackfillQueue(options = {}) {
             metadata: batch.metadata,
         });
     }
-    renderAll(`已加入 ${batches.length} 个旧正文补课任务。`);
+    renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `已加入 ${batches.length} 个旧正文补课任务。`);
 }
 
 async function maybeRunAutoSummary() {
@@ -5355,10 +5356,10 @@ async function maybeRunAutoSummary() {
             ? `自动总结：正在生成草稿，完成后会自动保存长期记忆并隐藏已覆盖楼层，保留最近 ${state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent} 楼。`
             : '自动总结：正在生成阶段总结草稿。';
         toastr.info(modeLabel, '剧情剪辑台');
-        renderAll(modeLabel);
+        renderWorkbenchScope(workbenchRenderScopes.AUTOMATION, modeLabel);
         await generateStageDraft({ automatic: true });
     } else {
-        renderAll(`自动总结提醒：已有 ${targets.length} 个未总结片段。`);
+        renderWorkbenchScope(workbenchRenderScopes.AUTOMATION, `自动总结提醒：已有 ${targets.length} 个未总结片段。`);
         toastr.info('已达到自动总结条件，可以生成阶段总结草稿。', '剧情剪辑台');
     }
 }
@@ -5457,9 +5458,9 @@ function captureOperationFeedbackFromStatus(statusText = '') {
     setOperationFeedback(failed ? 'error' : 'success', text, failed ? 2600 : 1200);
 }
 
-async function runGeneration(message, action, successMessage = '生成完成') {
+async function runGeneration(message, action, successMessage = '生成完成', renderScope = workbenchRenderScopes.SUMMARY) {
     setOperationFeedback('running', message);
-    renderAll(message);
+    renderWorkbenchScope(renderScope, message);
     setBusy(true);
     try {
         await action();
@@ -5468,7 +5469,7 @@ async function runGeneration(message, action, successMessage = '生成完成') {
         console.error('[BakemonoMemory] generation failed', error);
         const failure = `生成失败：${error?.message || error}`;
         setOperationFeedback('error', failure, 2600);
-        renderAll(failure);
+        renderWorkbenchScope(renderScope, failure);
     } finally {
         setBusy(false);
     }
@@ -5819,7 +5820,7 @@ function commitMissingSummaryDraft(draftIndex, editedContent = null, options = {
     updateInjectionFromSummaries();
     saveState();
     if (!options.silent) {
-        renderAll(`已把摘要补写到第 ${targetMessageId} 楼。`);
+        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `已把摘要补写到第 ${targetMessageId} 楼。`);
         toastr.success(`已补写到第 ${targetMessageId} 楼。`);
     }
     return content;
@@ -5906,7 +5907,7 @@ async function commitAllMissingSummaryDrafts() {
     } finally {
         toastr.clear(toast);
     }
-    renderAll(`已补写 ${applied} 个缺失摘要。${conflicts.length ? `保留 ${conflicts.length} 个冲突草稿。` : ''}`);
+    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `已补写 ${applied} 个缺失摘要。${conflicts.length ? `保留 ${conflicts.length} 个冲突草稿。` : ''}`);
     toastr.success(`已补写 ${applied} 个缺失摘要。`);
 }
 
@@ -5933,7 +5934,7 @@ function removeMissingSummaryDraftsAndTasks() {
     state.drafts = state.drafts.filter(draft => draft.metadata?.appendMode !== 'missing_summary');
     state.taskQueue = state.taskQueue.filter(task => !(isMissingSummaryTask(task) && removableTaskStatuses.has(task.status)));
     saveState();
-    renderAll(`已移除 ${draftCount} 个缺失摘要草稿和 ${taskCount} 个批次任务。`);
+    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `已移除 ${draftCount} 个缺失摘要草稿和 ${taskCount} 个批次任务。`);
     toastr.success('缺失摘要待处理内容已移除。');
 }
 
@@ -5961,7 +5962,7 @@ function clearStuckQueueTasks(predicate = () => true, label = '任务') {
     isQueueRunning = false;
     setBusy(false);
     saveState();
-    renderAll(`已解除 ${stuckTasks.length} 个卡住的${label}。`);
+    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `已解除 ${stuckTasks.length} 个卡住的${label}。`);
     toastr.success('已解除卡住任务，队列可以继续。');
     processTaskQueue();
 }
@@ -6063,7 +6064,7 @@ async function commitDraft(draftId, editedContent = null, options = {}) {
     }
     saveState();
     if (!options.silent) {
-        renderAll('草稿已确认保存。');
+        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '草稿已确认保存。');
         toastr.success('草稿已保存进长期记忆。');
     }
     return summary;
@@ -6093,7 +6094,7 @@ function discardDraft(draftId) {
     state.drafts = state.drafts.filter(draft => draft.id !== draftId);
     if (state.drafts.length !== before) {
         saveState();
-        renderAll('草稿已丢弃。');
+        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '草稿已丢弃。');
     }
 }
 
@@ -6104,7 +6105,7 @@ async function regenerateDraft(draftId) {
         toastr.warning('没有找到这个草稿。');
         return;
     }
-    renderAll('正在重新总结草稿，请稍等...');
+    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '正在重新总结草稿，请稍等...');
     await runGeneration('正在重新生成草稿...', async () => {
         const result = normalizeGeneratedBakemono(await callGenerationModel({
             prompt: draft.prompt,
@@ -6114,9 +6115,9 @@ async function regenerateDraft(draftId) {
         draft.title = draft.metadata?.lockTitle ? (draft.title || draft.metadata?.suggestedTitle || getDefaultDraftTitle(draft.kind, state)) : getBlockTitle(result, draft.title);
         draft.createdAt = new Date().toISOString();
         saveState();
-        renderAll('草稿已重新生成。');
+        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '草稿已重新生成。');
         toastr.success('草稿已重新生成。');
-    }, '草稿已重新生成');
+    }, '草稿已重新生成', workbenchRenderScopes.DRAFTS);
 }
 
 function undoLastCommit() {
@@ -6142,7 +6143,7 @@ function undoLastCommit() {
     state.drafts.unshift(commit.draft);
     updateInjectionFromSummaries();
     saveState();
-    renderAll('已撤回上次保存，原草稿已放回草稿箱。');
+    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '已撤回上次保存，原草稿已放回草稿箱。');
     toastr.success('已撤回上次保存。');
 }
 
@@ -6268,7 +6269,7 @@ async function rollbackAutoSummaryTransaction(transactionId) {
     updateInjectionFromSummaries();
     markVectorIndexDirty('自动总结已回滚', state);
     saveState();
-    renderAll(`已回滚自动总结，恢复 ${hiddenIds.length} 楼。`);
+    renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, `已回滚自动总结，恢复 ${hiddenIds.length} 楼。`);
     toastr.success('自动总结已回滚。');
 }
 
@@ -6335,7 +6336,7 @@ function saveEditedSummary(hash, title, content) {
     }
     updateInjectionFromSummaries();
     saveState();
-    renderAll('摘要已更新。');
+    renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '摘要已更新。');
     toastr.success('摘要已更新。');
 }
 
@@ -6367,7 +6368,7 @@ function deleteSavedSummary(hash) {
     state.history = state.history.filter(item => item.summaryHash !== hash);
     updateInjectionFromSummaries();
     saveState();
-    renderAll('摘要已删除。');
+    renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '摘要已删除。');
     toastr.success('摘要已删除。');
 }
 
@@ -6590,9 +6591,9 @@ function scheduleInlineGenerationCapture(reason = '') {
             }
             syncInjection();
             if (reason) {
-                renderAll(`已复查随正文输出：${reason}`);
+                renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `已复查随正文输出：${reason}`);
             } else {
-                renderAll();
+                renderWorkbenchScope(workbenchRenderScopes.SUMMARY);
             }
         } catch (error) {
             console.warn('[BakemonoMemory] delayed inline capture failed', error);
@@ -6919,7 +6920,7 @@ async function processLatestTurnSummary(options = {}) {
     if (!options.manual && hasAppliedTableEditForMessage(turn.assistantMessage.messageId, state)) {
         state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
         saveState();
-        renderAll('本楼已经通过随正文表格修改应用过表格内容，已跳过回复后填表。');
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, '本楼已经通过随正文表格修改应用过表格内容，已跳过回复后填表。');
         return;
     }
     const blocks = buildLatestTurnBlocks(state);
@@ -6975,8 +6976,8 @@ async function processLatestTurnSummary(options = {}) {
         saveState();
         updateInjectionFromSummaries();
         const savedText = state.turnSummary.saveMode === 'commit' ? '已保存到长期记忆。' : '摘要进入草稿箱。';
-        renderAll(options.manual ? `最新正文已处理，${savedText}` : `正文摘要已自动生成，${savedText}`);
-    }, options.manual ? '最新正文已处理' : '正文摘要草稿已生成');
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, options.manual ? `最新正文已处理，${savedText}` : `正文摘要已自动生成，${savedText}`);
+    }, options.manual ? '最新正文已处理' : '正文摘要草稿已生成', workbenchRenderScopes.TABLES);
 }
 
 async function processLatestTableEdit(options = {}) {
@@ -7008,7 +7009,7 @@ async function processLatestTableEdit(options = {}) {
         if (!draft) {
             state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
             saveState();
-            renderAll('本轮正文没有生成表格修改。');
+            renderWorkbenchScope(workbenchRenderScopes.TABLES, '本轮正文没有生成表格修改。');
             toastr.info('本轮正文没有需要修改的表格。');
             return;
         }
@@ -7021,14 +7022,14 @@ async function processLatestTableEdit(options = {}) {
             state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draft.id);
             state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
             saveState();
-            renderAll('表格修改已自动应用。');
+            renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改已自动应用。');
             return;
         }
         state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
         saveState();
-        renderAll('表格修改草稿已生成，请确认后应用。');
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改草稿已生成，请确认后应用。');
         switchWorkbenchTab('tables');
-    }, '表格修改草稿已生成');
+    }, '表格修改草稿已生成', workbenchRenderScopes.TABLES);
 }
 
 function updateInjectionFromSummaries() {
@@ -7130,7 +7131,7 @@ async function hideCoveredMessages(options = {}) {
 
     if (!messageIds.length) {
         if (!options.silent) {
-            renderAll('没有可隐藏的已总结楼层。');
+            renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, '没有可隐藏的已总结楼层。');
             toastr.info('没有可隐藏的已总结楼层。');
         }
         return;
@@ -7146,7 +7147,7 @@ async function hideCoveredMessages(options = {}) {
             ],
         );
         if (!confirmed) {
-            renderAll('已取消隐藏楼层。');
+            renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, '已取消隐藏楼层。');
             return;
         }
     }
@@ -7160,7 +7161,7 @@ async function hideCoveredMessages(options = {}) {
     saveState();
     scanBakemonoBlocks({ persist: false });
     if (!options.silent) {
-        renderAll(`已隐藏 ${messageIds.length} 个已总结楼层。`);
+        renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, `已隐藏 ${messageIds.length} 个已总结楼层。`);
         toastr.success(`已隐藏 ${messageIds.length} 个楼层。`);
     }
     return messageIds;
@@ -7206,7 +7207,7 @@ async function restoreHiddenMessages() {
     if (!messageIds.length) {
         state.hiddenMessageIds = [];
         saveState();
-        renderAll('没有可恢复的隐藏楼层。');
+        renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, '没有可恢复的隐藏楼层。');
         toastr.info('没有可恢复的隐藏楼层。');
         return;
     }
@@ -7216,7 +7217,7 @@ async function restoreHiddenMessages() {
         ['恢复后这些楼层会重新进入聊天上下文，可能增加 token。'],
     );
     if (!confirmed) {
-        renderAll('已取消恢复隐藏楼层。');
+        renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, '已取消恢复隐藏楼层。');
         return;
     }
 
@@ -7228,7 +7229,7 @@ async function restoreHiddenMessages() {
     await saveChatConditional();
     saveState();
     scanBakemonoBlocks({ persist: false });
-    renderAll(`已恢复 ${messageIds.length} 个楼层。`);
+    renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, `已恢复 ${messageIds.length} 个楼层。`);
     toastr.success(`已恢复 ${messageIds.length} 个楼层。`);
 }
 
@@ -7321,7 +7322,7 @@ function previewMessageRange() {
     const { ids, invalid } = parseMessageRangeInput($('#bakemono-memory-range-input').val());
     const text = getRangePreviewText(ids, invalid);
     $('#bakemono-memory-range-preview').text(text);
-    renderAll(text);
+    renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, text);
 }
 
 function getVisibleMessageIds() {
@@ -7387,14 +7388,14 @@ function previewPreserveRecentMessages() {
     const preserve = Math.max(0, Number($('#bakemono-memory-preserve-recent-input').val() || 0));
     const previewText = getAutoHideRecentPreviewText(preserve);
     $('#bakemono-memory-range-preview').text(previewText);
-    renderAll(previewText);
+    renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, previewText);
     return;
     const ids = getHideBeforeRecentIds(preserve);
     const text = ids.length
         ? `将隐藏较早的 ${ids.length} 楼正文，保留最近 ${preserve} 楼可见正文。范围约 ${ids[0]}-${ids.at(-1)}。`
         : `无需隐藏：当前可见正文不超过 ${preserve} 楼。`;
     $('#bakemono-memory-range-preview').text(text);
-    renderAll(text);
+    renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, text);
 }
 
 async function applyAutoHideRecentBalance({ silent = false, confirm = false } = {}) {
@@ -7405,7 +7406,7 @@ async function applyAutoHideRecentBalance({ silent = false, confirm = false } = 
         const text = getAutoHideRecentPreviewText(preserve, state);
         $('#bakemono-memory-range-preview').text(text);
         if (!silent) {
-            renderAll(text);
+            renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, text);
             toastr.info(text);
         } else {
             renderAutoHideRecentPanel(state);
@@ -7444,7 +7445,7 @@ async function applyAutoHideRecentBalance({ silent = false, confirm = false } = 
     const text = `自动收纳已整理：隐藏 ${hideIds.length} 楼，恢复 ${restoreIds.length} 楼，保留最近 ${preserve} 楼正文。`;
     $('#bakemono-memory-range-preview').text(text);
     if (!silent) {
-        renderAll(text);
+        renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, text);
         toastr.success(text);
     } else {
         renderAutoHideRecentPanel(state);
@@ -7468,7 +7469,7 @@ async function hideBeforeRecentMessages({ silent = false, fromAuto = false } = {
         $('#bakemono-memory-range-preview').text(text);
         if (!silent) {
             toastr.info(text);
-            renderAll(text);
+            renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, text);
         }
         return;
     }
@@ -7500,7 +7501,7 @@ async function hideBeforeRecentMessages({ silent = false, fromAuto = false } = {
     const text = `已隐藏 ${ids.length} 楼，只保留最近 ${preserve} 楼正文。`;
     $('#bakemono-memory-range-preview').text(text);
     if (!silent) {
-        renderAll(text);
+        renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, text);
         toastr.success(text);
     } else {
         renderAutoHideRecentPanel(state);
@@ -7512,7 +7513,7 @@ async function applyAutoHideRecentSettings() {
     readAutoHideRecentFieldsFromUi(state);
     saveState();
     if (!state.autoHideRecent.enabled) {
-        renderAll('自动收纳已关闭。');
+        renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, '自动收纳已关闭。');
         toastr.info('自动收纳已关闭。');
         return;
     }
@@ -7563,7 +7564,7 @@ async function restoreAutoHiddenMessages() {
     scanBakemonoBlocks({ persist: false });
     const text = `已恢复自动收纳隐藏的 ${ids.length} 楼。`;
     $('#bakemono-memory-range-preview').text(text);
-    renderAll(text);
+    renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, text);
     toastr.success(text);
 }
 
@@ -7612,7 +7613,7 @@ async function setMessageRangeHidden(unhide = false) {
     scanBakemonoBlocks({ persist: false });
     const text = `${unhide ? '已恢复' : '已隐藏'} ${ids.length} 个楼层。`;
     $('#bakemono-memory-range-preview').text(text);
-    renderAll(text);
+    renderWorkbenchScope(workbenchRenderScopes.ARCHIVE, text);
     toastr.success(text);
 }
 
@@ -7820,7 +7821,7 @@ function applyWorkflowPreset(mode) {
     scanBakemonoBlocks({ persist: false });
     updateInjectionFromSummaries();
     saveState();
-    renderAll(`已切换到：${getWorkflowModeLabel(state.workflowMode)}。扫描、自动总结和提示词配置已保留。`);
+    renderWorkbenchScope(workbenchRenderScopes.SETTINGS, `已切换到：${getWorkflowModeLabel(state.workflowMode)}。扫描、自动总结和提示词配置已保留。`);
 }
 
 function renderWorkflowGuide(state = ensureState()) {
@@ -8564,7 +8565,7 @@ function saveEditedTableFromElement(details, options = {}) {
         persistCurrentTableDatabase(state);
     }
     if (options.render !== false) {
-        renderAll(`已保存表格：${table.name}`);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, `已保存表格：${table.name}`);
     }
     return table;
 }
@@ -8599,7 +8600,7 @@ function importTablesFromText(raw, sourceLabel = '表格数据') {
     state.tableDatabase.enabled = true;
     syncCurrentTableSchemas(state);
     updateInjectionFromSummaries();
-    renderAll(`已导入 ${tables.length} 张表格。`);
+    renderWorkbenchScope(workbenchRenderScopes.TABLES, `已导入 ${tables.length} 张表格。`);
     toastr.success(`已导入 ${tables.length} 张表格。`);
     return true;
 }
@@ -8640,7 +8641,7 @@ function createCustomTableFromUi() {
     $('#bakemono-memory-new-table-name').val('');
     $('#bakemono-memory-new-table-columns').val('');
     updateInjectionFromSummaries();
-    renderAll(`已创建表格：${name}`);
+    renderWorkbenchScope(workbenchRenderScopes.TABLES, `已创建表格：${name}`);
     toastr.success('表格已创建。');
 }
 
@@ -8674,22 +8675,7 @@ function getActiveWorkbenchTab() {
 }
 
 function renderTaskQueueProgress(statusText = '') {
-    const state = ensureState();
-    if (!isWorkbenchOpen()) {
-        return;
-    }
-    $('#bakemono-memory-count-drafts').text(state.drafts.length);
-    $('#bakemono-memory-menu-draft-count').text(state.drafts.length.toLocaleString());
-    if (getActiveWorkbenchTab() === 'drafts') {
-        renderDrafts();
-        renderTaskQueue();
-    }
-    if (getActiveWorkbenchTab() === 'maintenance') {
-        renderMaintenanceOverview(state);
-    }
-    if (statusText) {
-        $('#bakemono-memory-status-line').text(statusText);
-    }
+    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, statusText, { feedback: false, refreshDataHub: false });
 }
 
 const helpGuideCategories = {
@@ -8773,8 +8759,8 @@ const helpGuideArticles = {
     },
     'retrieval-feature': {
         number: '04', category: '功能说明', title: '向量记忆与上下文注入', tag: '召回', audience: '长聊天检索', duration: '约 3 分钟',
-        lead: '向量记忆负责找回相关旧剧情，注入内容展示模型这一轮实际会收到什么。',
-        steps: [['建立索引', '将可检索记忆转换为向量记录。'], ['测试召回', '输入剧情线索，检查最相关结果。'], ['检查注入', '确认字符数、模板和最终正文，再决定是否调整参数。']],
+        lead: '向量记忆会结合语义相似度和关键词找回旧剧情，注入内容展示模型这一轮实际会收到什么。',
+        steps: [['建立索引', '将可检索记忆转换为向量记录。'], ['测试召回', '输入剧情线索，检查混合初筛的命中词和最终结果。'], ['检查注入', '确认字符数、模板和最终正文，再决定是否调整参数。']],
         note: ['先看结果，再调参数', '嵌入接口、重写模型和召回阈值都在向量记忆页的折叠设置里，只在结果不理想时展开。'],
     },
     'setup-feature': {
@@ -9057,6 +9043,279 @@ function renderAutomationOverview(state = ensureState()) {
     });
 }
 
+function buildWorkbenchBlockBundle(state = ensureState()) {
+    const story = getStoryBlocks();
+    const stage = dedupeByHash([
+        ...getBlocksByType(blockTypes.STAGE),
+        ...state.stageSummaries.map(summaryToBlock),
+    ]);
+    const epic = dedupeByHash([
+        ...getBlocksByType(blockTypes.EPIC),
+        ...state.epicSummaries.map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
+    ]);
+    return { story, stage, epic };
+}
+
+function syncActiveWorkbenchFormFields(activeTab, state = ensureState()) {
+    if (activeTab === 'settings') {
+        $('#bakemono-memory-memory-strategy').val(state.memoryStrategy || memoryStrategies.BAKEMONO);
+        $('#bakemono-memory-workflow-mode').val(state.workflowMode || workflowModes.BAKEMONO);
+        $('#bakemono-memory-stage-source-mode').val(getStageSourceMode(state));
+        $('#bakemono-memory-output-mode').val(state.outputMode || 'bakemono');
+        $('#bakemono-memory-strategy-label').text(getMemoryStrategyLabel(state.memoryStrategy));
+        $('#bakemono-memory-workflow-label').text(`${getWorkflowModeLabel(state.workflowMode)} / ${getStageSourceModeLabel(getStageSourceMode(state))}`);
+        const injectionParts = getInjectionMemoryParts(state);
+        const uncoveredStory = state.storySummaries.filter(item => !(state.coveredBlockHashes || []).includes(item.hash)).length;
+        $('#bakemono-memory-injection-stats').text(`注入：多次 ${injectionParts.stats.epic} / 阶段 ${injectionParts.stats.stage} / 普通 ${injectionParts.stats.story} / 表格 ${injectionParts.stats.table || 0} / 向量 ${injectionParts.stats.vector || 0}`);
+        $('#bakemono-memory-memory-warning').text(getWorkflowStatusText(state, injectionParts.stats, uncoveredStory));
+    } else if (activeTab === 'injection') {
+        $('#bakemono-memory-injection-enabled').prop('checked', !!state.injection.enabled);
+        $('#bakemono-memory-depth').val(state.injection.depth);
+        $('#bakemono-memory-role').val(String(state.injection.role));
+        $('#bakemono-memory-source-content').val(state.generatedMemory || '');
+        $('#bakemono-memory-injection-template').val(state.injection.template || defaultInjectionTemplate);
+        $('#bakemono-memory-injection-content').val(renderInjectionContent(state));
+    } else if (activeTab === 'prompts') {
+        $('#bakemono-memory-story-prompt').val(state.generationPrompts.story || defaultStoryGenerationPrompt);
+        $('#bakemono-memory-missing-prompt').val(state.generationPrompts.missing || defaultMissingSummaryPrompt);
+        $('#bakemono-memory-stage-prompt').val(state.generationPrompts.stage || defaultStageGenerationPrompt);
+        $('#bakemono-memory-epic-prompt').val(state.generationPrompts.epic || defaultEpicGenerationPrompt);
+    } else if (activeTab === 'scan') {
+        $('#bakemono-memory-scan-mode').val(state.scanRules.mode || defaultScanRules.mode);
+        $('#bakemono-memory-include-tags').val(state.scanRules.includeTags || defaultScanRules.includeTags);
+        $('#bakemono-memory-exclude-tags').val(state.scanRules.excludeTags || defaultScanRules.excludeTags);
+        $('#bakemono-memory-full-min-length').val(state.scanRules.fullTextMinLength ?? defaultScanRules.fullTextMinLength);
+        $('#bakemono-memory-include-hidden').prop('checked', state.scanRules.includeHidden !== false);
+        $('#bakemono-memory-class-story').val(state.classificationRules.story || defaultClassificationRules.story);
+        $('#bakemono-memory-class-stage').val(state.classificationRules.stage || defaultClassificationRules.stage);
+        $('#bakemono-memory-class-epic').val(state.classificationRules.epic || defaultClassificationRules.epic);
+        $('#bakemono-memory-layout-story').val(state.previewLayouts.story || defaultPreviewLayouts.story);
+        $('#bakemono-memory-layout-stage').val(state.previewLayouts.stage || defaultPreviewLayouts.stage);
+        $('#bakemono-memory-layout-epic').val(state.previewLayouts.epic || defaultPreviewLayouts.epic);
+    } else if (activeTab === 'automation') {
+        $('#bakemono-memory-auto-enabled').prop('checked', !!state.automation.enabled);
+        $('#bakemono-memory-auto-mode').val(state.automation.mode || defaultAutomation.mode);
+        $('#bakemono-memory-auto-trigger').val(state.automation.triggerType || defaultAutomation.triggerType);
+        $('#bakemono-memory-auto-floor-interval').val(state.automation.floorInterval ?? defaultAutomation.floorInterval);
+        $('#bakemono-memory-auto-char-interval').val(state.automation.charInterval ?? defaultAutomation.charInterval);
+        $('#bakemono-memory-auto-hide-preserve-recent').val(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent);
+    } else if (activeTab === 'preview') {
+        $('#bakemono-memory-batch-summary-size').val(state.automation.backfillBatchSize ?? defaultAutomation.backfillBatchSize);
+        $('#bakemono-memory-stage-target-mode').val(state.generationTargets.stage.mode || defaultGenerationTargets.stage.mode);
+        $('#bakemono-memory-stage-target-count').val(state.generationTargets.stage.count ?? defaultGenerationTargets.stage.count);
+        $('#bakemono-memory-stage-target-range').val(state.generationTargets.stage.range || '');
+        $('#bakemono-memory-epic-target-mode').val(state.generationTargets.epic.mode || defaultGenerationTargets.epic.mode);
+        $('#bakemono-memory-epic-target-count').val(state.generationTargets.epic.count ?? defaultGenerationTargets.epic.count);
+        $('#bakemono-memory-epic-target-range').val(state.generationTargets.epic.range || '');
+    } else if (activeTab === 'generation') {
+        $('#bakemono-memory-api-provider').val(state.automation.apiProvider || defaultAutomation.apiProvider);
+        $('#bakemono-memory-custom-base-url').val(state.automation.customApi?.baseUrl || '');
+        $('#bakemono-memory-custom-api-key').val(state.automation.customApi?.apiKey || '');
+        $('#bakemono-memory-custom-model').val(state.automation.customApi?.model || '');
+        $('#bakemono-memory-custom-temperature').val(state.automation.customApi?.temperature ?? defaultAutomation.customApi.temperature);
+        $('#bakemono-memory-custom-max-tokens').val(state.automation.customApi?.maxTokens ?? defaultAutomation.customApi.maxTokens);
+        $('#bakemono-memory-custom-stream').val(String(!!state.automation.customApi?.stream));
+    }
+}
+
+const workbenchRenderScopes = Object.freeze({
+    VECTOR: 'vector',
+    DRAFTS: 'drafts',
+    TABLES: 'tables',
+    SUMMARY: 'summary',
+    SCAN: 'scan',
+    ARCHIVE: 'archive',
+    INJECTION: 'injection',
+    AUTOMATION: 'automation',
+    PROMPTS: 'prompts',
+    GENERATION: 'generation',
+    CONFIG: 'config',
+    SETTINGS: 'settings',
+});
+
+function renderWorkbenchSharedChrome(activeTab, state, statusText = '', options = {}) {
+    $('#bakemono-memory-count-drafts').text(state.drafts.length);
+    $('#bakemono-memory-menu-draft-count').text(state.drafts.length.toLocaleString());
+    if (statusText) {
+        $('#bakemono-memory-status-line').text(statusText);
+    }
+    renderWorkbenchHeaderContext(activeTab, state);
+    if (statusText && options.feedback !== false) {
+        captureOperationFeedbackFromStatus(statusText);
+    }
+}
+
+function renderWorkbenchDataHubMemory(state) {
+    const blocks = buildWorkbenchBlockBundle(state);
+    state.memoryRecords = buildMemoryRecords(state);
+    $('#bakemono-memory-count-story').text(blocks.story.length);
+    $('#bakemono-memory-count-stage').text(blocks.stage.length);
+    $('#bakemono-memory-count-epic').text(blocks.epic.length);
+    renderWorkbenchHubPanels(state);
+    renderMemoryDatabaseSummary(state);
+}
+
+function renderWorkbenchOverviewMemory(state, options = {}) {
+    state.memoryRecords = buildMemoryRecords(state);
+    if (options.refreshHidden) {
+        const actualHiddenIds = getActualHiddenMessageIds();
+        const pluginHiddenIds = getFiniteMessageIds(state.hiddenMessageIds || []);
+        $('#bakemono-memory-count-hidden')
+            .text(actualHiddenIds.length)
+            .attr('title', `酒馆实际隐藏 ${actualHiddenIds.length} 楼；插件记录 ${pluginHiddenIds.length} 楼`);
+    }
+    renderWorkflowGuide(state);
+    renderMemoryDatabaseSummary(state);
+}
+
+function renderWorkbenchSummarySurface(activeTab, state) {
+    if (activeTab === 'preview') {
+        const blocks = buildWorkbenchBlockBundle(state);
+        $('#bakemono-memory-tab-count-story').text(blocks.story.length);
+        $('#bakemono-memory-tab-count-stage').text(blocks.stage.length);
+        $('#bakemono-memory-tab-count-epic').text(blocks.epic.length);
+        renderSummaryGenerationPanel(state, blocks);
+        renderPreviewSections(blocks.story, blocks.stage, blocks.epic);
+    } else if (activeTab === 'overview') {
+        renderWorkbenchOverviewMemory(state);
+    } else if (activeTab === 'data-hub') {
+        renderWorkbenchDataHubMemory(state);
+    } else if (activeTab === 'records') {
+        state.memoryRecords = buildMemoryRecords(state);
+        renderMemoryRecordList();
+    } else if (activeTab === 'timeline') {
+        renderTimeline();
+    } else if (activeTab === 'drafts') {
+        renderDrafts();
+        renderHistory();
+        renderTaskQueue();
+    } else if (activeTab === 'maintenance') {
+        renderMaintenanceOverview(state);
+    } else if (activeTab === 'turn-summary' || activeTab === 'tables') {
+        renderActivePresetControls(activeTab);
+        renderTurnSummaryPanel(state);
+    }
+}
+
+function renderWorkbenchScope(scope, statusText = '', options = {}) {
+    if (!isWorkbenchOpen()) {
+        return false;
+    }
+    const state = ensureState();
+    const activeTab = getActiveWorkbenchTab();
+
+    if (scope === workbenchRenderScopes.VECTOR) {
+        if (activeTab === 'vector') {
+            renderActivePresetControls(activeTab);
+            renderVectorMemoryPanel(state);
+        } else if (activeTab === 'data-hub') {
+            renderWorkbenchHubPanels(state);
+        }
+    } else if (scope === workbenchRenderScopes.DRAFTS) {
+        if (activeTab === 'drafts') {
+            renderDrafts();
+            renderHistory();
+            renderTaskQueue();
+        } else if (activeTab === 'maintenance') {
+            renderMaintenanceOverview(state);
+        } else if (activeTab === 'data-hub') {
+            if (options.refreshDataHub !== false) {
+                renderWorkbenchDataHubMemory(state);
+            }
+        }
+    } else if (scope === workbenchRenderScopes.TABLES) {
+        if (activeTab === 'turn-summary' || activeTab === 'tables') {
+            renderActivePresetControls(activeTab);
+            renderTurnSummaryPanel(state);
+        } else if (activeTab === 'data-hub') {
+            renderWorkbenchDataHubMemory(state);
+        }
+    } else if (scope === workbenchRenderScopes.SUMMARY) {
+        renderWorkbenchSummarySurface(activeTab, state);
+    } else if (scope === workbenchRenderScopes.SCAN) {
+        if (activeTab === 'scan') {
+            syncActiveWorkbenchFormFields(activeTab, state);
+            renderActivePresetControls(activeTab);
+            renderScanOverview(state);
+            renderScanPreview();
+        } else {
+            renderWorkbenchSummarySurface(activeTab, state);
+        }
+    } else if (scope === workbenchRenderScopes.ARCHIVE) {
+        if (activeTab === 'maintenance') {
+            renderAutoHideRecentPanel(state);
+            renderMaintenanceOverview(state);
+        } else if (activeTab === 'overview') {
+            renderWorkbenchOverviewMemory(state, { refreshHidden: true });
+        } else if (activeTab === 'data-hub') {
+            renderWorkbenchDataHubMemory(state);
+        } else if (activeTab === 'records') {
+            state.memoryRecords = buildMemoryRecords(state);
+            renderMemoryRecordList();
+        } else if (activeTab === 'vector') {
+            renderVectorMemoryPanel(state);
+        }
+    } else if (scope === workbenchRenderScopes.INJECTION) {
+        if (activeTab === 'injection') {
+            syncActiveWorkbenchFormFields(activeTab, state);
+            renderActivePresetControls(activeTab);
+            renderInjectionOverview(state);
+        } else if (activeTab === 'settings') {
+            syncActiveWorkbenchFormFields(activeTab, state);
+            renderWorkflowGuide(state);
+        } else if (activeTab === 'settings-hub' || activeTab === 'data-hub') {
+            renderWorkbenchHubPanels(state);
+        }
+    } else if (scope === workbenchRenderScopes.AUTOMATION) {
+        if (activeTab === 'automation') {
+            syncActiveWorkbenchFormFields(activeTab, state);
+            renderActivePresetControls(activeTab);
+            renderAutomationOverview(state);
+        } else if (activeTab === 'data-hub' || activeTab === 'settings-hub') {
+            renderWorkbenchHubPanels(state);
+        } else if (activeTab === 'overview') {
+            renderWorkflowGuide(state);
+        } else if (activeTab === 'maintenance') {
+            renderMaintenanceOverview(state);
+        }
+    } else if (scope === workbenchRenderScopes.PROMPTS) {
+        if (activeTab === 'prompts') {
+            syncActiveWorkbenchFormFields(activeTab, state);
+            renderActivePresetControls(activeTab);
+            renderPromptOverview(state);
+            syncPromptHintButtons();
+        }
+    } else if (scope === workbenchRenderScopes.GENERATION) {
+        if (activeTab === 'generation') {
+            syncActiveWorkbenchFormFields(activeTab, state);
+            renderActivePresetControls(activeTab);
+            renderCustomModelOptions(state.automation.customApi?.models || []);
+        } else if (activeTab === 'settings-hub') {
+            renderWorkbenchHubPanels(state);
+        }
+    } else if (scope === workbenchRenderScopes.CONFIG) {
+        if (activeTab === 'config') {
+            renderActivePresetControls(activeTab);
+        } else if (activeTab === 'settings-hub' || activeTab === 'data-hub') {
+            renderWorkbenchHubPanels(state);
+        }
+    } else if (scope === workbenchRenderScopes.SETTINGS) {
+        if (activeTab === 'settings') {
+            syncActiveWorkbenchFormFields(activeTab, state);
+            renderWorkflowGuide(state);
+        } else if (activeTab === 'overview') {
+            renderWorkflowGuide(state);
+        } else if (activeTab === 'settings-hub' || activeTab === 'data-hub') {
+            renderWorkbenchHubPanels(state);
+        }
+    } else {
+        return false;
+    }
+
+    renderWorkbenchSharedChrome(activeTab, state, statusText, options);
+    return true;
+}
+
 function renderAll(statusText = '') {
     if (scheduledRenderHandle !== null) {
         if (typeof globalThis.cancelAnimationFrame === 'function') {
@@ -9075,97 +9334,31 @@ function renderAll(statusText = '') {
     if (activeTab === 'overview' || activeTab === 'records' || activeTab === 'data-hub') {
         state.memoryRecords = buildMemoryRecords(state);
     }
-    const storyBlocks = getStoryBlocks();
-    const stageBlocks = [
-        ...getBlocksByType(blockTypes.STAGE),
-        ...state.stageSummaries.map(summaryToBlock),
-    ];
-    const epicBlocks = [
-        ...getBlocksByType(blockTypes.EPIC),
-        ...state.epicSummaries.map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
-    ];
-    const dedupedStageBlocks = dedupeByHash(stageBlocks);
-    const dedupedEpicBlocks = dedupeByHash(epicBlocks);
-
-    renderWorkbenchHeaderContext(activeTab, state);
-
-    $('#bakemono-memory-count-story').text(storyBlocks.length);
-    $('#bakemono-memory-count-stage').text(dedupedStageBlocks.length);
-    $('#bakemono-memory-count-epic').text(dedupedEpicBlocks.length);
+    const blocks = activeTab === 'preview' || activeTab === 'data-hub'
+        ? buildWorkbenchBlockBundle(state)
+        : null;
     $('#bakemono-memory-count-drafts').text(state.drafts.length);
     $('#bakemono-memory-menu-draft-count').text(state.drafts.length.toLocaleString());
-    $('#bakemono-memory-tab-count-story').text(storyBlocks.length);
-    $('#bakemono-memory-tab-count-stage').text(dedupedStageBlocks.length);
-    $('#bakemono-memory-tab-count-epic').text(dedupedEpicBlocks.length);
-    const actualHiddenIds = getActualHiddenMessageIds();
-    const pluginHiddenIds = getFiniteMessageIds(state.hiddenMessageIds || []);
-    $('#bakemono-memory-count-hidden')
-        .text(actualHiddenIds.length)
-        .attr('title', `酒馆实际隐藏 ${actualHiddenIds.length} 楼；插件记录 ${pluginHiddenIds.length} 楼`);
-    $('#bakemono-memory-memory-strategy').val(state.memoryStrategy || memoryStrategies.BAKEMONO);
-    $('#bakemono-memory-workflow-mode').val(state.workflowMode || workflowModes.BAKEMONO);
-    $('#bakemono-memory-stage-source-mode').val(getStageSourceMode(state));
-    $('#bakemono-memory-output-mode').val(state.outputMode || 'bakemono');
-    $('#bakemono-memory-strategy-label').text(getMemoryStrategyLabel(state.memoryStrategy));
-    $('#bakemono-memory-workflow-label').text(`${getWorkflowModeLabel(state.workflowMode)} / ${getStageSourceModeLabel(getStageSourceMode(state))}`);
-    const injectionParts = getInjectionMemoryParts(state);
-    $('#bakemono-memory-injection-stats').text(`注入：多次 ${injectionParts.stats.epic} / 阶段 ${injectionParts.stats.stage} / 普通 ${injectionParts.stats.story} / 表格 ${injectionParts.stats.table || 0} / 向量 ${injectionParts.stats.vector || 0}`);
-    const uncoveredStory = state.storySummaries.filter(item => !(state.coveredBlockHashes || []).includes(item.hash)).length;
-    $('#bakemono-memory-memory-warning').text(state.memoryStrategy === memoryStrategies.BAKEMONO && uncoveredStory
-        ? `摘要块手账模式下普通摘要不注入：当前有 ${uncoveredStory} 个普通摘要仍只是阶段总结材料。`
-        : state.memoryStrategy === memoryStrategies.GENERIC
-            ? '通用模式下未被阶段总结覆盖的普通补课摘要会进入注入，阶段总结后会自动退出。'
-            : '摘要块手账模式适合配合酒馆正则使用，避免普通摘要和正文摘要重复占用上下文。');
-    $('#bakemono-memory-injection-enabled').prop('checked', !!state.injection.enabled);
-    $('#bakemono-memory-memory-warning').text(getWorkflowStatusText(state, injectionParts.stats, uncoveredStory));
-    $('#bakemono-memory-depth').val(state.injection.depth);
-    $('#bakemono-memory-role').val(String(state.injection.role));
-    $('#bakemono-memory-source-content').val(state.generatedMemory || '');
-    $('#bakemono-memory-injection-template').val(state.injection.template || defaultInjectionTemplate);
-    $('#bakemono-memory-injection-content').val(renderInjectionContent(state));
-    $('#bakemono-memory-story-prompt').val(state.generationPrompts.story || defaultStoryGenerationPrompt);
-    $('#bakemono-memory-missing-prompt').val(state.generationPrompts.missing || defaultMissingSummaryPrompt);
-    $('#bakemono-memory-stage-prompt').val(state.generationPrompts.stage || defaultStageGenerationPrompt);
-    $('#bakemono-memory-epic-prompt').val(state.generationPrompts.epic || defaultEpicGenerationPrompt);
-    $('#bakemono-memory-scan-mode').val(state.scanRules.mode || defaultScanRules.mode);
-    $('#bakemono-memory-include-tags').val(state.scanRules.includeTags || defaultScanRules.includeTags);
-    $('#bakemono-memory-exclude-tags').val(state.scanRules.excludeTags || defaultScanRules.excludeTags);
-    $('#bakemono-memory-full-min-length').val(state.scanRules.fullTextMinLength ?? defaultScanRules.fullTextMinLength);
-    $('#bakemono-memory-include-hidden').prop('checked', state.scanRules.includeHidden !== false);
-    $('#bakemono-memory-class-story').val(state.classificationRules.story || defaultClassificationRules.story);
-    $('#bakemono-memory-class-stage').val(state.classificationRules.stage || defaultClassificationRules.stage);
-    $('#bakemono-memory-class-epic').val(state.classificationRules.epic || defaultClassificationRules.epic);
-    $('#bakemono-memory-layout-story').val(state.previewLayouts.story || defaultPreviewLayouts.story);
-    $('#bakemono-memory-layout-stage').val(state.previewLayouts.stage || defaultPreviewLayouts.stage);
-    $('#bakemono-memory-layout-epic').val(state.previewLayouts.epic || defaultPreviewLayouts.epic);
-    $('#bakemono-memory-auto-enabled').prop('checked', !!state.automation.enabled);
-    $('#bakemono-memory-auto-mode').val(state.automation.mode || defaultAutomation.mode);
-    $('#bakemono-memory-auto-trigger').val(state.automation.triggerType || defaultAutomation.triggerType);
-    $('#bakemono-memory-auto-floor-interval').val(state.automation.floorInterval ?? defaultAutomation.floorInterval);
-    $('#bakemono-memory-auto-char-interval').val(state.automation.charInterval ?? defaultAutomation.charInterval);
-    $('#bakemono-memory-batch-summary-size').val(state.automation.backfillBatchSize ?? defaultAutomation.backfillBatchSize);
-    $('#bakemono-memory-auto-hide-preserve-recent').val(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent);
-    $('#bakemono-memory-stage-target-mode').val(state.generationTargets.stage.mode || defaultGenerationTargets.stage.mode);
-    $('#bakemono-memory-stage-target-count').val(state.generationTargets.stage.count ?? defaultGenerationTargets.stage.count);
-    $('#bakemono-memory-stage-target-range').val(state.generationTargets.stage.range || '');
-    $('#bakemono-memory-epic-target-mode').val(state.generationTargets.epic.mode || defaultGenerationTargets.epic.mode);
-    $('#bakemono-memory-epic-target-count').val(state.generationTargets.epic.count ?? defaultGenerationTargets.epic.count);
-    $('#bakemono-memory-epic-target-range').val(state.generationTargets.epic.range || '');
-    $('#bakemono-memory-api-provider').val(state.automation.apiProvider || defaultAutomation.apiProvider);
-    $('#bakemono-memory-custom-base-url').val(state.automation.customApi?.baseUrl || '');
-    $('#bakemono-memory-custom-api-key').val(state.automation.customApi?.apiKey || '');
-    $('#bakemono-memory-custom-model').val(state.automation.customApi?.model || '');
-    $('#bakemono-memory-custom-temperature').val(state.automation.customApi?.temperature ?? defaultAutomation.customApi.temperature);
-    $('#bakemono-memory-custom-max-tokens').val(state.automation.customApi?.maxTokens ?? defaultAutomation.customApi.maxTokens);
-    $('#bakemono-memory-custom-stream').val(String(!!state.automation.customApi?.stream));
+    if (activeTab === 'data-hub' && blocks) {
+        $('#bakemono-memory-count-story').text(blocks.story.length);
+        $('#bakemono-memory-count-stage').text(blocks.stage.length);
+        $('#bakemono-memory-count-epic').text(blocks.epic.length);
+    } else if (activeTab === 'preview' && blocks) {
+        $('#bakemono-memory-tab-count-story').text(blocks.story.length);
+        $('#bakemono-memory-tab-count-stage').text(blocks.stage.length);
+        $('#bakemono-memory-tab-count-epic').text(blocks.epic.length);
+    } else if (activeTab === 'overview') {
+        const actualHiddenIds = getActualHiddenMessageIds();
+        const pluginHiddenIds = getFiniteMessageIds(state.hiddenMessageIds || []);
+        $('#bakemono-memory-count-hidden')
+            .text(actualHiddenIds.length)
+            .attr('title', `酒馆实际隐藏 ${actualHiddenIds.length} 楼；插件记录 ${pluginHiddenIds.length} 楼`);
+    }
+    syncActiveWorkbenchFormFields(activeTab, state);
     if (activeTab === 'automation') {
         renderAutomationOverview(state);
     }
-    renderActiveWorkbenchPanel(activeTab, state, {
-        story: storyBlocks,
-        stage: dedupedStageBlocks,
-        epic: dedupedEpicBlocks,
-    });
+    renderActiveWorkbenchPanel(activeTab, state, blocks);
 
     const injected = state.injection.enabled && renderInjectionContent(state) ? '注入开启' : '注入为空或关闭';
     $('#bakemono-memory-status-line').text(statusText || `${injected}。上次扫描：${state.lastScanAt ? new Date(state.lastScanAt).toLocaleString() : '尚未扫描'}。`);
@@ -9471,15 +9664,20 @@ function renderVectorRecallDetails(state = ensureState()) {
                 tier,
                 `重排 ${item.rerankScore ?? item.score ?? 0}`,
                 `相似 ${item.similarity ?? 0}`,
+                item.lexicalScore ? `词项 ${item.lexicalScore}` : '',
                 item.keywordHits ? `关键词 ${item.keywordHits}` : '',
                 item.matchedChunks > 1 ? `命中片段 ${item.matchedChunks}` : '',
             ].filter(Boolean).join(' · ');
+            const matchedTerms = Array.isArray(item.matchedTerms) && item.matchedTerms.length
+                ? `<small>命中词：${escapeHtml(item.matchedTerms.join('、'))}</small>`
+                : '';
             return `
                 <article class="bakemono-memory-vector-detail-item">
                   <div class="bakemono-memory-vector-detail-head">
                     <strong>${escapeHtml(item.title || `楼层 ${item.messageId}`)}</strong>
                     <span>${escapeHtml(meta)}</span>
                   </div>
+                  ${matchedTerms}
                   <div class="bakemono-memory-vector-detail-text">${escapeHtml(item.preview || item.text || '')}</div>
                 </article>
             `;
@@ -9498,7 +9696,7 @@ function renderVectorRecallDetails(state = ensureState()) {
             ].filter(Boolean).join(''),
         },
         {
-            title: `Embedding 检索 · ${embeddingCandidates.length || 0} 候选`,
+            title: `混合初筛 · ${embeddingCandidates.length || 0} 候选`,
             body: renderRecallItems(embeddingCandidates, state.vectorMemory.lastRecallSkippedReason || '暂无候选。'),
         },
         {
@@ -9542,10 +9740,13 @@ function renderVectorHitList(state = ensureState()) {
         const item = document.createElement('section');
         item.className = 'bakemono-memory-vector-hit';
         const tierLabel = hit.recallTier === 'full' ? '全文' : '摘要';
+        const matchedTerms = Array.isArray(hit.matchedTerms) && hit.matchedTerms.length
+            ? ` · 命中 ${hit.matchedTerms.slice(0, 4).join('、')}`
+            : '';
         item.innerHTML = `
             <div class="bakemono-memory-vector-hit-head">
                 <strong>${escapeHtml(hit.title || `楼层 ${hit.messageId}`)}</strong>
-                <span>${tierLabel} · 重排 ${escapeHtml(hit.rerankScore ?? hit.score ?? 0)} · 相似度 ${escapeHtml(hit.similarity ?? 0)}${hit.keywordHits ? ` · 关键词 ${escapeHtml(hit.keywordHits)}` : ''}${hit.matchedChunks > 1 ? ` · 命中片段 ${escapeHtml(hit.matchedChunks)}` : ''}</span>
+                <span>${tierLabel} · 重排 ${escapeHtml(hit.rerankScore ?? hit.score ?? 0)} · 相似度 ${escapeHtml(hit.similarity ?? 0)}${hit.lexicalScore ? ` · 词项 ${escapeHtml(hit.lexicalScore)}` : ''}${hit.keywordHits ? ` · 关键词 ${escapeHtml(hit.keywordHits)}` : ''}${hit.matchedChunks > 1 ? ` · 命中片段 ${escapeHtml(hit.matchedChunks)}` : ''}${escapeHtml(matchedTerms)}</span>
             </div>
             <div class="bakemono-memory-vector-snippet">${escapeHtml(hit.preview || hit.text || '')}</div>
         `;
@@ -10807,7 +11008,7 @@ function applyPromptPresetToState(preset, options = {}) {
         saveState();
     }
     if (!options.silent && !options.skipRender) {
-        renderAll(`已使用配置：${preset.name || '未命名预设'}`);
+        renderWorkbenchScope(workbenchRenderScopes.CONFIG, `已使用配置：${preset.name || '未命名预设'}`);
         toastr.success('配置已使用。');
     }
 }
@@ -10828,7 +11029,9 @@ function saveCurrentConfigPreset(name, options = {}) {
     setSelectedPromptPresetId(preset.id);
     saveGlobalSettings();
     saveState();
-    renderAll(existing ? `已覆盖配置：${preset.name}` : `已保存配置：${preset.name}`);
+    if (!options.skipRender) {
+        renderWorkbenchScope(workbenchRenderScopes.CONFIG, existing ? `已覆盖配置：${preset.name}` : `已保存配置：${preset.name}`);
+    }
     toastr.success(existing ? '配置预设已覆盖。' : '配置预设已保存。');
     return preset;
 }
@@ -10843,7 +11046,7 @@ function usePromptPresetAsGlobalDefault(preset, options = {}) {
     const config = setActiveGlobalConfig(preset);
     markActiveConfigApplied(state, config);
     saveState();
-    renderAll(options.message || `已使用并设为全局默认：${preset.name || '未命名配置'}`);
+    renderWorkbenchScope(workbenchRenderScopes.CONFIG, options.message || `已使用并设为全局默认：${preset.name || '未命名配置'}`);
     toastr.success('已切换配置，并设为新聊天默认。');
     return true;
 }
@@ -10955,6 +11158,19 @@ function getAreaPresetPayload(scope, name) {
     return base;
 }
 
+function renderAreaPresetChange(scope, statusText) {
+    const renderScope = {
+        [areaPresetScopes.SCAN]: workbenchRenderScopes.SCAN,
+        [areaPresetScopes.AUTOMATION]: workbenchRenderScopes.AUTOMATION,
+        [areaPresetScopes.API]: workbenchRenderScopes.GENERATION,
+        [areaPresetScopes.PROMPTS]: workbenchRenderScopes.PROMPTS,
+        [areaPresetScopes.TURN]: workbenchRenderScopes.TABLES,
+        [areaPresetScopes.INJECTION]: workbenchRenderScopes.INJECTION,
+        [areaPresetScopes.VECTOR]: workbenchRenderScopes.VECTOR,
+    }[scope] || workbenchRenderScopes.SETTINGS;
+    renderWorkbenchScope(renderScope, statusText);
+}
+
 function applyAreaPresetToState(scope, preset) {
     const state = ensureState();
     if (scope === areaPresetScopes.SCAN) {
@@ -11049,7 +11265,7 @@ function applyAreaPresetToState(scope, preset) {
         scheduleVectorAutoIndex('载入向量配置');
     }
     saveState();
-    renderAll(`已载入配置：${preset.name || '未命名配置'}`);
+    renderAreaPresetChange(scope, `已载入配置：${preset.name || '未命名配置'}`);
     toastr.success('配置已载入。');
 }
 
@@ -11069,7 +11285,7 @@ function saveAreaPreset(scope, name, options = {}) {
     setSelectedAreaPresetId(scope, preset.id);
     saveGlobalSettings();
     saveState();
-    renderAll(existing ? `已覆盖配置：${preset.name}` : `已保存配置：${preset.name}`);
+    renderAreaPresetChange(scope, existing ? `已覆盖配置：${preset.name}` : `已保存配置：${preset.name}`);
     toastr.success(existing ? '配置已覆盖。' : '配置已保存。');
     return preset;
 }
@@ -11166,7 +11382,7 @@ function bindAreaPresetControls(scope, ids) {
         extension_settings[STORAGE_KEY].areaPresets[scope] = getAreaPresets(scope).filter(item => item.id !== selectedId);
         setSelectedAreaPresetId(scope, '');
         saveGlobalSettings();
-        renderAll('配置已删除。');
+        renderAreaPresetChange(scope, '配置已删除。');
     });
 }
 
@@ -11273,7 +11489,7 @@ function getWorkbenchPanelKicker(tabName, state = ensureState()) {
         timeline: `章节结构 · ${(state.stageSummaries?.length || 0).toLocaleString()} 个阶段`,
         automation: `后台规则 · ${state.automation?.enabled ? '运行中' : '尚未开启'}`,
         scan: `扫描识别 · ${(state.scanPreview?.length || 0).toLocaleString()} 条结果`,
-        vector: `语义召回 · ${vectorCount.toLocaleString()} 个片段`,
+        vector: `混合召回 · ${vectorCount.toLocaleString()} 个片段`,
         injection: `上下文注入 · ${renderInjectionContent(state).length.toLocaleString()} 字符`,
         generation: `默认模型 · ${(state.automation?.apiProvider || defaultAutomation.apiProvider) === 'custom' ? '自定义接口' : '酒馆主模型'}`,
         prompts: '生成风格 · 四类提示词',
@@ -11303,7 +11519,7 @@ function getWorkbenchPanelShortKicker(tabName, state = ensureState()) {
         timeline: `章节结构 · ${(state.stageSummaries?.length || 0).toLocaleString()}个`,
         automation: state.automation?.enabled ? '自动总结 · 运行中' : '自动总结 · 未开启',
         scan: `扫描识别 · ${(state.scanPreview?.length || 0).toLocaleString()}条`,
-        vector: `语义召回 · ${vectorCount.toLocaleString()}个`,
+        vector: `混合召回 · ${vectorCount.toLocaleString()}个`,
         injection: `上下文 · ${renderInjectionContent(state).length.toLocaleString()}字`,
         generation: (state.automation?.apiProvider || defaultAutomation.apiProvider) === 'custom' ? '默认模型 · 自定义' : '默认模型 · 酒馆',
         prompts: '生成风格',
@@ -11538,7 +11754,7 @@ async function applyVectorMemorySettings() {
     }
     saveState();
     syncInjection();
-    renderAll('向量记忆配置已应用。');
+    renderWorkbenchScope(workbenchRenderScopes.VECTOR, '向量记忆配置已应用。');
 }
 
 async function testVectorMemoryRetrieval() {
@@ -11546,14 +11762,14 @@ async function testVectorMemoryRetrieval() {
     readVectorMemoryFieldsFromUi(state);
     if (!state.vectorMemory.records.length) {
         toastr.warning('还没有索引。请先点击“建立/刷新索引”。');
-        renderAll('向量记忆尚未建立索引。');
+        renderWorkbenchScope(workbenchRenderScopes.VECTOR, '向量记忆尚未建立索引。');
         return false;
     }
     const query = String($('#bakemono-memory-vector-test-query').val() || '').trim();
     const hits = await retrieveVectorMemoryHits(query, state);
     saveState();
     syncInjection();
-    renderAll(hits.length ? `向量召回完成：命中 ${hits.length} 条记忆。` : (state.vectorMemory.lastRecallSkippedReason || '向量召回完成：没有命中。'));
+    renderWorkbenchScope(workbenchRenderScopes.VECTOR, hits.length ? `向量召回完成：命中 ${hits.length} 条记忆。` : (state.vectorMemory.lastRecallSkippedReason || '向量召回完成：没有命中。'));
     return true;
 }
 
@@ -11576,7 +11792,11 @@ function clearVectorMemoryIndex() {
     state.vectorMemory.lastIndexAt = null;
     saveState();
     syncInjection();
-    renderAll('向量索引已清空。');
+    renderWorkbenchScope(workbenchRenderScopes.VECTOR, '向量索引已清空。');
+}
+
+function renderInlinePromptPresetChange(statusText) {
+    renderWorkbenchScope(workbenchRenderScopes.TABLES, statusText);
 }
 
 function bindInlinePromptPresetControls(type, ids) {
@@ -11608,7 +11828,7 @@ function bindInlinePromptPresetControls(type, ids) {
         }
         syncInlineGenerationPrompts(state);
         saveState();
-        renderAll(`已使用${label}：${preset.name}`);
+        renderInlinePromptPresetChange(`已使用${label}：${preset.name}`);
     });
     $(ids.load).off('click').on('click', () => {
         const preset = getInlinePromptPresets(type).find(item => item.id === getSelectedInlinePromptPresetId(type));
@@ -11626,7 +11846,7 @@ function bindInlinePromptPresetControls(type, ids) {
         }
         syncInlineGenerationPrompts(state);
         saveState();
-        renderAll(`已载入${label}：${preset.name}`);
+        renderInlinePromptPresetChange(`已载入${label}：${preset.name}`);
     });
     $(ids.save).off('click').on('click', () => {
         const name = String($(ids.name).val() || '').trim();
@@ -11645,7 +11865,7 @@ function bindInlinePromptPresetControls(type, ids) {
             setSelectedInlinePromptPresetId(type, preset.id);
         }
         saveGlobalSettings();
-        renderAll(`已保存${label}：${preset.name}`);
+        renderInlinePromptPresetChange(`已保存${label}：${preset.name}`);
     });
     $(ids.update).off('click').on('click', () => {
         const preset = getInlinePromptPresets(type).find(item => item.id === getSelectedInlinePromptPresetId(type));
@@ -11663,7 +11883,7 @@ function bindInlinePromptPresetControls(type, ids) {
         preset.prompt = String($(promptSelector).val() || defaultPrompt);
         preset.updatedAt = new Date().toISOString();
         saveGlobalSettings();
-        renderAll(`已覆盖${label}：${preset.name}`);
+        renderInlinePromptPresetChange(`已覆盖${label}：${preset.name}`);
     });
     $(ids.delete).off('click').on('click', () => {
         const preset = getInlinePromptPresets(type).find(item => item.id === getSelectedInlinePromptPresetId(type));
@@ -11680,7 +11900,7 @@ function bindInlinePromptPresetControls(type, ids) {
         extension_settings[STORAGE_KEY].inlinePromptPresets = (extension_settings[STORAGE_KEY].inlinePromptPresets || []).filter(item => item.id !== preset.id);
         setSelectedInlinePromptPresetId(type, getInlinePromptPresets(type)[0]?.id || '');
         saveGlobalSettings();
-        renderAll(`${label}预设已删除。`);
+        renderInlinePromptPresetChange(`${label}预设已删除。`);
     });
 }
 
@@ -11752,6 +11972,53 @@ async function runWorkbenchAction(action) {
     } else if (action === 'vector-clear') {
         clearVectorMemoryIndex();
     }
+}
+
+function getWorkbenchActionRenderScope(action) {
+    if (String(action || '').startsWith('vector-')) {
+        return workbenchRenderScopes.VECTOR;
+    }
+    if (action === 'scan') {
+        return workbenchRenderScopes.SCAN;
+    }
+    if ([
+        'generate-stage',
+        'generate-stage-batch',
+        'generate-epic',
+        'generate-epic-batch',
+        'backfill',
+        'batch-summary',
+    ].includes(action)) {
+        return workbenchRenderScopes.SUMMARY;
+    }
+    if ([
+        'commit-missing-all',
+        'remove-missing-all',
+        'clear-stuck-tasks',
+        'clear-stuck-missing',
+        'undo',
+        'clear-queue',
+        'clear-history',
+    ].includes(action)) {
+        return workbenchRenderScopes.DRAFTS;
+    }
+    if (action === 'process-latest-turn' || action === 'process-latest-table') {
+        return workbenchRenderScopes.TABLES;
+    }
+    if ([
+        'hide',
+        'restore',
+        'preview-range',
+        'hide-range',
+        'restore-range',
+        'preview-preserve-recent',
+        'hide-before-recent',
+        'apply-auto-hide-recent',
+        'restore-auto-hidden',
+    ].includes(action)) {
+        return workbenchRenderScopes.ARCHIVE;
+    }
+    return workbenchRenderScopes.SETTINGS;
 }
 
 function bindSettingsEvents() {
@@ -11929,7 +12196,7 @@ function bindSettingsEvents() {
             console.error('[BakemonoMemory] action failed', error);
             const failure = `操作失败：${error?.message || error}`;
             setOperationFeedback('error', failure, 2600);
-            renderAll(failure);
+            renderWorkbenchScope(getWorkbenchActionRenderScope(this.dataset.bakemonoAction), failure);
         } finally {
             operationFeedbackCaptureUntil = 0;
         }
@@ -11994,14 +12261,14 @@ function bindSettingsEvents() {
             draft.title = String(card.querySelector('.bakemono-memory-draft-title')?.value || draft.title || '').trim();
         }
         if (action === 'commit') {
-            renderAll('正在保存草稿...');
+            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '正在保存草稿...');
             await commitDraft(draftId, card.querySelector('.bakemono-memory-draft-editor')?.value || '');
         } else if (action === 'regenerate') {
             this.disabled = true;
-            renderAll('正在重新总结草稿，请稍等...');
+            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '正在重新总结草稿，请稍等...');
             await regenerateDraft(draftId);
         } else if (action === 'discard') {
-            renderAll('正在丢弃草稿...');
+            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '正在丢弃草稿...');
             discardDraft(draftId);
         }
     });
@@ -12145,7 +12412,7 @@ function bindSettingsEvents() {
             }
             state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draftId);
             saveState();
-            renderAll('表格草稿已丢弃。');
+            renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格草稿已丢弃。');
             return;
         }
         const raw = String(card.querySelector('.bakemono-memory-table-draft-editor')?.value || draft.raw || '');
@@ -12158,7 +12425,7 @@ function bindSettingsEvents() {
         }
         if (action === 'reparse') {
             saveState();
-            renderAll(`已重新解析：${draft.operations.length} 项操作。`);
+            renderWorkbenchScope(workbenchRenderScopes.TABLES, `已重新解析：${draft.operations.length} 项操作。`);
             return;
         }
         if (action === 'apply') {
@@ -12177,7 +12444,7 @@ function bindSettingsEvents() {
                 state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString(), undoSnapshotId: undoSnapshot?.id || '' });
                 state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draftId);
                 saveState();
-                renderAll('表格修改已应用。');
+                renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改已应用。');
                 toastr.success('表格修改已应用。');
             } catch (error) {
                 toastr.error(`应用失败：${error?.message || error}`);
@@ -12207,7 +12474,7 @@ function bindSettingsEvents() {
             tableUiState.openSection = 'rows';
             tableUiState.focusCell = { tableIndex: String(table.tableIndex), rowIndex: String(newRowIndex), colIndex: '0' };
             persistCurrentTableDatabase(state);
-            renderAll(`已新增一行：${table.name}`);
+            renderWorkbenchScope(workbenchRenderScopes.TABLES, `已新增一行：${table.name}`);
         } else if (action === 'add-column') {
             const state = ensureState();
             const table = saveEditedTableFromElement(details, { render: false, persist: false, state });
@@ -12224,7 +12491,7 @@ function bindSettingsEvents() {
             table.rows = (table.rows || []).map(row => [...row, '']);
             tableUiState.focusField = { tableIndex: String(table.tableIndex), colIndex: String(index) };
             persistCurrentTableDatabase(state);
-            renderAll(`已新增字段：${table.name}`);
+            renderWorkbenchScope(workbenchRenderScopes.TABLES, `已新增字段：${table.name}`);
         } else if (action === 'delete-column') {
             const state = ensureState();
             const table = saveEditedTableFromElement(details, { render: false, persist: false, state });
@@ -12239,7 +12506,7 @@ function bindSettingsEvents() {
                 ['这会同时删除该字段下所有数据。'],
             );
             if (!confirmed) {
-                renderAll();
+                renderWorkbenchScope(workbenchRenderScopes.TABLES);
                 return;
             }
             pushTableUndoSnapshot(`删除字段：${table.name || table.tableIndex} / ${colName}`, state);
@@ -12249,7 +12516,7 @@ function bindSettingsEvents() {
             table.rows = (table.rows || []).map(row => row.filter((_, index) => index !== colIndex));
             tableUiState.focusField = { tableIndex: String(table.tableIndex), colIndex: String(Math.max(0, colIndex - 1)) };
             persistCurrentTableDatabase(state);
-            renderAll(`已删除字段：${colName}`);
+            renderWorkbenchScope(workbenchRenderScopes.TABLES, `已删除字段：${colName}`);
         } else if (action === 'delete-row') {
             const state = ensureState();
             const table = saveEditedTableFromElement(details, { render: false, persist: false, state });
@@ -12266,7 +12533,7 @@ function bindSettingsEvents() {
                     ],
                 );
                 if (!confirmed) {
-                    renderAll();
+                    renderWorkbenchScope(workbenchRenderScopes.TABLES);
                     return;
                 }
                 pushTableUndoSnapshot(`删除数据行：${table.name || table.tableIndex} #${rowIndex + 1}`, state);
@@ -12274,7 +12541,7 @@ function bindSettingsEvents() {
                 tableUiState.openTableIndex = String(table.tableIndex);
                 tableUiState.openSection = 'rows';
                 persistCurrentTableDatabase(state);
-                renderAll(`已删除数据行：${table.name || table.tableIndex}`);
+                renderWorkbenchScope(workbenchRenderScopes.TABLES, `已删除数据行：${table.name || table.tableIndex}`);
             }
         } else if (action === 'save-table') {
             saveEditedTableFromElement(details);
@@ -12297,7 +12564,7 @@ function bindSettingsEvents() {
             }
             details.remove();
             persistCurrentTableDatabase(state);
-            renderAll('表格已删除。');
+            renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格已删除。');
         }
     });
     $('#bakemono-workbench-root').off('change.bakemonoTableFlags').on('change.bakemonoTableFlags', '[data-table-readonly], [data-table-allow-ai]', function () {
@@ -12336,12 +12603,12 @@ function bindSettingsEvents() {
             ['当前表格行数据会先保存到原表格组，再载入目标作用域的当前表格组。'],
         );
         if (!confirmed) {
-            renderAll();
+            renderWorkbenchScope(workbenchRenderScopes.TABLES);
             return;
         }
         setTableSchemaScope(nextScope, state);
         saveState();
-        renderAll(`Table schema scope: ${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, `表格框架已切换：${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
         toastr.success(`已切换表格框架：${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
     });
     $('#bakemono-memory-switch-table-profile').off('click').on('click', () => {
@@ -12349,14 +12616,14 @@ function bindSettingsEvents() {
         const scope = state.tableDatabase.schemaScope || tableSchemaScopes.CHAT;
         const profileId = String($('#bakemono-memory-table-profile-select').val() || '');
         if (switchTableProfile(scope, profileId, state)) {
-            renderAll(`已切换表格组：${getActiveTableProfile(state)?.name || ''}`);
+            renderWorkbenchScope(workbenchRenderScopes.TABLES, `已切换表格组：${getActiveTableProfile(state)?.name || ''}`);
         }
     });
     $('#bakemono-memory-new-table-profile').off('click').on('click', () => {
         const state = ensureState();
         const name = String($('#bakemono-memory-table-profile-name').val() || '').trim() || `表格组 ${new Date().toLocaleString()}`;
         const profile = createTableProfileForCurrentScope(name, state);
-        renderAll(`已新建表格组：${profile.name}`);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, `已新建表格组：${profile.name}`);
         toastr.success('表格组已创建。');
     });
     $('#bakemono-memory-save-table-profile').off('click').on('click', () => {
@@ -12368,13 +12635,13 @@ function bindSettingsEvents() {
         syncCurrentTableSchemas(state);
         saveGlobalSettings();
         saveState();
-        renderAll(`已保存表格组：${profile?.name || ''}`);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, `已保存表格组：${profile?.name || ''}`);
         toastr.success('表格组已保存。');
     });
     $('#bakemono-memory-delete-table-profile').off('click').on('click', () => {
         const state = ensureState();
         if (deleteActiveTableProfile(state)) {
-            renderAll('表格组已删除。');
+            renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格组已删除。');
             toastr.success('表格组已删除。');
         }
     });
@@ -12382,7 +12649,7 @@ function bindSettingsEvents() {
         const state = ensureState();
         syncCurrentTableSchemas(state);
         saveState();
-        renderAll(`Saved table schema: ${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, `表格框架已保存：${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
         toastr.success(`已保存表格框架：${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
     });
     $('#bakemono-memory-load-table-schema').off('click').on('click', () => {
@@ -12390,7 +12657,7 @@ function bindSettingsEvents() {
         saveCurrentTableProfileRows(state);
         loadActiveTableProfileRows(state);
         saveState();
-        renderAll(`Loaded table schema: ${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, `表格框架已拉取：${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
         toastr.success(`已拉取表格框架：${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
     });
     $('#bakemono-memory-apply-injection').off('click').on('click', () => {
@@ -12399,7 +12666,7 @@ function bindSettingsEvents() {
         state.generatedMemory = normalizeInjectionMemoryBody($('#bakemono-memory-source-content').val() || '', state.injection.template, defaultInjectionTemplate);
         syncInjection();
         saveState();
-        renderAll('注入内容已应用。');
+        renderWorkbenchScope(workbenchRenderScopes.INJECTION, '注入内容已应用。');
         toastr.success('注入内容已应用。');
     });
     $('#bakemono-memory-copy-injection').off('click').on('click', async () => {
@@ -12420,7 +12687,7 @@ function bindSettingsEvents() {
         state.injection.template = defaultInjectionTemplate;
         syncInjection();
         saveState();
-        renderAll('注入模板已恢复默认。');
+        renderWorkbenchScope(workbenchRenderScopes.INJECTION, '注入模板已恢复默认。');
     });
     $('#bakemono-memory-clear-injection').off('click').on('click', () => {
         const confirmed = confirmDanger(
@@ -12434,13 +12701,13 @@ function bindSettingsEvents() {
         state.generatedMemory = '';
         syncInjection();
         saveState();
-        renderAll('注入内容已清空。');
+        renderWorkbenchScope(workbenchRenderScopes.INJECTION, '注入内容已清空。');
     });
     $('#bakemono-memory-apply-prompts').off('click').on('click', () => {
         const state = ensureState();
         readPromptFieldsFromUi(state);
         saveState();
-        renderAll('生成提示词已应用。');
+        renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '生成提示词已应用。');
         toastr.success('生成提示词已应用。');
     });
     $('#bakemono-memory-reset-stage-prompt').off('click').on('click', () => {
@@ -12454,7 +12721,7 @@ function bindSettingsEvents() {
         const state = ensureState();
         state.generationPrompts.stage = defaultStageGenerationPrompt;
         saveState();
-        renderAll('阶段总结提示词已恢复默认。');
+        renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '阶段总结提示词已恢复默认。');
     });
     $('#bakemono-memory-reset-epic-prompt').off('click').on('click', () => {
         const confirmed = confirmDanger(
@@ -12467,7 +12734,7 @@ function bindSettingsEvents() {
         const state = ensureState();
         state.generationPrompts.epic = defaultEpicGenerationPrompt;
         saveState();
-        renderAll('多次总结提示词已恢复默认。');
+        renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '多次总结提示词已恢复默认。');
     });
     $('#bakemono-memory-reset-story-prompt').off('click').on('click', () => {
         const confirmed = confirmDanger(
@@ -12480,7 +12747,7 @@ function bindSettingsEvents() {
         const state = ensureState();
         state.generationPrompts.story = defaultStoryGenerationPrompt;
         saveState();
-        renderAll('旧正文摘要提示词已恢复默认。');
+        renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '旧正文摘要提示词已恢复默认。');
     });
     $('#bakemono-memory-reset-missing-prompt').off('click').on('click', () => {
         const confirmed = confirmDanger(
@@ -12493,14 +12760,14 @@ function bindSettingsEvents() {
         const state = ensureState();
         state.generationPrompts.missing = defaultMissingSummaryPrompt;
         saveState();
-        renderAll('补写缺失摘要提示词已恢复默认。');
+        renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '补写缺失摘要提示词已恢复默认。');
     });
     $('#bakemono-memory-apply-turn-settings').off('click').on('click', () => {
         const state = ensureState();
         readTurnSummaryFieldsFromUi(state);
         syncInlineGenerationPrompts(state);
         saveState();
-        renderAll('正文摘要设置已应用。');
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, '正文摘要设置已应用。');
         toastr.success('正文摘要设置已应用。');
     });
     $('#bakemono-memory-reset-turn-prompt').off('click').on('click', () => {
@@ -12514,7 +12781,7 @@ function bindSettingsEvents() {
         const state = ensureState();
         state.turnSummary.prompt = defaultTurnSummaryPrompt;
         saveState();
-        renderAll('正文摘要提示词已恢复默认。');
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, '正文摘要提示词已恢复默认。');
     });
     $('#bakemono-memory-reset-table-prompt').off('click').on('click', () => {
         const confirmed = confirmDanger(
@@ -12527,7 +12794,7 @@ function bindSettingsEvents() {
         const state = ensureState();
         state.turnSummary.tablePrompt = defaultTableEditPrompt;
         saveState();
-        renderAll('表格修改提示词已恢复默认。');
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改提示词已恢复默认。');
     });
     $('#bakemono-memory-table-preset-select').off('change').on('change', function () {
         const previousId = getSelectedTablePromptPresetId();
@@ -12546,7 +12813,7 @@ function bindSettingsEvents() {
         const state = ensureState();
         state.turnSummary.tablePrompt = preset.prompt || defaultTableEditPrompt;
         saveState();
-        renderAll(`已使用表格提示词：${preset.name}`);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, `已使用表格提示词：${preset.name}`);
     });
     $('#bakemono-memory-load-table-preset').off('click').on('click', () => {
         const preset = getTablePromptPresets().find(item => item.id === getSelectedTablePromptPresetId());
@@ -12559,7 +12826,7 @@ function bindSettingsEvents() {
         const state = ensureState();
         state.turnSummary.tablePrompt = preset.prompt || defaultTableEditPrompt;
         saveState();
-        renderAll(`已载入表格提示词：${preset.name}`);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, `已载入表格提示词：${preset.name}`);
     });
     $('#bakemono-memory-save-table-preset').off('click').on('click', () => {
         const name = String($('#bakemono-memory-table-preset-name').val() || '').trim();
@@ -12578,7 +12845,7 @@ function bindSettingsEvents() {
             setSelectedTablePromptPresetId(preset.id);
         }
         saveGlobalSettings();
-        renderAll(`已保存表格提示词：${preset.name}`);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, `已保存表格提示词：${preset.name}`);
     });
     $('#bakemono-memory-update-table-preset').off('click').on('click', () => {
         const presets = getTablePromptPresets();
@@ -12597,7 +12864,7 @@ function bindSettingsEvents() {
         preset.prompt = String($('#bakemono-memory-table-prompt').val() || defaultTableEditPrompt);
         preset.updatedAt = new Date().toISOString();
         saveGlobalSettings();
-        renderAll(`已覆盖表格提示词：${preset.name}`);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, `已覆盖表格提示词：${preset.name}`);
     });
     $('#bakemono-memory-delete-table-preset').off('click').on('click', () => {
         const presets = getTablePromptPresets();
@@ -12616,7 +12883,7 @@ function bindSettingsEvents() {
         if (index >= 0) presets.splice(index, 1);
         setSelectedTablePromptPresetId(presets[0]?.id || '');
         saveGlobalSettings();
-        renderAll('表格提示词预设已删除。');
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格提示词预设已删除。');
     });
     $('#bakemono-memory-pick-table-file').off('click').on('click', () => {
         $('#bakemono-memory-table-file').trigger('click');
@@ -12668,14 +12935,14 @@ function bindSettingsEvents() {
         }
         saveCurrentTableProfileRows(state);
         updateInjectionFromSummaries();
-        renderAll('表格数据库已清空。');
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格数据库已清空。');
     });
     $('#bakemono-memory-apply-automation').off('click').on('click', () => {
         const state = ensureState();
         readAutomationFieldsFromUi(state);
         readGenerationTargetSettings();
         saveState();
-        renderAll('自动总结设置已应用。');
+        renderWorkbenchScope(workbenchRenderScopes.AUTOMATION, '自动总结设置已应用。');
         toastr.success('自动总结设置已应用。');
     });
     $('#bakemono-memory-auto-trigger').off('change.bakemonoAutomationUi').on('change.bakemonoAutomationUi', function () {
@@ -12785,12 +13052,12 @@ function bindSettingsEvents() {
         const selectedId = getSelectedPromptPresetId();
         const selected = getPromptPresets().find(preset => preset.id === selectedId);
         const preset = isBuiltInPresetId(selectedId) || !selected
-            ? saveCurrentConfigPreset(name)
-            : saveCurrentConfigPreset(name, { replaceId: selectedId });
+            ? saveCurrentConfigPreset(name, { skipRender: true })
+            : saveCurrentConfigPreset(name, { replaceId: selectedId, skipRender: true });
         const config = setActiveGlobalConfig(preset);
         markActiveConfigApplied(ensureState(), config);
         saveState();
-        renderAll(isBuiltInPresetId(selectedId) || !selected ? `已另存并设为全局默认：${preset.name}` : `已覆盖并设为全局默认：${preset.name}`);
+        renderWorkbenchScope(workbenchRenderScopes.CONFIG, isBuiltInPresetId(selectedId) || !selected ? `已另存并设为全局默认：${preset.name}` : `已覆盖并设为全局默认：${preset.name}`);
     });
     $('#bakemono-memory-save-as-preset').off('click').on('click', () => {
         const name = String($('#bakemono-memory-preset-name').val() || '').trim();
@@ -12798,11 +13065,11 @@ function bindSettingsEvents() {
             toastr.warning('请先填写预设名称。');
             return;
         }
-        const preset = saveCurrentConfigPreset(name);
+        const preset = saveCurrentConfigPreset(name, { skipRender: true });
         const config = setActiveGlobalConfig(preset);
         markActiveConfigApplied(ensureState(), config);
         saveState();
-        renderAll(`已另存并设为全局默认：${preset.name}`);
+        renderWorkbenchScope(workbenchRenderScopes.CONFIG, `已另存并设为全局默认：${preset.name}`);
     });
     $('#bakemono-memory-delete-preset').off('click').on('click', () => {
         const selectedId = getSelectedPromptPresetId();
@@ -12830,7 +13097,7 @@ function bindSettingsEvents() {
         }
         setSelectedPromptPresetId(defaultPromptPreset.id);
         saveGlobalSettings();
-        renderAll('预设已删除。');
+        renderWorkbenchScope(workbenchRenderScopes.CONFIG, '预设已删除。');
     });
     $('#bakemono-memory-export-preset').off('click').on('click', () => {
         const selected = getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
@@ -12855,7 +13122,7 @@ function bindSettingsEvents() {
             getPromptPresets().push(preset);
             setSelectedPromptPresetId(preset.id);
             saveGlobalSettings();
-            renderAll(`已导入预设：${preset.name}`);
+            renderWorkbenchScope(workbenchRenderScopes.CONFIG, `已导入预设：${preset.name}`);
             toastr.success('提示词预设已导入。');
         } catch (error) {
             toastr.error(error?.message || String(error), '导入失败');
@@ -12938,7 +13205,7 @@ function bindSettingsEvents() {
         readRuleFieldsFromUi(state);
         scanBakemonoBlocks({ persist: false });
         saveState();
-        renderAll('扫描规则已应用，并已刷新扫描预览。');
+        renderWorkbenchScope(workbenchRenderScopes.SCAN, '扫描规则已应用，并已刷新扫描预览。');
         toastr.success('扫描规则已应用。');
     });
     $('#bakemono-memory-reset-rules').off('click').on('click', () => {
@@ -12955,21 +13222,21 @@ function bindSettingsEvents() {
         state.previewLayouts = structuredClone(defaultPreviewLayouts);
         scanBakemonoBlocks({ persist: false });
         saveState();
-        renderAll('扫描规则已恢复默认。');
+        renderWorkbenchScope(workbenchRenderScopes.SCAN, '扫描规则已恢复默认。');
     });
     $('#bakemono-memory-injection-enabled').off('change').on('change', function () {
         const state = ensureState();
         state.injection.enabled = !!this.checked;
         syncInjection();
         saveState();
-        renderAll();
+        renderWorkbenchScope(workbenchRenderScopes.INJECTION);
     });
     $('#bakemono-memory-memory-strategy').off('change').on('change', function () {
         const state = ensureState();
         state.memoryStrategy = Object.values(memoryStrategies).includes(this.value) ? this.value : memoryStrategies.BAKEMONO;
         updateInjectionFromSummaries();
         saveState();
-        renderAll('记忆策略已切换。');
+        renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '记忆策略已切换。');
     });
     $('#bakemono-memory-workflow-mode').off('change').on('change', function () {
         const state = ensureState();
@@ -12986,20 +13253,20 @@ function bindSettingsEvents() {
         scanBakemonoBlocks({ persist: false });
         updateInjectionFromSummaries();
         saveState();
-        renderAll('工作流模式已切换，已有扫描和自动总结配置已保留。');
+        renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '工作流模式已切换，已有扫描和自动总结配置已保留。');
     });
     $('#bakemono-memory-stage-source-mode').off('change').on('change', function () {
         const state = ensureState();
         state.stageSourceMode = Object.values(stageSourceModes).includes(this.value) ? this.value : stageSourceModes.SUMMARIES;
         scanBakemonoBlocks({ persist: false });
         saveState();
-        renderAll('阶段总结材料已切换。');
+        renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '阶段总结材料已切换。');
     });
     $('#bakemono-memory-output-mode').off('change').on('change', function () {
         const state = ensureState();
         state.outputMode = ['bakemono', 'plain', 'custom'].includes(this.value) ? this.value : 'bakemono';
         saveState();
-        renderAll('输出风格已切换。');
+        renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '输出风格已切换。');
     });
     $('#bakemono-memory-depth').off('input').on('input', function () {
         const state = ensureState();
@@ -13054,6 +13321,41 @@ function organizeWorkbenchOwnedSections() {
     }
 }
 
+const workbenchParentNavigation = Object.freeze({
+    'turn-summary': { target: 'data-hub', label: '返回自动与数据' },
+    automation: { target: 'data-hub', label: '返回自动与数据' },
+    vector: { target: 'data-hub', label: '返回自动与数据' },
+    settings: { target: 'settings-hub', label: '返回设置中心' },
+    scan: { target: 'settings-hub', label: '返回设置中心' },
+    injection: { target: 'settings-hub', label: '返回设置中心' },
+    generation: { target: 'settings-hub', label: '返回设置中心' },
+    config: { target: 'settings-hub', label: '返回设置中心' },
+    appearance: { target: 'settings-hub', label: '返回设置中心' },
+    maintenance: { target: 'settings-hub', label: '返回设置中心' },
+    prompts: { target: 'generation', label: '返回默认生成模型' },
+    timeline: { target: 'preview', label: '返回总结' },
+});
+
+function installWorkbenchParentNavigation() {
+    const root = document.getElementById('bakemono-workbench-root');
+    if (!root) {
+        return;
+    }
+    for (const [panelName, parent] of Object.entries(workbenchParentNavigation)) {
+        const panel = root.querySelector(`[data-bakemono-panel="${panelName}"]`);
+        if (!panel || panel.querySelector('.bakemono-memory-parent-link')) {
+            continue;
+        }
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'bakemono-memory-parent-link';
+        button.dataset.bakemonoNav = parent.target;
+        button.setAttribute('aria-label', parent.label);
+        button.innerHTML = `<i class="fa-solid fa-chevron-left" aria-hidden="true"></i><span>${parent.label}</span>`;
+        panel.prepend(button);
+    }
+}
+
 async function initWorkbench() {
     const response = await fetch(`${extensionFolderPath}/settings.html`);
     if (!response.ok) {
@@ -13063,6 +13365,7 @@ async function initWorkbench() {
     document.getElementById('bakemono-workbench-root')?.remove();
     $('body').append(await response.text());
     organizeWorkbenchOwnedSections();
+    installWorkbenchParentNavigation();
     applyAppearanceTheme();
     await addExtensionSettingsBlock();
     await addWandButton();

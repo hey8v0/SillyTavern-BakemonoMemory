@@ -10,6 +10,7 @@ const configSyncSource = fs.readFileSync(new URL('../src/core/config-sync.js', i
 const promptMigrationsSource = fs.readFileSync(new URL('../src/core/prompt-migrations.js', import.meta.url), 'utf8');
 const stateShapeSource = fs.readFileSync(new URL('../src/core/state-shape.js', import.meta.url), 'utf8');
 const workflowModeSource = fs.readFileSync(new URL('../src/core/workflow-mode.js', import.meta.url), 'utf8');
+const hybridRetrievalSource = fs.readFileSync(new URL('../src/vector/hybrid-retrieval.js', import.meta.url), 'utf8');
 
 test('workbench markup and stylesheet remain structurally balanced', () => {
     const ids = [...settingsSource.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
@@ -85,6 +86,49 @@ test('settings center owns global preferences while feature settings stay with t
     assert.match(source, /\['config', 'bakemono-memory-config-settings-slot'\]/);
     assert.doesNotMatch(settingsSource, /id="bakemono-memory-undo"|id="bakemono-memory-hide"|id="bakemono-memory-restore"/);
     assert.doesNotMatch(settingsSource, />专家设置</);
+});
+
+test('secondary workbench pages install a consistent parent navigation', () => {
+    assert.match(source, /const workbenchParentNavigation = Object\.freeze\(\{/);
+    assert.match(source, /'turn-summary': \{ target: 'data-hub', label: '返回自动与数据' \}/);
+    assert.match(source, /vector: \{ target: 'data-hub', label: '返回自动与数据' \}/);
+    assert.match(source, /settings: \{ target: 'settings-hub', label: '返回设置中心' \}/);
+    assert.match(source, /prompts: \{ target: 'generation', label: '返回默认生成模型' \}/);
+    assert.match(source, /timeline: \{ target: 'preview', label: '返回总结' \}/);
+    assert.match(source, /function installWorkbenchParentNavigation\(\)/);
+    assert.match(source, /installWorkbenchParentNavigation\(\);/);
+    assert.match(styleSource, /\.bakemono-memory-parent-link\s*\{[^}]*min-height:\s*40px;/s);
+    assert.match(styleSource, /@media \(max-width: 900px\)[\s\S]*?\.bakemono-memory-parent-link\s*\{[^}]*min-height:\s*44px;/s);
+});
+
+test('vector recall uses independent semantic and lexical candidates with explainable scores', () => {
+    assert.match(source, /selectHybridCandidates\(scored, queries, keywords/);
+    assert.match(source, /keywordBoost:\s*state\.vectorMemory\.keywordBoost/);
+    assert.match(source, /lexicalScore:\s*Number/);
+    assert.match(source, /matchedTerms:\s*Array\.isArray/);
+    assert.match(settingsSource, /混合召回 v2：语义 \+ 稀有词 \+ 关键词/);
+    assert.match(source, /title:\s*`混合初筛/);
+    assert.match(hybridRetrievalSource, /export function selectHybridCandidates\(/);
+    assert.match(hybridRetrievalSource, /vectorRanked/);
+    assert.match(hybridRetrievalSource, /lexicalRanked/);
+    assert.match(hybridRetrievalSource, /keywordRanked/);
+    assert.match(hybridRetrievalSource, /getInverseDocumentFrequency/);
+});
+
+test('renderAll only scans heavy block collections and syncs forms for the active page', () => {
+    assert.match(source, /function buildWorkbenchBlockBundle\(/);
+    assert.match(source, /const blocks = activeTab === 'preview' \|\| activeTab === 'data-hub'/);
+    assert.match(source, /function syncActiveWorkbenchFormFields\(activeTab, state/);
+    assert.match(source, /if \(activeTab === 'settings'\)/);
+    assert.match(source, /else if \(activeTab === 'injection'\)/);
+    assert.match(source, /else if \(activeTab === 'prompts'\)/);
+    assert.match(source, /else if \(activeTab === 'scan'\)/);
+    assert.match(source, /else if \(activeTab === 'automation'\)/);
+    assert.match(source, /else if \(activeTab === 'preview'\)/);
+    assert.match(source, /else if \(activeTab === 'generation'\)/);
+    assert.match(source, /else if \(tabName === 'vector'\) \{\s*renderVectorMemoryPanel\(state\)/s);
+    assert.match(source, /else if \(activeTab === 'overview'\) \{\s*const actualHiddenIds = getActualHiddenMessageIds\(\)/s);
+    assert.match(source, /renderActiveWorkbenchPanel\(activeTab, state, blocks\)/);
 });
 
 test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
@@ -295,6 +339,7 @@ test('hot paths use scoped or coalesced rendering', () => {
 test('closed workbench and background queues avoid heavy DOM rendering', () => {
     const ensureSource = extractFunction('ensureState');
     const renderAllSource = extractFunction('renderAll');
+    const scopedRenderSource = extractFunction('renderWorkbenchScope');
     const queueProgressSource = extractFunction('renderTaskQueueProgress');
 
     assert.doesNotMatch(ensureSource, /memoryRecords\s*=\s*buildMemoryRecords/);
@@ -304,7 +349,87 @@ test('closed workbench and background queues avoid heavy DOM rendering', () => {
         'renderAll should return before deriving records when the workbench is closed',
     );
     assert.match(renderAllSource, /renderActiveWorkbenchPanel\(/);
-    assert.match(queueProgressSource, /if \(!isWorkbenchOpen\(\)\)/);
+    assert.match(scopedRenderSource, /if \(!isWorkbenchOpen\(\)\)/);
+    assert.match(queueProgressSource, /renderWorkbenchScope\(workbenchRenderScopes\.DRAFTS/);
+});
+
+test('vector, draft, and table actions use page-scoped rendering', () => {
+    const scopedRenderSource = extractFunction('renderWorkbenchScope');
+    assert.doesNotMatch(scopedRenderSource, /renderAll\(/);
+    assert.match(scopedRenderSource, /scope === workbenchRenderScopes\.VECTOR/);
+    assert.match(scopedRenderSource, /renderVectorMemoryPanel\(state\)/);
+    assert.match(scopedRenderSource, /scope === workbenchRenderScopes\.DRAFTS/);
+    assert.match(scopedRenderSource, /renderDrafts\(\)[\s\S]*renderHistory\(\)[\s\S]*renderTaskQueue\(\)/);
+    assert.match(scopedRenderSource, /scope === workbenchRenderScopes\.TABLES/);
+    assert.match(scopedRenderSource, /renderTurnSummaryPanel\(state\)/);
+
+    for (const [name, scope] of [
+        ['buildVectorMemoryIndex', 'VECTOR'],
+        ['applyVectorMemorySettings', 'VECTOR'],
+        ['testVectorMemoryRetrieval', 'VECTOR'],
+        ['clearVectorMemoryIndex', 'VECTOR'],
+        ['commitDraft', 'DRAFTS'],
+        ['discardDraft', 'DRAFTS'],
+        ['regenerateDraft', 'DRAFTS'],
+        ['undoLastCommit', 'DRAFTS'],
+        ['undoLastTableOperation', 'TABLES'],
+        ['redoLastTableOperation', 'TABLES'],
+        ['createCustomTableFromUi', 'TABLES'],
+    ]) {
+        const functionSource = extractFunction(name);
+        assert.match(functionSource, new RegExp(`renderWorkbenchScope\\(workbenchRenderScopes\\.${scope}`), `${name} should use ${scope} scoped rendering`);
+        assert.doesNotMatch(functionSource, /renderAll\(/, `${name} should not refresh the whole workbench`);
+    }
+});
+
+test('all business mutations use scoped rendering and reserve renderAll for lifecycle entry points', () => {
+    const scopedRenderSource = extractFunction('renderWorkbenchScope');
+    const summarySurfaceSource = extractFunction('renderWorkbenchSummarySurface');
+    const actionScopeSource = extractFunction('getWorkbenchActionRenderScope');
+
+    for (const scope of [
+        'SUMMARY',
+        'SCAN',
+        'ARCHIVE',
+        'INJECTION',
+        'AUTOMATION',
+        'PROMPTS',
+        'GENERATION',
+        'CONFIG',
+        'SETTINGS',
+    ]) {
+        assert.match(scopedRenderSource, new RegExp(`workbenchRenderScopes\\.${scope}`), `missing ${scope} render branch`);
+    }
+    assert.match(summarySurfaceSource, /activeTab === 'preview'/);
+    assert.match(summarySurfaceSource, /activeTab === 'records'/);
+    assert.match(summarySurfaceSource, /activeTab === 'drafts'/);
+    assert.match(actionScopeSource, /startsWith\('vector-'\)/);
+    assert.match(actionScopeSource, /'generate-stage'/);
+    assert.match(actionScopeSource, /'hide-before-recent'/);
+
+    const renderAllOccurrences = source.match(/\brenderAll\(/g) || [];
+    assert.equal(renderAllOccurrences.length, 5, 'renderAll should remain only as one definition and four lifecycle calls');
+    for (const name of [
+        'scanBakemonoBlocks',
+        'generateStageSummary',
+        'generateEpicSummary',
+        'generateStageBatchTasks',
+        'generateEpicBatchTasks',
+        'generateMissingSummaryQueue',
+        'maybeRunAutoSummary',
+        'runGeneration',
+        'rollbackAutoSummaryTransaction',
+        'saveEditedSummary',
+        'deleteSavedSummary',
+        'hideCoveredMessages',
+        'restoreHiddenMessages',
+        'applyWorkflowPreset',
+        'applyPromptPresetToState',
+        'renderAreaPresetChange',
+        'bindSettingsEvents',
+    ]) {
+        assert.doesNotMatch(extractFunction(name), /\brenderAll\(/, `${name} should not refresh the whole workbench`);
+    }
 });
 
 test('large-chat scans avoid quadratic lookup and duplicate opening renders', () => {

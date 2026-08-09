@@ -2046,6 +2046,13 @@
   overflow-wrap: anywhere;
 }
 
+.bakemono-memory-vector-detail-item > small {
+  color: var(--bk-ink-soft);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .bakemono-memory-vector-detail-text {
   color: var(--SmartThemeBodyColor);
   font-size: 12px;
@@ -11318,4 +11325,54 @@ details[open] > summary > .bakemono-memory-help-trigger {
 
 .bakemono-workbench-panel[data-bakemono-panel="maintenance"] #bakemono-memory-floor-archive-slot {
   margin-top: 18px;
+}
+
+/* Hierarchical return navigation */
+.bakemono-memory-parent-link {
+  appearance: none;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: -2px 0 10px;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--bk-accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  transition: color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+
+.bakemono-memory-parent-link i {
+  width: 12px;
+  font-size: 11px;
+  text-align: center;
+}
+
+.bakemono-memory-parent-link:hover {
+  background: color-mix(in srgb, var(--bk-accent) 8%, transparent);
+  color: var(--bk-ink);
+}
+
+.bakemono-memory-parent-link:active {
+  transform: translateX(-1px);
+}
+
+.bakemono-memory-parent-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bk-accent) 58%, transparent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .bakemono-memory-parent-link {
+    min-height: 44px;
+    margin-bottom: 8px;
+    padding-inline: 2px 8px;
+  }
 }

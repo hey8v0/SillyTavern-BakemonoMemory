@@ -1544,7 +1544,7 @@
             <label class="bakemono-memory-field">
               <span>重排方式</span>
               <select id="bakemono-memory-vector-rerank-mode" class="text_pole">
-                <option value="hybrid">轻量重排：相似度 + 关键词 + 查询命中</option>
+                <option value="hybrid">混合召回 v2：语义 + 稀有词 + 关键词</option>
               </select>
             </label>
             <label class="bakemono-memory-field">
@@ -1655,7 +1655,7 @@
             <textarea id="bakemono-memory-vector-query-prompt" class="text_pole textarea_compact" rows="4" spellcheck="false"></textarea>
           </label>
           <label class="bakemono-memory-editor">
-            <span>关键词触发（逗号或换行分隔；命中会提高分数并强制进入候选）</span>
+            <span>重点关键词（逗号或换行分隔；会独立进入候选并按下方权重加分）</span>
             <textarea id="bakemono-memory-vector-keywords" class="text_pole textarea_compact" rows="4" spellcheck="false" placeholder="例如：戒指, 地下室, Seraphina"></textarea>
           </label>
             <label class="bakemono-memory-editor">
