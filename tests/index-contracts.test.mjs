@@ -539,10 +539,30 @@ test('active global config follows existing chats without removing the tavern mo
     assert.match(configSyncSource, /export function getActiveConfigSignature\(/);
     assert.match(configSyncSource, /export function shouldSyncActiveConfig\(/);
     assert.match(source, /function syncGlobalActiveConfigToState\(/);
-    assert.equal((source.match(/syncGlobalActiveConfigToState\(ensureState\(\)\)/g) || []).length, 1);
-    assert.match(source, /syncConfig:\s*syncGlobalActiveConfigToState/);
+    assert.match(source, /syncGlobalActiveConfigToState\(initialState, \{ force: true \}\)/);
+    assert.match(source, /syncConfig:\s*state => \{/);
     assert.match(source, /if \(state\.automation\.apiProvider !== 'custom'\) \{\s*return await generateRaw/s);
     assert.match(configSyncSource, /state\.activeConfigSignature = getActiveConfigSignature/);
+});
+
+test('saved settings become shared defaults while vector runtime remains chat-local', () => {
+    assert.match(source, /function persistSharedConfigurationFromState\(/);
+    assert.match(source, /vectorMemory:\s*createSharedVectorConfig\(state\.vectorMemory/);
+    assert.match(source, /mergeSharedVectorConfig\(state\.vectorMemory, preset\.vectorMemory, defaultVectorMemory\)/);
+    assert.match(source, /syncGlobalActiveConfigToState\(initialState, \{ force: true \}\)/);
+    assert.match(source, /syncConfig:\s*state => \{/);
+    const vectorPersist = extractFunction('persistVectorMemoryFieldsFromUi');
+    const vectorApply = extractFunction('applyVectorMemorySettings');
+    assert.match(vectorPersist, /persistSharedConfigurationFromState\(state/);
+    assert.match(vectorApply, /persistSharedConfigurationFromState\(state/);
+});
+
+test('first shared-settings upgrade preserves the current chat before forced synchronization', () => {
+    assert.match(source, /function bootstrapSharedConfigurationFromCurrentChat\(/);
+    assert.match(source, /shouldBootstrapSharedConfig\(settings, hasActiveChat\)/);
+    assert.match(source, /settings\.sharedConfigVersion = sharedConfigVersion/);
+    assert.match(source, /const initialState = ensureState\(\);[\s\S]*?bootstrapSharedConfigurationFromCurrentChat\(initialState\);[\s\S]*?syncGlobalActiveConfigToState\(initialState, \{ force: true \}\)/);
+    assert.match(source, /syncConfig:\s*state => \{[\s\S]*?bootstrapSharedConfigurationFromCurrentChat\(state\);[\s\S]*?return syncGlobalActiveConfigToState\(state, \{ force: true \}\);[\s\S]*?\}/);
 });
 
 test('chat changes keep their side effects in one ordered coordinator', () => {
@@ -567,7 +587,7 @@ test('vector model fetch preserves unsaved fields and reports failures accuratel
 
     assert.doesNotMatch(operationSource, /renderAll\(/);
     assert.match(persistSource, /readVectorMemoryFieldsFromUi\(state\)/);
-    assert.match(persistSource, /saveState\(\)/);
+    assert.match(persistSource, /persistSharedConfigurationFromState\(state\)/);
     assert.equal((actionSource.match(/persistVectorMemoryFieldsFromUi\(\)/g) || []).length, 2);
     assert.match(embeddingSource, /if \(!baseUrl\)[\s\S]*?return false;/);
     assert.match(querySource, /if \(!baseUrl\)[\s\S]*?return false;/);

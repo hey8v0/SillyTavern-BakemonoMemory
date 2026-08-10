@@ -2,7 +2,7 @@ import { chat, chat_metadata, extension_prompt_roles, extension_prompt_types, ev
 import { extension_settings, getContext, saveMetadataDebounced } from '../../../extensions.js';
 import { hideChatMessageRange } from '../../../chats.js';
 import { runChatSwitchFlow } from './src/core/chat-switch.js';
-import { markActiveConfigApplied, readActiveConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
+import { createSharedInlineGenerationConfig, createSharedVectorConfig, markActiveConfigApplied, mergeSharedInlineGenerationConfig, mergeSharedVectorConfig, readActiveConfig, sharedConfigVersion, shouldBootstrapSharedConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
 import { persistChatState, persistGlobalSettings } from './src/core/persistence.js';
 import { migrateGenerationPrompts, migrateInlineSummaryPrompt, migratePromptPresetTimelines, migrateTurnSummaryPrompt, migrateVectorQueryRewritePrompt } from './src/core/prompt-migrations.js';
 import { ensureObjectField, fillMissingDefaults, normalizeArrayFields } from './src/core/state-shape.js';
@@ -1072,6 +1072,12 @@ function ensureGlobalSettings() {
             name: selectedPreset.name || '默认摘要手账',
             updatedAt: new Date().toISOString(),
         };
+    }
+    if (settings.activeConfig.vectorMemory) {
+        settings.activeConfig.vectorMemory = createSharedVectorConfig(settings.activeConfig.vectorMemory);
+    }
+    if (settings.activeConfig.inlineGeneration) {
+        settings.activeConfig.inlineGeneration = createSharedInlineGenerationConfig(settings.activeConfig.inlineGeneration);
     }
     if (!extension_settings[STORAGE_KEY].areaPresets || typeof extension_settings[STORAGE_KEY].areaPresets !== 'object') {
         extension_settings[STORAGE_KEY].areaPresets = {};
@@ -2345,16 +2351,25 @@ function getActiveGlobalConfig() {
 
 function setActiveGlobalConfig(preset) {
     ensureGlobalSettings();
-    const presets = extension_settings[STORAGE_KEY].promptPresets || [];
+    const settings = extension_settings[STORAGE_KEY];
+    const presets = settings.promptPresets || [];
+    const normalizedPreset = structuredClone(preset);
+    if (normalizedPreset.vectorMemory) {
+        normalizedPreset.vectorMemory = createSharedVectorConfig(normalizedPreset.vectorMemory);
+    }
+    if (normalizedPreset.inlineGeneration) {
+        normalizedPreset.inlineGeneration = createSharedInlineGenerationConfig(normalizedPreset.inlineGeneration);
+    }
     const config = {
-        ...structuredClone(preset),
+        ...normalizedPreset,
         id: preset.id || makePresetId(preset.name || 'active'),
         name: preset.name || '未命名全局配置',
         updatedAt: new Date().toISOString(),
     };
-    extension_settings[STORAGE_KEY].activeConfig = config;
+    settings.activeConfig = config;
+    settings.sharedConfigVersion = sharedConfigVersion;
     if (config.id && presets.some(item => item.id === config.id)) {
-        extension_settings[STORAGE_KEY].selectedPromptPresetId = config.id;
+        settings.selectedPromptPresetId = config.id;
     }
     saveGlobalSettings();
     return config;
@@ -3801,7 +3816,7 @@ function readGenerationTargetSettings() {
         stage: readKind('stage'),
         epic: readKind('epic'),
     };
-    saveState();
+    persistSharedConfigurationFromState(state);
     return state.generationTargets;
 }
 
@@ -5668,6 +5683,7 @@ async function readOpenAIStream(response) {
 async function fetchCustomApiModels() {
     const state = ensureState();
     readCustomApiFieldsFromUi(state);
+    persistSharedConfigurationFromState(state);
     const config = state.automation.customApi || {};
     const baseUrl = normalizeCustomApiBaseUrl(config.baseUrl);
     const apiKey = String(config.apiKey || '').trim();
@@ -5697,7 +5713,7 @@ async function fetchCustomApiModels() {
             $('#bakemono-memory-custom-model').val(state.automation.customApi.model);
         }
         renderCustomModelOptions(state.automation.customApi.models);
-        saveState();
+        persistSharedConfigurationFromState(state);
         toastr.success(`已拉取 ${state.automation.customApi.models.length} 个模型。`);
     } catch (error) {
         toastr.error(error?.message || String(error), '模型拉取失败');
@@ -5709,6 +5725,7 @@ async function fetchCustomApiModels() {
 async function fetchVectorEmbeddingModels() {
     const state = ensureState();
     readVectorMemoryFieldsFromUi(state);
+    persistSharedConfigurationFromState(state);
     const config = state.vectorMemory.customApi || {};
     const baseUrl = normalizeCustomApiBaseUrl(config.baseUrl);
     const apiKey = String(config.apiKey || '').trim();
@@ -5738,7 +5755,7 @@ async function fetchVectorEmbeddingModels() {
             $('#bakemono-memory-vector-model').val(state.vectorMemory.customApi.model);
         }
         renderVectorModelOptions(state.vectorMemory.customApi.models);
-        saveState();
+        persistSharedConfigurationFromState(state);
         toastr.success(`已拉取 ${state.vectorMemory.customApi.models.length} 个嵌入向量模型。`);
         return true;
     } catch (error) {
@@ -5752,6 +5769,7 @@ async function fetchVectorEmbeddingModels() {
 async function fetchVectorQueryModels() {
     const state = ensureState();
     readVectorMemoryFieldsFromUi(state);
+    persistSharedConfigurationFromState(state);
     const queryConfig = state.vectorMemory.queryCustomApi || {};
     const embeddingConfig = state.vectorMemory.customApi || {};
     const baseUrl = normalizeCustomApiBaseUrl(queryConfig.baseUrl || embeddingConfig.baseUrl);
@@ -5782,7 +5800,7 @@ async function fetchVectorQueryModels() {
             $('#bakemono-memory-vector-query-model').val(state.vectorMemory.queryCustomApi.model);
         }
         renderVectorQueryModelOptions(state.vectorMemory.queryCustomApi.models);
-        saveState();
+        persistSharedConfigurationFromState(state);
         toastr.success(`已拉取 ${state.vectorMemory.queryCustomApi.models.length} 个改写模型。`);
         return true;
     } catch (error) {
@@ -6191,7 +6209,7 @@ async function regenerateDraft(draftId) {
         draft.content = result;
         draft.title = draft.metadata?.lockTitle ? (draft.title || draft.metadata?.suggestedTitle || getDefaultDraftTitle(draft.kind, state)) : getBlockTitle(result, draft.title);
         draft.createdAt = new Date().toISOString();
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '草稿已重新生成。');
         toastr.success('草稿已重新生成。');
     }, '草稿已重新生成', workbenchRenderScopes.DRAFTS);
@@ -8883,8 +8901,8 @@ const helpGuideArticles = {
     },
     'chat-config': {
         number: '02', category: '常见问题', title: '换聊天后配置会不会丢？', tag: '配置', audience: '切换聊天', duration: '约 2 分钟',
-        lead: '整套预设保存在全局设置中，但每个聊天仍可保留自己的插件状态。',
-        steps: [['全局预设', '在“设置中心 → 整套配置”保存后，可以在其他聊天选择并应用。'], ['聊天状态', '已经使用过插件的聊天会保留当时的设置。'], ['需要同步时', '重新选择整套配置即可，不会覆盖聊天正文或记忆数据。']],
+        lead: '设置在应用或保存后会成为所有角色卡共用配置；切换聊天时自动同步，不需要再次拉取。',
+        steps: [['全局设置', '工作流、扫描、生成 API、提示词、注入和向量配置会自动同步。'], ['聊天数据', '摘要、草稿、表格行、向量索引和最近召回仍由每个聊天单独保存。'], ['修改方式', '在任意角色卡修改并应用一次，之后切换到其他卡就会直接使用新设置。']],
     },
     'mobile-lag': {
         number: '03', category: '常见问题', title: '手机上卡顿时先检查什么？', tag: '性能', audience: 'Termux 与长聊天', duration: '约 2 分钟',
@@ -9080,7 +9098,7 @@ function renderWorkbenchHubPanels(state = ensureState()) {
     const scanMode = state.scanRules?.mode || defaultScanRules.mode;
     const themeMode = getAppearanceSettings().themeMode;
     const apiProvider = state.automation?.apiProvider || defaultAutomation.apiProvider;
-    const selectedConfig = getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
+    const selectedConfig = getActiveGlobalConfig() || getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
 
     const orchestrationTitle = floorStats.pendingDraftCount
         ? `${floorStats.pendingDraftCount.toLocaleString()} 条内容待确认`
@@ -10604,7 +10622,7 @@ function renderPresetControlPair(selectSelector, nameSelector) {
     $(nameSelector).val(selected?.name || '');
     const active = getActiveGlobalConfig();
     $('#bakemono-memory-active-config-status').text(
-        `当前全局默认：${active?.name || '未设置'}。新聊天会自动使用这套配置；剧情摘要、草稿、表格行数据仍按聊天单独保存。`,
+        `当前共用设置：${active?.name || '未设置'}。所有角色卡在打开或切换时自动同步；剧情摘要、草稿、表格行和向量索引仍按聊天单独保存。`,
     );
 }
 
@@ -10874,7 +10892,7 @@ function readVectorMemoryFieldsFromUi(state = ensureState()) {
 function persistVectorMemoryFieldsFromUi() {
     const state = ensureState();
     readVectorMemoryFieldsFromUi(state);
-    saveState();
+    persistSharedConfigurationFromState(state);
     return state;
 }
 
@@ -10888,10 +10906,10 @@ function readConfigFieldsFromUi(state = ensureState()) {
     return state;
 }
 
-function getCurrentPromptPresetPayload(name = '') {
-    const state = readConfigFieldsFromUi(ensureState());
+function getConfigPayloadFromState(state = ensureState(), name = '', options = {}) {
+    const now = new Date().toISOString();
     return {
-        id: makePresetId(name),
+        id: options.id || makePresetId(name),
         name: name || '未命名预设',
         story: String(state.generationPrompts.story || defaultStoryGenerationPrompt),
         missing: String(state.generationPrompts.missing || defaultMissingSummaryPrompt),
@@ -10929,18 +10947,8 @@ function getCurrentPromptPresetPayload(name = '') {
             prompt: String(state.turnSummary.prompt || defaultTurnSummaryPrompt),
             tablePrompt: String(state.turnSummary.tablePrompt || defaultTableEditPrompt),
         },
-        inlineGeneration: structuredClone(state.inlineGeneration || defaultState.inlineGeneration),
-        vectorMemory: {
-            ...structuredClone(state.vectorMemory || defaultVectorMemory),
-            records: [],
-            lastHits: [],
-            embeddingCache: {},
-            lastQuery: '',
-            lastIndexAt: null,
-            lastIndexedSignature: '',
-            dirty: true,
-            dirtyReason: '',
-        },
+        inlineGeneration: createSharedInlineGenerationConfig(state.inlineGeneration || defaultState.inlineGeneration),
+        vectorMemory: createSharedVectorConfig(state.vectorMemory || defaultVectorMemory),
         tableDatabase: {
             enabled: !!state.tableDatabase.enabled,
             injectMemory: state.tableDatabase.injectMemory !== false,
@@ -10948,9 +10956,46 @@ function getCurrentPromptPresetPayload(name = '') {
             schemaScope: state.tableDatabase.schemaScope || tableSchemaScopes.CHAT,
             tables: getTableSchemasForPreset(state),
         },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: options.createdAt || now,
+        updatedAt: now,
     };
+}
+
+function getCurrentPromptPresetPayload(name = '') {
+    const state = readConfigFieldsFromUi(ensureState());
+    return getConfigPayloadFromState(state, name);
+}
+
+const sharedGlobalConfigId = 'bakemono-shared-settings';
+
+function persistSharedConfigurationFromState(state = ensureState(), options = {}) {
+    const current = getActiveGlobalConfig();
+    const currentShared = current?.id === sharedGlobalConfigId ? current : null;
+    const payload = getConfigPayloadFromState(
+        state,
+        options.name || currentShared?.name || '所有角色卡设置',
+        {
+            id: sharedGlobalConfigId,
+            createdAt: currentShared?.createdAt,
+        },
+    );
+    const config = setActiveGlobalConfig(payload);
+    markActiveConfigApplied(state, config);
+    if (options.skipChatSave !== true) {
+        saveState();
+    }
+    return config;
+}
+
+function bootstrapSharedConfigurationFromCurrentChat(state = ensureState()) {
+    ensureGlobalSettings();
+    const settings = extension_settings[STORAGE_KEY];
+    const hasActiveChat = !!String(getContext()?.chatId || '').trim();
+    if (!shouldBootstrapSharedConfig(settings, hasActiveChat)) {
+        return false;
+    }
+    persistSharedConfigurationFromState(state, { skipChatSave: true });
+    return true;
 }
 
 function normalizeImportedPreset(value) {
@@ -11064,19 +11109,16 @@ function applyPromptPresetToState(preset, options = {}) {
         };
     }
     if (preset.inlineGeneration) {
-        state.inlineGeneration = {
-            ...structuredClone(defaultState.inlineGeneration),
-            ...structuredClone(preset.inlineGeneration),
-        };
+        state.inlineGeneration = mergeSharedInlineGenerationConfig(
+            state.inlineGeneration,
+            preset.inlineGeneration,
+            defaultState.inlineGeneration,
+        );
         syncInlineGenerationPrompts(state);
     }
     if (preset.vectorMemory) {
         state.vectorMemory = {
-            ...structuredClone(defaultVectorMemory),
-            ...structuredClone(preset.vectorMemory),
-            records: state.vectorMemory?.records || [],
-            lastHits: state.vectorMemory?.lastHits || [],
-            embeddingCache: state.vectorMemory?.embeddingCache || {},
+            ...mergeSharedVectorConfig(state.vectorMemory, preset.vectorMemory, defaultVectorMemory),
             dirty: true,
             dirtyReason: '载入全局配置',
         };
@@ -11094,7 +11136,7 @@ function applyPromptPresetToState(preset, options = {}) {
             tables: Array.isArray(preset.tableDatabase.tables)
                 ? normalizeImportedTablesFromJson({ tables: preset.tableDatabase.tables })
                 : state.tableDatabase.tables,
-            editDrafts: [],
+            editDrafts: state.tableDatabase.editDrafts || [],
             history: state.tableDatabase.history || [],
         };
         setTableSchemaScope(state.tableDatabase.schemaScope, state);
@@ -11147,8 +11189,8 @@ function usePromptPresetAsGlobalDefault(preset, options = {}) {
     const config = setActiveGlobalConfig(preset);
     markActiveConfigApplied(state, config);
     saveState();
-    renderWorkbenchScope(workbenchRenderScopes.CONFIG, options.message || `已使用并设为全局默认：${preset.name || '未命名配置'}`);
-    toastr.success('已切换配置，并设为新聊天默认。');
+    renderWorkbenchScope(workbenchRenderScopes.CONFIG, options.message || `已使用并同步到所有角色卡：${preset.name || '未命名配置'}`);
+    toastr.success('已切换配置，并同步到所有角色卡。');
     return true;
 }
 
@@ -11206,7 +11248,7 @@ function getAreaPresetPayload(scope, name) {
                 prompt: String(state.turnSummary.prompt || defaultTurnSummaryPrompt),
                 tablePrompt: String(state.turnSummary.tablePrompt || defaultTableEditPrompt),
             },
-            inlineGeneration: structuredClone(state.inlineGeneration || defaultState.inlineGeneration),
+            inlineGeneration: createSharedInlineGenerationConfig(state.inlineGeneration || defaultState.inlineGeneration),
         };
     }
     if (scope === areaPresetScopes.TURN) {
@@ -11226,7 +11268,7 @@ function getAreaPresetPayload(scope, name) {
                 prompt: String(state.turnSummary.prompt || defaultTurnSummaryPrompt),
                 tablePrompt: String(state.turnSummary.tablePrompt || defaultTableEditPrompt),
             },
-            inlineGeneration: structuredClone(state.inlineGeneration || defaultState.inlineGeneration),
+            inlineGeneration: createSharedInlineGenerationConfig(state.inlineGeneration || defaultState.inlineGeneration),
         };
     }
     if (scope === areaPresetScopes.INJECTION) {
@@ -11245,15 +11287,7 @@ function getAreaPresetPayload(scope, name) {
         readVectorMemoryFieldsFromUi(state);
         return {
             ...base,
-            vectorMemory: {
-                ...structuredClone(state.vectorMemory),
-                records: [],
-                lastHits: [],
-                embeddingCache: {},
-                lastQuery: '',
-                lastIndexAt: null,
-                lastIndexedSignature: '',
-            },
+            vectorMemory: createSharedVectorConfig(state.vectorMemory),
         };
     }
     return base;
@@ -11316,10 +11350,7 @@ function applyAreaPresetToState(scope, preset) {
             state.turnSummary.tablePrompt = preset.turnSummary.tablePrompt || state.turnSummary.tablePrompt || defaultTableEditPrompt;
         }
         if (preset.inlineGeneration) {
-            state.inlineGeneration = {
-                ...structuredClone(defaultState.inlineGeneration),
-                ...structuredClone(preset.inlineGeneration),
-            };
+            state.inlineGeneration = mergeSharedInlineGenerationConfig(state.inlineGeneration, preset.inlineGeneration, defaultState.inlineGeneration);
             syncInlineGenerationPrompts(state);
         }
     } else if (scope === areaPresetScopes.TURN && preset.turnSummary) {
@@ -11338,10 +11369,7 @@ function applyAreaPresetToState(scope, preset) {
             tablePrompt: String(preset.turnSummary.tablePrompt || state.turnSummary.tablePrompt || defaultTableEditPrompt),
         };
         if (preset.inlineGeneration) {
-            state.inlineGeneration = {
-                ...structuredClone(defaultState.inlineGeneration),
-                ...structuredClone(preset.inlineGeneration),
-            };
+            state.inlineGeneration = mergeSharedInlineGenerationConfig(state.inlineGeneration, preset.inlineGeneration, defaultState.inlineGeneration);
             syncInlineGenerationPrompts(state);
         }
     } else if (scope === areaPresetScopes.INJECTION && preset.injection) {
@@ -11355,19 +11383,15 @@ function applyAreaPresetToState(scope, preset) {
         syncInjection();
     } else if (scope === areaPresetScopes.VECTOR && preset.vectorMemory) {
         state.vectorMemory = {
-            ...structuredClone(defaultVectorMemory),
-            ...structuredClone(preset.vectorMemory),
-            records: state.vectorMemory.records || [],
-            lastHits: state.vectorMemory.lastHits || [],
-            embeddingCache: state.vectorMemory.embeddingCache || {},
+            ...mergeSharedVectorConfig(state.vectorMemory, preset.vectorMemory, defaultVectorMemory),
             dirty: true,
             dirtyReason: '载入向量配置',
         };
         scheduleVectorAutoIndex('载入向量配置');
     }
-    saveState();
-    renderAreaPresetChange(scope, `已载入配置：${preset.name || '未命名配置'}`);
-    toastr.success('配置已载入。');
+    persistSharedConfigurationFromState(state);
+    renderAreaPresetChange(scope, `已载入并同步到所有角色卡：${preset.name || '未命名配置'}`);
+    toastr.success('配置已载入，并同步到所有角色卡。');
 }
 
 function saveAreaPreset(scope, name, options = {}) {
@@ -11385,9 +11409,9 @@ function saveAreaPreset(scope, name, options = {}) {
     }
     setSelectedAreaPresetId(scope, preset.id);
     saveGlobalSettings();
-    saveState();
-    renderAreaPresetChange(scope, existing ? `已覆盖配置：${preset.name}` : `已保存配置：${preset.name}`);
-    toastr.success(existing ? '配置已覆盖。' : '配置已保存。');
+    persistSharedConfigurationFromState(ensureState());
+    renderAreaPresetChange(scope, existing ? `已覆盖并同步到所有角色卡：${preset.name}` : `已保存并同步到所有角色卡：${preset.name}`);
+    toastr.success(existing ? '配置已覆盖，并同步到所有角色卡。' : '配置已保存，并同步到所有角色卡。');
     return preset;
 }
 
@@ -11406,7 +11430,7 @@ function bindAreaPresetControls(scope, ids) {
         }
         const confirmed = confirmDanger(
             `使用配置「${preset.name || '未命名配置'}」？`,
-            ['会立即应用到当前聊天的这个区域设置。需要让以后新聊天也使用它时，请在总览里点“使用并设为默认”。'],
+            ['会立即应用这个区域，并作为所有角色卡共用的设置。'],
         );
         if (!confirmed) {
             setSelectedAreaPresetId(scope, previousId);
@@ -11424,7 +11448,7 @@ function bindAreaPresetControls(scope, ids) {
         }
         const confirmed = confirmDanger(
             `载入配置「${preset.name || '未命名配置'}」？`,
-            ['这只会覆盖当前区域的设置，不会影响其他区域。'],
+            ['只覆盖当前区域的设置，并同步到所有角色卡；其他区域保持不变。'],
         );
         if (!confirmed) {
             return;
@@ -11853,9 +11877,9 @@ async function applyVectorMemorySettings() {
             await retrieveVectorMemoryHits('', state);
         }
     }
-    saveState();
+    persistSharedConfigurationFromState(state);
     syncInjection();
-    renderWorkbenchScope(workbenchRenderScopes.VECTOR, '向量记忆配置已应用。');
+    renderWorkbenchScope(workbenchRenderScopes.VECTOR, '向量记忆配置已保存，并同步到所有角色卡。');
 }
 
 async function testVectorMemoryRetrieval() {
@@ -11928,8 +11952,8 @@ function bindInlinePromptPresetControls(type, ids) {
             state.inlineGeneration.tablePrompt = preset.prompt || defaultPrompt;
         }
         syncInlineGenerationPrompts(state);
-        saveState();
-        renderInlinePromptPresetChange(`已使用${label}：${preset.name}`);
+        persistSharedConfigurationFromState(state);
+        renderInlinePromptPresetChange(`已使用并同步到所有角色卡的${label}：${preset.name}`);
     });
     $(ids.load).off('click').on('click', () => {
         const preset = getInlinePromptPresets(type).find(item => item.id === getSelectedInlinePromptPresetId(type));
@@ -11946,8 +11970,8 @@ function bindInlinePromptPresetControls(type, ids) {
             state.inlineGeneration.tablePrompt = preset.prompt || defaultPrompt;
         }
         syncInlineGenerationPrompts(state);
-        saveState();
-        renderInlinePromptPresetChange(`已载入${label}：${preset.name}`);
+        persistSharedConfigurationFromState(state);
+        renderInlinePromptPresetChange(`已载入并同步到所有角色卡的${label}：${preset.name}`);
     });
     $(ids.save).off('click').on('click', () => {
         const name = String($(ids.name).val() || '').trim();
@@ -12772,9 +12796,9 @@ function bindSettingsEvents() {
         state.injection.template = String($('#bakemono-memory-injection-template').val() || defaultInjectionTemplate);
         state.generatedMemory = normalizeInjectionMemoryBody($('#bakemono-memory-source-content').val() || '', state.injection.template, defaultInjectionTemplate);
         syncInjection();
-        saveState();
-        renderWorkbenchScope(workbenchRenderScopes.INJECTION, '注入内容已应用。');
-        toastr.success('注入内容已应用。');
+        persistSharedConfigurationFromState(state);
+        renderWorkbenchScope(workbenchRenderScopes.INJECTION, '注入内容已应用，注入设置已同步到所有角色卡。');
+        toastr.success('注入内容已应用，设置已全局保存。');
     });
     $('#bakemono-memory-copy-injection').off('click').on('click', async () => {
         syncInjection();
@@ -12793,7 +12817,7 @@ function bindSettingsEvents() {
         const state = ensureState();
         state.injection.template = defaultInjectionTemplate;
         syncInjection();
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.INJECTION, '注入模板已恢复默认。');
     });
     $('#bakemono-memory-clear-injection').off('click').on('click', () => {
@@ -12813,9 +12837,9 @@ function bindSettingsEvents() {
     $('#bakemono-memory-apply-prompts').off('click').on('click', () => {
         const state = ensureState();
         readPromptFieldsFromUi(state);
-        saveState();
-        renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '生成提示词已应用。');
-        toastr.success('生成提示词已应用。');
+        persistSharedConfigurationFromState(state);
+        renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '生成提示词已应用，并同步到所有角色卡。');
+        toastr.success('生成提示词已全局保存。');
     });
     $('#bakemono-memory-reset-stage-prompt').off('click').on('click', () => {
         const confirmed = confirmDanger(
@@ -12827,7 +12851,7 @@ function bindSettingsEvents() {
         }
         const state = ensureState();
         state.generationPrompts.stage = defaultStageGenerationPrompt;
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '阶段总结提示词已恢复默认。');
     });
     $('#bakemono-memory-reset-epic-prompt').off('click').on('click', () => {
@@ -12840,7 +12864,7 @@ function bindSettingsEvents() {
         }
         const state = ensureState();
         state.generationPrompts.epic = defaultEpicGenerationPrompt;
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '多次总结提示词已恢复默认。');
     });
     $('#bakemono-memory-reset-story-prompt').off('click').on('click', () => {
@@ -12853,7 +12877,7 @@ function bindSettingsEvents() {
         }
         const state = ensureState();
         state.generationPrompts.story = defaultStoryGenerationPrompt;
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '旧正文摘要提示词已恢复默认。');
     });
     $('#bakemono-memory-reset-missing-prompt').off('click').on('click', () => {
@@ -12866,16 +12890,16 @@ function bindSettingsEvents() {
         }
         const state = ensureState();
         state.generationPrompts.missing = defaultMissingSummaryPrompt;
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '补写缺失摘要提示词已恢复默认。');
     });
     $('#bakemono-memory-apply-turn-settings').off('click').on('click', () => {
         const state = ensureState();
         readTurnSummaryFieldsFromUi(state);
         syncInlineGenerationPrompts(state);
-        saveState();
-        renderWorkbenchScope(workbenchRenderScopes.TABLES, '正文摘要设置已应用。');
-        toastr.success('正文摘要设置已应用。');
+        persistSharedConfigurationFromState(state);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, '正文摘要设置已应用，并同步到所有角色卡。');
+        toastr.success('正文摘要设置已全局保存。');
     });
     $('#bakemono-memory-reset-turn-prompt').off('click').on('click', () => {
         const confirmed = confirmDanger(
@@ -12887,7 +12911,7 @@ function bindSettingsEvents() {
         }
         const state = ensureState();
         state.turnSummary.prompt = defaultTurnSummaryPrompt;
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.TABLES, '正文摘要提示词已恢复默认。');
     });
     $('#bakemono-memory-reset-table-prompt').off('click').on('click', () => {
@@ -12900,7 +12924,7 @@ function bindSettingsEvents() {
         }
         const state = ensureState();
         state.turnSummary.tablePrompt = defaultTableEditPrompt;
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改提示词已恢复默认。');
     });
     $('#bakemono-memory-table-preset-select').off('change').on('change', function () {
@@ -12919,8 +12943,8 @@ function bindSettingsEvents() {
         }
         const state = ensureState();
         state.turnSummary.tablePrompt = preset.prompt || defaultTableEditPrompt;
-        saveState();
-        renderWorkbenchScope(workbenchRenderScopes.TABLES, `已使用表格提示词：${preset.name}`);
+        persistSharedConfigurationFromState(state);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, `已使用并同步到所有角色卡的表格提示词：${preset.name}`);
     });
     $('#bakemono-memory-load-table-preset').off('click').on('click', () => {
         const preset = getTablePromptPresets().find(item => item.id === getSelectedTablePromptPresetId());
@@ -12932,8 +12956,8 @@ function bindSettingsEvents() {
         if (!confirmed) return;
         const state = ensureState();
         state.turnSummary.tablePrompt = preset.prompt || defaultTableEditPrompt;
-        saveState();
-        renderWorkbenchScope(workbenchRenderScopes.TABLES, `已载入表格提示词：${preset.name}`);
+        persistSharedConfigurationFromState(state);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, `已载入并同步到所有角色卡的表格提示词：${preset.name}`);
     });
     $('#bakemono-memory-save-table-preset').off('click').on('click', () => {
         const name = String($('#bakemono-memory-table-preset-name').val() || '').trim();
@@ -13048,9 +13072,9 @@ function bindSettingsEvents() {
         const state = ensureState();
         readAutomationFieldsFromUi(state);
         readGenerationTargetSettings();
-        saveState();
-        renderWorkbenchScope(workbenchRenderScopes.AUTOMATION, '自动总结设置已应用。');
-        toastr.success('自动总结设置已应用。');
+        persistSharedConfigurationFromState(state);
+        renderWorkbenchScope(workbenchRenderScopes.AUTOMATION, '自动总结与生成 API 已同步到所有角色卡。');
+        toastr.success('自动总结与生成 API 已全局保存。');
     });
     $('#bakemono-memory-auto-trigger').off('change.bakemonoAutomationUi').on('change.bakemonoAutomationUi', function () {
         const triggerType = String(this.value || defaultAutomation.triggerType);
@@ -13126,7 +13150,7 @@ function bindSettingsEvents() {
         }
         const confirmed = confirmDanger(
             `使用配置「${preset.name || '未命名配置'}」？`,
-            ['会立即覆盖当前聊天的工作流、扫描、自动、提示词、注入、向量等配置。', '也会设为全局默认，新聊天会自动使用它。'],
+            ['会覆盖工作流、扫描、自动、提示词、注入和向量等设置，并同步到所有角色卡。', '摘要、草稿、表格行与向量索引不会跨聊天复制。'],
         );
         if (!confirmed) {
             setSelectedPromptPresetId(previousId);
@@ -13143,7 +13167,7 @@ function bindSettingsEvents() {
         }
         const confirmed = confirmDanger(
             `使用并设为全局默认「${preset.name || '未命名预设'}」？`,
-            ['会覆盖当前聊天的配置，并让之后打开的新聊天自动使用这套配置。'],
+            ['会覆盖当前设置，并让所有角色卡在打开或切换时自动使用这套配置。'],
         );
         if (!confirmed) {
             return;
@@ -13311,9 +13335,9 @@ function bindSettingsEvents() {
         const state = ensureState();
         readRuleFieldsFromUi(state);
         scanBakemonoBlocks({ persist: false });
-        saveState();
-        renderWorkbenchScope(workbenchRenderScopes.SCAN, '扫描规则已应用，并已刷新扫描预览。');
-        toastr.success('扫描规则已应用。');
+        persistSharedConfigurationFromState(state);
+        renderWorkbenchScope(workbenchRenderScopes.SCAN, '扫描规则已应用、刷新预览并同步到所有角色卡。');
+        toastr.success('扫描规则已全局保存。');
     });
     $('#bakemono-memory-reset-rules').off('click').on('click', () => {
         const confirmed = confirmDanger(
@@ -13328,21 +13352,21 @@ function bindSettingsEvents() {
         state.classificationRules = structuredClone(defaultClassificationRules);
         state.previewLayouts = structuredClone(defaultPreviewLayouts);
         scanBakemonoBlocks({ persist: false });
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.SCAN, '扫描规则已恢复默认。');
     });
     $('#bakemono-memory-injection-enabled').off('change').on('change', function () {
         const state = ensureState();
         state.injection.enabled = !!this.checked;
         syncInjection();
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.INJECTION);
     });
     $('#bakemono-memory-memory-strategy').off('change').on('change', function () {
         const state = ensureState();
         state.memoryStrategy = Object.values(memoryStrategies).includes(this.value) ? this.value : memoryStrategies.BAKEMONO;
         updateInjectionFromSummaries();
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '记忆策略已切换。');
     });
     $('#bakemono-memory-workflow-mode').off('change').on('change', function () {
@@ -13359,33 +13383,33 @@ function bindSettingsEvents() {
         }
         scanBakemonoBlocks({ persist: false });
         updateInjectionFromSummaries();
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '工作流模式已切换，已有扫描和自动总结配置已保留。');
     });
     $('#bakemono-memory-stage-source-mode').off('change').on('change', function () {
         const state = ensureState();
         state.stageSourceMode = Object.values(stageSourceModes).includes(this.value) ? this.value : stageSourceModes.SUMMARIES;
         scanBakemonoBlocks({ persist: false });
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '阶段总结材料已切换。');
     });
     $('#bakemono-memory-output-mode').off('change').on('change', function () {
         const state = ensureState();
         state.outputMode = ['bakemono', 'plain', 'custom'].includes(this.value) ? this.value : 'bakemono';
-        saveState();
+        persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '输出风格已切换。');
     });
     $('#bakemono-memory-depth').off('input').on('input', function () {
         const state = ensureState();
         state.injection.depth = Math.max(0, Number(this.value || defaultState.injection.depth));
         syncInjection();
-        saveState();
+        persistSharedConfigurationFromState(state);
     });
     $('#bakemono-memory-role').off('change').on('change', function () {
         const state = ensureState();
         state.injection.role = Number(this.value || extension_prompt_roles.SYSTEM);
         syncInjection();
-        saveState();
+        persistSharedConfigurationFromState(state);
     });
     $('#bakemono-memory-source-content, #bakemono-memory-injection-template').off('input').on('input', () => {
         const state = ensureState();
@@ -13631,7 +13655,9 @@ function waitForElement(selector, timeout = 10000) {
 
 async function init() {
     ensureGlobalSettings();
-    syncGlobalActiveConfigToState(ensureState());
+    const initialState = ensureState();
+    bootstrapSharedConfigurationFromCurrentChat(initialState);
+    syncGlobalActiveConfigToState(initialState, { force: true });
     await initWorkbench();
     syncInjection();
     if (ensureState().vectorMemory.enabled) {
@@ -13647,7 +13673,10 @@ async function init() {
 
     eventSource.on(event_types.CHAT_CHANGED, () => runChatSwitchFlow({
         getState: ensureState,
-        syncConfig: syncGlobalActiveConfigToState,
+        syncConfig: state => {
+            bootstrapSharedConfigurationFromCurrentChat(state);
+            return syncGlobalActiveConfigToState(state, { force: true });
+        },
         scheduleAutoHide: scheduleAutoHideRecent,
         markVectorDirty: markVectorIndexDirty,
         syncInjection,

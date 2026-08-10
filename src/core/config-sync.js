@@ -3,6 +3,81 @@ export function readActiveConfig(settings) {
     return config && typeof config === 'object' ? config : null;
 }
 
+export const sharedConfigVersion = 1;
+
+export function shouldBootstrapSharedConfig(settings, hasActiveChat) {
+    if (!hasActiveChat) {
+        return false;
+    }
+    return Number(settings?.sharedConfigVersion || 0) < sharedConfigVersion;
+}
+
+export const vectorRuntimeFieldNames = Object.freeze([
+    'records',
+    'embeddingCache',
+    'lastHits',
+    'lastQuery',
+    'lastQueries',
+    'lastRewriteIntent',
+    'lastEmbeddingCandidates',
+    'lastRerankCandidates',
+    'lastRecallSkippedReason',
+    'lastIndexAt',
+    'lastIndexedSignature',
+    'estimatedChars',
+    'trimmedHitCount',
+    'dirty',
+    'dirtyReason',
+]);
+
+export const inlineGenerationRuntimeFieldNames = Object.freeze([
+    'lastProcessedMessageId',
+    'lastProcessedSignature',
+    'hideTableEditMigratedToRegex',
+]);
+
+function cloneObject(value) {
+    return value && typeof value === 'object' ? structuredClone(value) : {};
+}
+
+function omitFields(value, fieldNames) {
+    const result = cloneObject(value);
+    for (const field of fieldNames) {
+        delete result[field];
+    }
+    return result;
+}
+
+function mergeWithRuntime(current, shared, defaults, fieldNames) {
+    const currentValue = cloneObject(current);
+    const result = {
+        ...cloneObject(defaults),
+        ...cloneObject(shared),
+    };
+    for (const field of fieldNames) {
+        if (Object.hasOwn(currentValue, field)) {
+            result[field] = structuredClone(currentValue[field]);
+        }
+    }
+    return result;
+}
+
+export function createSharedVectorConfig(vectorMemory) {
+    return omitFields(vectorMemory, vectorRuntimeFieldNames);
+}
+
+export function mergeSharedVectorConfig(currentVectorMemory, sharedVectorConfig, defaults = {}) {
+    return mergeWithRuntime(currentVectorMemory, sharedVectorConfig, defaults, vectorRuntimeFieldNames);
+}
+
+export function createSharedInlineGenerationConfig(inlineGeneration) {
+    return omitFields(inlineGeneration, inlineGenerationRuntimeFieldNames);
+}
+
+export function mergeSharedInlineGenerationConfig(currentInlineGeneration, sharedInlineGeneration, defaults = {}) {
+    return mergeWithRuntime(currentInlineGeneration, sharedInlineGeneration, defaults, inlineGenerationRuntimeFieldNames);
+}
+
 export function getActiveConfigSignature(config) {
     if (!config || typeof config !== 'object') {
         return '';

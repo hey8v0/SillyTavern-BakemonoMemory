@@ -69,3 +69,56 @@ test('applied config marker updates only synchronization metadata', async () => 
     assert.equal(state.activeConfigId, '');
     assert.equal(state.activeConfigSignature, '');
 });
+
+test('shared vector config excludes chat runtime and restores the destination chat runtime', async () => {
+    const configSync = await loadModule('src/core/config-sync.js');
+    const source = {
+        enabled: true,
+        embeddingProvider: 'custom-openai',
+        customApi: { baseUrl: 'https://example.com/v1', apiKey: 'secret', model: 'embed-1', models: ['embed-1'] },
+        records: [{ id: 'source-record' }],
+        embeddingCache: { source: [1] },
+        lastHits: [{ id: 'source-hit' }],
+        lastQueries: ['source query'],
+        lastEmbeddingCandidates: [{ id: 'source-candidate' }],
+        lastRerankCandidates: [{ id: 'source-rerank' }],
+        lastIndexAt: 'source-time',
+        lastIndexedSignature: 'source-signature',
+        dirty: false,
+    };
+    const shared = configSync.createSharedVectorConfig(source);
+
+    assert.equal(shared.enabled, true);
+    assert.equal(shared.customApi.model, 'embed-1');
+    for (const key of configSync.vectorRuntimeFieldNames) {
+        assert.equal(Object.hasOwn(shared, key), false, `${key} should remain chat-local`);
+    }
+
+    const current = {
+        records: [{ id: 'destination-record' }],
+        embeddingCache: { destination: [2] },
+        lastHits: [{ id: 'destination-hit' }],
+        lastQueries: ['destination query'],
+        lastEmbeddingCandidates: [{ id: 'destination-candidate' }],
+        lastRerankCandidates: [{ id: 'destination-rerank' }],
+        lastIndexAt: 'destination-time',
+        lastIndexedSignature: 'destination-signature',
+        dirty: false,
+    };
+    const merged = configSync.mergeSharedVectorConfig(current, shared, { enabled: false, embeddingProvider: 'local' });
+
+    assert.equal(merged.embeddingProvider, 'custom-openai');
+    assert.deepEqual(merged.records, current.records);
+    assert.deepEqual(merged.lastHits, current.lastHits);
+    assert.deepEqual(merged.lastEmbeddingCandidates, current.lastEmbeddingCandidates);
+    assert.equal(merged.lastIndexedSignature, 'destination-signature');
+});
+
+test('shared config bootstrap waits for a real chat and only runs once', async () => {
+    const configSync = await loadModule('src/core/config-sync.js');
+
+    assert.equal(configSync.shouldBootstrapSharedConfig({}, false), false);
+    assert.equal(configSync.shouldBootstrapSharedConfig({}, true), true);
+    assert.equal(configSync.shouldBootstrapSharedConfig({ sharedConfigVersion: 1 }, true), false);
+    assert.equal(configSync.shouldBootstrapSharedConfig({ sharedConfigVersion: 2 }, true), false);
+});
