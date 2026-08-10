@@ -127,7 +127,7 @@ test('renderAll only scans heavy block collections and syncs forms for the activ
     assert.match(source, /else if \(activeTab === 'preview'\)/);
     assert.match(source, /else if \(activeTab === 'generation'\)/);
     assert.match(source, /else if \(tabName === 'vector'\) \{\s*renderVectorMemoryPanel\(state\)/s);
-    assert.match(source, /else if \(activeTab === 'overview'\) \{\s*const actualHiddenIds = getActualHiddenMessageIds\(\)/s);
+    assert.match(source, /function renderWorkbenchOverviewMemory\(state\) \{\s*state\.memoryRecords = buildMemoryRecords\(state\);\s*renderWorkflowGuide\(state\)/s);
     assert.match(source, /renderActiveWorkbenchPanel\(activeTab, state, blocks\)/);
 });
 
@@ -142,7 +142,7 @@ test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
 });
 
 test('expanded disclosures expose anchored help and important operations expose live feedback', () => {
-    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 10);
+    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 12);
     assert.match(settingsSource, /class="bakemono-memory-help-content"/);
     assert.match(source, /function toggleWorkbenchHelpPopover\(/);
     assert.match(source, /function positionWorkbenchHelpPopover\(/);
@@ -153,6 +153,17 @@ test('expanded disclosures expose anchored help and important operations expose 
     assert.match(source, /toast\.setAttribute\('aria-live', 'polite'\)/);
     assert.match(source, /setOperationFeedback\('success'/);
     assert.match(source, /setOperationFeedback\('error'/);
+});
+
+test('floor memory orchestration stays derived and the base ledger remains optional', () => {
+    assert.match(source, /import \{ buildFloorMemoryIndex, createMemoryOrchestrationPlan \}/);
+    assert.match(source, /async function runMemoryOrchestrator\(/);
+    assert.match(source, /event_types\.MESSAGE_RECEIVED, async \(\) => \{\s*await runMemoryOrchestrator/s);
+    assert.match(settingsSource, /id="bakemono-memory-index-ready-floor"/);
+    assert.match(settingsSource, /id="bakemono-memory-index-pending-count"/);
+    assert.match(settingsSource, /id="bakemono-memory-create-base-ledger"/);
+    assert.match(settingsSource, /不会加入事件摘要或大总结表/);
+    assert.doesNotMatch(source, /floorMemoryIndex\s*:/);
 });
 
 test('summary page keeps generation, review, and filtering in the demo hierarchy', () => {

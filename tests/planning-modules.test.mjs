@@ -75,3 +75,48 @@ test('summary target selection sorts, filters ranges and partitions deterministi
         [['early', 'source-only']],
     );
 });
+
+test('floor memory index derives status without mutating chat state and plans enabled tools only', async () => {
+    const textSource = await readFile(new URL('src/shared/text.js', repoUrl), 'utf8');
+    const textUrl = toDataModule(textSource);
+    const floorModule = await loadModule('src/memory/floor-memory-index.js', [
+        ["'../shared/text.js'", `'${textUrl}'`],
+    ]);
+    const messages = [
+        { is_user: true, mes: '继续' },
+        { is_user: false, mes: '<bakemono>第一段摘要</bakemono>' },
+        { is_user: false, mes: '第二段正文' },
+    ];
+    const state = {
+        blocks: [{ hash: 'story-1', type: 'story', messageId: 1, sourceKind: 'tag' }],
+        storySummaries: [], stageSummaries: [], epicSummaries: [], coveredBlockHashes: [], coveredStageHashes: [],
+        drafts: [], taskQueue: [], hiddenMessageIds: [], customHiddenMessageIds: [],
+        tableDatabase: { enabled: true, tables: [{ name: '角色' }], editDrafts: [], history: [] },
+        vectorMemory: { enabled: true, dirty: true, autoIndex: true, records: [] },
+        turnSummary: { auto: true, enabled: true, processingMode: 'both', lastProcessedMessageId: null },
+        inlineGeneration: { summaryEnabled: false, tableEnabled: false },
+        automation: { enabled: true },
+        autoHideRecent: { enabled: false, managedMessageIds: [] },
+        workflowMode: 'bakemono',
+    };
+    const snapshot = structuredClone(state);
+    const index = floorModule.buildFloorMemoryIndex({ messages, state });
+    const plan = floorModule.createMemoryOrchestrationPlan(index, state);
+
+    assert.equal(index.aggregates.total, 2);
+    assert.equal(index.byId.get(1).summaryState, 'saved');
+    assert.equal(index.byId.get(2).summaryState, 'missing');
+    assert.equal(plan.actions.processLatestTurn, true);
+    assert.equal(plan.actions.refreshVectorIndex, true);
+    assert.deepEqual(state, snapshot);
+});
+
+test('built-in story ledger excludes duplicate summary tables and keeps guidance read-only', async () => {
+    const { baseStoryLedgerPreset, createBaseStoryLedgerTables } = await loadModule('src/tables/builtin-presets.js');
+    const tables = createBaseStoryLedgerTables();
+    assert.equal(baseStoryLedgerPreset.name, '基础表格');
+    assert.deepEqual(tables.map(table => table.name), ['角色特征表格', '人物关系表格', '世界设定表格', '重要物品表格', '约定表格', '剧情指导']);
+    assert.equal(tables.some(table => /事件摘要|大总结/.test(table.name)), false);
+    assert.equal(tables.at(-1).readOnly, true);
+    assert.equal(tables.at(-1).allowAiEdit, false);
+});

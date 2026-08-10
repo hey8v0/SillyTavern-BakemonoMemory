@@ -11,9 +11,11 @@ import { normalizeInjectionMemoryBody, normalizeLineEndings, renderInjectionTemp
 import { formatBlocksForPrompt, getPromptStructureExcerpt, migrateBuiltInStructuredPrompt, migrateEpicPromptTimeSpan, migrateStagePromptTimeSpan, renderGenerationPrompt, stripPostProcessNoise } from './src/shared/prompt-utils.js';
 import { countKeywordHits, extractAllTaggedBlocks, extractConfiguredTagBlocks, extractTaggedContent, getHash, matchesAnyKeyword, normalizeSearchText, parseList, stripConfiguredTags, stripTableEditTags } from './src/shared/text.js';
 import { parseMissingSummaryBatchResult } from './src/summary/draft-parser.js';
+import { buildFloorMemoryIndex, createMemoryOrchestrationPlan } from './src/memory/floor-memory-index.js';
 import { formatSourceRange, getBlockSortKey, getFiniteMessageIds, getSourceEnd, getSourceMessageIdsFromBlocks, getSourceStart, getSummarySortKey, sortSummariesBySource } from './src/summary/source-metadata.js';
 import { parseTableEditOperations } from './src/tables/operation-parser.js';
 import { buildTableRollbackPlan } from './src/tables/rollback-plan.js';
+import { baseStoryLedgerPreset, createBaseStoryLedgerTables } from './src/tables/builtin-presets.js';
 import { findMatchingTable, mergeTableSchemaWithRows, normalizeImportedTablesFromJson, normalizeTableSchemas, normalizeTableText, toTableSchema } from './src/tables/schema-utils.js';
 import { defaultGenerationTargets, getSortedTargetBlocks, parseLooseNumberRange, partitionGenerationTargets, selectGenerationTargets, targetSelectionModes } from './src/summary/target-selection.js';
 import { cosineSimilarity, createLocalEmbedding } from './src/vector/math.js';
@@ -2175,6 +2177,37 @@ function createTableProfileForCurrentScope(name, state = ensureState()) {
     saveCurrentTableProfileRows(state);
     saveGlobalSettings();
     saveState();
+    return profile;
+}
+
+function createBaseStoryLedgerProfile(state = ensureState()) {
+    const scope = state.tableDatabase.schemaScope || tableSchemaScopes.CHAT;
+    const profiles = getTableProfilesForScope(scope, state);
+    const existing = profiles.find(profile => [baseStoryLedgerPreset.name, '剧情基础台账'].includes(profile.name));
+    if (existing) {
+        const switched = switchTableProfile(scope, existing.id, state);
+        if (!switched) return null;
+        existing.name = baseStoryLedgerPreset.name;
+        existing.updatedAt = new Date().toISOString();
+        state.tableDatabase.enabled = true;
+        persistCurrentTableDatabase(state);
+        return existing;
+    }
+
+    const confirmed = confirmDanger(
+        `创建表格组「${baseStoryLedgerPreset.name}」？`,
+        ['会保留当前表格组，并新建 6 张基础表；不会创建事件摘要或大总结表。'],
+    );
+    if (!confirmed) return null;
+
+    saveCurrentTableProfileRows(state);
+    const profile = createTableProfile(baseStoryLedgerPreset.name, createBaseStoryLedgerTables());
+    profiles.push(profile);
+    state.tableDatabase.activeProfileId = profile.id;
+    state.tableDatabase.tables = normalizeTableSchemas(profile.tables);
+    state.tableDatabase.enabled = true;
+    saveCurrentTableProfileRows(state);
+    persistCurrentTableDatabase(state);
     return profile;
 }
 
@@ -5381,6 +5414,50 @@ async function maybeRunTurnSummary() {
     }
 }
 
+async function runMemoryOrchestrator(reason = '更新', options = {}) {
+    if (options.scan !== false) {
+        scanBakemonoBlocks({ persist: false, render: false });
+    }
+    let state = ensureState();
+    let floorIndex = getCurrentFloorMemoryIndex(state);
+    let plan = getMemoryOrchestrationPlan(state, floorIndex);
+
+    if (options.captureInline !== false && plan.actions.captureInline) {
+        await captureInlineGenerationFromLatestMessage();
+    }
+    if (options.scheduleInlineCapture) {
+        scheduleInlineGenerationCapture(reason);
+    }
+
+    state = ensureState();
+    floorIndex = getCurrentFloorMemoryIndex(state);
+    plan = getMemoryOrchestrationPlan(state, floorIndex);
+    if (plan.actions.processLatestTurn) {
+        await maybeRunTurnSummary();
+    } else if (plan.actions.processLatestTableOnly) {
+        await processLatestTableEdit({ manual: false });
+    }
+
+    state = ensureState();
+    floorIndex = getCurrentFloorMemoryIndex(state);
+    plan = getMemoryOrchestrationPlan(state, floorIndex);
+    if (plan.actions.runStageAutomation) {
+        await maybeRunAutoSummary();
+    }
+    if (plan.actions.balanceHiddenFloors) {
+        scheduleAutoHideRecent(reason);
+    }
+    if (options.vectorDirtyReason) {
+        markVectorIndexDirty(options.vectorDirtyReason, state);
+    } else if (plan.actions.refreshVectorIndex) {
+        scheduleVectorAutoIndex(reason);
+    }
+
+    syncInjection();
+    if (options.render) scheduleRenderAll();
+    return { index: floorIndex, plan };
+}
+
 function isAutoThresholdReached(targets) {
     const state = ensureState();
     if (state.automation.triggerType === 'chars') {
@@ -7687,7 +7764,7 @@ function getWorkflowInfo(state = ensureState()) {
     };
 }
 
-function getOverviewRecommendation(state = ensureState()) {
+function getLegacyOverviewRecommendation(state = ensureState()) {
     const storySummaries = Array.isArray(state.storySummaries) ? state.storySummaries : [];
     const stageSummaries = Array.isArray(state.stageSummaries) ? state.stageSummaries : [];
     const drafts = Array.isArray(state.drafts) ? state.drafts : [];
@@ -7800,6 +7877,27 @@ function getOverviewRecommendation(state = ensureState()) {
     };
 }
 
+function getCurrentFloorMemoryIndex(state = ensureState()) {
+    const context = getContext();
+    return buildFloorMemoryIndex({
+        messages: context?.chat || chat || [],
+        state,
+    });
+}
+
+function getMemoryOrchestrationPlan(state = ensureState(), index = getCurrentFloorMemoryIndex(state)) {
+    return createMemoryOrchestrationPlan(index, state, { busy: isBusy || isQueueRunning });
+}
+
+function getOverviewRecommendation(state = ensureState(), index = getCurrentFloorMemoryIndex(state)) {
+    try {
+        return getMemoryOrchestrationPlan(state, index).recommendation;
+    } catch (error) {
+        console.warn('[BakemonoMemory] floor memory planning failed, using summary fallback', error);
+        return getLegacyOverviewRecommendation(state);
+    }
+}
+
 function applyWorkflowPreset(mode) {
     const state = ensureState();
     if (mode === workflowModes.MIXED) {
@@ -7826,11 +7924,15 @@ function applyWorkflowPreset(mode) {
 
 function renderWorkflowGuide(state = ensureState()) {
     const info = getWorkflowInfo(state);
-    const recommendation = getOverviewRecommendation(state);
+    const floorIndex = getCurrentFloorMemoryIndex(state);
+    const recommendation = getOverviewRecommendation(state, floorIndex);
+    const floorStats = floorIndex.aggregates;
     $('#bakemono-memory-overview-state-label').text(recommendation.stateLabel);
     $('#bakemono-memory-overview-status-label').text(recommendation.statusLabel);
     $('#bakemono-memory-workflow-title').text(recommendation.title);
     $('#bakemono-memory-overview-next-copy').text(recommendation.copy);
+    $('#bakemono-memory-index-ready-floor').text(floorStats.latestReadyFloor ?? '—');
+    $('#bakemono-memory-index-pending-count').text(floorStats.missing.toLocaleString());
     const stageCount = Array.isArray(state.stageSummaries) ? state.stageSummaries.length : 0;
     const epicCount = Array.isArray(state.epicSummaries) ? state.epicSummaries.length : 0;
     $('#bakemono-memory-scene-code').text(`SC. ${String(stageCount).padStart(2, '0')} / TK. ${String(epicCount).padStart(2, '0')}`);
@@ -8754,8 +8856,9 @@ const helpGuideArticles = {
     },
     'automatic-feature': {
         number: '03', category: '功能说明', title: '自动记忆、表格与自动总结', tag: '自动', audience: '减少重复操作', duration: '约 3 分钟',
-        lead: '这些功能用于正文后处理和结构化记录；每个功能只保留自己的参数，不再复制到设置中心。',
-        steps: [['自动记忆', '每轮正文结束后生成摘要，生成方式与保存策略在本页调整。'], ['剧情表格', '持续记录角色、地点、物品与关系变化，框架和提示词由表格页管理。'], ['自动总结规则', '根据片段或字数触发提醒、草稿或自动保存，阈值只在自动总结页出现。']],
+        lead: '楼层记忆状态索引会读取已有摘要、草稿、表格事务、隐藏状态和向量记录，再协调你已经开启的后台功能；它不会复制聊天正文。',
+        steps: [['自动编排', '新回复到达后先判断这一楼缺少什么，再依次协调随正文捕获、回复后处理、阶段整理、收纳与向量刷新。'], ['基础表格', '在“剧情表格 → 新建与导入表格”可创建角色、关系、世界、物品、约定与剧情指导表；不会重复建立事件摘要或大总结表。'], ['原有开关不变', '编排器只运行你已经开启的功能；模型、保存策略、阈值与表格权限仍在各自页面调整。']],
+        note: ['为什么首页没有更多设置？', '首页只显示整理进度、待处理数量和推荐下一步。索引原理与进阶设置集中放在这里。'],
     },
     'retrieval-feature': {
         number: '04', category: '功能说明', title: '向量记忆与上下文注入', tag: '召回', audience: '长聊天检索', duration: '约 3 分钟',
@@ -8958,6 +9061,8 @@ function renderActiveWorkbenchPanel(tabName, state, blocks) {
 }
 
 function renderWorkbenchHubPanels(state = ensureState()) {
+    const floorIndex = getCurrentFloorMemoryIndex(state);
+    const floorStats = floorIndex.aggregates;
     const turnEnabled = !!state.turnSummary?.enabled;
     const automationEnabled = !!state.automation?.enabled;
     const tableEnabled = !!state.tableDatabase?.enabled;
@@ -8977,7 +9082,16 @@ function renderWorkbenchHubPanels(state = ensureState()) {
     const apiProvider = state.automation?.apiProvider || defaultAutomation.apiProvider;
     const selectedConfig = getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
 
-    $('#bakemono-memory-data-hub-title').text(enabledCount ? '记忆工作正常' : '等待启用后台工具');
+    const orchestrationTitle = floorStats.pendingDraftCount
+        ? `${floorStats.pendingDraftCount.toLocaleString()} 条内容待确认`
+        : floorStats.activeTaskCount
+            ? '正在整理记忆'
+            : floorStats.missing
+                ? `${floorStats.missing.toLocaleString()} 楼等待识别`
+                : enabledCount
+                    ? '记忆编排正常'
+                    : '等待启用后台工具';
+    $('#bakemono-memory-data-hub-title').text(orchestrationTitle);
     $('#bakemono-memory-data-hub-enabled').text(`${enabledCount} 项开启`);
     $('#bakemono-memory-data-hub-turn-state').text(turnEnabled ? '已开启' : '未开启').toggleClass('is-on', turnEnabled);
     $('#bakemono-memory-data-hub-auto-state').text(automationEnabled ? automationModeLabel : '未开启').toggleClass('is-on', automationEnabled);
@@ -9155,15 +9269,8 @@ function renderWorkbenchDataHubMemory(state) {
     renderMemoryDatabaseSummary(state);
 }
 
-function renderWorkbenchOverviewMemory(state, options = {}) {
+function renderWorkbenchOverviewMemory(state) {
     state.memoryRecords = buildMemoryRecords(state);
-    if (options.refreshHidden) {
-        const actualHiddenIds = getActualHiddenMessageIds();
-        const pluginHiddenIds = getFiniteMessageIds(state.hiddenMessageIds || []);
-        $('#bakemono-memory-count-hidden')
-            .text(actualHiddenIds.length)
-            .attr('title', `酒馆实际隐藏 ${actualHiddenIds.length} 楼；插件记录 ${pluginHiddenIds.length} 楼`);
-    }
     renderWorkflowGuide(state);
     renderMemoryDatabaseSummary(state);
 }
@@ -9246,7 +9353,7 @@ function renderWorkbenchScope(scope, statusText = '', options = {}) {
             renderAutoHideRecentPanel(state);
             renderMaintenanceOverview(state);
         } else if (activeTab === 'overview') {
-            renderWorkbenchOverviewMemory(state, { refreshHidden: true });
+            renderWorkbenchOverviewMemory(state);
         } else if (activeTab === 'data-hub') {
             renderWorkbenchDataHubMemory(state);
         } else if (activeTab === 'records') {
@@ -9347,12 +9454,6 @@ function renderAll(statusText = '') {
         $('#bakemono-memory-tab-count-story').text(blocks.story.length);
         $('#bakemono-memory-tab-count-stage').text(blocks.stage.length);
         $('#bakemono-memory-tab-count-epic').text(blocks.epic.length);
-    } else if (activeTab === 'overview') {
-        const actualHiddenIds = getActualHiddenMessageIds();
-        const pluginHiddenIds = getFiniteMessageIds(state.hiddenMessageIds || []);
-        $('#bakemono-memory-count-hidden')
-            .text(actualHiddenIds.length)
-            .attr('title', `酒馆实际隐藏 ${actualHiddenIds.length} 楼；插件记录 ${pluginHiddenIds.length} 楼`);
     }
     syncActiveWorkbenchFormFields(activeTab, state);
     if (activeTab === 'automation') {
@@ -12595,6 +12696,12 @@ function bindSettingsEvents() {
     $('#bakemono-memory-create-table').off('click').on('click', () => {
         createCustomTableFromUi();
     });
+    $('#bakemono-memory-create-base-ledger').off('click').on('click', () => {
+        const profile = createBaseStoryLedgerProfile(ensureState());
+        if (!profile) return;
+        renderWorkbenchScope(workbenchRenderScopes.TABLES, `已创建并启用：${profile.name}`);
+        toastr.success('基础表格已创建。');
+    });
     $('#bakemono-memory-table-schema-scope').off('change').on('change', function () {
         const state = ensureState();
         const nextScope = String(this.value || tableSchemaScopes.CHAT);
@@ -13547,14 +13654,11 @@ async function init() {
         scheduleRender: scheduleRenderAll,
     }));
     eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
-        await captureInlineGenerationFromLatestMessage();
-        scheduleInlineGenerationCapture('收到新回复');
-        await maybeRunTurnSummary();
-        await maybeRunAutoSummary();
-        scheduleAutoHideRecent('message received');
-        markVectorIndexDirty('收到新消息');
-        syncInjection();
-        scheduleRenderAll();
+        await runMemoryOrchestrator('收到新回复', {
+            scheduleInlineCapture: true,
+            vectorDirtyReason: '收到新消息',
+            render: true,
+        });
     });
     for (const event of [event_types.MESSAGE_UPDATED, event_types.MESSAGE_DELETED, event_types.MESSAGE_SWIPED]) {
         eventSource.on(event, (...args) => {

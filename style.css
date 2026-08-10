@@ -4116,6 +4116,18 @@
   }
 }
 
+.bakemono-memory-builtin-table-preset {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.bakemono-memory-builtin-table-preset > .menu_button {
+  justify-content: center;
+}
+
 /* Automatic memory and table desk precision pass --------------------------- */
 
 .bakemono-workbench-root[data-active-tab="turn-summary"] .bakemono-workbench-panel[data-bakemono-panel="turn-summary"].is-active {
@@ -10243,7 +10255,14 @@ details[open] > summary > .bakemono-memory-help-trigger {
   gap: 2px;
 }
 
-.bakemono-memory-scene-state > strong {
+.bakemono-memory-scene-state-label {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bakemono-memory-scene-state-label > strong {
   overflow: hidden;
   color: var(--bk-accent);
   font-size: 12px;
@@ -10251,6 +10270,14 @@ details[open] > summary > .bakemono-memory-help-trigger {
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.bakemono-memory-scene-state-label > .bakemono-memory-help-trigger,
+.bakemono-memory-builtin-table-preset > .bakemono-memory-help-trigger {
+  position: static;
+  display: inline-flex;
+  translate: none;
+  flex: 0 0 auto;
 }
 
 .bakemono-memory-scene-state > .bakemono-memory-scene-code {
@@ -10690,53 +10717,9 @@ details[open] > summary > .bakemono-memory-help-trigger {
   margin-top: 22px;
 }
 
-.bakemono-workbench-root .bakemono-memory-safety-entry {
-  width: 100%;
-  min-height: 68px;
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
-  grid-template-areas: "icon title arrow" "icon copy arrow";
-  column-gap: 11px;
-  align-items: center;
-  justify-content: stretch;
-  margin: 0;
-  padding: 11px 14px;
-  border: 1px solid var(--bk-line);
-  border-radius: 17px;
-  background: color-mix(in srgb, var(--bk-paper-soft) 84%, transparent);
-  box-shadow: none;
-  text-align: left;
-}
-
-.bakemono-memory-safety-entry > span {
-  grid-area: icon;
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: var(--bk-paper-raised);
-  color: var(--bk-accent-strong);
-}
-
-.bakemono-memory-safety-entry > strong {
-  grid-area: title;
-  align-self: end;
-  font-size: 14px;
-}
-
-.bakemono-memory-safety-entry > small {
-  grid-area: copy;
-  align-self: start;
-  margin-top: 3px;
-  color: var(--bk-ink-soft);
-  font-size: 11px;
-}
-
-.bakemono-memory-safety-entry > i:last-child {
-  grid-area: arrow;
-  color: var(--bk-ink-soft);
-  font-size: 11px;
+.bakemono-memory-safety-ledger {
+  border-top-color: var(--bk-line);
+  border-bottom-color: var(--bk-line);
 }
 
 @media (max-width: 900px) {

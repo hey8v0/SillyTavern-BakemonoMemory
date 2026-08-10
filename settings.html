@@ -78,7 +78,10 @@
           <article class="bakemono-memory-next-panel bakemono-memory-scene-panel">
             <div class="bakemono-memory-scene-meta">
               <span class="bakemono-memory-scene-state">
-                <strong id="bakemono-memory-overview-state-label">当前聊天</strong>
+                <span class="bakemono-memory-scene-state-label">
+                  <strong id="bakemono-memory-overview-state-label">当前聊天</strong>
+                  <button type="button" class="bakemono-memory-help-trigger" aria-label="查看楼层记忆状态说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">剪辑台会临时汇总现有摘要、待确认草稿、表格事务、隐藏楼层和向量索引，用来判断当前整理进度。它不会复制或改写你的记忆数据。</span></button>
+                </span>
                 <small id="bakemono-memory-scene-code" class="bakemono-memory-scene-code">SC. 00 / TK. 00</small>
               </span>
               <span class="bakemono-memory-overview-status"><i aria-hidden="true"></i><b id="bakemono-memory-overview-status-label">准备就绪</b></span>
@@ -97,8 +100,8 @@
           </article>
 
           <div class="bakemono-memory-status-strip" aria-label="当前记忆状态">
-            <div class="bakemono-memory-stat"><strong id="bakemono-memory-count-hidden">0</strong><span>已隐藏楼层</span></div>
-            <div class="bakemono-memory-stat"><strong id="bakemono-memory-count-records">0</strong><span>长期记忆</span></div>
+            <div class="bakemono-memory-stat"><strong id="bakemono-memory-index-ready-floor">—</strong><span>已整理至</span></div>
+            <div class="bakemono-memory-stat"><strong id="bakemono-memory-index-pending-count">0</strong><span>待识别楼层</span></div>
             <div class="bakemono-memory-stat"><strong id="bakemono-memory-count-drafts">0</strong><span>待确认</span></div>
           </div>
 
@@ -218,12 +221,11 @@
         </div>
 
         <div class="bakemono-memory-hub-group-title bakemono-memory-safety-divider"><span>安全维护</span><i></i></div>
-        <button type="button" class="menu_button bakemono-memory-safety-entry" data-bakemono-nav="maintenance">
-          <span><i class="fa-solid fa-shield-halved"></i></span>
-          <strong>撤回与事务</strong>
-          <small>需要恢复或排查时使用</small>
-          <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-        </button>
+        <div class="bakemono-memory-settings-ledger bakemono-memory-safety-ledger">
+          <button type="button" class="menu_button" data-bakemono-nav="maintenance">
+            <span>07</span><i class="fa-solid fa-shield-halved"></i><strong>撤回与事务</strong><em>按需使用</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+          </button>
+        </div>
       </section>
 
       <section class="bakemono-workbench-panel bakemono-memory-settings-panel" data-bakemono-panel="settings">
@@ -886,6 +888,13 @@
 
             <details class="bakemono-memory-table-import bakemono-memory-table-advanced">
               <summary><i class="fa-solid fa-plus"></i><span>新建与导入表格</span></summary>
+              <div class="bakemono-memory-builtin-table-preset">
+                <button class="menu_button" id="bakemono-memory-create-base-ledger">
+                  <i class="fa-solid fa-book-open"></i>
+                  <span>创建基础表格</span>
+                </button>
+                <button type="button" class="bakemono-memory-help-trigger" aria-label="查看基础表格说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">会新建一组角色、关系、世界、物品、约定与剧情指导表。不会加入事件摘要或大总结表，也不会覆盖当前表格组。</span></button>
+              </div>
               <div class="bakemono-memory-table-create">
                 <label class="bakemono-memory-field">
                   <span>新表名称</span>
