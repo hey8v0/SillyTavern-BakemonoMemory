@@ -2,6 +2,19 @@ export function normalizeLineEndings(value) {
     return String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
+export function migrateBuiltInInjectionDefaults(injection, legacyTemplate, nextTemplate, options = {}) {
+    if (!injection || typeof injection !== 'object') return false;
+    const currentTemplate = normalizeLineEndings(injection.template || '').trim();
+    const recognizedLegacyTemplate = normalizeLineEndings(legacyTemplate || '').trim();
+    if (!recognizedLegacyTemplate || currentTemplate !== recognizedLegacyTemplate) return false;
+    const legacyDepth = Number(options.legacyDepth ?? 4);
+    const nextDepth = Number(options.nextDepth ?? 999);
+    injection.template = String(nextTemplate || legacyTemplate);
+    if (Number(injection.depth ?? legacyDepth) === legacyDepth) injection.depth = nextDepth;
+    if (injection.enabled === undefined) injection.enabled = true;
+    return true;
+}
+
 export function stripLeadingText(value, prefix) {
     let text = normalizeLineEndings(value).trim();
     const normalizedPrefix = normalizeLineEndings(prefix).trim();

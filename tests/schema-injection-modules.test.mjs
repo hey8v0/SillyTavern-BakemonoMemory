@@ -114,3 +114,17 @@ test('injection templates remove duplicate wrappers and render one clean copy', 
         'Memory follows:\n\nRemember Nana',
     );
 });
+
+test('recognized legacy injection defaults gain a closing marker and front-of-history depth', async () => {
+    const injection = await loadModule('src/shared/injection-template.js');
+    const legacyTemplate = 'BEGIN\n{{memory}}';
+    const nextTemplate = 'BEGIN\n{{memory}}\nEND';
+    const settings = { enabled: true, depth: 4, template: legacyTemplate };
+
+    assert.equal(injection.migrateBuiltInInjectionDefaults(settings, legacyTemplate, nextTemplate), true);
+    assert.deepEqual(settings, { enabled: true, depth: 999, template: nextTemplate });
+
+    const custom = { enabled: false, depth: 4, template: 'CUSTOM\n{{memory}}' };
+    assert.equal(injection.migrateBuiltInInjectionDefaults(custom, legacyTemplate, nextTemplate), false);
+    assert.deepEqual(custom, { enabled: false, depth: 4, template: 'CUSTOM\n{{memory}}' });
+});

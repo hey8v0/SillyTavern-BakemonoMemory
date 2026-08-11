@@ -212,18 +212,24 @@
           <button type="button" class="menu_button" data-bakemono-nav="generation">
             <span>04</span><i class="fa-solid fa-wand-magic-sparkles"></i><strong>默认生成模型</strong><em id="bakemono-memory-settings-hub-generation">酒馆主模型</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
           </button>
+          <button type="button" class="menu_button" data-bakemono-nav="prompts">
+            <span>05</span><i class="fa-solid fa-pen-nib"></i><strong>生成提示词</strong><em>四类模板</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="menu_button" data-bakemono-nav="archive">
+            <span>06</span><i class="fa-solid fa-box-archive"></i><strong>楼层收纳</strong><em>自动与手动</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+          </button>
           <button type="button" class="menu_button" data-bakemono-nav="appearance">
-            <span>05</span><i class="fa-solid fa-palette"></i><strong>外观与主题</strong><em id="bakemono-memory-settings-hub-theme">跟随酒馆</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            <span>07</span><i class="fa-solid fa-palette"></i><strong>外观与主题</strong><em id="bakemono-memory-settings-hub-theme">跟随酒馆</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
           </button>
           <button type="button" class="menu_button" data-bakemono-nav="config">
-            <span>06</span><i class="fa-solid fa-file-code"></i><strong>整套配置</strong><em id="bakemono-memory-settings-hub-config">导入导出</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            <span>08</span><i class="fa-solid fa-file-code"></i><strong>整套配置</strong><em id="bakemono-memory-settings-hub-config">导入导出</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
           </button>
         </div>
 
         <div class="bakemono-memory-hub-group-title bakemono-memory-safety-divider"><span>安全维护</span><i></i></div>
         <div class="bakemono-memory-settings-ledger bakemono-memory-safety-ledger">
           <button type="button" class="menu_button" data-bakemono-nav="maintenance">
-            <span>07</span><i class="fa-solid fa-shield-halved"></i><strong>撤回与事务</strong><em>按需使用</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            <span>09</span><i class="fa-solid fa-shield-halved"></i><strong>撤回与事务</strong><em>按需使用</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
           </button>
         </div>
       </section>
@@ -486,11 +492,6 @@
           <h3>默认生成模型</h3>
         </header>
         <div id="bakemono-memory-generation-settings-slot" class="bakemono-memory-owned-section-slot bakemono-memory-owned-primary-slot"></div>
-        <button type="button" class="menu_button bakemono-memory-action-row" data-bakemono-nav="prompts">
-          <span class="bakemono-memory-action-icon"><i class="fa-solid fa-pen-nib"></i></span>
-          <span class="bakemono-memory-action-copy"><strong>生成提示词</strong></span>
-          <i class="fa-solid fa-chevron-right bakemono-memory-action-chevron" aria-hidden="true"></i>
-        </button>
       </section>
 
       <section class="bakemono-workbench-panel bakemono-memory-settings-panel" data-bakemono-panel="config">
@@ -499,6 +500,14 @@
           <h3>整套配置</h3>
         </header>
         <div id="bakemono-memory-config-settings-slot" class="bakemono-memory-owned-section-slot bakemono-memory-owned-primary-slot"></div>
+      </section>
+
+      <section class="bakemono-workbench-panel bakemono-memory-settings-panel" data-bakemono-panel="archive">
+        <header class="bakemono-memory-page-intro bakemono-memory-settings-intro">
+          <span class="bakemono-memory-next-kicker">聊天收纳</span>
+          <h3>楼层收纳</h3>
+        </header>
+        <div id="bakemono-memory-floor-archive-slot" class="bakemono-memory-owned-section-slot bakemono-memory-owned-primary-slot"></div>
       </section>
 
       <section class="bakemono-workbench-panel" data-bakemono-panel="records">
@@ -2020,8 +2029,6 @@
           </button>
         </div>
         <div id="bakemono-memory-maintenance-records" class="bakemono-memory-maintenance-record-list"></div>
-
-        <div id="bakemono-memory-floor-archive-slot" class="bakemono-memory-owned-section-slot"></div>
 
         <details class="bakemono-memory-maintenance-danger bakemono-memory-console-disclosure">
           <summary><span><i class="fa-solid fa-shield-halved"></i> 维护工具</span><small>清理队列、记录与索引</small></summary>

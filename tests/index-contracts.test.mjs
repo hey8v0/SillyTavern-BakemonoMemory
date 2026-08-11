@@ -93,7 +93,8 @@ test('secondary workbench pages install a consistent parent navigation', () => {
     assert.match(source, /'turn-summary': \{ target: 'data-hub', label: '返回自动与数据' \}/);
     assert.match(source, /vector: \{ target: 'data-hub', label: '返回自动与数据' \}/);
     assert.match(source, /settings: \{ target: 'settings-hub', label: '返回设置中心' \}/);
-    assert.match(source, /prompts: \{ target: 'generation', label: '返回默认生成模型' \}/);
+    assert.match(source, /prompts: \{ target: 'settings-hub', label: '返回设置中心' \}/);
+    assert.match(source, /archive: \{ target: 'settings-hub', label: '返回设置中心' \}/);
     assert.match(source, /timeline: \{ target: 'preview', label: '返回总结' \}/);
     assert.match(source, /function installWorkbenchParentNavigation\(\)/);
     assert.match(source, /installWorkbenchParentNavigation\(\);/);
@@ -279,7 +280,7 @@ test('stage and multi-summary defaults use the requested event timeline format',
     assert.match(stage, /经过：用流水账形式清晰记录该事件的起因、经过、结果，保留所有重要动作\/话语\/冲突。/);
     assert.match(stage, /➤ 🎭 【角色进化录】/);
     assert.match(stage, /➤ 🏆 【金句名人堂】（从整篇剧情中挑选出最具代表性、最能定义本卷灵魂的台词）/);
-    assert.match(stage, /1\. > “台词1”——【角色名】\n……/);
+    assert.match(stage, /1\. > “台词1”——【角色名】\r?\n……/);
 
     assert.match(epic, /➤ 📜 【时间线总览】/);
     assert.match(epic, /- \[事件名称\] \(涵盖的章节跨度 \| 发生时间 \| 发生地点 \| 在场角色\)/);
@@ -528,7 +529,7 @@ test('custom themes stay token-only, global, and importable as JSON', () => {
     assert.match(source, /function downloadCustomThemeLibraryJson\(/);
     assert.match(source, /function importCustomThemeJson\(/);
     assert.match(source, /settings\.ui\.customTheme = sanitizeCustomTheme/);
-    assert.match(source, /settings\.ui\.themePresets = settings\.ui\.themePresets\.map/);
+    assert.match(source, /settings\.ui\.themePresets = Array\.isArray\(settings\.ui\.themePresets\)[\s\S]*?settings\.ui\.themePresets\.map/);
     assert.match(styleSource, /\.bakemono-workbench-root\.bakemono-custom-theme/);
     assert.match(styleSource, /v1\.2\.5 compact theme library/);
     assert.match(styleSource, /\.bakemono-memory-theme-section-panel\[hidden\]\s*\{[^}]*display:\s*none !important;/s);
@@ -593,4 +594,35 @@ test('vector model fetch preserves unsaved fields and reports failures accuratel
     assert.match(querySource, /if \(!baseUrl\)[\s\S]*?return false;/);
     assert.match(embeddingSource, /return true;[\s\S]*?catch \(error\)[\s\S]*?return false;/);
     assert.match(querySource, /return true;[\s\S]*?catch \(error\)[\s\S]*?return false;/);
+});
+
+test('frequent prompt and floor-archive tools live directly in the settings center', () => {
+    assert.match(settingsSource, /data-bakemono-nav="prompts"[^>]*>[\s\S]*?<strong>生成提示词<\/strong>/);
+    assert.match(settingsSource, /data-bakemono-nav="archive"[^>]*>[\s\S]*?<strong>楼层收纳<\/strong>/);
+    assert.match(settingsSource, /data-bakemono-panel="archive"/);
+    assert.match(settingsSource, /id="bakemono-memory-floor-archive-slot"/);
+    assert.match(source, /archive: \{ target: 'settings-hub', label: '返回设置中心' \}/);
+    assert.match(source, /prompts: \{ target: 'settings-hub', label: '返回设置中心' \}/);
+    assert.match(source, /\['config', 'generation', 'archive'\]\.includes\(sectionName\)/);
+    assert.match(settingsSource, /data-bakemono-nav="maintenance">\s*<span>09<\/span>/);
+    assert.doesNotMatch(settingsSource, /data-bakemono-panel="generation"[\s\S]*?data-bakemono-nav="prompts"/);
+});
+
+test('injection defaults mark their end and start at the front of chat history', () => {
+    assert.match(source, /\{\{memory\}\}\r?\n【剧情剪辑台：长期剧情记忆结束】`;/);
+    assert.match(source, /injection:\s*\{\s*enabled:\s*true,\s*depth:\s*999,/);
+    assert.match(source, /migrateBuiltInInjectionDefaults\(state\.injection, legacyInjectionTemplate, defaultInjectionTemplate\)/);
+});
+
+test('appearance settings ship protected warm-paper day and night presets', () => {
+    assert.match(source, /id: 'bakemono-warm-paper-day'/);
+    assert.match(source, /id: 'bakemono-warm-paper-night'/);
+    assert.match(source, /name: '暖纸日间'/);
+    assert.match(source, /name: '暖纸夜间'/);
+    assert.match(source, /builtInCustomThemePresetIds\.has/);
+});
+
+test('table-memory injection toggle persists immediately before page refresh', () => {
+    assert.match(source, /\$\('#bakemono-memory-table-inject-memory'\)\.off\('change\.bakemonoTableInjection'\)/);
+    assert.match(source, /state\.tableDatabase\.injectMemory = !!this\.checked;[\s\S]*?persistSharedConfigurationFromState\(state\);/);
 });

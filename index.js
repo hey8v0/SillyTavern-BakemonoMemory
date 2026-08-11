@@ -7,7 +7,7 @@ import { persistChatState, persistGlobalSettings } from './src/core/persistence.
 import { migrateGenerationPrompts, migrateInlineSummaryPrompt, migratePromptPresetTimelines, migrateTurnSummaryPrompt, migrateVectorQueryRewritePrompt } from './src/core/prompt-migrations.js';
 import { ensureObjectField, fillMissingDefaults, normalizeArrayFields } from './src/core/state-shape.js';
 import { memoryStrategies, normalizeWorkflowState, stageSourceModes, workflowModes } from './src/core/workflow-mode.js';
-import { normalizeInjectionMemoryBody, normalizeLineEndings, renderInjectionTemplate } from './src/shared/injection-template.js';
+import { migrateBuiltInInjectionDefaults, normalizeInjectionMemoryBody, normalizeLineEndings, renderInjectionTemplate } from './src/shared/injection-template.js';
 import { formatBlocksForPrompt, getPromptStructureExcerpt, migrateBuiltInStructuredPrompt, migrateEpicPromptTimeSpan, migrateStagePromptTimeSpan, renderGenerationPrompt, stripPostProcessNoise } from './src/shared/prompt-utils.js';
 import { countKeywordHits, extractAllTaggedBlocks, extractConfiguredTagBlocks, extractTaggedContent, getHash, matchesAnyKeyword, normalizeSearchText, parseList, stripConfiguredTags, stripTableEditTags } from './src/shared/text.js';
 import { parseMissingSummaryBatchResult } from './src/summary/draft-parser.js';
@@ -107,7 +107,7 @@ const customThemeColorKeys = [
 ];
 const defaultCustomTheme = {
     $schema: CUSTOM_THEME_SCHEMA,
-    name: '我的自定义主题',
+    name: '暖纸日间',
     appearance: 'light',
     tokens: {
         paper: '#eee4ce',
@@ -136,6 +136,46 @@ const defaultCustomTheme = {
     },
     aiInstructions: '只修改 tokens、effects、name 与 appearance，保留 $schema 和字段结构；返回完整 JSON，不要加入 CSS、脚本或解释文字。所有颜色必须为六位十六进制色值。',
 };
+const builtInCustomThemeDefinitions = Object.freeze([
+    {
+        ...structuredClone(defaultCustomTheme),
+        id: 'bakemono-warm-paper-day',
+        name: '暖纸日间',
+        createdAt: 'default',
+        updatedAt: 'default',
+    },
+    {
+        $schema: CUSTOM_THEME_SCHEMA,
+        id: 'bakemono-warm-paper-night',
+        name: '暖纸夜间',
+        appearance: 'dark',
+        tokens: {
+            paper: '#211e1a',
+            paperRaised: '#2b2721',
+            paperSoft: '#383126',
+            ink: '#eee3ce',
+            muted: '#b8aa92',
+            accent: '#c19a63',
+            secondary: '#87917a',
+            accentStrong: '#ddb67d',
+            line: '#51483b',
+            backdrop: '#12110f',
+            danger: '#c9796c',
+        },
+        effects: {
+            gradientStrength: 12,
+            gradientAngle: 150,
+            grain: 5,
+            shadow: 22,
+            radius: 12,
+        },
+        constraints: structuredClone(defaultCustomTheme.constraints),
+        aiInstructions: defaultCustomTheme.aiInstructions,
+        createdAt: 'default',
+        updatedAt: 'default',
+    },
+]);
+const builtInCustomThemePresetIds = new Set(builtInCustomThemeDefinitions.map(theme => theme.id));
 
 function normalizeThemeHex(value, fallback) {
     const color = String(value || '').trim();
@@ -256,10 +296,16 @@ updateRow(tableIndex, rowIndex, {"0":"新值"})
 deleteRow(tableIndex, rowIndex)
 </tableEdit>`;
 
-const defaultInjectionTemplate = `【剧情剪辑台：长期剧情记忆】
+const legacyInjectionTemplate = `【剧情剪辑台：长期剧情记忆】
 以下内容是已经压缩整理过的剧情记忆。请把它当作已发生事实与长期线索参考，不要复述给用户，也不要替代当前回合正文。
 
 {{memory}}`;
+
+const defaultInjectionTemplate = `【剧情剪辑台：长期剧情记忆】
+以下内容是已经压缩整理过的剧情记忆。请把它当作已发生事实与长期线索参考，不要复述给用户，也不要替代当前回合正文。
+
+{{memory}}
+【剧情剪辑台：长期剧情记忆结束】`;
 
 const defaultTurnSummaryPrompt = `你是剧情剪辑台的正文摘要器。你会看到刚刚结束的一轮聊天正文，请只基于输入内容生成一份可保存进长期记忆的本轮摘要。
 
@@ -863,7 +909,7 @@ const defaultState = {
     outputMode: 'bakemono',
     injection: {
         enabled: true,
-        depth: 4,
+        depth: 999,
         role: extension_prompt_roles.SYSTEM,
         template: defaultInjectionTemplate,
         content: '',
@@ -1002,14 +1048,22 @@ function ensureGlobalSettings() {
     if (!['tavern', 'custom'].includes(settings.ui.themeMode)) {
         settings.ui.themeMode = 'tavern';
     }
+    const storedCustomTheme = settings.ui.customTheme && typeof settings.ui.customTheme === 'object'
+        ? structuredClone(settings.ui.customTheme)
+        : null;
     settings.ui.customTheme = sanitizeCustomTheme(settings.ui.customTheme);
-    if (!Array.isArray(settings.ui.themePresets) || !settings.ui.themePresets.length) {
-        settings.ui.themePresets = [normalizeCustomThemePreset(settings.ui.customTheme)];
-    } else {
-        settings.ui.themePresets = settings.ui.themePresets.map(normalizeCustomThemePreset);
+    settings.ui.themePresets = Array.isArray(settings.ui.themePresets)
+        ? settings.ui.themePresets.map(normalizeCustomThemePreset)
+        : storedCustomTheme
+            ? [normalizeCustomThemePreset({ ...storedCustomTheme, id: storedCustomTheme.id || 'bakemono-legacy-custom-theme' })]
+            : [];
+    for (const builtInTheme of [...builtInCustomThemeDefinitions].reverse()) {
+        if (!settings.ui.themePresets.some(preset => preset.id === builtInTheme.id)) {
+            settings.ui.themePresets.unshift(normalizeCustomThemePreset(builtInTheme));
+        }
     }
     if (!settings.ui.selectedThemePresetId || !settings.ui.themePresets.some(preset => preset.id === settings.ui.selectedThemePresetId)) {
-        settings.ui.selectedThemePresetId = settings.ui.themePresets[0].id;
+        settings.ui.selectedThemePresetId = 'bakemono-warm-paper-day';
     }
     if (!Array.isArray(extension_settings[STORAGE_KEY].promptPresets)) {
         extension_settings[STORAGE_KEY].promptPresets = [structuredClone(defaultPromptPreset), structuredClone(defaultGenericPromptPreset)];
@@ -1021,6 +1075,7 @@ function ensureGlobalSettings() {
         extension_settings[STORAGE_KEY].promptPresets.push(structuredClone(defaultGenericPromptPreset));
     }
     for (const preset of extension_settings[STORAGE_KEY].promptPresets) {
+        migrateBuiltInInjectionDefaults(preset.injection, legacyInjectionTemplate, defaultInjectionTemplate);
         if (preset.story === undefined) {
             preset.story = defaultStoryGenerationPrompt;
         }
@@ -1079,6 +1134,7 @@ function ensureGlobalSettings() {
     if (settings.activeConfig.inlineGeneration) {
         settings.activeConfig.inlineGeneration = createSharedInlineGenerationConfig(settings.activeConfig.inlineGeneration);
     }
+    migrateBuiltInInjectionDefaults(settings.activeConfig.injection, legacyInjectionTemplate, defaultInjectionTemplate);
     if (!extension_settings[STORAGE_KEY].areaPresets || typeof extension_settings[STORAGE_KEY].areaPresets !== 'object') {
         extension_settings[STORAGE_KEY].areaPresets = {};
     }
@@ -1086,6 +1142,9 @@ function ensureGlobalSettings() {
         if (!Array.isArray(extension_settings[STORAGE_KEY].areaPresets[scope])) {
             extension_settings[STORAGE_KEY].areaPresets[scope] = [];
         }
+    }
+    for (const preset of extension_settings[STORAGE_KEY].areaPresets[areaPresetScopes.INJECTION]) {
+        migrateBuiltInInjectionDefaults(preset.injection, legacyInjectionTemplate, defaultInjectionTemplate);
     }
     if (!extension_settings[STORAGE_KEY].selectedAreaPresetIds || typeof extension_settings[STORAGE_KEY].selectedAreaPresetIds !== 'object') {
         extension_settings[STORAGE_KEY].selectedAreaPresetIds = {};
@@ -1198,6 +1257,7 @@ function ensureState() {
     }
     fillMissingDefaults(state, defaultState);
     fillMissingDefaults(state.injection, defaultState.injection);
+    migrateBuiltInInjectionDefaults(state.injection, legacyInjectionTemplate, defaultInjectionTemplate);
     if (!state.generationPrompts) {
         state.generationPrompts = structuredClone(defaultState.generationPrompts);
     }
@@ -1639,6 +1699,7 @@ function selectCustomThemePreset(presetId) {
     const preset = ui.themePresets.find(item => item.id === presetId);
     if (!preset) return false;
     ui.selectedThemePresetId = preset.id;
+    ui.customTheme = sanitizeCustomTheme(preset);
     appearanceThemeDraft = sanitizeCustomTheme(preset);
     saveGlobalSettings();
     renderAppearanceSettings();
@@ -1650,7 +1711,8 @@ function saveCustomThemePreset(options = {}) {
     const theme = readCustomThemeFromUi();
     const now = new Date().toISOString();
     const selectedIndex = ui.themePresets.findIndex(preset => preset.id === ui.selectedThemePresetId);
-    const saveAs = !!options.saveAs || selectedIndex < 0;
+    const selectedPresetId = selectedIndex >= 0 ? ui.themePresets[selectedIndex].id : '';
+    const saveAs = !!options.saveAs || selectedIndex < 0 || builtInCustomThemePresetIds.has(selectedPresetId);
     const preset = normalizeCustomThemePreset({
         ...theme,
         id: saveAs ? makeCustomThemePresetId(theme.name) : ui.themePresets[selectedIndex].id,
@@ -1679,6 +1741,10 @@ function deleteSelectedCustomThemePreset() {
         return false;
     }
     const preset = getSelectedCustomThemePreset();
+    if (preset && builtInCustomThemePresetIds.has(preset.id)) {
+        toastr.warning('内置暖纸主题不能删除；修改它时会自动另存为新配置。');
+        return false;
+    }
     if (!preset || !confirmDanger(`删除主题配置“${preset.name}”？`, ['不会删除摘要、表格或其他插件配置。'])) return false;
     ui.themePresets = ui.themePresets.filter(item => item.id !== preset.id);
     ui.selectedThemePresetId = ui.themePresets[0].id;
@@ -11588,6 +11654,7 @@ function getWorkbenchPanelTitle(tabName) {
         injection: '注入内容',
         generation: '默认生成模型',
         prompts: '生成提示词',
+        archive: '楼层收纳',
         config: '整套配置',
         appearance: '自定义主题',
         maintenance: '撤回与事务',
@@ -11618,6 +11685,7 @@ function getWorkbenchPanelKicker(tabName, state = ensureState()) {
         injection: `上下文注入 · ${renderInjectionContent(state).length.toLocaleString()} 字符`,
         generation: `默认模型 · ${(state.automation?.apiProvider || defaultAutomation.apiProvider) === 'custom' ? '自定义接口' : '酒馆主模型'}`,
         prompts: '生成风格 · 四类提示词',
+        archive: `聊天收纳 · ${(state.hiddenMessageIds?.length || 0).toLocaleString()} 层已隐藏`,
         config: '配置预设 · 跨聊天复用',
         appearance: `外观主题 · ${getAppearanceSettings().themeMode === 'custom' ? '自定义' : '跟随酒馆'}`,
         maintenance: `安全维护 · ${(state.autoSummaryTransactions?.length || 0).toLocaleString()} 条事务`,
@@ -11648,6 +11716,7 @@ function getWorkbenchPanelShortKicker(tabName, state = ensureState()) {
         injection: `上下文 · ${renderInjectionContent(state).length.toLocaleString()}字`,
         generation: (state.automation?.apiProvider || defaultAutomation.apiProvider) === 'custom' ? '默认模型 · 自定义' : '默认模型 · 酒馆',
         prompts: '生成风格',
+        archive: `楼层收纳 · ${(state.hiddenMessageIds?.length || 0).toLocaleString()}层`,
         config: '整套配置',
         appearance: '外观主题',
         maintenance: `安全维护 · ${(state.autoSummaryTransactions?.length || 0).toLocaleString()}条`,
@@ -12901,6 +12970,13 @@ function bindSettingsEvents() {
         renderWorkbenchScope(workbenchRenderScopes.TABLES, '正文摘要设置已应用，并同步到所有角色卡。');
         toastr.success('正文摘要设置已全局保存。');
     });
+    $('#bakemono-memory-table-inject-memory').off('change.bakemonoTableInjection').on('change.bakemonoTableInjection', function () {
+        const state = ensureState();
+        state.tableDatabase.injectMemory = !!this.checked;
+        updateInjectionFromSummaries();
+        persistSharedConfigurationFromState(state);
+        renderWorkbenchScope(workbenchRenderScopes.TABLES);
+    });
     $('#bakemono-memory-reset-turn-prompt').off('click').on('click', () => {
         const confirmed = confirmDanger(
             '恢复默认正文摘要提示词？',
@@ -13442,8 +13518,8 @@ function organizeWorkbenchOwnedSections() {
             continue;
         }
         slot.append(section);
-        section.classList.toggle('bakemono-memory-owned-primary', ['config', 'generation'].includes(sectionName));
-        if (['config', 'generation'].includes(sectionName)) {
+        section.classList.toggle('bakemono-memory-owned-primary', ['config', 'generation', 'archive'].includes(sectionName));
+        if (['config', 'generation', 'archive'].includes(sectionName)) {
             section.open = true;
         }
         if (sectionName === 'batch') {
@@ -13460,10 +13536,11 @@ const workbenchParentNavigation = Object.freeze({
     scan: { target: 'settings-hub', label: '返回设置中心' },
     injection: { target: 'settings-hub', label: '返回设置中心' },
     generation: { target: 'settings-hub', label: '返回设置中心' },
+    archive: { target: 'settings-hub', label: '返回设置中心' },
     config: { target: 'settings-hub', label: '返回设置中心' },
     appearance: { target: 'settings-hub', label: '返回设置中心' },
     maintenance: { target: 'settings-hub', label: '返回设置中心' },
-    prompts: { target: 'generation', label: '返回默认生成模型' },
+    prompts: { target: 'settings-hub', label: '返回设置中心' },
     timeline: { target: 'preview', label: '返回总结' },
 });
 
