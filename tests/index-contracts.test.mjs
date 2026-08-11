@@ -11,6 +11,7 @@ const promptMigrationsSource = fs.readFileSync(new URL('../src/core/prompt-migra
 const stateShapeSource = fs.readFileSync(new URL('../src/core/state-shape.js', import.meta.url), 'utf8');
 const workflowModeSource = fs.readFileSync(new URL('../src/core/workflow-mode.js', import.meta.url), 'utf8');
 const hybridRetrievalSource = fs.readFileSync(new URL('../src/vector/hybrid-retrieval.js', import.meta.url), 'utf8');
+const promptInspectorSource = fs.readFileSync(new URL('../src/features/prompt-inspector.js', import.meta.url), 'utf8');
 
 test('workbench markup and stylesheet remain structurally balanced', () => {
     const ids = [...settingsSource.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
@@ -116,20 +117,24 @@ test('previous prompt inspector stays read-only, manually searchable, navigable,
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-preset"/);
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-floor"/);
     assert.match(source, /'prompt-inspector': \{ target: 'overview', label: '返回剪辑台' \}/);
-    assert.match(source, /function applyPromptInspectorSearch\(/);
-    assert.match(source, /function collectPromptInspectorSearchResults\(/);
-    assert.match(source, /function openPromptInspectorSearchResult\(/);
-    assert.match(source, /function navigatePromptInspectorSearch\(/);
-    assert.match(source, /function clearPromptInspectorSearch\(/);
-    assert.match(source, /function renderPromptInspectorHighlightedContent\(/);
-    assert.match(source, /label: '基础系统与预设'/);
-    assert.match(source, /getActiveWorkbenchTab\(\) !== 'prompt-inspector'/);
-    assert.match(source, /if \(content\) content\.textContent = ''/);
-    assert.match(source, /const maxPromptInspectorSearchResults = 2000/);
-    assert.match(source, /const maxPromptInspectorRenderedMatches = 240/);
-    assert.doesNotMatch(extractFunction('applyPromptInspectorSearch'), /saveState|saveGlobalSettings|renderAll/);
-    assert.doesNotMatch(extractFunction('navigatePromptInspectorSearch'), /saveState|saveGlobalSettings|renderAll/);
-    assert.doesNotMatch(source, /function schedulePromptInspectorSearch\(/);
+    assert.match(source, /import \{ createPromptInspector \} from '\.\/src\/features\/prompt-inspector\.js';/);
+    assert.match(source, /const promptInspector = createPromptInspector\(\{/);
+    assert.match(source, /promptInspector\.bindEvents\(document\.getElementById\('bakemono-workbench-root'\)\)/);
+    assert.match(promptInspectorSource, /export function createPromptInspector\(/);
+    assert.match(promptInspectorSource, /function applySearch\(/);
+    assert.match(promptInspectorSource, /function collectSearchResults\(/);
+    assert.match(promptInspectorSource, /function openSearchResult\(/);
+    assert.match(promptInspectorSource, /function navigateSearch\(/);
+    assert.match(promptInspectorSource, /function clearSearch\(/);
+    assert.match(promptInspectorSource, /function renderHighlightedContent\(/);
+    assert.match(promptInspectorSource, /label: '基础系统与预设'/);
+    assert.match(promptInspectorSource, /getActiveTab\?\.\(\) !== 'prompt-inspector'/);
+    assert.match(promptInspectorSource, /if \(content\) content\.textContent = ''/);
+    assert.match(promptInspectorSource, /const maxSearchResults = 2000/);
+    assert.match(promptInspectorSource, /const maxRenderedMatches = 240/);
+    assert.doesNotMatch(extractFunctionFrom(promptInspectorSource, 'applySearch'), /saveState|saveGlobalSettings|renderAll/);
+    assert.doesNotMatch(extractFunctionFrom(promptInspectorSource, 'navigateSearch'), /saveState|saveGlobalSettings|renderAll/);
+    assert.doesNotMatch(promptInspectorSource, /function schedulePromptInspectorSearch\(/);
     assert.match(styleSource, /#bakemono-memory-prompt-inspector-query\s*\{[^}]*min-height:\s*44px;/s);
     assert.match(styleSource, /#bakemono-memory-prompt-inspector-search-submit\s*\{[^}]*width:\s*40px;[^}]*height:\s*40px;/s);
     assert.match(styleSource, /\.bakemono-memory-prompt-inspector-search-navigation\s*\{[^}]*min-height:\s*44px;/s);
@@ -265,21 +270,25 @@ function extractTemplate(name) {
     return source.slice(contentStart, end);
 }
 
-function extractFunction(name) {
-    const start = source.indexOf(`function ${name}(`);
+function extractFunctionFrom(targetSource, name) {
+    const start = targetSource.indexOf(`function ${name}(`);
     assert.notEqual(start, -1, `${name} should exist`);
-    const signatureEnd = source.indexOf(') {', start);
+    const signatureEnd = targetSource.indexOf(') {', start);
     assert.notEqual(signatureEnd, -1, `${name} should have a function body`);
     const bodyStart = signatureEnd + 2;
     let depth = 0;
-    for (let index = bodyStart; index < source.length; index += 1) {
-        if (source[index] === '{') depth += 1;
-        if (source[index] === '}') depth -= 1;
+    for (let index = bodyStart; index < targetSource.length; index += 1) {
+        if (targetSource[index] === '{') depth += 1;
+        if (targetSource[index] === '}') depth -= 1;
         if (depth === 0) {
-            return source.slice(start, index + 1);
+            return targetSource.slice(start, index + 1);
         }
     }
     throw new Error(`Could not extract ${name}`);
+}
+
+function extractFunction(name) {
+    return extractFunctionFrom(source, name);
 }
 
 function assertContinuationEllipses(prompt) {

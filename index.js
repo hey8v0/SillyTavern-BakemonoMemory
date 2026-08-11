@@ -24,6 +24,7 @@ import { computeHybridRerankScore, selectHybridCandidates } from './src/vector/h
 import { extractCustomModelIds, getCustomChatCompletionsUrl, getCustomEmbeddingsUrl, getCustomModelsUrl, normalizeCustomApiBaseUrl } from './src/vector/provider-config.js';
 import { extractChatCompletionText, parseVectorQueryRewritePayload } from './src/vector/query-parser.js';
 import { compactEmbedding, getClippedVectorText, slimVectorMemoryForSave } from './src/vector/storage.js';
+import { createPromptInspector } from './src/features/prompt-inspector.js';
 
 const EXT_ID = 'BakemonoMemory';
 const STORAGE_KEY = 'bakemonoMemory';
@@ -989,23 +990,12 @@ let autoHideRecentTimer = null;
 let scheduledRenderHandle = null;
 let scheduledRenderStatus = '';
 let overviewTokenRenderRevision = 0;
-let promptInspectorRenderRevision = 0;
-let promptInspectorOpenEntryKey = '';
-let promptInspectorSearchQuery = '';
-let promptInspectorSearchResults = [];
-let promptInspectorSearchResultIndex = -1;
-let promptInspectorSearchTruncated = false;
 const overviewTokenCache = new Map();
-const overviewPromptUsageCache = new WeakMap();
-const promptInspectorEntries = new Map();
-const promptInspectorSearchResultsByEntry = new Map();
 const sanitizedChatLengths = new WeakMap();
 const vectorEmbeddingRuntimeCache = new Map();
 const maxStoredScanPreviewItems = 240;
 const mobileScanPreviewRenderLimit = 60;
 const desktopScanPreviewRenderLimit = 120;
-const maxPromptInspectorSearchResults = 2000;
-const maxPromptInspectorRenderedMatches = 240;
 const previewPageSize = 8;
 const historyPageSize = 10;
 const timelinePageSize = 25;
@@ -8075,582 +8065,17 @@ async function getOverviewTokenCount(text) {
     return normalizedCount;
 }
 
-function flattenPromptSnapshot(value, seen = new WeakSet()) {
-    if (typeof value === 'string') return value;
-    if (!value || typeof value !== 'object') return '';
-    if (seen.has(value)) return '';
-    seen.add(value);
-    if (Array.isArray(value)) {
-        return value.map(item => flattenPromptSnapshot(item, seen)).filter(Boolean).join('\n');
-    }
-    return Object.values(value).map(item => flattenPromptSnapshot(item, seen)).filter(Boolean).join('\n');
-}
 
-function getLatestCompletedPromptSnapshot() {
-    if (!Array.isArray(itemizedPrompts) || !itemizedPrompts.length) return null;
-    let latest = null;
-    itemizedPrompts.forEach((entry, index) => {
-        const messageId = Number(entry?.mesId);
-        const message = Number.isInteger(messageId) ? chat?.[messageId] : null;
-        if (!message || message.is_user) return;
-        if (!latest || messageId > latest.messageId || (messageId === latest.messageId && index > latest.index)) {
-            latest = { entry, index, messageId };
-        }
-    });
-    return latest;
-}
-
-async function getLastCompletePromptUsage() {
-    const snapshot = getLatestCompletedPromptSnapshot();
-    if (!snapshot) return null;
-    if (overviewPromptUsageCache.has(snapshot.entry)) return overviewPromptUsageCache.get(snapshot.entry);
-    const usagePromise = (async () => {
-        try {
-            const params = await itemizedParams(itemizedPrompts, snapshot.index, snapshot.messageId);
-            const total = Number(params?.finalPromptTokens || params?.totalTokensInPrompt || 0);
-            if (!Number.isFinite(total) || total <= 0) return null;
-            return {
-                total,
-                messageId: snapshot.messageId,
-                promptText: flattenPromptSnapshot(snapshot.entry?.rawPrompt),
-                entry: snapshot.entry,
-                index: snapshot.index,
-                params,
-            };
-        } catch (error) {
-            console.warn('[BakemonoMemory] failed to read the last itemized prompt', error);
-            return null;
-        }
-    })();
-    overviewPromptUsageCache.set(snapshot.entry, usagePromise);
-    return usagePromise;
-}
-
-function formatPromptInspectorMessageContent(value) {
-    if (typeof value === 'string') return value;
-    if (!value) return '';
-    if (Array.isArray(value)) {
-        return value.map(item => {
-            if (typeof item === 'string') return item;
-            if (typeof item?.text === 'string') return item.text;
-            if (typeof item?.content === 'string') return item.content;
-            if (item?.image_url || item?.type === 'image') return '[图片内容]';
-            return '';
-        }).filter(Boolean).join('\n');
-    }
-    if (typeof value === 'object') {
-        if (typeof value.text === 'string') return value.text;
-        if (typeof value.content === 'string') return value.content;
-    }
-    return '';
-}
-
-function collectPromptInspectorMessages(value, messages = [], seen = new WeakSet()) {
-    if (!value || typeof value !== 'object' || seen.has(value)) return messages;
-    seen.add(value);
-    if (Array.isArray(value)) {
-        value.forEach(item => collectPromptInspectorMessages(item, messages, seen));
-        return messages;
-    }
-    if (typeof value.role === 'string' && Object.prototype.hasOwnProperty.call(value, 'content')) {
-        const content = formatPromptInspectorMessageContent(value.content).trim();
-        if (content) messages.push({ role: value.role.toLowerCase(), content });
-        return messages;
-    }
-    Object.values(value).forEach(item => collectPromptInspectorMessages(item, messages, seen));
-    return messages;
-}
-
-function formatPromptInspectorSnapshot(value) {
-    if (typeof value === 'string') return value;
-    const messages = collectPromptInspectorMessages(value);
-    if (messages.length) {
-        return messages.map(message => `【${message.role.toUpperCase()}】\n${message.content}`).join('\n\n');
-    }
-    try {
-        return JSON.stringify(value, null, 2) || '';
-    } catch {
-        return flattenPromptSnapshot(value);
-    }
-}
-
-function joinPromptInspectorSections(sections) {
-    return sections
-        .filter(([, value]) => String(value || '').trim())
-        .map(([title, value]) => `【${title}】\n${String(value).trim()}`)
-        .join('\n\n');
-}
-
-function stripPromptInspectorEmbeddedSources(content, values) {
-    let result = String(content || '');
-    const sources = values
-        .map(value => String(value || '').trim())
-        .filter(value => value.length >= 2)
-        .sort((left, right) => right.length - left.length);
-    sources.forEach(source => {
-        result = result.split(source).join('');
-    });
-    return result
-        .replace(/[ \t]+\n/g, '\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-}
-
-function getPromptInspectorNativeTokens(value) {
-    const count = Number(value);
-    return Number.isFinite(count) && count > 0 ? count : 0;
-}
-
-async function resolvePromptInspectorTokens(nativeTokens, getContent) {
-    const measured = getPromptInspectorNativeTokens(nativeTokens);
-    return measured || getOverviewTokenCount(getContent());
-}
-
-async function buildPromptInspectorEntries(usage) {
-    const entry = usage?.entry || {};
-    const params = usage?.params || {};
-    const promptMessages = collectPromptInspectorMessages(entry.rawPrompt);
-    const systemMessages = promptMessages
-        .filter(message => ['system', 'developer'].includes(message.role))
-        .map(message => `【${message.role.toUpperCase()}】\n${message.content}`)
-        .join('\n\n');
-    const instructionContent = String(entry.instruction || '').trim();
-    const systemContent = systemMessages || instructionContent;
-    const roleCardContent = joinPromptInspectorSections([
-        ['角色描述', entry.charDescription],
-        ['角色性格', entry.charPersonality],
-        ['场景设定', entry.scenarioText],
-    ]);
-    const baseSystemContent = stripPromptInspectorEmbeddedSources(systemContent, [
-        entry.worldInfoString,
-        entry.userPersona,
-        entry.charDescription,
-        entry.charPersonality,
-        entry.scenarioText,
-        entry.examplesString,
-        entry.allAnchors,
-        entry.summarizeString,
-        entry.authorsNoteString,
-        entry.smartContextString,
-        entry.chatVectorsString,
-        entry.dataBankVectorsString,
-        entry.beforeScenarioAnchor,
-        entry.afterScenarioAnchor,
-        entry.promptBias,
-    ]);
-    const fullPromptSource = entry.rawPrompt ?? entry.finalPrompt ?? '';
-    const candidates = [
-        {
-            key: 'full',
-            label: '完整 Prompt',
-            description: '酒馆上一轮实际发送的完整上下文',
-            icon: 'fa-file-lines',
-            nativeTokens: usage.total,
-            hasContent: !!usage.total,
-            getContent: () => formatPromptInspectorSnapshot(fullPromptSource),
-        },
-        {
-            key: 'system',
-            label: '基础系统与预设',
-            description: '已扣除下方单列内容的系统消息',
-            icon: 'fa-terminal',
-            nativeTokens: params.this_main_api === 'openai' ? 0 : params.instructionTokens,
-            hasContent: !!baseSystemContent,
-            getContent: () => baseSystemContent,
-        },
-        {
-            key: 'character',
-            label: '角色卡',
-            description: '角色描述、性格与场景设定',
-            icon: 'fa-address-card',
-            nativeTokens: Number(params.charDescriptionTokens || 0) + Number(params.charPersonalityTokens || 0) + Number(params.scenarioTextTokens || 0),
-            hasContent: !!roleCardContent,
-            getContent: () => roleCardContent,
-        },
-        {
-            key: 'persona',
-            label: 'User 人设',
-            description: '当前用户身份与人设说明',
-            icon: 'fa-user',
-            nativeTokens: params.userPersonaStringTokens,
-            hasContent: !!String(entry.userPersona || '').trim(),
-            getContent: () => String(entry.userPersona || ''),
-        },
-        {
-            key: 'world-info',
-            label: '世界书',
-            description: '上一轮实际触发的世界信息',
-            icon: 'fa-earth-asia',
-            nativeTokens: params.worldInfoStringTokens,
-            hasContent: !!String(entry.worldInfoString || '').trim(),
-            getContent: () => String(entry.worldInfoString || ''),
-        },
-        {
-            key: 'examples',
-            label: '示例对话',
-            description: `${params.examplesCount || entry.examplesCount || 0} 组示例消息`,
-            icon: 'fa-comments',
-            nativeTokens: params.examplesStringTokens,
-            hasContent: !!String(entry.examplesString || '').trim(),
-            getContent: () => String(entry.examplesString || ''),
-        },
-        {
-            key: 'chat',
-            label: '聊天记录',
-            description: `${params.messagesCount || entry.messagesCount || 0} 条进入上下文的消息`,
-            icon: 'fa-message',
-            nativeTokens: params.ActualChatHistoryTokens,
-            hasContent: !!String(entry.mesSendString || '').trim(),
-            getContent: () => String(entry.mesSendString || ''),
-        },
-        {
-            key: 'extensions',
-            label: '扩展注入',
-            description: '作者注释、记忆与其他扩展内容',
-            icon: 'fa-puzzle-piece',
-            nativeTokens: params.allAnchorsTokens,
-            hasContent: !!String(entry.allAnchors || '').trim(),
-            getContent: () => String(entry.allAnchors || ''),
-        },
-        {
-            key: 'bias',
-            label: 'Prompt Bias',
-            description: '上一轮追加的偏置提示',
-            icon: 'fa-thumbtack',
-            nativeTokens: params.promptBiasTokens || params.oaiBiasTokens,
-            hasContent: !!String(entry.promptBias || '').trim(),
-            getContent: () => String(entry.promptBias || ''),
-        },
-    ].filter(item => item.hasContent);
-
-    const resolved = await Promise.all(candidates.map(async item => ({
-        ...item,
-        tokens: await resolvePromptInspectorTokens(item.nativeTokens, item.getContent),
-    })));
-    const systemItem = resolved.find(item => item.key === 'system');
-    if (systemItem && systemItem.tokens > usage.total) {
-        const overlappingSourceTokens = resolved
-            .filter(item => ['character', 'persona', 'world-info', 'examples', 'extensions', 'bias'].includes(item.key))
-            .reduce((sum, item) => sum + item.tokens, 0);
-        systemItem.tokens = Math.max(0, systemItem.tokens - overlappingSourceTokens);
-    }
-    resolved.forEach(item => {
-        if (item.key !== 'full') item.tokens = Math.min(item.tokens, usage.total);
-    });
-    return resolved;
-}
-
-function setPromptInspectorEmptyState(empty) {
-    const list = document.getElementById('bakemono-memory-prompt-inspector-list');
-    const emptyState = document.getElementById('bakemono-memory-prompt-inspector-empty');
-    if (list) list.hidden = !!empty;
-    if (emptyState) emptyState.hidden = !empty;
-}
-
-function setPromptInspectorSearchEnabled(enabled) {
-    const input = document.getElementById('bakemono-memory-prompt-inspector-query');
-    const submitButton = document.getElementById('bakemono-memory-prompt-inspector-search-submit');
-    const navigation = document.getElementById('bakemono-memory-prompt-inspector-search-navigation');
-    if (input) input.disabled = !enabled;
-    if (submitButton) submitButton.disabled = !enabled;
-    if (!enabled && navigation) navigation.hidden = true;
-}
-
-function resetPromptInspectorSearchResults() {
-    promptInspectorSearchResults = [];
-    promptInspectorSearchResultIndex = -1;
-    promptInspectorSearchTruncated = false;
-    promptInspectorSearchResultsByEntry.clear();
-}
-
-function closePromptInspectorItem(row) {
-    if (!row) return;
-    row.classList.remove('is-open');
-    const button = row.querySelector('.bakemono-memory-prompt-inspector-item-toggle');
-    const body = row.querySelector('.bakemono-memory-prompt-inspector-item-body');
-    const content = body?.querySelector('pre');
-    button?.setAttribute('aria-expanded', 'false');
-    if (body) body.hidden = true;
-    if (content) content.textContent = '';
-}
-
-function renderPromptInspectorHighlightedContent(container, content, query = promptInspectorSearchQuery, activeResultIndex = promptInspectorSearchResultIndex) {
-    if (!container) return;
-    const text = String(content || '');
-    const needle = String(query || '').trim();
-    container.replaceChildren();
-    if (!needle) {
-        container.textContent = text || '这一项没有可显示的文本内容。';
-        return;
-    }
-
-    const entryKey = String(container.closest('.bakemono-memory-prompt-inspector-item')?.dataset.promptEntryKey || '');
-    const entryMatches = promptInspectorSearchResultsByEntry.get(entryKey) || [];
-    if (!entryMatches.length) {
-        container.textContent = text || '这一项没有可显示的文本内容。';
-        return;
-    }
-
-    let matchesToRender = entryMatches;
-    if (entryMatches.length > maxPromptInspectorRenderedMatches) {
-        const activePosition = Math.max(0, entryMatches.findIndex(match => match.resultIndex === activeResultIndex));
-        const halfWindow = Math.floor(maxPromptInspectorRenderedMatches / 2);
-        const windowStart = Math.min(
-            Math.max(0, activePosition - halfWindow),
-            entryMatches.length - maxPromptInspectorRenderedMatches,
-        );
-        matchesToRender = entryMatches.slice(windowStart, windowStart + maxPromptInspectorRenderedMatches);
-    }
-
-    let cursor = 0;
-    const fragment = document.createDocumentFragment();
-    matchesToRender.forEach(match => {
-        if (match.start > cursor) fragment.append(document.createTextNode(text.slice(cursor, match.start)));
-        const mark = document.createElement('mark');
-        mark.textContent = text.slice(match.start, match.end);
-        mark.dataset.bakemonoPromptSearchResult = String(match.resultIndex);
-        if (match.resultIndex === activeResultIndex) {
-            mark.classList.add('is-current');
-            mark.setAttribute('aria-current', 'true');
-        }
-        fragment.append(mark);
-        cursor = match.end;
-    });
-    if (cursor < text.length) fragment.append(document.createTextNode(text.slice(cursor)));
-    container.append(fragment);
-}
-
-function collectPromptInspectorSearchResults(query) {
-    resetPromptInspectorSearchResults();
-    const needle = String(query || '').trim().toLocaleLowerCase();
-    if (!needle) return;
-
-    entryLoop:
-    for (const item of promptInspectorEntries.values()) {
-        const content = String(item.getContent() || '');
-        const normalizedContent = content.toLocaleLowerCase();
-        let cursor = 0;
-        while (cursor < normalizedContent.length) {
-            const start = normalizedContent.indexOf(needle, cursor);
-            if (start < 0) break;
-            if (promptInspectorSearchResults.length >= maxPromptInspectorSearchResults) {
-                promptInspectorSearchTruncated = true;
-                break entryLoop;
-            }
-            const result = {
-                entryKey: item.key,
-                start,
-                end: start + needle.length,
-                resultIndex: promptInspectorSearchResults.length,
-            };
-            promptInspectorSearchResults.push(result);
-            if (!promptInspectorSearchResultsByEntry.has(item.key)) {
-                promptInspectorSearchResultsByEntry.set(item.key, []);
-            }
-            promptInspectorSearchResultsByEntry.get(item.key).push(result);
-            cursor = result.end;
-        }
-    }
-}
-
-function updatePromptInspectorSearchNavigation() {
-    const navigation = document.getElementById('bakemono-memory-prompt-inspector-search-navigation');
-    const scope = document.getElementById('bakemono-memory-prompt-inspector-search-scope');
-    const status = document.getElementById('bakemono-memory-prompt-inspector-search-status');
-    const previousButton = document.getElementById('bakemono-memory-prompt-inspector-search-previous');
-    const nextButton = document.getElementById('bakemono-memory-prompt-inspector-search-next');
-    if (navigation) navigation.hidden = !promptInspectorSearchQuery;
-
-    const current = promptInspectorSearchResults[promptInspectorSearchResultIndex];
-    const item = current ? promptInspectorEntries.get(current.entryKey) : null;
-    if (scope) scope.textContent = item?.label || (promptInspectorSearchResults.length ? '匹配位置' : '没有命中');
-    if (status) {
-        const totalLabel = `${promptInspectorSearchResults.length.toLocaleString()}${promptInspectorSearchTruncated ? '+' : ''}`;
-        status.textContent = promptInspectorSearchResults.length
-            ? `${(promptInspectorSearchResultIndex + 1).toLocaleString()} / ${totalLabel}`
-            : '0 / 0';
-    }
-    const navigationDisabled = promptInspectorSearchResults.length <= 1;
-    if (previousButton) previousButton.disabled = navigationDisabled;
-    if (nextButton) nextButton.disabled = navigationDisabled;
-}
-
-function scrollPromptInspectorSearchResultIntoView(article, content, resultIndex, smooth = true) {
-    if (!article || !content) return;
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-    const behavior = smooth && !reducedMotion ? 'smooth' : 'auto';
-    window.requestAnimationFrame(() => {
-        article.scrollIntoView({ block: 'center', inline: 'nearest', behavior });
-        window.requestAnimationFrame(() => {
-            const mark = content.querySelector(`[data-bakemono-prompt-search-result="${resultIndex}"]`);
-            if (!mark) return;
-            const contentRect = content.getBoundingClientRect();
-            const markRect = mark.getBoundingClientRect();
-            const centeredTop = content.scrollTop + markRect.top - contentRect.top - ((content.clientHeight - markRect.height) / 2);
-            content.scrollTo({ top: Math.max(0, centeredTop), behavior });
-        });
-    });
-}
-
-function openPromptInspectorSearchResult(resultIndex, { smooth = true } = {}) {
-    const list = document.getElementById('bakemono-memory-prompt-inspector-list');
-    if (!list || !promptInspectorSearchResults.length) return;
-    const total = promptInspectorSearchResults.length;
-    promptInspectorSearchResultIndex = ((Number(resultIndex) % total) + total) % total;
-    const result = promptInspectorSearchResults[promptInspectorSearchResultIndex];
-    const item = promptInspectorEntries.get(result.entryKey);
-    const article = list.querySelector(`.bakemono-memory-prompt-inspector-item[data-prompt-entry-key="${result.entryKey}"]`);
-    if (!item || !article) return;
-
-    list.querySelectorAll('.bakemono-memory-prompt-inspector-item').forEach(row => closePromptInspectorItem(row));
-    const trigger = article.querySelector('.bakemono-memory-prompt-inspector-item-toggle');
-    const body = article.querySelector('.bakemono-memory-prompt-inspector-item-body');
-    const content = body?.querySelector('pre');
-    article.hidden = false;
-    article.classList.add('is-open');
-    trigger?.setAttribute('aria-expanded', 'true');
-    if (body) body.hidden = false;
-    promptInspectorOpenEntryKey = result.entryKey;
-    renderPromptInspectorHighlightedContent(content, item.getContent(), promptInspectorSearchQuery, promptInspectorSearchResultIndex);
-    updatePromptInspectorSearchNavigation();
-    scrollPromptInspectorSearchResultIntoView(article, content, promptInspectorSearchResultIndex, smooth);
-}
-
-function navigatePromptInspectorSearch(step) {
-    if (!promptInspectorSearchResults.length) return;
-    openPromptInspectorSearchResult(promptInspectorSearchResultIndex + Number(step || 0));
-}
-
-function applyPromptInspectorSearch(value = document.getElementById('bakemono-memory-prompt-inspector-query')?.value, { focusFirst = true } = {}) {
-    const list = document.getElementById('bakemono-memory-prompt-inspector-list');
-    const searchEmpty = document.getElementById('bakemono-memory-prompt-inspector-search-empty');
-    if (!list) return;
-    const query = String(value || '').trim();
-    promptInspectorSearchQuery = query;
-    collectPromptInspectorSearchResults(query);
-    document.getElementById('bakemono-memory-prompt-inspector-search-form')?.classList.remove('has-pending-query');
-
-    const matchingEntryKeys = new Set(promptInspectorSearchResults.map(result => result.entryKey));
-    let visibleCount = 0;
-    list.querySelectorAll('.bakemono-memory-prompt-inspector-item').forEach(row => {
-        const item = promptInspectorEntries.get(String(row.dataset.promptEntryKey || ''));
-        const matches = !query || !!item && matchingEntryKeys.has(item.key);
-        row.hidden = !matches;
-        if (matches) {
-            visibleCount += 1;
-            if (!query && row.classList.contains('is-open')) renderPromptInspectorHighlightedContent(row.querySelector('pre'), item.getContent(), '');
-        } else if (row.classList.contains('is-open')) {
-            closePromptInspectorItem(row);
-            promptInspectorOpenEntryKey = '';
-        }
-    });
-    if (searchEmpty) searchEmpty.hidden = !query || visibleCount > 0;
-    $('#bakemono-memory-prompt-inspector-count').text(query
-        ? `${promptInspectorSearchResults.length.toLocaleString()}${promptInspectorSearchTruncated ? '+' : ''} 处 · ${visibleCount.toLocaleString()} 个条目`
-        : `${promptInspectorEntries.size.toLocaleString()} 个条目`);
-    updatePromptInspectorSearchNavigation();
-    if (promptInspectorSearchResults.length) {
-        openPromptInspectorSearchResult(0, { smooth: focusFirst });
-    } else if (!query && promptInspectorOpenEntryKey) {
-        const openItem = promptInspectorEntries.get(promptInspectorOpenEntryKey);
-        const openRow = list.querySelector(`.bakemono-memory-prompt-inspector-item[data-prompt-entry-key="${promptInspectorOpenEntryKey}"]`);
-        if (openItem && openRow) renderPromptInspectorHighlightedContent(openRow.querySelector('pre'), openItem.getContent(), '');
-    }
-}
-
-function clearPromptInspectorSearch() {
-    const input = document.getElementById('bakemono-memory-prompt-inspector-query');
-    if (input) input.value = '';
-    applyPromptInspectorSearch('', { focusFirst: false });
-    input?.focus();
-}
-
-async function renderPromptInspector() {
-    const revision = ++promptInspectorRenderRevision;
-    const list = document.getElementById('bakemono-memory-prompt-inspector-list');
-    if (!list) return;
-    list.replaceChildren();
-    promptInspectorEntries.clear();
-    promptInspectorOpenEntryKey = '';
-    resetPromptInspectorSearchResults();
-    setPromptInspectorEmptyState(false);
-    document.getElementById('bakemono-memory-prompt-inspector-search-empty')?.setAttribute('hidden', '');
-    const searchInput = document.getElementById('bakemono-memory-prompt-inspector-query');
-    if (searchInput) searchInput.value = promptInspectorSearchQuery;
-    setPromptInspectorSearchEnabled(false);
-    $('#bakemono-memory-prompt-inspector-count').text('正在读取');
-    $('#bakemono-memory-prompt-inspector-total').text('— Token');
-    $('#bakemono-memory-prompt-inspector-model').text('正在读取');
-    $('#bakemono-memory-prompt-inspector-preset, #bakemono-memory-prompt-inspector-floor').text('—');
-
-    const usage = await getLastCompletePromptUsage();
-    if (revision !== promptInspectorRenderRevision || getActiveWorkbenchTab() !== 'prompt-inspector') return;
-    if (!usage) {
-        $('#bakemono-memory-prompt-inspector-count').text('暂无记录');
-        $('#bakemono-memory-prompt-inspector-model').text('等待生成回复');
-        setPromptInspectorEmptyState(true);
-        return;
-    }
-
-    const entries = await buildPromptInspectorEntries(usage);
-    if (revision !== promptInspectorRenderRevision || getActiveWorkbenchTab() !== 'prompt-inspector') return;
-    entries.forEach(item => promptInspectorEntries.set(item.key, item));
-    const model = String(usage.params?.modelUsed || '').trim();
-    const preset = String(usage.params?.presetName || '').trim();
-    $('#bakemono-memory-prompt-inspector-count').text(`${entries.length.toLocaleString()} 个条目`);
-    $('#bakemono-memory-prompt-inspector-total').text(`${usage.total.toLocaleString()} Token`);
-    $('#bakemono-memory-prompt-inspector-model').text(model || '未记录');
-    $('#bakemono-memory-prompt-inspector-preset').text(preset && preset !== '(Unknown)' ? preset : '未记录');
-    $('#bakemono-memory-prompt-inspector-floor').text(`第 ${usage.messageId.toLocaleString()} 楼`);
-
-    const fragment = document.createDocumentFragment();
-    entries.forEach(item => {
-        const article = document.createElement('article');
-        article.className = 'bakemono-memory-prompt-inspector-item';
-        article.dataset.promptEntryKey = item.key;
-        article.innerHTML = `
-            <button type="button" class="bakemono-memory-prompt-inspector-item-toggle" data-bakemono-prompt-entry="${item.key}" aria-expanded="false">
-                <span class="bakemono-memory-prompt-inspector-item-mark" aria-hidden="true"><i class="fa-solid ${item.icon}"></i></span>
-                <span class="bakemono-memory-prompt-inspector-item-copy"><strong>${item.label}</strong><small>${item.description}</small></span>
-                <em><b>${item.tokens.toLocaleString()}</b><small> Token</small></em>
-                <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
-            </button>
-            <div class="bakemono-memory-prompt-inspector-item-body" hidden>
-                <header><span>实际内容</span><button type="button" data-bakemono-prompt-copy="${item.key}"><i class="fa-regular fa-copy" aria-hidden="true"></i>复制</button></header>
-                <pre></pre>
-            </div>`;
-        fragment.append(article);
-    });
-    list.append(fragment);
-    setPromptInspectorEmptyState(!entries.length);
-    setPromptInspectorSearchEnabled(!!entries.length);
-    applyPromptInspectorSearch(promptInspectorSearchQuery, { focusFirst: false });
-}
-
-function togglePromptInspectorEntry(entryKey, trigger) {
-    const list = document.getElementById('bakemono-memory-prompt-inspector-list');
-    const item = promptInspectorEntries.get(entryKey);
-    const article = trigger?.closest('.bakemono-memory-prompt-inspector-item');
-    if (!list || !item || !article) return;
-    const shouldOpen = promptInspectorOpenEntryKey !== entryKey;
-    list.querySelectorAll('.bakemono-memory-prompt-inspector-item').forEach(row => {
-        closePromptInspectorItem(row);
-    });
-    promptInspectorOpenEntryKey = shouldOpen ? entryKey : '';
-    if (!shouldOpen) return;
-    const body = article.querySelector('.bakemono-memory-prompt-inspector-item-body');
-    const content = body?.querySelector('pre');
-    article.classList.add('is-open');
-    trigger.setAttribute('aria-expanded', 'true');
-    if (body) body.hidden = false;
-    const entryResults = promptInspectorSearchResultsByEntry.get(entryKey) || [];
-    if (promptInspectorSearchQuery && entryResults.length) {
-        const currentBelongsToEntry = entryResults.some(match => match.resultIndex === promptInspectorSearchResultIndex);
-        if (!currentBelongsToEntry) promptInspectorSearchResultIndex = entryResults[0].resultIndex;
-        updatePromptInspectorSearchNavigation();
-    }
-    renderPromptInspectorHighlightedContent(content, item.getContent(), promptInspectorSearchQuery, promptInspectorSearchResultIndex);
-}
+const promptInspector = createPromptInspector({
+    getChat: () => chat,
+    getItemizedPrompts: () => itemizedPrompts,
+    getItemizedParams: (...args) => itemizedParams(...args),
+    countTokens: value => getOverviewTokenCount(value),
+    getActiveTab: () => getActiveWorkbenchTab(),
+    notifySuccess: message => toastr.success(message),
+    notifyError: message => toastr.error(message),
+    logWarning: (...args) => console.warn(...args),
+});
 
 function doesLastPromptMatchCurrentInjection(promptText, state = ensureState()) {
     const expectedSections = [];
@@ -8681,7 +8106,7 @@ async function renderOverviewTokenManifest(state = ensureState()) {
     const sourceTexts = getOverviewInjectionSources(state);
     const sourceKeys = ['summary', 'memory', 'table', 'vector', 'rule'];
     const sourceCounts = await Promise.all(sourceKeys.map(key => getOverviewTokenCount(sourceTexts[key])));
-    const lastPromptUsage = await getLastCompletePromptUsage();
+    const lastPromptUsage = await promptInspector.getLastCompletePromptUsage();
     if (revision !== overviewTokenRenderRevision || getActiveWorkbenchTab() !== 'overview') return;
 
     const counts = Object.fromEntries(sourceKeys.map((key, index) => [key, sourceCounts[index]]));
@@ -9853,7 +9278,7 @@ function renderActiveWorkbenchPanel(tabName, state, blocks) {
         renderWorkflowGuide(state);
         renderMemoryDatabaseSummary(state);
     } else if (tabName === 'prompt-inspector') {
-        void renderPromptInspector();
+        void promptInspector.render();
     } else if (tabName === 'data-hub') {
         renderWorkbenchHubPanels(state);
         renderMemoryDatabaseSummary(state);
@@ -13081,33 +12506,7 @@ function bindSettingsEvents() {
     $('#bakemono-workbench-root').off('click.bakemonoNav').on('click.bakemonoNav', '[data-bakemono-nav]', function () {
         switchWorkbenchTab(this.dataset.bakemonoNav);
     });
-    $('#bakemono-workbench-root').off('click.bakemonoPromptInspector').on('click.bakemonoPromptInspector', '[data-bakemono-prompt-entry]', function () {
-        togglePromptInspectorEntry(String(this.dataset.bakemonoPromptEntry || ''), this);
-    });
-    $('#bakemono-memory-prompt-inspector-search-form').off('submit.bakemonoPromptSearch').on('submit.bakemonoPromptSearch', function (event) {
-        event.preventDefault();
-        applyPromptInspectorSearch(document.getElementById('bakemono-memory-prompt-inspector-query')?.value);
-    });
-    $('#bakemono-memory-prompt-inspector-query').off('input.bakemonoPromptSearch search.bakemonoPromptSearch').on('input.bakemonoPromptSearch search.bakemonoPromptSearch', function () {
-        document.getElementById('bakemono-memory-prompt-inspector-search-form')?.classList.toggle(
-            'has-pending-query',
-            String(this.value || '').trim() !== promptInspectorSearchQuery,
-        );
-    });
-    $('#bakemono-memory-prompt-inspector-search-previous').off('click.bakemonoPromptSearch').on('click.bakemonoPromptSearch', () => navigatePromptInspectorSearch(-1));
-    $('#bakemono-memory-prompt-inspector-search-next').off('click.bakemonoPromptSearch').on('click.bakemonoPromptSearch', () => navigatePromptInspectorSearch(1));
-    $('#bakemono-memory-prompt-inspector-clear').off('click.bakemonoPromptSearch').on('click.bakemonoPromptSearch', clearPromptInspectorSearch);
-    $('#bakemono-workbench-root').off('click.bakemonoPromptCopy').on('click.bakemonoPromptCopy', '[data-bakemono-prompt-copy]', async function () {
-        const item = promptInspectorEntries.get(String(this.dataset.bakemonoPromptCopy || ''));
-        if (!item) return;
-        try {
-            await navigator.clipboard.writeText(item.getContent() || '');
-            toastr.success(`已复制：${item.label}`);
-        } catch (error) {
-            console.warn('[BakemonoMemory] failed to copy prompt inspector content', error);
-            toastr.error('复制失败，请长按内容手动复制。');
-        }
-    });
+    promptInspector.bindEvents(document.getElementById('bakemono-workbench-root'));
     $('#bakemono-workbench-root').off('click.bakemonoHelpCategory').on('click.bakemonoHelpCategory', '[data-bakemono-help-category]', function () {
         activeHelpGuideCategory = helpGuideCategories[this.dataset.bakemonoHelpCategory]
             ? this.dataset.bakemonoHelpCategory
@@ -14557,7 +13956,7 @@ async function init() {
             if (getActiveWorkbenchTab() === 'overview') {
                 renderWorkflowGuide(ensureState());
             } else if (getActiveWorkbenchTab() === 'prompt-inspector') {
-                void renderPromptInspector();
+                void promptInspector.render();
             }
         });
     }
