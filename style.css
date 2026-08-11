@@ -11359,3 +11359,988 @@ details[open] > summary > .bakemono-memory-help-trigger {
     padding-inline: 2px 8px;
   }
 }
+
+/* Read-only home dashboard ------------------------------------------------ */
+.bakemono-memory-overview-dashboard {
+  width: min(100%, 760px);
+  display: grid;
+  gap: 0;
+  margin-inline: auto;
+}
+
+.bakemono-memory-overview-heading {
+  margin: 1px 2px 14px;
+}
+
+.bakemono-memory-overview-heading > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.bakemono-memory-overview-heading h3,
+.bakemono-memory-overview-section-head h4,
+.bakemono-memory-health-copy h4 {
+  margin: 0;
+  font-family: var(--bk-display);
+  color: var(--SmartThemeBodyColor);
+  letter-spacing: -0.025em;
+}
+
+.bakemono-memory-overview-heading h3 {
+  font-size: 27px;
+  line-height: 1.2;
+}
+
+.bakemono-memory-overview-heading small {
+  color: var(--bk-ink-soft);
+  font-family: var(--bk-display);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.bakemono-memory-health-board {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--bk-accent) 42%, var(--bk-line));
+  border-radius: 21px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--bk-paper-raised) 88%, var(--SmartThemeQuoteColor) 12%), var(--bk-paper-raised));
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--bk-shadow) 38%, transparent);
+}
+
+.bakemono-memory-health-board::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 126px;
+  height: 8px;
+  opacity: 0.46;
+  background: repeating-linear-gradient(120deg, var(--bk-accent) 0 14px, transparent 14px 25px);
+}
+
+.bakemono-memory-health-board > header {
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 15px;
+  border-bottom: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-health-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+}
+
+.bakemono-memory-health-live > i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bk-accent) 48%, #72916f);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--bk-accent) 13%, transparent);
+}
+
+.bakemono-memory-health-board[data-health-tone="attention"] .bakemono-memory-health-live > i {
+  background: color-mix(in srgb, var(--bk-accent) 52%, #b58b51);
+}
+
+.bakemono-memory-health-board[data-health-tone="paused"] .bakemono-memory-health-live > i,
+.bakemono-memory-health-board[data-health-tone="idle"] .bakemono-memory-health-live > i {
+  background: var(--bk-line-strong);
+}
+
+.bakemono-memory-health-board > header > strong {
+  max-width: 54%;
+  overflow: hidden;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, var(--bk-paper-raised));
+  color: var(--bk-accent);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bakemono-memory-health-copy {
+  padding: 16px 16px 14px;
+}
+
+.bakemono-memory-health-copy > span {
+  color: var(--bk-ink-soft);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+}
+
+.bakemono-memory-health-copy h4 {
+  margin-top: 5px;
+  font-size: 22px;
+  line-height: 1.3;
+}
+
+.bakemono-memory-health-copy p {
+  margin: 6px 0 0;
+  color: var(--bk-ink-soft);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.bakemono-memory-health-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 15px;
+  border-block: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-health-stats > div {
+  min-width: 0;
+  padding: 11px 4px 10px;
+  text-align: center;
+}
+
+.bakemono-memory-health-stats > div + div {
+  border-left: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-health-stats strong,
+.bakemono-memory-health-stats span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bakemono-memory-health-stats strong {
+  font-family: var(--bk-display);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.bakemono-memory-health-stats span {
+  margin-top: 5px;
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+}
+
+.bakemono-memory-health-progress {
+  height: 4px;
+  margin: 14px 15px 16px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bk-line-strong) 68%, transparent);
+}
+
+.bakemono-memory-health-progress > span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--bk-accent);
+  transition: width 0.32s var(--bk-ease);
+}
+
+.bakemono-memory-overview-section {
+  margin-top: 20px;
+}
+
+.bakemono-memory-overview-section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 3px 9px;
+}
+
+.bakemono-memory-overview-section-head h4 {
+  margin-top: 3px;
+  font-size: 19px;
+}
+
+.bakemono-memory-overview-section-head > em {
+  margin-bottom: 2px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: var(--bk-paper-soft);
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.bakemono-memory-token-manifest,
+.bakemono-memory-config-manifest {
+  overflow: hidden;
+  border: 1px solid var(--bk-line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bk-paper-raised) 88%, var(--bk-paper-soft));
+}
+
+.bakemono-memory-token-total {
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 15px 12px;
+}
+
+.bakemono-memory-token-total > div:first-child > span,
+.bakemono-memory-context-share > span {
+  color: var(--bk-ink-soft);
+  font-size: 10px;
+}
+
+.bakemono-memory-token-total strong {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.bakemono-memory-token-total strong > b {
+  font-family: var(--bk-display);
+  font-size: 27px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.bakemono-memory-token-total strong > small {
+  color: var(--bk-ink-soft);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.bakemono-memory-context-share {
+  position: relative;
+  min-width: 72px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  justify-items: end;
+  column-gap: 4px;
+}
+
+.bakemono-memory-context-share > span {
+  grid-column: 1 / -1;
+}
+
+.bakemono-memory-context-share > em {
+  color: var(--bk-accent);
+  font-family: var(--bk-display);
+  font-size: 20px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.bakemono-memory-context-share > .bakemono-memory-help-trigger {
+  position: static;
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  translate: none;
+  place-items: center;
+  font-size: 10px;
+}
+
+.bakemono-memory-token-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-token-breakdown > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px 8px;
+  padding: 10px 12px 11px;
+}
+
+.bakemono-memory-token-breakdown > div:nth-child(even) {
+  border-left: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-token-breakdown > div:nth-child(n + 3) {
+  border-top: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-token-breakdown > div:last-child {
+  grid-column: 1 / -1;
+}
+
+.bakemono-memory-token-breakdown dt,
+.bakemono-memory-token-breakdown dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.bakemono-memory-token-breakdown dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  color: var(--bk-ink-soft);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bakemono-memory-token-breakdown dt > i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  background: var(--bakemono-token-color, var(--bk-accent));
+}
+
+.bakemono-memory-token-breakdown dd {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+}
+
+.bakemono-memory-token-source-bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bk-line) 68%, transparent);
+}
+
+.bakemono-memory-token-source-bar > i {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--bakemono-token-color, var(--bk-accent));
+  transition: width 0.32s var(--bk-ease);
+}
+
+.bakemono-memory-token-breakdown [data-bakemono-token-source="summary"] { --bakemono-token-color: var(--bk-accent); }
+.bakemono-memory-token-breakdown [data-bakemono-token-source="memory"] { --bakemono-token-color: color-mix(in srgb, var(--bk-accent) 66%, var(--SmartThemeBodyColor)); }
+.bakemono-memory-token-breakdown [data-bakemono-token-source="table"] { --bakemono-token-color: color-mix(in srgb, var(--bk-accent) 42%, #789072); }
+.bakemono-memory-token-breakdown [data-bakemono-token-source="vector"] { --bakemono-token-color: color-mix(in srgb, var(--SmartThemeBodyColor) 76%, var(--bk-accent)); }
+.bakemono-memory-token-breakdown [data-bakemono-token-source="rule"] { --bakemono-token-color: var(--bk-line-strong); }
+
+.bakemono-memory-config-manifest > header {
+  min-height: 65px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 11px;
+  align-items: center;
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-config-manifest > header > .bakemono-memory-config-mark {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, var(--bk-paper-raised));
+  color: var(--bk-accent);
+  font-size: 15px;
+}
+
+.bakemono-memory-config-manifest > header span,
+.bakemono-memory-config-manifest > header strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bakemono-memory-config-manifest > header div > span {
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+}
+
+.bakemono-memory-config-manifest > header strong {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.bakemono-memory-config-manifest > header > em {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bk-accent) 11%, var(--bk-paper-raised));
+  color: var(--bk-accent);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.bakemono-memory-config-manifest > dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.bakemono-memory-config-manifest > dl > div {
+  min-width: 0;
+  min-height: 54px;
+  padding: 10px 12px;
+}
+
+.bakemono-memory-config-manifest > dl > div:nth-child(even) {
+  border-left: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-config-manifest > dl > div:nth-child(n + 3) {
+  border-top: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-config-manifest dt,
+.bakemono-memory-config-manifest dd {
+  margin: 0;
+}
+
+.bakemono-memory-config-manifest dt {
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.bakemono-memory-config-manifest dd {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 5px;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+@media (max-width: 900px) {
+  .bakemono-memory-overview-dashboard {
+    padding-bottom: max(22px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .bakemono-memory-overview-heading h3 {
+    font-size: 25px;
+  }
+
+  .bakemono-memory-health-copy h4 {
+    font-size: 21px;
+  }
+
+  .bakemono-memory-token-total {
+    min-height: 66px;
+    padding-inline: 13px;
+  }
+
+  .bakemono-memory-token-total strong > b {
+    font-size: 25px;
+  }
+
+  .bakemono-memory-token-breakdown > div,
+  .bakemono-memory-config-manifest > dl > div {
+    padding-inline: 11px;
+  }
+}
+
+/* Previous prompt inspector --------------------------------------------- */
+.bakemono-memory-prompt-inspector-entry {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 1px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--bk-accent);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.bakemono-memory-prompt-inspector-entry:hover {
+  border-color: var(--bk-line);
+  background: color-mix(in srgb, var(--bk-accent) 7%, var(--bk-paper-raised));
+}
+
+.bakemono-memory-prompt-inspector-entry:active {
+  transform: translateX(1px);
+}
+
+.bakemono-memory-prompt-inspector-entry:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bk-accent) 58%, transparent);
+  outline-offset: 2px;
+}
+
+.bakemono-memory-prompt-inspector-entry > i {
+  font-size: 9px;
+}
+
+.bakemono-memory-prompt-inspector-panel {
+  width: min(100%, 760px);
+  margin-inline: auto;
+  padding-bottom: max(22px, env(safe-area-inset-bottom, 0px));
+}
+
+.bakemono-memory-prompt-inspector-intro {
+  margin-bottom: 14px;
+}
+
+.bakemono-memory-prompt-inspector-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.bakemono-memory-prompt-inspector-heading h3 {
+  margin: 0;
+  font-family: var(--bk-display);
+  color: var(--SmartThemeBodyColor);
+  font-size: 27px;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+.bakemono-memory-prompt-inspector-heading small {
+  color: var(--bk-ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.bakemono-memory-prompt-inspector-ticket {
+  position: relative;
+  overflow: hidden;
+  min-height: 88px;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: center;
+  gap: 13px;
+  padding: 15px;
+  border: 1px solid color-mix(in srgb, var(--bk-accent) 38%, var(--bk-line));
+  border-radius: 19px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--bk-paper-raised) 88%, var(--SmartThemeQuoteColor) 12%), var(--bk-paper-raised));
+  box-shadow: 0 10px 25px color-mix(in srgb, var(--bk-shadow) 30%, transparent);
+}
+
+.bakemono-memory-prompt-inspector-ticket::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 112px;
+  height: 7px;
+  opacity: 0.42;
+  background: repeating-linear-gradient(120deg, var(--bk-accent) 0 13px, transparent 13px 23px);
+}
+
+.bakemono-memory-prompt-inspector-mark {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, var(--bk-paper-raised));
+  color: var(--bk-accent);
+  font-size: 17px;
+}
+
+.bakemono-memory-prompt-inspector-ticket small,
+.bakemono-memory-prompt-inspector-ticket strong {
+  display: block;
+  margin: 0;
+}
+
+.bakemono-memory-prompt-inspector-ticket small {
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+}
+
+.bakemono-memory-prompt-inspector-ticket strong {
+  margin-top: 3px;
+  font-family: var(--bk-display);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.bakemono-memory-prompt-inspector-meta {
+  display: grid;
+  gap: 3px;
+  margin: 7px 0 0;
+}
+
+.bakemono-memory-prompt-inspector-meta > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 27px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+}
+
+.bakemono-memory-prompt-inspector-meta dt,
+.bakemono-memory-prompt-inspector-meta dd {
+  min-width: 0;
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.bakemono-memory-prompt-inspector-meta dt {
+  color: var(--bk-ink-soft);
+  font-weight: 650;
+}
+
+.bakemono-memory-prompt-inspector-meta dd {
+  color: var(--SmartThemeBodyColor);
+  overflow-wrap: anywhere;
+}
+
+.bakemono-memory-prompt-inspector-search {
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 13px;
+  padding: 0 8px 0 13px;
+  border: 1px solid var(--bk-line);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--bk-paper-raised) 90%, var(--bk-paper-soft));
+  color: var(--bk-ink-soft);
+  transition: border-color 0.18s var(--bk-ease), box-shadow 0.18s var(--bk-ease);
+}
+
+.bakemono-memory-prompt-inspector-search:focus-within {
+  border-color: color-mix(in srgb, var(--bk-accent) 55%, var(--bk-line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bk-accent) 10%, transparent);
+}
+
+.bakemono-memory-prompt-inspector-search > i {
+  color: var(--bk-accent);
+  font-size: 12px;
+  text-align: center;
+}
+
+#bakemono-memory-prompt-inspector-query {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent !important;
+  color: var(--SmartThemeBodyColor);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: none !important;
+  outline: 0;
+}
+
+#bakemono-memory-prompt-inspector-query::placeholder {
+  color: var(--bk-ink-soft);
+  opacity: 0.72;
+}
+
+#bakemono-memory-prompt-inspector-query:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+#bakemono-memory-prompt-inspector-clear {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--bk-paper-soft);
+  color: var(--bk-ink-soft);
+  font-size: 10px;
+  box-shadow: none;
+}
+
+#bakemono-memory-prompt-inspector-clear[hidden] {
+  display: none !important;
+}
+
+#bakemono-memory-prompt-inspector-clear:hover {
+  background: color-mix(in srgb, var(--bk-accent) 10%, var(--bk-paper-soft));
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-prompt-inspector-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 3px 9px;
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.bakemono-memory-prompt-inspector-divider > i {
+  height: 1px;
+  flex: 1;
+  background: var(--bk-line);
+}
+
+.bakemono-memory-prompt-inspector-list {
+  display: grid;
+  gap: 9px;
+}
+
+.bakemono-memory-prompt-inspector-list[hidden],
+.bakemono-memory-prompt-inspector-item[hidden],
+.bakemono-memory-prompt-inspector-item-body[hidden],
+.bakemono-memory-prompt-inspector-empty[hidden] {
+  display: none !important;
+}
+
+.bakemono-memory-prompt-inspector-item {
+  overflow: hidden;
+  border: 1px solid var(--bk-line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bk-paper-raised) 90%, var(--bk-paper-soft));
+  transition: border-color 0.18s var(--bk-ease), background-color 0.18s var(--bk-ease);
+}
+
+.bakemono-memory-prompt-inspector-item.is-open {
+  border-color: color-mix(in srgb, var(--bk-accent) 43%, var(--bk-line));
+  background: var(--bk-paper-raised);
+}
+
+.bakemono-memory-prompt-inspector-item-toggle {
+  width: 100%;
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto 14px;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--SmartThemeBodyColor);
+  text-align: left;
+  box-shadow: none;
+}
+
+.bakemono-memory-prompt-inspector-item-toggle:hover {
+  background: color-mix(in srgb, var(--bk-accent) 6%, transparent);
+}
+
+.bakemono-memory-prompt-inspector-item-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bk-accent) 58%, transparent);
+  outline-offset: -3px;
+}
+
+.bakemono-memory-prompt-inspector-item-mark {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, var(--bk-paper-raised));
+  color: var(--bk-accent);
+  font-size: 14px;
+}
+
+.bakemono-memory-prompt-inspector-item-copy {
+  min-width: 0;
+}
+
+.bakemono-memory-prompt-inspector-item-copy > strong,
+.bakemono-memory-prompt-inspector-item-copy > small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bakemono-memory-prompt-inspector-item-copy > strong {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.bakemono-memory-prompt-inspector-item-copy > small {
+  margin-top: 4px;
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.bakemono-memory-prompt-inspector-item-toggle > em {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  color: var(--bk-accent);
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.bakemono-memory-prompt-inspector-item-toggle > em > b {
+  font-family: var(--bk-display);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bakemono-memory-prompt-inspector-item-toggle > em > small {
+  color: var(--bk-ink-soft);
+  font-size: 8px;
+  font-weight: 500;
+}
+
+.bakemono-memory-prompt-inspector-item-toggle > i {
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  transition: rotate 0.18s var(--bk-ease);
+}
+
+.bakemono-memory-prompt-inspector-item.is-open .bakemono-memory-prompt-inspector-item-toggle > i {
+  rotate: 180deg;
+}
+
+.bakemono-memory-prompt-inspector-item-body {
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-prompt-inspector-item-body > header {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bakemono-memory-prompt-inspector-item-body > header > span {
+  color: var(--bk-ink-soft);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.bakemono-memory-prompt-inspector-item-body > header > button {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--bk-paper-soft);
+  color: var(--bk-accent);
+  font-size: 9px;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.bakemono-memory-prompt-inspector-item-body > pre {
+  max-height: min(46vh, 440px);
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--bk-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bk-paper-soft) 76%, transparent);
+  color: var(--SmartThemeBodyColor);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.62;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  scrollbar-width: thin;
+}
+
+.bakemono-memory-prompt-inspector-item-body > pre mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--bk-accent) 24%, var(--bk-paper-raised));
+  color: var(--SmartThemeBodyColor);
+  font-weight: 750;
+}
+
+.bakemono-memory-prompt-inspector-empty {
+  min-height: 148px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  padding: 24px;
+  border: 1px dashed var(--bk-line-strong);
+  border-radius: 17px;
+  color: var(--bk-ink-soft);
+  text-align: center;
+}
+
+.bakemono-memory-prompt-inspector-empty > i {
+  margin-bottom: 4px;
+  color: var(--bk-accent);
+  font-size: 22px;
+}
+
+.bakemono-memory-prompt-inspector-empty > strong {
+  color: var(--SmartThemeBodyColor);
+  font-size: 13px;
+}
+
+.bakemono-memory-prompt-inspector-empty > span {
+  font-size: 10px;
+}
+
+@media (max-width: 900px) {
+  .bakemono-memory-prompt-inspector-entry {
+    min-height: 40px;
+    padding-inline: 8px;
+  }
+
+  .bakemono-memory-prompt-inspector-heading h3 {
+    font-size: 25px;
+  }
+
+  .bakemono-memory-prompt-inspector-item-toggle {
+    grid-template-columns: 36px minmax(0, 1fr) auto 12px;
+    gap: 9px;
+    padding-inline: 10px;
+  }
+
+  .bakemono-memory-prompt-inspector-item-mark {
+    width: 36px;
+    height: 36px;
+  }
+
+  .bakemono-memory-prompt-inspector-item-toggle > em > small {
+    display: none;
+  }
+
+  .bakemono-memory-prompt-inspector-item-body > pre {
+    max-height: 48vh;
+    font-size: 11px;
+  }
+}

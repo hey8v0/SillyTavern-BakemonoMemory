@@ -47,19 +47,19 @@ test('mobile header keeps one compact static injection state', () => {
     assert.match(styleSource, /\.bakemono-workbench-kicker-short\s*\{[^}]*display:\s*inline;/s);
 });
 
-test('scene workbench keeps the mobile hierarchy compact', () => {
-    assert.match(settingsSource, /class="bakemono-memory-scene-meta"/);
-    assert.match(settingsSource, /class="bakemono-memory-next-kicker">常用工作<\/span>/);
-    assert.match(settingsSource, /class="bakemono-memory-status-strip"/);
-    assert.match(settingsSource, /class="menu_button bakemono-memory-action-row"/);
-    assert.match(settingsSource, /class="menu_button bakemono-memory-action-row bakemono-memory-maintenance-entry"[^>]*data-bakemono-nav="maintenance"/);
-    assert.doesNotMatch(settingsSource, /id="bakemono-memory-workflow-description"|class="bakemono-memory-scene-steps"/);
+test('overview dashboard keeps the mobile hierarchy compact and read-only', () => {
+    assert.match(settingsSource, /class="bakemono-memory-overview-dashboard"/);
+    assert.match(settingsSource, /class="bakemono-memory-next-kicker">当前聊天<\/span>/);
+    assert.match(settingsSource, /class="bakemono-memory-health-board"/);
+    assert.match(settingsSource, /class="bakemono-memory-token-manifest"/);
+    assert.match(settingsSource, /class="bakemono-memory-config-manifest"/);
+    assert.match(settingsSource, /data-bakemono-nav="prompt-inspector"/);
+    assert.doesNotMatch(settingsSource, /id="bakemono-memory-workflow-description"|class="bakemono-memory-scene-steps"|class="menu_button bakemono-memory-action-row"/);
     assert.match(settingsSource, /data-bakemono-tab="settings-hub"/);
     assert.match(settingsSource, /data-bakemono-nav="settings"/);
     assert.match(settingsSource, /data-bakemono-panel="settings"/);
     assert.match(settingsSource, /<option value="backfill">旧正文补课<\/option>/);
     assert.doesNotMatch(settingsSource, /<nav class="bakemono-mobile-actions"/);
-    assert.match(source, /primaryButton\.classList\.add\('is-workflow-primary'\)/);
     assert.match(styleSource, /\.bakemono-memory-control-deck \[hidden\]\s*\{[^}]*display:\s*none !important;/s);
     assert.match(styleSource, /\.bakemono-workbench-tabs\s*\{[^}]*scrollbar-width:\s*none;/s);
     assert.match(styleSource, /\.bakemono-mobile-actions,[\s\S]*?display:\s*none !important;/s);
@@ -100,6 +100,28 @@ test('secondary workbench pages install a consistent parent navigation', () => {
     assert.match(source, /installWorkbenchParentNavigation\(\);/);
     assert.match(styleSource, /\.bakemono-memory-parent-link\s*\{[^}]*min-height:\s*40px;/s);
     assert.match(styleSource, /@media \(max-width: 900px\)[\s\S]*?\.bakemono-memory-parent-link\s*\{[^}]*min-height:\s*44px;/s);
+});
+
+test('previous prompt inspector stays read-only, searchable, and lazy on mobile', () => {
+    assert.match(settingsSource, /data-bakemono-nav="prompt-inspector"/);
+    assert.match(settingsSource, /data-bakemono-panel="prompt-inspector"/);
+    assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-query"[^>]*type="search"/);
+    assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-search-empty"/);
+    assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-model"/);
+    assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-preset"/);
+    assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-floor"/);
+    assert.match(source, /'prompt-inspector': \{ target: 'overview', label: '返回剪辑台' \}/);
+    assert.match(source, /function applyPromptInspectorSearch\(/);
+    assert.match(source, /function schedulePromptInspectorSearch\(/);
+    assert.match(source, /function renderPromptInspectorHighlightedContent\(/);
+    assert.match(source, /label: '基础系统与预设'/);
+    assert.match(source, /getActiveWorkbenchTab\(\) !== 'prompt-inspector'/);
+    assert.match(source, /if \(content\) content\.textContent = ''/);
+    assert.match(source, /matchCount < 240/);
+    assert.doesNotMatch(extractFunction('applyPromptInspectorSearch'), /saveState|saveGlobalSettings|renderAll/);
+    assert.doesNotMatch(extractFunction('schedulePromptInspectorSearch'), /saveState|saveGlobalSettings|renderAll/);
+    assert.match(styleSource, /#bakemono-memory-prompt-inspector-query\s*\{[^}]*min-height:\s*44px;/s);
+    assert.match(styleSource, /\.bakemono-memory-prompt-inspector-item-body > pre mark/);
 });
 
 test('vector recall uses independent semantic and lexical candidates with explainable scores', () => {

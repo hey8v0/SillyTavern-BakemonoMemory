@@ -1,6 +1,7 @@
-import { chat, chat_metadata, extension_prompt_roles, extension_prompt_types, eventSource, event_types, generateRaw, saveChatConditional, saveSettingsDebounced, setExtensionPrompt } from '../../../../script.js';
+import { chat, chat_metadata, extension_prompt_roles, extension_prompt_types, eventSource, event_types, generateRaw, itemizedParams, itemizedPrompts, saveChatConditional, saveSettingsDebounced, setExtensionPrompt } from '../../../../script.js';
 import { extension_settings, getContext, saveMetadataDebounced } from '../../../extensions.js';
 import { hideChatMessageRange } from '../../../chats.js';
+import { getTokenCountAsync } from '../../../tokenizers.js';
 import { runChatSwitchFlow } from './src/core/chat-switch.js';
 import { createSharedInlineGenerationConfig, createSharedVectorConfig, markActiveConfigApplied, mergeSharedInlineGenerationConfig, mergeSharedVectorConfig, readActiveConfig, sharedConfigVersion, shouldBootstrapSharedConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
 import { persistChatState, persistGlobalSettings } from './src/core/persistence.js';
@@ -987,6 +988,14 @@ let inlineCaptureTimer = null;
 let autoHideRecentTimer = null;
 let scheduledRenderHandle = null;
 let scheduledRenderStatus = '';
+let overviewTokenRenderRevision = 0;
+let promptInspectorRenderRevision = 0;
+let promptInspectorOpenEntryKey = '';
+let promptInspectorSearchQuery = '';
+let promptInspectorSearchTimer = null;
+const overviewTokenCache = new Map();
+const overviewPromptUsageCache = new WeakMap();
+const promptInspectorEntries = new Map();
 const sanitizedChatLengths = new WeakMap();
 const vectorEmbeddingRuntimeCache = new Map();
 const maxStoredScanPreviewItems = 240;
@@ -7214,16 +7223,20 @@ function getInjectionMemoryParts(state = ensureState()) {
             .map(item => item.content)
         : [];
 
-    const sections = [
-        epicContents.length ? epicContents.join('\n\n') : '',
-        stageContents.length ? '## 阶段总结\n' + stageContents.join('\n\n') : '',
-        storyContents.length ? '## 普通剧情摘要\n' + storyContents.join('\n\n') : '',
-        renderInjectedTablesSection(state),
-        renderVectorMemorySection(state),
-    ].filter(Boolean);
+    const sources = {
+        summary: [
+            epicContents.length ? epicContents.join('\n\n') : '',
+            stageContents.length ? '## 阶段总结\n' + stageContents.join('\n\n') : '',
+        ].filter(Boolean).join('\n\n'),
+        memory: storyContents.length ? '## 普通剧情摘要\n' + storyContents.join('\n\n') : '',
+        table: renderInjectedTablesSection(state),
+        vector: renderVectorMemorySection(state),
+    };
+    const sections = [sources.summary, sources.memory, sources.table, sources.vector].filter(Boolean);
 
     return {
         memory: sections.join('\n\n').trim(),
+        sources,
         stats: {
             epic: epicContents.length,
             stage: stageContents.length,
@@ -8006,52 +8019,646 @@ function applyWorkflowPreset(mode) {
     renderWorkbenchScope(workbenchRenderScopes.SETTINGS, `已切换到：${getWorkflowModeLabel(state.workflowMode)}。扫描、自动总结和提示词配置已保留。`);
 }
 
-function renderWorkflowGuide(state = ensureState()) {
-    const info = getWorkflowInfo(state);
-    const floorIndex = getCurrentFloorMemoryIndex(state);
-    const recommendation = getOverviewRecommendation(state, floorIndex);
-    const floorStats = floorIndex.aggregates;
-    $('#bakemono-memory-overview-state-label').text(recommendation.stateLabel);
-    $('#bakemono-memory-overview-status-label').text(recommendation.statusLabel);
-    $('#bakemono-memory-workflow-title').text(recommendation.title);
-    $('#bakemono-memory-overview-next-copy').text(recommendation.copy);
-    $('#bakemono-memory-index-ready-floor').text(floorStats.latestReadyFloor ?? '—');
-    $('#bakemono-memory-index-pending-count').text(floorStats.missing.toLocaleString());
-    const stageCount = Array.isArray(state.stageSummaries) ? state.stageSummaries.length : 0;
-    const epicCount = Array.isArray(state.epicSummaries) ? state.epicSummaries.length : 0;
-    $('#bakemono-memory-scene-code').text(`SC. ${String(stageCount).padStart(2, '0')} / TK. ${String(epicCount).padStart(2, '0')}`);
-    $('#bakemono-memory-scene-progress-fill').css('width', `${recommendation.progress}%`);
+function getOverviewInjectionSources(state = ensureState()) {
+    const parts = getInjectionMemoryParts(state);
+    const mainInjectionEnabled = !!state.injection?.enabled;
+    const mainInjectionContent = mainInjectionEnabled ? renderInjectionContent(state) : '';
+    const ruleSections = [];
+    if (mainInjectionContent) {
+        ruleSections.push(String(state.injection?.template || defaultInjectionTemplate).replaceAll('{{memory}}', '').trim());
+    }
+    if (state.inlineGeneration?.summaryEnabled) {
+        ruleSections.push(renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state));
+    }
+    if (state.inlineGeneration?.tableEnabled) {
+        ruleSections.push(renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state));
+    }
+    return {
+        summary: mainInjectionContent ? String(parts.sources?.summary || '') : '',
+        memory: mainInjectionContent ? String(parts.sources?.memory || '') : '',
+        table: mainInjectionContent ? String(parts.sources?.table || '') : '',
+        vector: mainInjectionContent ? String(parts.sources?.vector || '') : '',
+        rule: ruleSections.filter(Boolean).join('\n\n'),
+    };
+}
 
-    const primaryButton = document.getElementById('bakemono-memory-scan');
-    if (primaryButton) {
-        primaryButton.removeAttribute('data-bakemono-action');
-        primaryButton.removeAttribute('data-bakemono-nav');
-        primaryButton.setAttribute(recommendation.kind === 'nav' ? 'data-bakemono-nav' : 'data-bakemono-action', recommendation.target);
-        primaryButton.hidden = false;
-        primaryButton.classList.add('is-workflow-primary');
-        const icon = primaryButton.querySelector('i');
-        if (icon) {
-            icon.className = `fa-solid ${recommendation.icon}`;
+function estimateOverviewTokenCount(text) {
+    const value = String(text || '');
+    if (!value.trim()) return 0;
+    const cjkCount = (value.match(/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g) || []).length;
+    const remainingCount = Math.max(0, value.length - cjkCount);
+    return Math.max(1, Math.round((cjkCount * 1.05) + (remainingCount / 4)));
+}
+
+async function getOverviewTokenCount(text) {
+    const value = String(text || '');
+    if (!value.trim()) return 0;
+    const cacheKey = `${value.length}:${getHash(value)}`;
+    if (overviewTokenCache.has(cacheKey)) return overviewTokenCache.get(cacheKey);
+    let count;
+    try {
+        count = await getTokenCountAsync(value, 0);
+    } catch (error) {
+        console.warn('[BakemonoMemory] token count failed, using local estimate', error);
+        count = estimateOverviewTokenCount(value);
+    }
+    const normalizedCount = Math.max(0, Number(count) || 0);
+    overviewTokenCache.set(cacheKey, normalizedCount);
+    if (overviewTokenCache.size > 36) {
+        overviewTokenCache.delete(overviewTokenCache.keys().next().value);
+    }
+    return normalizedCount;
+}
+
+function flattenPromptSnapshot(value, seen = new WeakSet()) {
+    if (typeof value === 'string') return value;
+    if (!value || typeof value !== 'object') return '';
+    if (seen.has(value)) return '';
+    seen.add(value);
+    if (Array.isArray(value)) {
+        return value.map(item => flattenPromptSnapshot(item, seen)).filter(Boolean).join('\n');
+    }
+    return Object.values(value).map(item => flattenPromptSnapshot(item, seen)).filter(Boolean).join('\n');
+}
+
+function getLatestCompletedPromptSnapshot() {
+    if (!Array.isArray(itemizedPrompts) || !itemizedPrompts.length) return null;
+    let latest = null;
+    itemizedPrompts.forEach((entry, index) => {
+        const messageId = Number(entry?.mesId);
+        const message = Number.isInteger(messageId) ? chat?.[messageId] : null;
+        if (!message || message.is_user) return;
+        if (!latest || messageId > latest.messageId || (messageId === latest.messageId && index > latest.index)) {
+            latest = { entry, index, messageId };
         }
-        const label = primaryButton.querySelector('span');
-        if (label) {
-            label.textContent = recommendation.buttonLabel;
+    });
+    return latest;
+}
+
+async function getLastCompletePromptUsage() {
+    const snapshot = getLatestCompletedPromptSnapshot();
+    if (!snapshot) return null;
+    if (overviewPromptUsageCache.has(snapshot.entry)) return overviewPromptUsageCache.get(snapshot.entry);
+    const usagePromise = (async () => {
+        try {
+            const params = await itemizedParams(itemizedPrompts, snapshot.index, snapshot.messageId);
+            const total = Number(params?.finalPromptTokens || params?.totalTokensInPrompt || 0);
+            if (!Number.isFinite(total) || total <= 0) return null;
+            return {
+                total,
+                messageId: snapshot.messageId,
+                promptText: flattenPromptSnapshot(snapshot.entry?.rawPrompt),
+                entry: snapshot.entry,
+                index: snapshot.index,
+                params,
+            };
+        } catch (error) {
+            console.warn('[BakemonoMemory] failed to read the last itemized prompt', error);
+            return null;
         }
+    })();
+    overviewPromptUsageCache.set(snapshot.entry, usagePromise);
+    return usagePromise;
+}
+
+function formatPromptInspectorMessageContent(value) {
+    if (typeof value === 'string') return value;
+    if (!value) return '';
+    if (Array.isArray(value)) {
+        return value.map(item => {
+            if (typeof item === 'string') return item;
+            if (typeof item?.text === 'string') return item.text;
+            if (typeof item?.content === 'string') return item.content;
+            if (item?.image_url || item?.type === 'image') return '[图片内容]';
+            return '';
+        }).filter(Boolean).join('\n');
+    }
+    if (typeof value === 'object') {
+        if (typeof value.text === 'string') return value.text;
+        if (typeof value.content === 'string') return value.content;
+    }
+    return '';
+}
+
+function collectPromptInspectorMessages(value, messages = [], seen = new WeakSet()) {
+    if (!value || typeof value !== 'object' || seen.has(value)) return messages;
+    seen.add(value);
+    if (Array.isArray(value)) {
+        value.forEach(item => collectPromptInspectorMessages(item, messages, seen));
+        return messages;
+    }
+    if (typeof value.role === 'string' && Object.prototype.hasOwnProperty.call(value, 'content')) {
+        const content = formatPromptInspectorMessageContent(value.content).trim();
+        if (content) messages.push({ role: value.role.toLowerCase(), content });
+        return messages;
+    }
+    Object.values(value).forEach(item => collectPromptInspectorMessages(item, messages, seen));
+    return messages;
+}
+
+function formatPromptInspectorSnapshot(value) {
+    if (typeof value === 'string') return value;
+    const messages = collectPromptInspectorMessages(value);
+    if (messages.length) {
+        return messages.map(message => `【${message.role.toUpperCase()}】\n${message.content}`).join('\n\n');
+    }
+    try {
+        return JSON.stringify(value, null, 2) || '';
+    } catch {
+        return flattenPromptSnapshot(value);
+    }
+}
+
+function joinPromptInspectorSections(sections) {
+    return sections
+        .filter(([, value]) => String(value || '').trim())
+        .map(([title, value]) => `【${title}】\n${String(value).trim()}`)
+        .join('\n\n');
+}
+
+function stripPromptInspectorEmbeddedSources(content, values) {
+    let result = String(content || '');
+    const sources = values
+        .map(value => String(value || '').trim())
+        .filter(value => value.length >= 2)
+        .sort((left, right) => right.length - left.length);
+    sources.forEach(source => {
+        result = result.split(source).join('');
+    });
+    return result
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+function getPromptInspectorNativeTokens(value) {
+    const count = Number(value);
+    return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
+async function resolvePromptInspectorTokens(nativeTokens, getContent) {
+    const measured = getPromptInspectorNativeTokens(nativeTokens);
+    return measured || getOverviewTokenCount(getContent());
+}
+
+async function buildPromptInspectorEntries(usage) {
+    const entry = usage?.entry || {};
+    const params = usage?.params || {};
+    const promptMessages = collectPromptInspectorMessages(entry.rawPrompt);
+    const systemMessages = promptMessages
+        .filter(message => ['system', 'developer'].includes(message.role))
+        .map(message => `【${message.role.toUpperCase()}】\n${message.content}`)
+        .join('\n\n');
+    const instructionContent = String(entry.instruction || '').trim();
+    const systemContent = systemMessages || instructionContent;
+    const roleCardContent = joinPromptInspectorSections([
+        ['角色描述', entry.charDescription],
+        ['角色性格', entry.charPersonality],
+        ['场景设定', entry.scenarioText],
+    ]);
+    const baseSystemContent = stripPromptInspectorEmbeddedSources(systemContent, [
+        entry.worldInfoString,
+        entry.userPersona,
+        entry.charDescription,
+        entry.charPersonality,
+        entry.scenarioText,
+        entry.examplesString,
+        entry.allAnchors,
+        entry.summarizeString,
+        entry.authorsNoteString,
+        entry.smartContextString,
+        entry.chatVectorsString,
+        entry.dataBankVectorsString,
+        entry.beforeScenarioAnchor,
+        entry.afterScenarioAnchor,
+        entry.promptBias,
+    ]);
+    const fullPromptSource = entry.rawPrompt ?? entry.finalPrompt ?? '';
+    const candidates = [
+        {
+            key: 'full',
+            label: '完整 Prompt',
+            description: '酒馆上一轮实际发送的完整上下文',
+            icon: 'fa-file-lines',
+            nativeTokens: usage.total,
+            hasContent: !!usage.total,
+            getContent: () => formatPromptInspectorSnapshot(fullPromptSource),
+        },
+        {
+            key: 'system',
+            label: '基础系统与预设',
+            description: '已扣除下方单列内容的系统消息',
+            icon: 'fa-terminal',
+            nativeTokens: params.this_main_api === 'openai' ? 0 : params.instructionTokens,
+            hasContent: !!baseSystemContent,
+            getContent: () => baseSystemContent,
+        },
+        {
+            key: 'character',
+            label: '角色卡',
+            description: '角色描述、性格与场景设定',
+            icon: 'fa-address-card',
+            nativeTokens: Number(params.charDescriptionTokens || 0) + Number(params.charPersonalityTokens || 0) + Number(params.scenarioTextTokens || 0),
+            hasContent: !!roleCardContent,
+            getContent: () => roleCardContent,
+        },
+        {
+            key: 'persona',
+            label: 'User 人设',
+            description: '当前用户身份与人设说明',
+            icon: 'fa-user',
+            nativeTokens: params.userPersonaStringTokens,
+            hasContent: !!String(entry.userPersona || '').trim(),
+            getContent: () => String(entry.userPersona || ''),
+        },
+        {
+            key: 'world-info',
+            label: '世界书',
+            description: '上一轮实际触发的世界信息',
+            icon: 'fa-earth-asia',
+            nativeTokens: params.worldInfoStringTokens,
+            hasContent: !!String(entry.worldInfoString || '').trim(),
+            getContent: () => String(entry.worldInfoString || ''),
+        },
+        {
+            key: 'examples',
+            label: '示例对话',
+            description: `${params.examplesCount || entry.examplesCount || 0} 组示例消息`,
+            icon: 'fa-comments',
+            nativeTokens: params.examplesStringTokens,
+            hasContent: !!String(entry.examplesString || '').trim(),
+            getContent: () => String(entry.examplesString || ''),
+        },
+        {
+            key: 'chat',
+            label: '聊天记录',
+            description: `${params.messagesCount || entry.messagesCount || 0} 条进入上下文的消息`,
+            icon: 'fa-message',
+            nativeTokens: params.ActualChatHistoryTokens,
+            hasContent: !!String(entry.mesSendString || '').trim(),
+            getContent: () => String(entry.mesSendString || ''),
+        },
+        {
+            key: 'extensions',
+            label: '扩展注入',
+            description: '作者注释、记忆与其他扩展内容',
+            icon: 'fa-puzzle-piece',
+            nativeTokens: params.allAnchorsTokens,
+            hasContent: !!String(entry.allAnchors || '').trim(),
+            getContent: () => String(entry.allAnchors || ''),
+        },
+        {
+            key: 'bias',
+            label: 'Prompt Bias',
+            description: '上一轮追加的偏置提示',
+            icon: 'fa-thumbtack',
+            nativeTokens: params.promptBiasTokens || params.oaiBiasTokens,
+            hasContent: !!String(entry.promptBias || '').trim(),
+            getContent: () => String(entry.promptBias || ''),
+        },
+    ].filter(item => item.hasContent);
+
+    const resolved = await Promise.all(candidates.map(async item => ({
+        ...item,
+        tokens: await resolvePromptInspectorTokens(item.nativeTokens, item.getContent),
+    })));
+    const systemItem = resolved.find(item => item.key === 'system');
+    if (systemItem && systemItem.tokens > usage.total) {
+        const overlappingSourceTokens = resolved
+            .filter(item => ['character', 'persona', 'world-info', 'examples', 'extensions', 'bias'].includes(item.key))
+            .reduce((sum, item) => sum + item.tokens, 0);
+        systemItem.tokens = Math.max(0, systemItem.tokens - overlappingSourceTokens);
+    }
+    resolved.forEach(item => {
+        if (item.key !== 'full') item.tokens = Math.min(item.tokens, usage.total);
+    });
+    return resolved;
+}
+
+function setPromptInspectorEmptyState(empty) {
+    const list = document.getElementById('bakemono-memory-prompt-inspector-list');
+    const emptyState = document.getElementById('bakemono-memory-prompt-inspector-empty');
+    if (list) list.hidden = !!empty;
+    if (emptyState) emptyState.hidden = !empty;
+}
+
+function setPromptInspectorSearchEnabled(enabled) {
+    const input = document.getElementById('bakemono-memory-prompt-inspector-query');
+    const clearButton = document.getElementById('bakemono-memory-prompt-inspector-clear');
+    if (input) input.disabled = !enabled;
+    if (clearButton) clearButton.hidden = !enabled || !promptInspectorSearchQuery;
+}
+
+function closePromptInspectorItem(row) {
+    if (!row) return;
+    row.classList.remove('is-open');
+    const button = row.querySelector('.bakemono-memory-prompt-inspector-item-toggle');
+    const body = row.querySelector('.bakemono-memory-prompt-inspector-item-body');
+    const content = body?.querySelector('pre');
+    button?.setAttribute('aria-expanded', 'false');
+    if (body) body.hidden = true;
+    if (content) content.textContent = '';
+}
+
+function renderPromptInspectorHighlightedContent(container, content, query = promptInspectorSearchQuery) {
+    if (!container) return;
+    const text = String(content || '');
+    const needle = String(query || '').trim();
+    container.replaceChildren();
+    if (!needle) {
+        container.textContent = text || '这一项没有可显示的文本内容。';
+        return;
+    }
+    const normalizedText = text.toLocaleLowerCase();
+    const normalizedNeedle = needle.toLocaleLowerCase();
+    let cursor = 0;
+    let matchCount = 0;
+    const fragment = document.createDocumentFragment();
+    while (cursor < text.length && matchCount < 240) {
+        const matchIndex = normalizedText.indexOf(normalizedNeedle, cursor);
+        if (matchIndex < 0) break;
+        if (matchIndex > cursor) fragment.append(document.createTextNode(text.slice(cursor, matchIndex)));
+        const mark = document.createElement('mark');
+        mark.textContent = text.slice(matchIndex, matchIndex + needle.length);
+        fragment.append(mark);
+        cursor = matchIndex + needle.length;
+        matchCount += 1;
+    }
+    if (cursor < text.length) fragment.append(document.createTextNode(text.slice(cursor)));
+    container.append(fragment);
+}
+
+function applyPromptInspectorSearch() {
+    const list = document.getElementById('bakemono-memory-prompt-inspector-list');
+    const searchEmpty = document.getElementById('bakemono-memory-prompt-inspector-search-empty');
+    const clearButton = document.getElementById('bakemono-memory-prompt-inspector-clear');
+    if (!list) return;
+    const query = String(promptInspectorSearchQuery || '').trim();
+    const normalizedQuery = query.toLocaleLowerCase();
+    let visibleCount = 0;
+    list.querySelectorAll('.bakemono-memory-prompt-inspector-item').forEach(row => {
+        const item = promptInspectorEntries.get(String(row.dataset.promptEntryKey || ''));
+        const matches = !normalizedQuery || !!item && `${item.label}\n${item.description}\n${item.getContent()}`.toLocaleLowerCase().includes(normalizedQuery);
+        row.hidden = !matches;
+        if (matches) {
+            visibleCount += 1;
+            if (row.classList.contains('is-open')) {
+                renderPromptInspectorHighlightedContent(row.querySelector('pre'), item.getContent(), query);
+            }
+        } else if (row.classList.contains('is-open')) {
+            closePromptInspectorItem(row);
+            promptInspectorOpenEntryKey = '';
+        }
+    });
+    if (clearButton) clearButton.hidden = !query;
+    if (searchEmpty) searchEmpty.hidden = !query || visibleCount > 0;
+    $('#bakemono-memory-prompt-inspector-count').text(query
+        ? `${visibleCount.toLocaleString()} / ${promptInspectorEntries.size.toLocaleString()} 个条目`
+        : `${promptInspectorEntries.size.toLocaleString()} 个条目`);
+}
+
+function schedulePromptInspectorSearch(value) {
+    promptInspectorSearchQuery = String(value || '');
+    const clearButton = document.getElementById('bakemono-memory-prompt-inspector-clear');
+    if (clearButton) clearButton.hidden = !promptInspectorSearchQuery.trim();
+    if (promptInspectorSearchTimer !== null) {
+        window.clearTimeout(promptInspectorSearchTimer);
+    }
+    promptInspectorSearchTimer = window.setTimeout(() => {
+        promptInspectorSearchTimer = null;
+        applyPromptInspectorSearch();
+    }, 160);
+}
+
+async function renderPromptInspector() {
+    const revision = ++promptInspectorRenderRevision;
+    const list = document.getElementById('bakemono-memory-prompt-inspector-list');
+    if (!list) return;
+    list.replaceChildren();
+    promptInspectorEntries.clear();
+    promptInspectorOpenEntryKey = '';
+    setPromptInspectorEmptyState(false);
+    document.getElementById('bakemono-memory-prompt-inspector-search-empty')?.setAttribute('hidden', '');
+    const searchInput = document.getElementById('bakemono-memory-prompt-inspector-query');
+    if (searchInput) searchInput.value = promptInspectorSearchQuery;
+    setPromptInspectorSearchEnabled(false);
+    $('#bakemono-memory-prompt-inspector-count').text('正在读取');
+    $('#bakemono-memory-prompt-inspector-total').text('— Token');
+    $('#bakemono-memory-prompt-inspector-model').text('正在读取');
+    $('#bakemono-memory-prompt-inspector-preset, #bakemono-memory-prompt-inspector-floor').text('—');
+
+    const usage = await getLastCompletePromptUsage();
+    if (revision !== promptInspectorRenderRevision || getActiveWorkbenchTab() !== 'prompt-inspector') return;
+    if (!usage) {
+        $('#bakemono-memory-prompt-inspector-count').text('暂无记录');
+        $('#bakemono-memory-prompt-inspector-model').text('等待生成回复');
+        setPromptInspectorEmptyState(true);
+        return;
     }
 
-    document.querySelectorAll('[data-bakemono-workflow-preset]').forEach(card => {
-        const isActive = card.dataset.bakemonoWorkflowPreset === (state.workflowMode || workflowModes.BAKEMONO);
-        card.classList.toggle('is-active', isActive);
-        card.setAttribute('aria-pressed', String(isActive));
+    const entries = await buildPromptInspectorEntries(usage);
+    if (revision !== promptInspectorRenderRevision || getActiveWorkbenchTab() !== 'prompt-inspector') return;
+    entries.forEach(item => promptInspectorEntries.set(item.key, item));
+    const model = String(usage.params?.modelUsed || '').trim();
+    const preset = String(usage.params?.presetName || '').trim();
+    $('#bakemono-memory-prompt-inspector-count').text(`${entries.length.toLocaleString()} 个条目`);
+    $('#bakemono-memory-prompt-inspector-total').text(`${usage.total.toLocaleString()} Token`);
+    $('#bakemono-memory-prompt-inspector-model').text(model || '未记录');
+    $('#bakemono-memory-prompt-inspector-preset').text(preset && preset !== '(Unknown)' ? preset : '未记录');
+    $('#bakemono-memory-prompt-inspector-floor').text(`第 ${usage.messageId.toLocaleString()} 楼`);
+
+    const fragment = document.createDocumentFragment();
+    entries.forEach(item => {
+        const article = document.createElement('article');
+        article.className = 'bakemono-memory-prompt-inspector-item';
+        article.dataset.promptEntryKey = item.key;
+        article.innerHTML = `
+            <button type="button" class="bakemono-memory-prompt-inspector-item-toggle" data-bakemono-prompt-entry="${item.key}" aria-expanded="false">
+                <span class="bakemono-memory-prompt-inspector-item-mark" aria-hidden="true"><i class="fa-solid ${item.icon}"></i></span>
+                <span class="bakemono-memory-prompt-inspector-item-copy"><strong>${item.label}</strong><small>${item.description}</small></span>
+                <em><b>${item.tokens.toLocaleString()}</b><small> Token</small></em>
+                <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+            </button>
+            <div class="bakemono-memory-prompt-inspector-item-body" hidden>
+                <header><span>实际内容</span><button type="button" data-bakemono-prompt-copy="${item.key}"><i class="fa-regular fa-copy" aria-hidden="true"></i>复制</button></header>
+                <pre></pre>
+            </div>`;
+        fragment.append(article);
     });
-    const visibleActions = new Set(info.actions);
-    const actionButtons = [...document.querySelectorAll('.bakemono-memory-control-deck [data-bakemono-action]:not(#bakemono-memory-scan)')];
-    actionButtons.forEach(button => {
-        button.hidden = !visibleActions.has(button.dataset.bakemonoAction);
+    list.append(fragment);
+    setPromptInspectorEmptyState(!entries.length);
+    setPromptInspectorSearchEnabled(!!entries.length);
+    applyPromptInspectorSearch();
+}
+
+function togglePromptInspectorEntry(entryKey, trigger) {
+    const list = document.getElementById('bakemono-memory-prompt-inspector-list');
+    const item = promptInspectorEntries.get(entryKey);
+    const article = trigger?.closest('.bakemono-memory-prompt-inspector-item');
+    if (!list || !item || !article) return;
+    const shouldOpen = promptInspectorOpenEntryKey !== entryKey;
+    list.querySelectorAll('.bakemono-memory-prompt-inspector-item').forEach(row => {
+        closePromptInspectorItem(row);
     });
-    actionButtons.forEach(button => {
-        button.classList.remove('is-workflow-primary');
+    promptInspectorOpenEntryKey = shouldOpen ? entryKey : '';
+    if (!shouldOpen) return;
+    const body = article.querySelector('.bakemono-memory-prompt-inspector-item-body');
+    const content = body?.querySelector('pre');
+    article.classList.add('is-open');
+    trigger.setAttribute('aria-expanded', 'true');
+    if (body) body.hidden = false;
+    renderPromptInspectorHighlightedContent(content, item.getContent());
+}
+
+function doesLastPromptMatchCurrentInjection(promptText, state = ensureState()) {
+    const expectedSections = [];
+    if (state.injection?.enabled) {
+        const content = renderInjectionContent(state);
+        if (content) expectedSections.push(content);
+    }
+    if (state.inlineGeneration?.summaryEnabled) {
+        expectedSections.push(renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state));
+    }
+    if (state.inlineGeneration?.tableEnabled) {
+        expectedSections.push(renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state));
+    }
+    const normalizedPrompt = String(promptText || '');
+    return expectedSections.every(section => !section || normalizedPrompt.includes(section));
+}
+
+function formatPromptSharePercent(total, fullPromptTotal) {
+    if (!fullPromptTotal) return '—%';
+    const value = Math.max(0, (total / fullPromptTotal) * 100);
+    if (value > 0 && value < 0.1) return '<0.1%';
+    if (value < 10) return `${value.toFixed(1)}%`;
+    return `${Math.round(value)}%`;
+}
+
+async function renderOverviewTokenManifest(state = ensureState()) {
+    const revision = ++overviewTokenRenderRevision;
+    const sourceTexts = getOverviewInjectionSources(state);
+    const sourceKeys = ['summary', 'memory', 'table', 'vector', 'rule'];
+    const sourceCounts = await Promise.all(sourceKeys.map(key => getOverviewTokenCount(sourceTexts[key])));
+    const lastPromptUsage = await getLastCompletePromptUsage();
+    if (revision !== overviewTokenRenderRevision || getActiveWorkbenchTab() !== 'overview') return;
+
+    const counts = Object.fromEntries(sourceKeys.map((key, index) => [key, sourceCounts[index]]));
+    const total = sourceCounts.reduce((sum, count) => sum + count, 0);
+    const promptMatches = !!lastPromptUsage && doesLastPromptMatchCurrentInjection(lastPromptUsage.promptText, state);
+    $('#bakemono-memory-overview-token-total').text(total.toLocaleString());
+    $('#bakemono-memory-overview-token-percent').text(promptMatches ? formatPromptSharePercent(total, lastPromptUsage.total) : '—%');
+    $('#bakemono-memory-overview-token-scope').text(!lastPromptUsage ? '等待上一轮' : promptMatches ? '上一轮实测' : '配置已变更');
+    sourceKeys.forEach(key => {
+        const value = counts[key] || 0;
+        $(`#bakemono-memory-token-${key}`).text(value.toLocaleString());
+        $(`#bakemono-memory-token-bar-${key}`).css('width', total ? `${Math.max(0, Math.min(100, (value / total) * 100))}%` : '0%');
     });
+}
+
+function getOverviewHealth(floorStats, state = ensureState()) {
+    if (!state.injection?.enabled) {
+        return {
+            badge: '注入关闭',
+            title: '长期记忆暂未注入',
+            copy: '已保存内容仍保留在档案中，不会发送给模型。',
+            tone: 'paused',
+        };
+    }
+    if (floorStats.pendingDraftCount) {
+        return {
+            badge: `${floorStats.pendingDraftCount.toLocaleString()} 条待确认`,
+            title: '有内容等待确认',
+            copy: '草稿尚未写入长期记忆，现有已确认内容仍正常注入。',
+            tone: 'attention',
+        };
+    }
+    if (floorStats.activeTaskCount || isBusy || isQueueRunning) {
+        return {
+            badge: '正在处理',
+            title: '记忆正在整理',
+            copy: '后台任务完成后，这里的覆盖状态会自动更新。',
+            tone: 'working',
+        };
+    }
+    if (!floorStats.total) {
+        return {
+            badge: '等待正文',
+            title: '等待聊天内容',
+            copy: '当前聊天还没有可整理的助手正文。',
+            tone: 'idle',
+        };
+    }
+    if (!floorStats.summarized) {
+        return {
+            badge: '等待记忆',
+            title: '尚未建立剧情记忆',
+            copy: `${floorStats.missing.toLocaleString()} 楼正文还没有识别为可用记忆。`,
+            tone: 'attention',
+        };
+    }
+    if (floorStats.missing) {
+        return {
+            badge: '运行正常',
+            title: '记忆链路运行正常',
+            copy: `最近 ${floorStats.missing.toLocaleString()} 楼尚未整理；已有内容仍正常注入。`,
+            tone: 'healthy',
+        };
+    }
+    return {
+        badge: '已同步',
+        title: '现有记忆已经同步',
+        copy: '当前可识别楼层均已有记忆记录。',
+        tone: 'healthy',
+    };
+}
+
+function renderOverviewConfigManifest(state = ensureState()) {
+    const activeConfig = getActiveGlobalConfig();
+    const scanMode = state.scanRules?.mode || defaultScanRules.mode;
+    const apiProvider = state.automation?.apiProvider || defaultAutomation.apiProvider;
+    const backgroundFeatures = [];
+    if (state.turnSummary?.auto) backgroundFeatures.push('自动记忆');
+    if (state.automation?.enabled) backgroundFeatures.push('自动总结');
+    if (state.autoHideRecent?.enabled) backgroundFeatures.push('楼层收纳');
+    const vectorProvider = state.vectorMemory?.embeddingProvider === 'custom-openai' ? '外部语义检索' : '本地轻量检索';
+
+    $('#bakemono-memory-overview-config-scope').text(activeConfig ? '全部聊天' : '当前聊天');
+    $('#bakemono-memory-overview-config-name').text(activeConfig?.name || '当前聊天配置');
+    $('#bakemono-memory-overview-config-workflow').text(getWorkflowModeLabel(state.workflowMode));
+    $('#bakemono-memory-overview-config-scan').text(scanMode === 'full' ? '全文管线' : '标签块模式');
+    $('#bakemono-memory-overview-config-model').text(apiProvider === 'custom'
+        ? (String(state.automation?.customApi?.model || '').trim() || '自定义接口')
+        : '酒馆主模型');
+    $('#bakemono-memory-overview-config-auto').text(backgroundFeatures.length ? backgroundFeatures.join(' · ') : '全部关闭');
+    $('#bakemono-memory-overview-config-injection').text(state.injection?.enabled
+        ? `开启 · 深度 ${Number(state.injection?.depth ?? defaultState.injection.depth).toLocaleString()}`
+        : '关闭');
+    $('#bakemono-memory-overview-config-vector').text(state.vectorMemory?.enabled ? vectorProvider : '未开启');
+}
+
+function renderWorkflowGuide(state = ensureState()) {
+    const floorIndex = getCurrentFloorMemoryIndex(state);
+    const floorStats = floorIndex.aggregates;
+    const health = getOverviewHealth(floorStats, state);
+    const coverageProgress = floorStats.total
+        ? Math.max(0, Math.min(100, Math.round((floorStats.summarized / floorStats.total) * 100)))
+        : 0;
+    const stageCount = Array.isArray(state.stageSummaries) ? state.stageSummaries.length : 0;
+    const epicCount = Array.isArray(state.epicSummaries) ? state.epicSummaries.length : 0;
+
+    $('#bakemono-memory-overview-status-label').text(health.badge);
+    $('#bakemono-memory-workflow-title').text(health.title);
+    $('#bakemono-memory-overview-next-copy').text(health.copy);
+    $('#bakemono-memory-index-ready-floor').text(floorStats.summarized.toLocaleString());
+    $('#bakemono-memory-index-pending-count').text(floorStats.missing.toLocaleString());
+    $('#bakemono-memory-count-drafts').text(floorStats.pendingDraftCount.toLocaleString());
+    $('#bakemono-memory-scene-code').text(`SC. ${String(stageCount).padStart(2, '0')} / TK. ${String(epicCount).padStart(2, '0')}`);
+    $('#bakemono-memory-scene-progress-fill').css('width', `${coverageProgress}%`);
+    $('.bakemono-memory-health-board').attr('data-health-tone', health.tone);
+    renderOverviewConfigManifest(state);
+    if (getActiveWorkbenchTab() === 'overview') {
+        void renderOverviewTokenManifest(state);
+    }
 }
 
 function renderSummaryGenerationPanel(state = ensureState(), blocks = null) {
@@ -8876,8 +9483,8 @@ const helpGuideArticles = {
         number: '01', category: '快速开始', title: '整理好第一段剧情', tag: '入门', audience: '适合第一次使用', duration: '约 3 分钟',
         lead: '先从一次扫描开始。剪辑台会识别现有摘要，再把适合长期保留的内容交给你确认。',
         steps: [
-            ['扫描最新剧情', '回到剪辑台，点击主卡片上的扫描按钮。'],
-            ['生成阶段总结', '积累一段剧情后，再把摘要整理成长期记忆。'],
+            ['扫描最新剧情', '从左上角菜单进入“设置中心 → 扫描与识别”，扫描并查看识别结果。'],
+            ['生成阶段总结', '积累一段剧情后，到“总结”页把摘要整理成长期记忆。'],
             ['先确认，再保存', '自动生成的内容会进入待确认，不会悄悄覆盖记忆。'],
         ],
         note: ['已有几百楼聊天？', '从工作流设置选择“补课旧聊天”，不需要从第一楼手工整理。'],
@@ -8915,18 +9522,18 @@ const helpGuideArticles = {
     'fresh-flow': {
         number: '01', category: '推荐流程', title: '新聊天：从第一次扫描开始', tag: '流程', audience: '尚无摘要', duration: '约 1 分钟',
         lead: '新聊天不需要先配置全部功能，只要让剪辑台识别到第一批摘要。',
-        steps: [['打开剪辑台', '主卡会显示“建立第一段剧情记忆”。'], ['扫描聊天', '扫描只读取与识别，不会自动改写记忆。'], ['继续游玩', '摘要积累后，剪辑台会提示生成阶段总结。']],
+        steps: [['打开剪辑台', '首页会显示当前楼层覆盖、注入 Token 与正在生效的配置。'], ['扫描聊天', '到“设置中心 → 扫描与识别”执行扫描；扫描只读取与识别。'], ['继续游玩', '摘要积累后，到“总结”页生成阶段总结。']],
     },
     'active-flow': {
         number: '02', category: '推荐流程', title: '已有摘要：继续整理新楼层', tag: '流程', audience: '日常使用', duration: '约 1 分钟',
-        lead: '日常流程只需要关心剪辑台推荐的一件事，不必反复进入配置页。',
-        steps: [['扫描最新内容', '确认新增摘要数量。'], ['生成阶段总结', '有未覆盖摘要时，主按钮会自动切换。'], ['继续扫描', '全部摘要已经整理后，主按钮会回到扫描最新剧情。']],
+        lead: '首页只负责显示运行情况，不把生成、配置与维护操作混在一起。',
+        steps: [['查看运行概览', '确认覆盖楼层、待识别楼层和本轮注入构成。'], ['扫描最新内容', '需要更新识别结果时，到“设置中心 → 扫描与识别”。'], ['整理长期记忆', '有未覆盖摘要时，到“总结”页生成阶段总结或多次总结。']],
     },
     'review-flow': {
         number: '03', category: '推荐流程', title: '保存前：检查待确认内容', tag: '流程', audience: '生成完成后', duration: '约 1 分钟',
         lead: '自动生成的内容先进入待确认，避免不合适的总结直接写入长期记忆。',
         steps: [['查看草稿', '检查标题、时间、人物和事件是否准确。'], ['修改或重做', '需要时先编辑或重新生成。'], ['确认保存', '只有确认后才进入长期记忆。']],
-        note: ['剪辑台会提醒', '存在草稿时，剪辑台会优先推荐“查看待确认”。'],
+        note: ['剪辑台会提醒', '存在草稿时，首页运行状态会显示待确认数量。'],
     },
     'summary-feature': {
         number: '01', category: '功能说明', title: '总结、回看与摘要树', tag: '总结', audience: '剧情整理', duration: '约 2 分钟',
@@ -8942,7 +9549,7 @@ const helpGuideArticles = {
         number: '03', category: '功能说明', title: '自动记忆、表格与自动总结', tag: '自动', audience: '减少重复操作', duration: '约 3 分钟',
         lead: '楼层记忆状态索引会读取已有摘要、草稿、表格事务、隐藏状态和向量记录，再协调你已经开启的后台功能；它不会复制聊天正文。',
         steps: [['自动编排', '新回复到达后先判断这一楼缺少什么，再依次协调随正文捕获、回复后处理、阶段整理、收纳与向量刷新。'], ['基础表格', '在“剧情表格 → 新建与导入表格”可创建角色、关系、世界、物品、约定与剧情指导表；不会重复建立事件摘要或大总结表。'], ['原有开关不变', '编排器只运行你已经开启的功能；模型、保存策略、阈值与表格权限仍在各自页面调整。']],
-        note: ['为什么首页没有更多设置？', '首页只显示整理进度、待处理数量和推荐下一步。索引原理与进阶设置集中放在这里。'],
+        note: ['为什么首页没有操作按钮？', '首页是一张只读场记单，只显示运行状态、注入 Token 与当前配置；具体操作留在对应页面。'],
     },
     'retrieval-feature': {
         number: '04', category: '功能说明', title: '向量记忆与上下文注入', tag: '召回', audience: '长聊天检索', duration: '约 3 分钟',
@@ -8958,7 +9565,7 @@ const helpGuideArticles = {
     'safety-feature': {
         number: '06', category: '功能说明', title: '撤回、事务与楼层收纳', tag: '安全', audience: '维护与恢复', duration: '约 2 分钟',
         lead: '危险维护集中在最后。操作前先看影响范围，避免把普通工作与清理动作混在一起。',
-        steps: [['撤回保存', '恢复最近一次可回滚的总结保存。'], ['楼层收纳', '在安全维护页集中自动或手动收纳旧楼层，原聊天不会被删除。'], ['事务记录', '查看自动保存、隐藏楼层和表格快照；清理工具统一放在页面末尾。']],
+        steps: [['撤回保存', '恢复最近一次可回滚的总结保存。'], ['楼层收纳', '从设置中心进入独立楼层收纳页，原聊天不会被删除。'], ['事务记录', '查看自动保存、隐藏楼层和表格快照；清理工具统一放在页面末尾。']],
     },
     'injection-empty': {
         number: '01', category: '常见问题', title: '为什么没有可注入内容？', tag: '排查', audience: '显示“注入空”', duration: '约 1 分钟',
@@ -9103,6 +9710,8 @@ function renderActiveWorkbenchPanel(tabName, state, blocks) {
     if (tabName === 'overview') {
         renderWorkflowGuide(state);
         renderMemoryDatabaseSummary(state);
+    } else if (tabName === 'prompt-inspector') {
+        void renderPromptInspector();
     } else if (tabName === 'data-hub') {
         renderWorkbenchHubPanels(state);
         renderMemoryDatabaseSummary(state);
@@ -11639,6 +12248,7 @@ function renderList(selector, blocks, type = 'story') {
 function getWorkbenchPanelTitle(tabName) {
     const titles = {
         overview: '剪辑台',
+        'prompt-inspector': '提示词清单',
         'data-hub': '自动与数据',
         'settings-hub': '设置中心',
         settings: '工作流设置',
@@ -11670,6 +12280,7 @@ function getWorkbenchPanelKicker(tabName, state = ensureState()) {
     const vectorCount = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records.length : 0;
     const contexts = {
         overview: `剧情剪辑 · 第 ${currentFloor.toLocaleString()} 楼`,
+        'prompt-inspector': '上一轮实测 · 提示词清单',
         'data-hub': '后台工作 · 4 个工具',
         'settings-hub': '偏好与规则 · 当前聊天',
         settings: `工作方式 · ${getMemoryStrategyLabel(state.memoryStrategy)}`,
@@ -11701,6 +12312,7 @@ function getWorkbenchPanelShortKicker(tabName, state = ensureState()) {
     const vectorCount = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records.length : 0;
     const contexts = {
         overview: `剧情剪辑 · ${currentFloor.toLocaleString()}楼`,
+        'prompt-inspector': '上一轮实测',
         'data-hub': '后台工作 · 4个工具',
         'settings-hub': '偏好与规则',
         settings: '工作方式',
@@ -11814,6 +12426,9 @@ function toggleWorkbenchHelpPopover(trigger) {
 }
 
 function getWorkbenchMenuTab(tabName) {
+    if (tabName === 'prompt-inspector') {
+        return 'overview';
+    }
     if (['turn-summary', 'tables', 'automation', 'vector'].includes(tabName)) {
         return 'data-hub';
     }
@@ -12323,6 +12938,36 @@ function bindSettingsEvents() {
     });
     $('#bakemono-workbench-root').off('click.bakemonoNav').on('click.bakemonoNav', '[data-bakemono-nav]', function () {
         switchWorkbenchTab(this.dataset.bakemonoNav);
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoPromptInspector').on('click.bakemonoPromptInspector', '[data-bakemono-prompt-entry]', function () {
+        togglePromptInspectorEntry(String(this.dataset.bakemonoPromptEntry || ''), this);
+    });
+    $('#bakemono-memory-prompt-inspector-query').off('input.bakemonoPromptSearch search.bakemonoPromptSearch').on('input.bakemonoPromptSearch search.bakemonoPromptSearch', function () {
+        schedulePromptInspectorSearch(this.value);
+    });
+    $('#bakemono-memory-prompt-inspector-clear').off('click.bakemonoPromptSearch').on('click.bakemonoPromptSearch', () => {
+        const input = document.getElementById('bakemono-memory-prompt-inspector-query');
+        if (promptInspectorSearchTimer !== null) {
+            window.clearTimeout(promptInspectorSearchTimer);
+            promptInspectorSearchTimer = null;
+        }
+        promptInspectorSearchQuery = '';
+        if (input) {
+            input.value = '';
+            input.focus();
+        }
+        applyPromptInspectorSearch();
+    });
+    $('#bakemono-workbench-root').off('click.bakemonoPromptCopy').on('click.bakemonoPromptCopy', '[data-bakemono-prompt-copy]', async function () {
+        const item = promptInspectorEntries.get(String(this.dataset.bakemonoPromptCopy || ''));
+        if (!item) return;
+        try {
+            await navigator.clipboard.writeText(item.getContent() || '');
+            toastr.success(`已复制：${item.label}`);
+        } catch (error) {
+            console.warn('[BakemonoMemory] failed to copy prompt inspector content', error);
+            toastr.error('复制失败，请长按内容手动复制。');
+        }
     });
     $('#bakemono-workbench-root').off('click.bakemonoHelpCategory').on('click.bakemonoHelpCategory', '[data-bakemono-help-category]', function () {
         activeHelpGuideCategory = helpGuideCategories[this.dataset.bakemonoHelpCategory]
@@ -13529,6 +14174,7 @@ function organizeWorkbenchOwnedSections() {
 }
 
 const workbenchParentNavigation = Object.freeze({
+    'prompt-inspector': { target: 'overview', label: '返回剪辑台' },
     'turn-summary': { target: 'data-hub', label: '返回自动与数据' },
     automation: { target: 'data-hub', label: '返回自动与数据' },
     vector: { target: 'data-hub', label: '返回自动与数据' },
@@ -13766,6 +14412,16 @@ async function init() {
             render: true,
         });
     });
+    if (event_types.ITEMIZED_PROMPTS_LOADED) {
+        eventSource.on(event_types.ITEMIZED_PROMPTS_LOADED, () => {
+            if (!isWorkbenchOpen()) return;
+            if (getActiveWorkbenchTab() === 'overview') {
+                renderWorkflowGuide(ensureState());
+            } else if (getActiveWorkbenchTab() === 'prompt-inspector') {
+                void renderPromptInspector();
+            }
+        });
+    }
     for (const event of [event_types.MESSAGE_UPDATED, event_types.MESSAGE_DELETED, event_types.MESSAGE_SWIPED]) {
         eventSource.on(event, (...args) => {
             const eventMessageIds = collectMessageIdsFromEventArgs(args);
