@@ -35,6 +35,10 @@ import { createTableStateService } from './src/features/table-state-service.js';
 import { createTableMemoryModel } from './src/features/table-memory-model.js';
 import { createTableWorkflowController } from './src/features/table-workflow-controller.js';
 import { createTableWorkbenchUi } from './src/features/table-workbench-ui.js';
+import { createVectorMemoryService } from './src/features/vector-memory-service.js';
+import { createVectorSettingsModel } from './src/features/vector-settings-model.js';
+import { createVectorWorkbenchUi } from './src/features/vector-workbench-ui.js';
+import { createVectorActionsController } from './src/features/vector-actions-controller.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
 import { createOperationFeedback } from './src/ui/operation-feedback.js';
 import { installWorkbenchParentNavigation, organizeWorkbenchOwnedSections } from './src/ui/workbench-layout.js';
@@ -996,7 +1000,6 @@ const defaultState = {
 };
 
 let isBusy = false;
-let vectorIndexTimer = null;
 let inlineCaptureTimer = null;
 let autoHideRecentTimer = null;
 let scheduledRenderHandle = null;
@@ -1004,7 +1007,6 @@ let scheduledRenderStatus = '';
 let overviewTokenRenderRevision = 0;
 const overviewTokenCache = new Map();
 const sanitizedChatLengths = new WeakMap();
-const vectorEmbeddingRuntimeCache = new Map();
 const maxStoredScanPreviewItems = 240;
 const mobileScanPreviewRenderLimit = 60;
 const desktopScanPreviewRenderLimit = 120;
@@ -1554,12 +1556,6 @@ function confirmDanger(title, lines = [], confirmText = '确认继续吗？') {
     ].join('\n'));
 }
 
-function pruneVectorRuntimeCache(limit = 120) {
-    while (vectorEmbeddingRuntimeCache.size > limit) {
-        const firstKey = vectorEmbeddingRuntimeCache.keys().next().value;
-        vectorEmbeddingRuntimeCache.delete(firstKey);
-    }
-}
 
 function saveState() {
     persistChatState(chat_metadata?.[STORAGE_KEY] || null, {
@@ -2101,797 +2097,6 @@ function getBlockPlainText(block) {
         .trim();
 }
 
-function splitTextIntoChunks(text, chunkSize = defaultVectorMemory.chunkSize, overlap = defaultVectorMemory.overlap) {
-    const clean = normalizeLineEndings(stripHtml(text)).replace(/\n{3,}/g, '\n\n').trim();
-    if (!clean) {
-        return [];
-    }
-    const safeChunk = Math.max(240, Number(chunkSize || defaultVectorMemory.chunkSize));
-    const safeOverlap = Math.min(Math.max(0, Number(overlap || 0)), Math.floor(safeChunk / 2));
-    const chunks = [];
-    let start = 0;
-    while (start < clean.length) {
-        let end = Math.min(clean.length, start + safeChunk);
-        if (end < clean.length) {
-            const naturalBreak = Math.max(clean.lastIndexOf('\n', end), clean.lastIndexOf('。', end), clean.lastIndexOf('！', end), clean.lastIndexOf('？', end));
-            if (naturalBreak > start + safeChunk * 0.55) {
-                end = naturalBreak + 1;
-            }
-        }
-        const chunk = clean.slice(start, end).trim();
-        if (chunk) {
-            chunks.push({ text: chunk, start, end });
-        }
-        if (end >= clean.length) {
-            break;
-        }
-        start = Math.max(end - safeOverlap, start + 1);
-    }
-    return chunks;
-}
-
-function getVectorSummaryTags(state = ensureState()) {
-    return parseList(state.vectorMemory.summaryTags || defaultVectorMemory.summaryTags);
-}
-
-function extractVectorSummaryText(text, state = ensureState()) {
-    const summaryTags = getVectorSummaryTags(state);
-    const blocks = extractConfiguredTagBlocks(text, summaryTags.length ? summaryTags : ['bakemono', 'summaryDraft'])
-        .map(block => block.content)
-        .filter(Boolean);
-    if (!blocks.length) {
-        return '';
-    }
-    return normalizeLineEndings(blocks.join('\n\n')).replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function getVectorBodyText(text, state = ensureState()) {
-    const excludeTags = parseList(state.vectorMemory.excludeTags || defaultVectorMemory.excludeTags);
-    const summaryTags = getVectorSummaryTags(state);
-    return stripConfiguredTags(text, unique([...excludeTags, ...summaryTags])).trim();
-}
-
-function getVectorSourceMessages(state = ensureState()) {
-    const context = getContext();
-    const sourceChat = context.chat || chat || [];
-    const maxIndexedMessages = Math.max(0, Number(state.vectorMemory.maxIndexedMessages ?? defaultVectorMemory.maxIndexedMessages));
-    const items = sourceChat
-        .map((message, messageId) => ({
-            message,
-            messageId,
-            cleanedText: getVectorBodyText(message?.mes || '', state),
-            summaryText: extractVectorSummaryText(message?.mes || '', state),
-        }))
-        .filter(({ message }) => message?.mes && (state.vectorMemory.includeHidden !== false || !message.is_system))
-        .filter(({ message }) => state.vectorMemory.includeUser === true || !message.is_user);
-    return maxIndexedMessages > 0 ? items.slice(-maxIndexedMessages) : items;
-}
-
-function getVectorCleanedMessageText(messageId, state = ensureState()) {
-    const match = getVectorSourceMessages(state).find(item => Number(item.messageId) === Number(messageId));
-    return String(match?.cleanedText || '').trim();
-}
-
-function getRecentConversationQuery(maxMessages = 8) {
-    const context = getContext();
-    const sourceChat = context.chat || chat || [];
-    return sourceChat
-        .map((message, messageId) => ({ message, messageId }))
-        .filter(({ message }) => message?.mes && !message.is_system)
-        .slice(-Math.max(1, Number(maxMessages || 8)))
-        .map(({ message, messageId }) => `${message.is_user ? '用户' : '助手'} #${messageId}: ${stripHtml(message.mes || '')}`)
-        .join('\n')
-        .trim();
-}
-
-function getVectorQueryText(state = ensureState(), explicitQuery = '') {
-    const current = String(explicitQuery || '').trim() || getRecentConversationQuery(8);
-    const keywords = parseList(state.vectorMemory.keywordTriggers).join(' ');
-    return [current, keywords].filter(Boolean).join('\n\n关键词提示：');
-}
-
-function getVectorRewriteIntentText(baseQuery = '') {
-    const clean = String(baseQuery || '')
-        .split(/\n\n关键词提示：/)[0]
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(Boolean);
-    const userLine = [...clean].reverse().find(line => /^用户\s*#?\d*\s*[:：]/.test(line));
-    const lastLine = userLine || clean.at(-1) || '';
-    return toPlainPreview(lastLine.replace(/^(?:用户|助手)\s*#?\d*\s*[:：]\s*/, '').trim(), 220);
-}
-
-async function callVectorQueryRewriteModel(prompt, systemPrompt, state = ensureState()) {
-    const provider = String(state.vectorMemory.queryRewriteProvider || defaultVectorMemory.queryRewriteProvider);
-    if (provider === 'custom') {
-        const queryConfig = state.vectorMemory.queryCustomApi || {};
-        const embeddingConfig = state.vectorMemory.customApi || {};
-        const baseUrl = normalizeCustomApiBaseUrl(queryConfig.baseUrl || embeddingConfig.baseUrl || '');
-        const model = String(queryConfig.model || '').trim();
-        const apiKey = String(queryConfig.apiKey || embeddingConfig.apiKey || '').trim();
-        if (!baseUrl || !model) {
-            throw new Error('查询重写需要聊天模型。请填写改写模型；接口地址和密钥可留空复用嵌入向量接口。');
-        }
-        const response = await fetch(getCustomChatCompletionsUrl(baseUrl), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-            },
-            body: JSON.stringify({
-                model,
-                messages: [
-                    ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-                    { role: 'user', content: prompt },
-                ],
-                temperature: 0.1,
-                top_p: 0.8,
-                max_tokens: 900,
-                stream: false,
-                enable_thinking: false,
-            }),
-        });
-        if (!response.ok) {
-            throw new Error(`查询重写请求失败：${response.status} ${response.statusText}`);
-        }
-        const data = await response.json();
-        const content = extractChatCompletionText(data);
-        if (!content) {
-            throw new Error('查询重写没有返回可用内容。');
-        }
-        return content;
-    }
-    return await generateRaw({ prompt, systemPrompt });
-}
-
-async function prepareVectorQueries(explicitQuery = '', state = ensureState()) {
-    const baseQuery = getVectorQueryText(state, explicitQuery);
-    const mode = String(state.vectorMemory.queryMode || defaultVectorMemory.queryMode);
-    state.vectorMemory.lastRewriteIntent = getVectorRewriteIntentText(baseQuery);
-    if (!baseQuery.trim()) {
-        return [];
-    }
-    if (mode === 'off') {
-        return [baseQuery];
-    }
-    if (mode === 'local') {
-        return unique([
-            baseQuery,
-            ...parseList(state.vectorMemory.keywordTriggers),
-        ]).filter(Boolean).slice(0, 6);
-    }
-    const systemPrompt = '你是剧情记忆检索的查询改写器。关闭思考过程。只输出 INTENT 与 Q1-Q5 六行中文，不输出解释、英文、JSON、Markdown 或分析。';
-    const prompt = `${state.vectorMemory.queryRewritePrompt || defaultVectorMemory.queryRewritePrompt}
-
-<最近剧情>
-${baseQuery}
-</最近剧情>
-
-请严格输出下面 6 行，不要输出任何解释、标题、JSON 或 Markdown：
-INTENT: 一句话检索意图
-Q1: 第一条旧记忆检索线索
-Q2: 第二条旧记忆检索线索
-Q3: 第三条旧记忆检索线索
-Q4: 第四条旧记忆检索线索
-Q5: 第五条旧记忆检索线索`;
-    const rewritten = await callVectorQueryRewriteModel(prompt, systemPrompt, state);
-    const payload = parseVectorQueryRewritePayload(rewritten);
-    if (payload.intent) {
-        state.vectorMemory.lastRewriteIntent = payload.intent;
-    }
-    const queries = unique(payload.queries)
-        .map(text => text.slice(0, 260))
-        .filter(Boolean)
-        .slice(0, 6);
-    if (!queries.length) {
-        throw new Error('查询重写没有生成有效检索句。');
-    }
-    return queries;
-}
-
-function getAssistantMessageCount() {
-    const context = getContext();
-    const sourceChat = context.chat || chat || [];
-    return sourceChat.filter(message => message?.mes && !message.is_user && !message.is_system).length;
-}
-
-function getVisibleConversationMessageCount() {
-    const context = getContext();
-    const sourceChat = context.chat || chat || [];
-    return sourceChat.filter(message => message?.mes && !message.is_system).length;
-}
-
-function getRecentVisibleConversationMessageIds(limit = defaultVectorMemory.contextWindowMessages) {
-    const max = Math.max(0, Number(limit || 0));
-    if (!max) {
-        return new Set();
-    }
-    const context = getContext();
-    const sourceChat = context.chat || chat || [];
-    return new Set(sourceChat
-        .map((message, messageId) => ({ message, messageId }))
-        .filter(({ message }) => message?.mes && !message.is_system)
-        .slice(-max)
-        .map(({ messageId }) => Number(messageId)));
-}
-
-function getVectorRecallSourceRecords(state = ensureState()) {
-    const records = Array.isArray(state.vectorMemory.records) ? state.vectorMemory.records : [];
-    const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
-    if (state.vectorMemory.skipIfAllInContext === false || contextWindowMessages <= 0) {
-        return records;
-    }
-    const recentVisibleIds = getRecentVisibleConversationMessageIds(contextWindowMessages);
-    if (!recentVisibleIds.size) {
-        return records;
-    }
-    return records.filter(record => !recentVisibleIds.has(Number(record.messageId)));
-}
-
-function shouldSkipVectorRecallForRecentWindow(state = ensureState()) {
-    const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
-    if (state.vectorMemory.skipIfAllInContext === false || contextWindowMessages <= 0) {
-        return false;
-    }
-    const records = Array.isArray(state.vectorMemory.records) ? state.vectorMemory.records : [];
-    if (!records.length) {
-        return false;
-    }
-    const recentVisibleIds = getRecentVisibleConversationMessageIds(contextWindowMessages);
-    if (!recentVisibleIds.size) {
-        return false;
-    }
-    return !getVectorRecallSourceRecords(state).length;
-}
-
-function makeVectorRecordSummary(text, maxChars = defaultVectorMemory.summaryMaxChars) {
-    const clean = normalizeLineEndings(stripHtml(text)).replace(/\n{3,}/g, '\n\n').trim();
-    if (!clean) {
-        return '';
-    }
-
-    const hasSummaryEnvelope = /<bakemono\b|<summary\b|剧情摘要|阶段总结|多次总结|剧集终了|长期总览|纪元回溯|正文摘要/i.test(text);
-    const sectionLines = clean
-        .split(/\n+/)
-        .map(line => line.trim())
-        .filter(line => line.length >= 12)
-        .filter(line => (
-            /摘要|总结|事件|关系|线索|伏笔|暗线|第四面墙|角色|地点|时间/.test(line)
-            && (/[:：]|[【】\[\]]|^[-*➤]/.test(line) || /摘要|总结/.test(line))
-        ));
-
-    if (sectionLines.length) {
-        return getClippedVectorText(sectionLines.slice(0, 8).join('\n'), Math.max(120, Number(maxChars || defaultVectorMemory.summaryMaxChars)));
-    }
-
-    if (!hasSummaryEnvelope) {
-        return '';
-    }
-
-    return getClippedVectorText(clean, Math.max(120, Number(maxChars || defaultVectorMemory.summaryMaxChars)));
-}
-
-function computeVectorRerankScore(item, queries = [], state = ensureState()) {
-    return computeHybridRerankScore(item, {
-        keywordBoost: state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost,
-        explicitKeywordCount: parseList(state.vectorMemory.keywordTriggers).length,
-    });
-}
-
-function clearVectorRecall(reason = '', state = ensureState()) {
-    state.vectorMemory.lastHits = [];
-    state.vectorMemory.lastQueries = [];
-    state.vectorMemory.lastRewriteIntent = '';
-    state.vectorMemory.lastEmbeddingCandidates = [];
-    state.vectorMemory.lastRerankCandidates = [];
-    state.vectorMemory.lastQuery = '';
-    state.vectorMemory.estimatedChars = 0;
-    state.vectorMemory.trimmedHitCount = 0;
-    state.vectorMemory.lastRecallSkippedReason = reason;
-    return [];
-}
-
-function serializeVectorRecallItem(item, options = {}) {
-    const score = Number((item.rerankScore ?? item.score ?? 0).toFixed(4));
-    const similarity = Number((item.embeddingScore ?? item.similarity ?? 0).toFixed(4));
-    return {
-        id: item.id,
-        kind: item.kind || 'message',
-        recallTier: options.recallTier || item.recallTier || '',
-        messageId: item.messageId,
-        chunkIndex: item.chunkIndex,
-        role: item.role,
-        isHidden: !!item.isHidden,
-        isSavedSummary: !!item.isSavedSummary,
-        summaryType: item.summaryType || '',
-        title: item.title || `楼层 ${item.messageId}`,
-        text: getClippedVectorText(item.text || item.summary || '', Number(options.textLimit || 480)),
-        preview: toPlainPreview(item.preview || item.text || item.summary || '', Number(options.previewLimit || 220)),
-        matchedText: getClippedVectorText(item.matchedText || item.text || '', 360),
-        matchedChunks: item.matchedChunks || 1,
-        keywordHits: item.keywordHitsTotal || item.keywordHits || 0,
-        lexicalScore: Number((item.lexicalScore || 0).toFixed(4)),
-        matchedTerms: Array.isArray(item.matchedTerms) ? item.matchedTerms.slice(0, 8) : [],
-        matchedKeywords: Array.isArray(item.matchedKeywords) ? item.matchedKeywords.slice(0, 8) : [],
-        score,
-        similarity,
-        rerankScore: Number((item.rerankScore ?? score).toFixed(4)),
-    };
-}
-
-function getVectorSourceSignature(state = ensureState()) {
-    return [
-        ...getVectorSourceMessages(state)
-            .map(({ message, messageId, cleanedText, summaryText }) => `${messageId}:${getMessageVariantKey(message)}:${getHash(cleanedText || '')}:${getHash(summaryText || '')}`),
-        ...getVectorSavedSummarySources(state)
-            .map(source => `saved:${source.type}:${source.hash}:${getHash(source.text || '')}`),
-    ].join('|');
-}
-
-function getInjectedSummaryHashesForVector(state = ensureState()) {
-    const coveredStoryHashes = new Set(state.coveredBlockHashes || []);
-    const coveredStageHashes = getActiveCoveredStageHashes(state);
-    return new Set([
-        ...(state.memoryStrategy === memoryStrategies.GENERIC
-            ? (state.storySummaries || [])
-                .filter(summary => summary.hash && !coveredStoryHashes.has(summary.hash))
-                .map(summary => summary.hash)
-            : []),
-        ...(state.stageSummaries || [])
-            .filter(summary => summary.hash && !coveredStageHashes.has(summary.hash))
-            .map(summary => summary.hash),
-        ...getActiveEpicMemoryBlocks(state)
-            .map(summary => summary.hash)
-            .filter(Boolean),
-    ]);
-}
-
-function getVectorSavedSummarySources(state = ensureState()) {
-    const summaryMax = Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars));
-    const sources = [];
-    const injectedSummaryHashes = getInjectedSummaryHashesForVector(state);
-    const addSummary = (summary, type) => {
-        const raw = String(summary?.content || '').trim();
-        if (!summary?.hash || !raw) {
-            return;
-        }
-        if (injectedSummaryHashes.has(summary.hash)) {
-            return;
-        }
-        const sourceMessageIds = getFiniteMessageIds(summary.sourceMessageIds || []);
-        const sourceStart = Number.isFinite(summary.sourceStart)
-            ? Number(summary.sourceStart)
-            : getSourceStart(sourceMessageIds);
-        const sourceEnd = Number.isFinite(summary.sourceEnd)
-            ? Number(summary.sourceEnd)
-            : getSourceEnd(sourceMessageIds);
-        const title = summary.title || getBlockTitle(raw, getKindLabel(type));
-        const plain = getBlockPlainText(raw) || normalizeLineEndings(stripHtml(raw)).trim();
-        const text = getClippedVectorText(plain, summaryMax);
-        if (!text) {
-            return;
-        }
-        sources.push({
-            id: `vec-saved-${type}-${summary.hash}`,
-            hash: summary.hash,
-            type,
-            messageId: Number.isFinite(sourceStart) && sourceStart < Number.MAX_SAFE_INTEGER ? sourceStart : Number.MAX_SAFE_INTEGER,
-            sourceStart,
-            sourceEnd,
-            sourceMessageIds,
-            title: `${getKindLabel(type)}：${title}`,
-            text,
-            preview: toPlainPreview(text, 180),
-            createdAt: summary.createdAt || '',
-        });
-    };
-    (state.storySummaries || [])
-        .filter(summary => ['backfill', 'turn', 'inline', 'manual', 'turn_manual', 'turn_auto', 'inline_summary'].includes(String(summary.sourceKind || summary.metadata?.sourceKind || '')))
-        .forEach(summary => addSummary(summary, blockTypes.STORY));
-    (state.stageSummaries || []).forEach(summary => addSummary(summary, blockTypes.STAGE));
-    (state.epicSummaries || []).forEach(summary => addSummary(summary, blockTypes.EPIC));
-    return sources;
-}
-
-function markVectorIndexDirty(reason = 'changed', state = ensureState()) {
-    state.vectorMemory.dirty = true;
-    state.vectorMemory.dirtyReason = reason;
-    clearVectorRecall(`索引待刷新：${reason}`, state);
-    saveState();
-    scheduleVectorAutoIndex(reason);
-}
-
-function scheduleVectorAutoIndex(reason = 'auto') {
-    const state = ensureState();
-    if (!state.vectorMemory.enabled || state.vectorMemory.autoIndex === false) {
-        return;
-    }
-    clearTimeout(vectorIndexTimer);
-    vectorIndexTimer = setTimeout(async () => {
-        try {
-            await buildVectorMemoryIndex({ silent: true, reason });
-        } catch (error) {
-            console.warn('[BakemonoMemory] vector auto index failed', error);
-            toastr.warning(`向量自动索引失败：${error?.message || error}`);
-        }
-    }, 1200);
-}
-
-async function getEmbeddingForText(text, state = ensureState()) {
-    const source = String(text || '');
-    const cacheKey = `${state.vectorMemory.embeddingProvider || 'local'}:${state.vectorMemory.customApi?.model || ''}:${getHash(source)}`;
-    if (Array.isArray(vectorEmbeddingRuntimeCache.get(cacheKey))) {
-        return vectorEmbeddingRuntimeCache.get(cacheKey);
-    }
-    const dimensions = Math.max(32, Number(state.vectorMemory.embeddingDimensions || defaultVectorMemory.embeddingDimensions));
-    if (state.vectorMemory.embeddingProvider === 'custom-openai') {
-        try {
-            const embedding = compactEmbedding(await fetchCustomEmbedding(source, state), dimensions);
-            vectorEmbeddingRuntimeCache.set(cacheKey, embedding);
-            pruneVectorRuntimeCache();
-            return embedding;
-        } catch (error) {
-            console.warn('[BakemonoMemory] custom embedding failed, fallback to local', error);
-        }
-    }
-    const embedding = compactEmbedding(createLocalEmbedding(source, dimensions), dimensions);
-    vectorEmbeddingRuntimeCache.set(cacheKey, embedding);
-    pruneVectorRuntimeCache();
-    return embedding;
-}
-
-async function fetchCustomEmbedding(text, state = ensureState()) {
-    const config = state.vectorMemory.customApi || {};
-    const baseUrl = normalizeCustomApiBaseUrl(config.baseUrl);
-    const apiKey = String(config.apiKey || '').trim();
-    const model = String(config.model || defaultVectorMemory.customApi.model).trim();
-    if (!baseUrl || !model) {
-        throw new Error('嵌入向量接口需要填写接口地址和模型。');
-    }
-    const response = await fetch(getCustomEmbeddingsUrl(baseUrl), {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        },
-        body: JSON.stringify({ model, input: text }),
-    });
-    if (!response.ok) {
-        throw new Error(`嵌入向量接口请求失败：${response.status} ${response.statusText}`);
-    }
-    const data = await response.json();
-    const embedding = data?.data?.[0]?.embedding;
-    if (!Array.isArray(embedding)) {
-        throw new Error('嵌入向量接口没有返回向量结果。');
-    }
-    return embedding.map(Number);
-}
-
-async function buildVectorMemoryIndex({ silent = false } = {}) {
-    const state = ensureState();
-    readVectorMemoryFieldsFromUi(state);
-    const signature = getVectorSourceSignature(state);
-    if (silent && !state.vectorMemory.dirty && state.vectorMemory.lastIndexedSignature === signature) {
-        return state.vectorMemory.records || [];
-    }
-    const records = [];
-    const indexMode = String(state.vectorMemory.indexMode || defaultVectorMemory.indexMode);
-    const chunkSize = Math.max(240, Number(state.vectorMemory.chunkSize || defaultVectorMemory.chunkSize));
-    const overlap = Math.max(0, Number(state.vectorMemory.overlap || defaultVectorMemory.overlap));
-    const longMessageThreshold = Math.max(240, Number(state.vectorMemory.longMessageThreshold || defaultVectorMemory.longMessageThreshold));
-
-    for (const { message, messageId, cleanedText, summaryText } of getVectorSourceMessages(state)) {
-        const fullText = String(cleanedText || '').trim();
-        const summaryContent = String(summaryText || '').trim();
-        if (!fullText && !summaryContent) {
-            continue;
-        }
-        const role = message.is_user ? 'user' : message.is_system ? 'hidden' : 'assistant';
-        const variantKey = getMessageVariantKey(message);
-        const shouldChunk = indexMode === 'chunk' || (indexMode === 'hybrid' && fullText.length > longMessageThreshold);
-        if (summaryContent) {
-            records.push({
-                id: `vec-${getHash(`${messageId}|${variantKey}|summary|${summaryContent}`)}`,
-                kind: 'summary',
-                messageId,
-                chunkIndex: 0,
-                role,
-                isHidden: !!message.is_system,
-                title: `${message.is_user ? '用户摘要' : message.is_system ? '隐藏摘要' : '助手摘要'} #${messageId}`,
-                text: getClippedVectorText(summaryContent, Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars))),
-                summary: getClippedVectorText(summaryContent, Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars))),
-                preview: toPlainPreview(summaryContent, 180),
-                embedding: await getEmbeddingForText(summaryContent, state),
-                createdAt: new Date().toISOString(),
-            });
-        }
-        if (!fullText) {
-            continue;
-        }
-        if (!shouldChunk) {
-            records.push({
-                id: `vec-${getHash(`${messageId}|${variantKey}|message|${fullText}`)}`,
-                kind: 'message',
-                messageId,
-                chunkIndex: 0,
-                role,
-                isHidden: !!message.is_system,
-                title: `${message.is_user ? '用户' : message.is_system ? '隐藏楼层' : '助手'} #${messageId}`,
-                text: fullText,
-                summary: '',
-                preview: toPlainPreview(fullText, 180),
-                embedding: await getEmbeddingForText(fullText, state),
-                createdAt: new Date().toISOString(),
-            });
-            continue;
-        }
-        for (const [chunkIndex, chunk] of splitTextIntoChunks(fullText, chunkSize, overlap).entries()) {
-            const text = chunk.text.trim();
-            if (!text) {
-                continue;
-            }
-            records.push({
-                id: `vec-${getHash(`${messageId}|${variantKey}|${chunkIndex}|${text}`)}`,
-                kind: 'chunk',
-                messageId,
-                chunkIndex,
-                role,
-                isHidden: !!message.is_system,
-                title: `${message.is_user ? '用户' : message.is_system ? '隐藏楼层' : '助手'} #${messageId}.${chunkIndex + 1}`,
-                text,
-                summary: '',
-                preview: toPlainPreview(text, 180),
-                embedding: await getEmbeddingForText(text, state),
-                createdAt: new Date().toISOString(),
-            });
-        }
-    }
-
-    for (const source of getVectorSavedSummarySources(state)) {
-        records.push({
-            id: source.id,
-            kind: 'summary',
-            messageId: source.messageId,
-            chunkIndex: 0,
-            role: 'memory',
-            isHidden: false,
-            isSavedSummary: true,
-            summaryType: source.type,
-            sourceStart: source.sourceStart,
-            sourceEnd: source.sourceEnd,
-            sourceMessageIds: source.sourceMessageIds,
-            title: source.title,
-            text: source.text,
-            summary: source.text,
-            preview: source.preview,
-            embedding: await getEmbeddingForText(source.text, state),
-            createdAt: source.createdAt || new Date().toISOString(),
-        });
-    }
-
-    state.vectorMemory.records = records;
-    state.vectorMemory.embeddingCache = {};
-    state.vectorMemory.lastIndexAt = new Date().toISOString();
-    state.vectorMemory.lastIndexedSignature = signature;
-    state.vectorMemory.dirty = false;
-    state.vectorMemory.dirtyReason = '';
-    await retrieveVectorMemoryHits('', state);
-    saveState();
-    syncInjection();
-    renderWorkbenchScope(workbenchRenderScopes.VECTOR, silent ? '' : `向量索引完成：${records.length} 个原文片段。`);
-    if (!silent) {
-        toastr.success(`已建立 ${records.length} 个向量片段。`);
-    }
-    return records;
-}
-
-async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState()) {
-    if (!state.vectorMemory?.enabled || !Array.isArray(state.vectorMemory.records) || !state.vectorMemory.records.length) {
-        return clearVectorRecall('', state);
-    }
-    const minAiMessages = Math.max(0, Number(state.vectorMemory.startAfterAiMessages || 0));
-    if (minAiMessages > 0 && getAssistantMessageCount() < minAiMessages) {
-        return clearVectorRecall(`当前 AI 楼数少于 ${minAiMessages}，已跳过召回。`, state);
-    }
-    if (!explicitQuery && shouldSkipVectorRecallForRecentWindow(state)) {
-        const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
-        return clearVectorRecall(`已索引内容都还在可见最近 ${contextWindowMessages} 楼内，已跳过向量召回。`, state);
-    }
-    const recallRecords = getVectorRecallSourceRecords(state);
-    if (!recallRecords.length) {
-        const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
-        return clearVectorRecall(`可召回内容都还在可见最近 ${contextWindowMessages} 楼内，已跳过向量召回。`, state);
-    }
-    let queries = [];
-    try {
-        queries = await prepareVectorQueries(explicitQuery, state);
-    } catch (error) {
-        console.warn('[BakemonoMemory] vector query rewrite failed', error);
-        return clearVectorRecall(`查询重写失败，本轮不召回：${error?.message || error}`, state);
-    }
-    if (!queries.length) {
-        return clearVectorRecall('查询重写没有生成有效检索句，本轮不召回。', state);
-    }
-
-    const queryEmbeddings = [];
-    for (const query of queries) {
-        queryEmbeddings.push(await getEmbeddingForText(query, state));
-    }
-    const keywords = parseList(state.vectorMemory.keywordTriggers);
-    const embeddingThreshold = Math.max(0, Number(state.vectorMemory.embeddingThreshold ?? state.vectorMemory.minScore ?? defaultVectorMemory.embeddingThreshold));
-    const rerankThreshold = Math.max(0, Number(state.vectorMemory.rerankThreshold ?? defaultVectorMemory.rerankThreshold));
-    const rerankCandidateCount = Math.max(1, Number(state.vectorMemory.rerankCandidateCount || state.vectorMemory.topK || defaultVectorMemory.rerankCandidateCount));
-    const finalRecallCount = Math.max(1, Number(state.vectorMemory.finalRecallCount || state.vectorMemory.maxRecallMessages || defaultVectorMemory.finalRecallCount));
-    const fullRecallCount = Math.max(0, Number(state.vectorMemory.fullRecallCount ?? defaultVectorMemory.fullRecallCount));
-    const scored = recallRecords.map(record => {
-        const similarities = queryEmbeddings.map(embedding => cosineSimilarity(embedding, record.embedding || []));
-        const similarity = similarities.length ? Math.max(...similarities) : 0;
-        const keywordHits = countKeywordHits(`${record.title}\n${record.summary || ''}\n${record.text}`, keywords);
-        return {
-            ...record,
-            embeddingScore: similarity,
-            score: similarity,
-            similarity,
-            keywordHits,
-        };
-    });
-
-    let embeddingCandidates = selectHybridCandidates(scored, queries, keywords, {
-        embeddingThreshold,
-        candidateCount: rerankCandidateCount,
-        keywordBoost: state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost,
-    });
-    if (!embeddingCandidates.length) {
-        const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
-        const recentVisibleIds = getRecentVisibleConversationMessageIds(contextWindowMessages);
-        const fallbackCandidates = scored.filter(item => item.isHidden || !recentVisibleIds.has(Number(item.messageId)));
-        if (fallbackCandidates.length) {
-            embeddingCandidates = selectHybridCandidates(fallbackCandidates, queries, keywords, {
-                embeddingThreshold: 0,
-                candidateCount: rerankCandidateCount,
-                keywordBoost: state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost,
-            });
-        }
-    }
-    state.vectorMemory.lastEmbeddingCandidates = embeddingCandidates
-        .slice(0, rerankCandidateCount)
-        .map(item => serializeVectorRecallItem(item, { previewLimit: 240, textLimit: 480 }));
-    const byMessage = new Map();
-    for (const item of embeddingCandidates.slice(0, Math.max(rerankCandidateCount * 2, rerankCandidateCount))) {
-        const key = String(item.messageId);
-        const existing = byMessage.get(key);
-        const rerankScore = Number.isFinite(Number(item.hybridScore))
-            ? Number(item.hybridScore)
-            : computeVectorRerankScore(item, queries, state);
-        const enriched = {
-            ...item,
-            rerankScore,
-            score: rerankScore,
-            matchedChunks: 1,
-            keywordHitsTotal: item.keywordHits,
-        };
-        if (!existing || enriched.rerankScore > existing.rerankScore || enriched.embeddingScore > existing.embeddingScore) {
-            if (existing) {
-                enriched.matchedChunks = existing.matchedChunks + 1;
-                enriched.keywordHitsTotal = existing.keywordHitsTotal + item.keywordHits;
-            }
-            byMessage.set(key, enriched);
-        } else {
-            existing.matchedChunks += 1;
-            existing.keywordHitsTotal += item.keywordHits;
-        }
-    }
-
-    const reranked = [...byMessage.values()]
-        .sort((a, b) => (b.rerankScore - a.rerankScore) || (b.embeddingScore - a.embeddingScore) || (b.keywordHitsTotal - a.keywordHitsTotal) || (Number(b.messageId) - Number(a.messageId)))
-        .slice(0, rerankCandidateCount);
-    state.vectorMemory.lastRerankCandidates = reranked.map(item => {
-        const recallTier = item.kind !== 'summary' && item.rerankScore >= rerankThreshold
-            ? 'full'
-            : (item.kind === 'summary' || item.summary ? 'summary' : 'dropped');
-        return serializeVectorRecallItem(item, { recallTier, previewLimit: 260, textLimit: 520 });
-    });
-    const fullHits = [];
-    const summaryHits = [];
-    for (const item of reranked) {
-        const fullText = getVectorCleanedMessageText(item.messageId, state) || item.text || '';
-        const base = {
-            ...item,
-            kind: item.kind === 'summary' ? 'summary' : 'message',
-            matchedText: item.text,
-            title: item.kind === 'summary'
-                ? item.isSavedSummary
-                    ? item.title
-                    : `${item.role === 'user' ? '用户摘要' : item.isHidden ? '隐藏摘要' : '助手摘要'} #${item.messageId}`
-                : `${item.role === 'user' ? '用户' : item.isHidden ? '隐藏楼层' : '助手'} #${item.messageId}`,
-            keywordHits: item.keywordHitsTotal || item.keywordHits,
-        };
-        if (item.kind !== 'summary' && item.rerankScore >= rerankThreshold && fullHits.length < fullRecallCount) {
-            fullHits.push({
-                ...base,
-                recallTier: 'full',
-                text: fullText,
-                preview: toPlainPreview(fullText, 220),
-            });
-        } else {
-            const summaryText = String(item.kind === 'summary' ? item.text : item.summary || '').trim();
-            if (summaryText) {
-                summaryHits.push({
-                    ...base,
-                    recallTier: 'summary',
-                    text: summaryText,
-                    preview: toPlainPreview(summaryText, 220),
-                });
-            }
-        }
-    }
-    const hits = [...fullHits, ...summaryHits]
-        .slice(0, finalRecallCount)
-        .sort((a, b) => (
-            Number(a.messageId) - Number(b.messageId)
-            || Number(a.chunkIndex || 0) - Number(b.chunkIndex || 0)
-            || String(a.recallTier || '').localeCompare(String(b.recallTier || ''))
-        ));
-    state.vectorMemory.lastQuery = queries.join('\n');
-    state.vectorMemory.lastQueries = queries;
-    state.vectorMemory.lastRecallSkippedReason = hits.length ? '' : '没有内容通过当前向量阈值和重排规则。';
-    const textLimit = Math.max(240, Number(state.vectorMemory.maxStoredTextChars || defaultVectorMemory.maxStoredTextChars));
-    const hitTextLimit = Math.max(textLimit, Number(state.vectorMemory.perMessageMaxChars || defaultVectorMemory.perMessageMaxChars));
-    state.vectorMemory.lastHits = hits.map(hit => ({
-        id: hit.id,
-        kind: hit.kind || 'message',
-        recallTier: hit.recallTier || 'summary',
-        messageId: hit.messageId,
-        chunkIndex: hit.chunkIndex,
-        role: hit.role,
-        isHidden: hit.isHidden,
-        isSavedSummary: !!hit.isSavedSummary,
-        summaryType: hit.summaryType || '',
-        title: hit.title,
-        text: getClippedVectorText(hit.text, hit.recallTier === 'full' ? hitTextLimit : Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars))),
-        matchedText: getClippedVectorText(hit.matchedText || '', Math.min(textLimit, 480)),
-        matchedChunks: hit.matchedChunks || 1,
-        preview: hit.preview,
-        score: Number((hit.rerankScore ?? hit.score ?? 0).toFixed(4)),
-        similarity: Number((hit.embeddingScore ?? hit.similarity ?? 0).toFixed(4)),
-        rerankScore: Number((hit.rerankScore ?? hit.score ?? 0).toFixed(4)),
-        keywordHits: hit.keywordHits,
-        lexicalScore: Number((hit.lexicalScore || 0).toFixed(4)),
-        matchedTerms: Array.isArray(hit.matchedTerms) ? hit.matchedTerms.slice(0, 8) : [],
-        matchedKeywords: Array.isArray(hit.matchedKeywords) ? hit.matchedKeywords.slice(0, 8) : [],
-    }));
-    state.vectorMemory.estimatedChars = state.vectorMemory.lastHits.reduce((sum, hit) => sum + String(hit.text || '').length, 0);
-    state.vectorMemory.trimmedHitCount = Math.max(0, embeddingCandidates.length - hits.length);
-    return state.vectorMemory.lastHits;
-}
-
-function renderVectorMemorySection(state = ensureState()) {
-    const hits = Array.isArray(state.vectorMemory.lastHits) ? state.vectorMemory.lastHits : [];
-    const maxChars = Math.max(200, Number(state.vectorMemory.maxInjectChars || defaultVectorMemory.maxInjectChars));
-    const perMessageMaxChars = Math.max(200, Number(state.vectorMemory.perMessageMaxChars || defaultVectorMemory.perMessageMaxChars));
-    let used = 0;
-    const lines = [];
-    for (const hit of hits) {
-        const source = String(hit.text || '').trim();
-        const snippet = hit.kind === 'message' && source.length > perMessageMaxChars
-            ? `${source.slice(0, perMessageMaxChars)}...`
-            : source;
-        if (!snippet) {
-            continue;
-        }
-        const remaining = maxChars - used;
-        if (remaining <= 0) {
-            break;
-        }
-        const clipped = snippet.length > remaining ? `${snippet.slice(0, remaining)}...` : snippet;
-        used += clipped.length;
-        const tierLabel = hit.recallTier === 'full' ? '全文' : '摘要';
-        lines.push(`- 来源：${hit.title}（${tierLabel}，重排 ${hit.rerankScore ?? hit.score ?? 0}，相似度 ${hit.similarity ?? 0}${hit.keywordHits ? `，关键词命中 ${hit.keywordHits}` : ''}${hit.matchedChunks > 1 ? `，命中片段 ${hit.matchedChunks}` : ''}）\n${clipped}`);
-    }
-    state.vectorMemory.estimatedChars = used;
-    state.vectorMemory.trimmedHitCount = Math.max(0, (state.vectorMemory.lastHits?.length || 0) - lines.length);
-    return lines.length ? `## 向量召回记忆\n${lines.join('\n\n')}` : '';
-}
 
 function getBracketMetaLine(text) {
     return text.split('\n').map(line => line.trim()).find(line => /^【[\s\S]+】$/.test(line)) || '';
@@ -4296,94 +3501,7 @@ async function fetchCustomApiModels() {
     }
 }
 
-async function fetchVectorEmbeddingModels() {
-    const state = ensureState();
-    readVectorMemoryFieldsFromUi(state);
-    persistSharedConfigurationFromState(state);
-    const config = state.vectorMemory.customApi || {};
-    const baseUrl = normalizeCustomApiBaseUrl(config.baseUrl);
-    const apiKey = String(config.apiKey || '').trim();
-    if (!baseUrl) {
-        toastr.warning('请先填写嵌入向量接口地址。');
-        return false;
-    }
-    const toast = toastr.info('正在拉取嵌入向量模型列表...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
-    try {
-        const response = await fetch(getCustomModelsUrl(baseUrl), {
-            method: 'GET',
-            headers: {
-                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-            },
-        });
-        if (!response.ok) {
-            throw new Error(`拉取模型失败：${response.status} ${response.statusText}`);
-        }
-        const data = await response.json();
-        const models = extractCustomModelIds(data);
-        if (!models.length) {
-            throw new Error('接口返回里没有找到模型 ID。');
-        }
-        state.vectorMemory.customApi.models = models;
-        if (!String(state.vectorMemory.customApi.model || '').trim()) {
-            state.vectorMemory.customApi.model = state.vectorMemory.customApi.models[0];
-            $('#bakemono-memory-vector-model').val(state.vectorMemory.customApi.model);
-        }
-        renderVectorModelOptions(state.vectorMemory.customApi.models);
-        persistSharedConfigurationFromState(state);
-        toastr.success(`已拉取 ${state.vectorMemory.customApi.models.length} 个嵌入向量模型。`);
-        return true;
-    } catch (error) {
-        toastr.error(error?.message || String(error), '嵌入向量模型拉取失败');
-        return false;
-    } finally {
-        toastr.clear(toast);
-    }
-}
 
-async function fetchVectorQueryModels() {
-    const state = ensureState();
-    readVectorMemoryFieldsFromUi(state);
-    persistSharedConfigurationFromState(state);
-    const queryConfig = state.vectorMemory.queryCustomApi || {};
-    const embeddingConfig = state.vectorMemory.customApi || {};
-    const baseUrl = normalizeCustomApiBaseUrl(queryConfig.baseUrl || embeddingConfig.baseUrl);
-    const apiKey = String(queryConfig.apiKey || embeddingConfig.apiKey || '').trim();
-    if (!baseUrl) {
-        toastr.warning('请先填写改写接口地址，或填写上方嵌入向量接口地址以便复用。');
-        return false;
-    }
-    const toast = toastr.info('正在拉取改写模型列表...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
-    try {
-        const response = await fetch(getCustomModelsUrl(baseUrl), {
-            method: 'GET',
-            headers: {
-                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-            },
-        });
-        if (!response.ok) {
-            throw new Error(`拉取模型失败：${response.status} ${response.statusText}`);
-        }
-        const data = await response.json();
-        const models = extractCustomModelIds(data);
-        if (!models.length) {
-            throw new Error('接口返回里没有找到模型 ID。');
-        }
-        state.vectorMemory.queryCustomApi.models = models;
-        if (!String(state.vectorMemory.queryCustomApi.model || '').trim()) {
-            state.vectorMemory.queryCustomApi.model = state.vectorMemory.queryCustomApi.models[0];
-            $('#bakemono-memory-vector-query-model').val(state.vectorMemory.queryCustomApi.model);
-        }
-        renderVectorQueryModelOptions(state.vectorMemory.queryCustomApi.models);
-        persistSharedConfigurationFromState(state);
-        toastr.success(`已拉取 ${state.vectorMemory.queryCustomApi.models.length} 个改写模型。`);
-        return true;
-    } catch (error) {
-        toastr.error(error?.message || String(error), '改写模型拉取失败');
-        return false;
-    } finally {
-        toastr.clear(toast);
-    }
-}
 
 function createDraft({ kind, content, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], prompt = '', trigger = 'manual', metadata = {} }) {
     const state = ensureState();
@@ -7322,6 +6440,121 @@ const {
     uiState: tableUiState,
 } = tableWorkbenchUi;
 
+const vectorSettingsModel = createVectorSettingsModel({
+    query: $,
+    defaultVectorMemory,
+    getState: ensureState,
+    persistSharedConfigurationFromState,
+});
+const {
+    persistVectorMemoryFieldsFromUi,
+    readVectorMemoryFieldsFromUi,
+} = vectorSettingsModel;
+
+const vectorMemoryService = createVectorMemoryService({
+    defaultVectorMemory,
+    getState: ensureState,
+    normalizeLineEndings,
+    stripHtml,
+    parseList,
+    extractConfiguredTagBlocks,
+    stripConfiguredTags,
+    unique,
+    getContext,
+    getFallbackChat: () => chat,
+    toPlainPreview,
+    normalizeCustomApiBaseUrl,
+    getCustomChatCompletionsUrl,
+    extractChatCompletionText,
+    rewriteWithTavern: generateRaw,
+    parseVectorQueryRewritePayload,
+    getClippedVectorText,
+    computeHybridRerankScore,
+    getMessageVariantKey,
+    getHash,
+    getActiveCoveredStageHashes,
+    memoryStrategies,
+    getActiveEpicMemoryBlocks,
+    getFiniteMessageIds,
+    getSourceStart,
+    getSourceEnd,
+    getBlockTitle,
+    getKindLabel,
+    getBlockPlainText,
+    blockTypes,
+    saveState,
+    compactEmbedding,
+    createLocalEmbedding,
+    getCustomEmbeddingsUrl,
+    readVectorMemoryFieldsFromUi,
+    syncInjection,
+    renderWorkbenchScope,
+    workbenchRenderScopes,
+    toastr,
+    cosineSimilarity,
+    countKeywordHits,
+    selectHybridCandidates,
+    fetchImpl: globalThis.fetch.bind(globalThis),
+});
+const {
+    buildVectorMemoryIndex,
+    getVectorQueryText,
+    getVectorSourceSignature,
+    markVectorIndexDirty,
+    renderVectorMemorySection,
+    retrieveVectorMemoryHits,
+    scheduleVectorAutoIndex,
+} = vectorMemoryService;
+
+const vectorWorkbenchUi = createVectorWorkbenchUi({
+    query: $,
+    document,
+    getState: ensureState,
+    defaultVectorMemory,
+    unique,
+    getVectorQueryText,
+    escapeHtml,
+    formatSourceRange,
+});
+const {
+    renderVectorHitList,
+    renderVectorMemoryPanel,
+    renderVectorModelOptions,
+    renderVectorQueryModelOptions,
+    renderVectorRecallDetails,
+    renderVectorRecordList,
+    renderVectorResultList,
+} = vectorWorkbenchUi;
+
+const vectorActionsController = createVectorActionsController({
+    query: $,
+    getState: ensureState,
+    readVectorMemoryFieldsFromUi,
+    persistSharedConfigurationFromState,
+    normalizeCustomApiBaseUrl,
+    getCustomModelsUrl,
+    extractCustomModelIds,
+    renderVectorModelOptions,
+    renderVectorQueryModelOptions,
+    toastr,
+    getVectorSourceSignature,
+    markVectorIndexDirty,
+    retrieveVectorMemoryHits,
+    syncInjection,
+    renderWorkbenchScope,
+    workbenchRenderScopes,
+    saveState,
+    confirmDanger,
+    fetchImpl: globalThis.fetch.bind(globalThis),
+});
+const {
+    applyVectorMemorySettings,
+    clearVectorMemoryIndex,
+    fetchVectorEmbeddingModels,
+    fetchVectorQueryModels,
+    testVectorMemoryRetrieval,
+} = vectorActionsController;
+
 const summaryTargetController = createSummaryTargetController({
     query: $,
     getState: ensureState,
@@ -7799,244 +7032,9 @@ function renderScanPreview() {
     container.append(fragment);
 }
 
-function renderVectorMemoryPanel(state = ensureState()) {
-    $('#bakemono-memory-vector-enabled').prop('checked', !!state.vectorMemory.enabled);
-    $('#bakemono-memory-vector-auto-index').prop('checked', state.vectorMemory.autoIndex !== false);
-    $('#bakemono-memory-vector-include-hidden').prop('checked', state.vectorMemory.includeHidden !== false);
-    $('#bakemono-memory-vector-include-user').prop('checked', state.vectorMemory.includeUser === true);
-    $('#bakemono-memory-vector-index-mode').val(state.vectorMemory.indexMode || defaultVectorMemory.indexMode);
-    $('#bakemono-memory-vector-inject-mode').val(state.vectorMemory.injectMode || defaultVectorMemory.injectMode);
-    $('#bakemono-memory-vector-max-indexed-messages').val(state.vectorMemory.maxIndexedMessages ?? defaultVectorMemory.maxIndexedMessages);
-    $('#bakemono-memory-vector-max-stored-text-chars').val(state.vectorMemory.maxStoredTextChars ?? defaultVectorMemory.maxStoredTextChars);
-    $('#bakemono-memory-vector-chunk-size').val(state.vectorMemory.chunkSize ?? defaultVectorMemory.chunkSize);
-    $('#bakemono-memory-vector-overlap').val(state.vectorMemory.overlap ?? defaultVectorMemory.overlap);
-    $('#bakemono-memory-vector-long-message-threshold').val(state.vectorMemory.longMessageThreshold ?? defaultVectorMemory.longMessageThreshold);
-    $('#bakemono-memory-vector-top-k').val(state.vectorMemory.rerankCandidateCount ?? state.vectorMemory.topK ?? defaultVectorMemory.rerankCandidateCount);
-    $('#bakemono-memory-vector-max-recall-messages').val(state.vectorMemory.finalRecallCount ?? state.vectorMemory.maxRecallMessages ?? defaultVectorMemory.finalRecallCount);
-    $('#bakemono-memory-vector-full-recall-count').val(state.vectorMemory.fullRecallCount ?? defaultVectorMemory.fullRecallCount);
-    $('#bakemono-memory-vector-max-per-message').val(state.vectorMemory.maxPerMessage ?? defaultVectorMemory.maxPerMessage);
-    $('#bakemono-memory-vector-per-message-max-chars').val(state.vectorMemory.perMessageMaxChars ?? defaultVectorMemory.perMessageMaxChars);
-    $('#bakemono-memory-vector-min-score').val(state.vectorMemory.embeddingThreshold ?? state.vectorMemory.minScore ?? defaultVectorMemory.embeddingThreshold);
-    $('#bakemono-memory-vector-rerank-threshold').val(state.vectorMemory.rerankThreshold ?? defaultVectorMemory.rerankThreshold);
-    $('#bakemono-memory-vector-keyword-boost').val(state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost);
-    $('#bakemono-memory-vector-max-chars').val(state.vectorMemory.maxInjectChars ?? defaultVectorMemory.maxInjectChars);
-    $('#bakemono-memory-vector-summary-max-chars').val(state.vectorMemory.summaryMaxChars ?? defaultVectorMemory.summaryMaxChars);
-    $('#bakemono-memory-vector-start-after-ai').val(state.vectorMemory.startAfterAiMessages ?? defaultVectorMemory.startAfterAiMessages);
-    $('#bakemono-memory-vector-skip-context').prop('checked', state.vectorMemory.skipIfAllInContext !== false);
-    $('#bakemono-memory-vector-context-window').val(state.vectorMemory.contextWindowMessages ?? defaultVectorMemory.contextWindowMessages);
-    $('#bakemono-memory-vector-keywords').val(state.vectorMemory.keywordTriggers || '');
-    $('#bakemono-memory-vector-exclude-tags').val(state.vectorMemory.excludeTags || defaultVectorMemory.excludeTags);
-    $('#bakemono-memory-vector-summary-tags').val(state.vectorMemory.summaryTags || defaultVectorMemory.summaryTags);
-    $('#bakemono-memory-vector-query-mode').val(state.vectorMemory.queryMode || defaultVectorMemory.queryMode);
-    $('#bakemono-memory-vector-query-provider').val(state.vectorMemory.queryRewriteProvider || defaultVectorMemory.queryRewriteProvider);
-    $('#bakemono-memory-vector-query-prompt').val(state.vectorMemory.queryRewritePrompt || defaultVectorMemory.queryRewritePrompt);
-    $('#bakemono-memory-vector-query-base-url').val(state.vectorMemory.queryCustomApi?.baseUrl || '');
-    $('#bakemono-memory-vector-query-api-key').val(state.vectorMemory.queryCustomApi?.apiKey || '');
-    $('#bakemono-memory-vector-query-model').val(state.vectorMemory.queryCustomApi?.model || '');
-    renderVectorQueryModelOptions(state.vectorMemory.queryCustomApi?.models || []);
-    $('#bakemono-memory-vector-rerank-mode').val(state.vectorMemory.rerankMode || defaultVectorMemory.rerankMode);
-    $('#bakemono-memory-vector-provider').val(state.vectorMemory.embeddingProvider || defaultVectorMemory.embeddingProvider);
-    $('#bakemono-memory-vector-base-url').val(state.vectorMemory.customApi?.baseUrl || '');
-    $('#bakemono-memory-vector-api-key').val(state.vectorMemory.customApi?.apiKey || '');
-    $('#bakemono-memory-vector-model').val(state.vectorMemory.customApi?.model || defaultVectorMemory.customApi.model);
-    renderVectorModelOptions(state.vectorMemory.customApi?.models || []);
-    const messageRecordCount = unique((state.vectorMemory.records || []).map(record => String(record.messageId))).length;
-    const bodyRecordCount = (state.vectorMemory.records || []).filter(record => record.kind !== 'summary').length;
-    const summaryRecordCount = (state.vectorMemory.records || []).filter(record => record.kind === 'summary').length;
-    const maxIndexed = Number(state.vectorMemory.maxIndexedMessages || 0);
-    const fullHitCount = (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier === 'full').length;
-    const summaryHitCount = (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier !== 'full').length;
-    const hitCount = fullHitCount + summaryHitCount;
-    const indexReady = messageRecordCount > 0 && !state.vectorMemory.dirty;
-    const indexTime = state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '';
-    const providerLabel = state.vectorMemory.embeddingProvider === 'custom-openai' ? '自定义向量' : '本地向量';
-    const runtimeLabel = !messageRecordCount
-        ? '尚未建立索引'
-        : state.vectorMemory.dirty
-            ? '索引等待刷新'
-            : '索引健康';
-    const runtimeDescription = !messageRecordCount
-        ? '建立索引后，剪辑台才能从长聊天里找回相关旧剧情。'
-        : `${bodyRecordCount} 个正文片段 · ${summaryRecordCount} 个摘要片段${indexTime ? ` · 最近刷新于 ${indexTime}` : ''}${state.vectorMemory.lastRecallSkippedReason ? ` · 上次跳过：${state.vectorMemory.lastRecallSkippedReason}` : ''}`;
-    $('#bakemono-memory-vector-runtime-label').text(runtimeLabel);
-    $('#bakemono-memory-vector-runtime-badge').text(state.vectorMemory.enabled ? '召回开启' : '召回关闭');
-    $('#bakemono-memory-vector-runtime-title').text(`${messageRecordCount} 楼已索引`);
-    $('#bakemono-memory-vector-runtime-description').text(runtimeDescription);
-    $('#bakemono-memory-vector-meter-bar').css('width', `${!messageRecordCount ? 0 : indexReady ? 100 : 68}%`);
-    $('.bakemono-memory-vector-status-hero')
-        .toggleClass('is-healthy', indexReady)
-        .toggleClass('is-dirty', messageRecordCount > 0 && !indexReady);
-    $('#bakemono-memory-vector-result-count').text(`${hitCount} 条`);
-    $('#bakemono-memory-vector-config-summary').text(`${providerLabel} · 候选 ${state.vectorMemory.rerankCandidateCount ?? state.vectorMemory.topK ?? defaultVectorMemory.rerankCandidateCount} · 最终 ${state.vectorMemory.finalRecallCount ?? state.vectorMemory.maxRecallMessages ?? defaultVectorMemory.finalRecallCount}`);
-    $('#bakemono-memory-vector-stats').text(`索引 ${messageRecordCount} 楼 / 正文 ${bodyRecordCount} 条 / 摘要 ${summaryRecordCount} 条 / 召回全文 ${fullHitCount} 条 / 召回摘要 ${summaryHitCount} 条 / 预计 ${state.vectorMemory.estimatedChars || 0} 字 / 裁剪 ${state.vectorMemory.trimmedHitCount || 0} 个 / ${maxIndexed > 0 ? `最多索引最近 ${maxIndexed} 楼 / ` : ''}${state.vectorMemory.lastRecallSkippedReason ? `跳过：${state.vectorMemory.lastRecallSkippedReason}` : state.vectorMemory.dirty ? `待刷新：${state.vectorMemory.dirtyReason || '有变更'}` : state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '尚未建索引'}`);
-    $('#bakemono-memory-vector-query-preview').val((state.vectorMemory.lastQueries || []).join('\n') || state.vectorMemory.lastQuery || getVectorQueryText(state));
-    renderVectorResultList(state);
-    renderVectorRecallDetails(state);
-    renderVectorHitList();
-    renderVectorRecordList();
-}
 
-function renderVectorRecallDetails(state = ensureState()) {
-    const container = document.querySelector('#bakemono-memory-vector-recall-details');
-    if (!container) {
-        return;
-    }
-    container.innerHTML = '';
-    const queries = state.vectorMemory.lastQueries || [];
-    const hits = state.vectorMemory.lastHits || [];
-    const intent = String(state.vectorMemory.lastRewriteIntent || '').trim();
-    const embeddingCandidates = state.vectorMemory.lastEmbeddingCandidates || [];
-    const rerankCandidates = state.vectorMemory.lastRerankCandidates || [];
-    const renderRecallItems = (items = [], emptyText = '暂无内容。') => {
-        if (!items.length) {
-            return `<div class="bakemono-memory-empty">${escapeHtml(emptyText)}</div>`;
-        }
-        return items.map(item => {
-            const tier = item.recallTier === 'full'
-                ? '全文'
-                : item.recallTier === 'summary'
-                    ? '摘要'
-                    : item.recallTier === 'dropped'
-                        ? '未入档'
-                        : item.kind === 'summary'
-                            ? '摘要'
-                            : '候选';
-            const meta = [
-                tier,
-                `重排 ${item.rerankScore ?? item.score ?? 0}`,
-                `相似 ${item.similarity ?? 0}`,
-                item.lexicalScore ? `词项 ${item.lexicalScore}` : '',
-                item.keywordHits ? `关键词 ${item.keywordHits}` : '',
-                item.matchedChunks > 1 ? `命中片段 ${item.matchedChunks}` : '',
-            ].filter(Boolean).join(' · ');
-            const matchedTerms = Array.isArray(item.matchedTerms) && item.matchedTerms.length
-                ? `<small>命中词：${escapeHtml(item.matchedTerms.join('、'))}</small>`
-                : '';
-            return `
-                <article class="bakemono-memory-vector-detail-item">
-                  <div class="bakemono-memory-vector-detail-head">
-                    <strong>${escapeHtml(item.title || `楼层 ${item.messageId}`)}</strong>
-                    <span>${escapeHtml(meta)}</span>
-                  </div>
-                  ${matchedTerms}
-                  <div class="bakemono-memory-vector-detail-text">${escapeHtml(item.preview || item.text || '')}</div>
-                </article>
-            `;
-        }).join('');
-    };
-    const steps = [
-        {
-            title: `查询重写 · ${queries.length || 0} 条线索`,
-            body: [
-                intent
-                    ? `<div class="bakemono-memory-vector-intent-card"><strong>检索意图</strong><span>${escapeHtml(intent)}</span></div>`
-                    : '',
-                queries.length
-                    ? queries.map((query, index) => `<div class="bakemono-memory-vector-query-row"><strong>线索 ${String(index + 1).padStart(2, '0')}</strong><span>${escapeHtml(query)}</span></div>`).join('')
-                    : '<div class="bakemono-memory-empty">暂无查询重写结果。成功召回后会在这里显示多条检索 query。</div>',
-            ].filter(Boolean).join(''),
-        },
-        {
-            title: `混合初筛 · ${embeddingCandidates.length || 0} 候选`,
-            body: renderRecallItems(embeddingCandidates, state.vectorMemory.lastRecallSkippedReason || '暂无候选。'),
-        },
-        {
-            title: `Rerank 分档 · ${rerankCandidates.length || 0} 条`,
-            body: renderRecallItems(rerankCandidates, embeddingCandidates.length ? '候选没有进入可注入档位。' : '暂无重排结果。'),
-        },
-        {
-            title: `最终注入 · ${hits.length || 0} 条`,
-            body: renderRecallItems(hits, state.vectorMemory.lastRecallSkippedReason || '暂无最终注入。'),
-        },
-    ];
-    const fragment = document.createDocumentFragment();
-    steps.forEach((step, index) => {
-        const details = document.createElement('details');
-        details.className = 'bakemono-memory-vector-step';
-        if (index === 0 && queries.length) {
-            details.open = true;
-        }
-        details.innerHTML = `<summary><span>${index + 1} · ${escapeHtml(step.title)}</span><i class="fa-solid fa-chevron-down"></i></summary><div class="bakemono-memory-vector-step-body">${step.body}</div>`;
-        fragment.append(details);
-    });
-    container.append(fragment);
-}
 
-function renderVectorHitList(state = ensureState()) {
-    const container = document.querySelector('#bakemono-memory-vector-hit-list');
-    if (!container) {
-        return;
-    }
-    container.innerHTML = '';
-    const hits = state.vectorMemory.lastHits || [];
-    if (!hits.length) {
-        const empty = document.createElement('div');
-        empty.className = 'bakemono-memory-empty';
-        empty.textContent = '暂无召回。启用后先建立索引，或点击“测试召回”。';
-        container.append(empty);
-        return;
-    }
-    const fragment = document.createDocumentFragment();
-    hits.forEach(hit => {
-        const item = document.createElement('section');
-        item.className = 'bakemono-memory-vector-hit';
-        const tierLabel = hit.recallTier === 'full' ? '全文' : '摘要';
-        const matchedTerms = Array.isArray(hit.matchedTerms) && hit.matchedTerms.length
-            ? ` · 命中 ${hit.matchedTerms.slice(0, 4).join('、')}`
-            : '';
-        item.innerHTML = `
-            <div class="bakemono-memory-vector-hit-head">
-                <strong>${escapeHtml(hit.title || `楼层 ${hit.messageId}`)}</strong>
-                <span>${tierLabel} · 重排 ${escapeHtml(hit.rerankScore ?? hit.score ?? 0)} · 相似度 ${escapeHtml(hit.similarity ?? 0)}${hit.lexicalScore ? ` · 词项 ${escapeHtml(hit.lexicalScore)}` : ''}${hit.keywordHits ? ` · 关键词 ${escapeHtml(hit.keywordHits)}` : ''}${hit.matchedChunks > 1 ? ` · 命中片段 ${escapeHtml(hit.matchedChunks)}` : ''}${escapeHtml(matchedTerms)}</span>
-            </div>
-            <div class="bakemono-memory-vector-snippet">${escapeHtml(hit.preview || hit.text || '')}</div>
-        `;
-        fragment.append(item);
-    });
-    container.append(fragment);
-}
 
-function renderVectorRecordList(state = ensureState()) {
-    const container = document.querySelector('#bakemono-memory-vector-record-list');
-    if (!container) {
-        return;
-    }
-    container.innerHTML = '';
-    const records = (state.vectorMemory.records || [])
-        .slice()
-        .sort((a, b) => {
-            const priority = record => record.isSavedSummary ? 0 : record.kind === 'summary' ? 1 : record.kind === 'message' ? 2 : 3;
-            return priority(a) - priority(b)
-                || Number(a.messageId) - Number(b.messageId)
-                || Number(a.chunkIndex || 0) - Number(b.chunkIndex || 0);
-        })
-        .slice(0, 16);
-    if (!records.length) {
-        const empty = document.createElement('div');
-        empty.className = 'bakemono-memory-empty';
-        empty.textContent = '暂无索引片段。';
-        container.append(empty);
-        return;
-    }
-    const fragment = document.createDocumentFragment();
-    records.forEach(record => {
-        const item = document.createElement('div');
-        item.className = 'bakemono-memory-debug-item';
-        const typeLabel = record.isSavedSummary
-            ? '保存摘要索引'
-            : record.kind === 'summary'
-                ? '摘要索引'
-                : record.kind === 'message'
-                    ? '楼层索引'
-                    : '片段索引';
-        item.innerHTML = `
-            <div class="bakemono-memory-debug-meta">${escapeHtml(record.title)} · ${typeLabel} · ${record.isHidden ? '隐藏' : '可见'}</div>
-            <div class="bakemono-memory-debug-text">${escapeHtml(record.preview || record.text || '')}</div>
-        `;
-        fragment.append(item);
-    });
-    container.append(fragment);
-}
 
 function renderReviewPanelTabs(state = ensureState()) {
     const counts = {
@@ -8059,41 +7057,6 @@ function renderReviewPanelTabs(state = ensureState()) {
     });
 }
 
-function renderVectorResultList(state = ensureState()) {
-    const container = document.querySelector('#bakemono-memory-vector-result-list');
-    if (!container) {
-        return;
-    }
-    container.innerHTML = '';
-    const hits = (state.vectorMemory.lastHits || []).slice(0, 4);
-    if (!hits.length) {
-        const empty = document.createElement('div');
-        empty.className = 'bakemono-memory-vector-result-empty';
-        empty.innerHTML = '<i class="fa-solid fa-bullseye"></i><div><strong>还没有召回结果</strong><span>建立索引后输入一段剧情线索，测试最相关的旧记忆。</span></div>';
-        container.append(empty);
-        return;
-    }
-    const fragment = document.createDocumentFragment();
-    hits.forEach(hit => {
-        const scoreValue = Number(hit.rerankScore ?? hit.score ?? hit.similarity ?? 0);
-        const normalizedScore = Number.isFinite(scoreValue) ? scoreValue : 0;
-        const score = Math.max(0, Math.min(100, Math.round(normalizedScore <= 1 ? normalizedScore * 100 : normalizedScore)));
-        const item = document.createElement('article');
-        item.className = 'bakemono-memory-vector-result-item';
-        const tier = hit.recallTier === 'full' ? '全文' : '摘要';
-        const sourceRange = formatSourceRange(hit.sourceMessageIds || [hit.messageId]);
-        item.innerHTML = `
-            <span class="bakemono-memory-vector-result-score">${score}%</span>
-            <div>
-              <strong>${escapeHtml(hit.title || `楼层 ${hit.messageId}`)}</strong>
-              <p>${escapeHtml(hit.preview || hit.text || '暂无预览内容')}</p>
-              <small>${escapeHtml([tier, sourceRange].filter(Boolean).join(' · '))}</small>
-            </div>
-        `;
-        fragment.append(item);
-    });
-    container.append(fragment);
-}
 
 function renderDrafts() {
     const state = ensureState();
@@ -8785,31 +7748,7 @@ function renderCustomModelOptions(models = []) {
     }
 }
 
-function renderVectorModelOptions(models = []) {
-    const list = document.querySelector('#bakemono-memory-vector-model-options');
-    if (!list) {
-        return;
-    }
-    list.innerHTML = '';
-    for (const model of unique(models.map(item => String(item || '').trim()).filter(Boolean)).sort()) {
-        const option = document.createElement('option');
-        option.value = model;
-        list.append(option);
-    }
-}
 
-function renderVectorQueryModelOptions(models = []) {
-    const list = document.querySelector('#bakemono-memory-vector-query-model-options');
-    if (!list) {
-        return;
-    }
-    list.innerHTML = '';
-    for (const model of unique(models.map(item => String(item || '').trim()).filter(Boolean)).sort()) {
-        const option = document.createElement('option');
-        option.value = model;
-        list.append(option);
-    }
-}
 
 function readRuleFieldsFromUi(state = ensureState()) {
     if (!$('#bakemono-memory-scan-mode').length) {
@@ -8942,81 +7881,7 @@ function readInjectionFieldsFromUi(state = ensureState()) {
     return state;
 }
 
-function readVectorMemoryFieldsFromUi(state = ensureState()) {
-    if (!$('#bakemono-memory-vector-enabled').length) {
-        return state;
-    }
-    const previousRecords = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records : [];
-    const previousHits = Array.isArray(state.vectorMemory?.lastHits) ? state.vectorMemory.lastHits : [];
-    const previousEmbeddingCandidates = Array.isArray(state.vectorMemory?.lastEmbeddingCandidates) ? state.vectorMemory.lastEmbeddingCandidates : [];
-    const previousRerankCandidates = Array.isArray(state.vectorMemory?.lastRerankCandidates) ? state.vectorMemory.lastRerankCandidates : [];
-    const previousCache = {};
-    state.vectorMemory = {
-        ...structuredClone(defaultVectorMemory),
-        ...(state.vectorMemory || {}),
-        enabled: $('#bakemono-memory-vector-enabled').prop('checked'),
-        autoIndex: $('#bakemono-memory-vector-auto-index').length ? $('#bakemono-memory-vector-auto-index').prop('checked') : state.vectorMemory?.autoIndex !== false,
-        includeHidden: $('#bakemono-memory-vector-include-hidden').prop('checked'),
-        includeUser: $('#bakemono-memory-vector-include-user').length ? $('#bakemono-memory-vector-include-user').prop('checked') : state.vectorMemory?.includeUser === true,
-        indexMode: String($('#bakemono-memory-vector-index-mode').val() || defaultVectorMemory.indexMode),
-        injectMode: String($('#bakemono-memory-vector-inject-mode').val() || defaultVectorMemory.injectMode),
-        maxIndexedMessages: Math.max(0, Number($('#bakemono-memory-vector-max-indexed-messages').val() === '' ? defaultVectorMemory.maxIndexedMessages : $('#bakemono-memory-vector-max-indexed-messages').val())),
-        maxStoredTextChars: Math.max(240, Number($('#bakemono-memory-vector-max-stored-text-chars').val() || defaultVectorMemory.maxStoredTextChars)),
-        embeddingDimensions: Math.max(32, Number(state.vectorMemory?.embeddingDimensions || defaultVectorMemory.embeddingDimensions)),
-        chunkSize: Math.max(240, Number($('#bakemono-memory-vector-chunk-size').val() || defaultVectorMemory.chunkSize)),
-        overlap: Math.max(0, Number($('#bakemono-memory-vector-overlap').val() || defaultVectorMemory.overlap)),
-        longMessageThreshold: Math.max(240, Number($('#bakemono-memory-vector-long-message-threshold').val() || defaultVectorMemory.longMessageThreshold)),
-        topK: Math.max(1, Number($('#bakemono-memory-vector-top-k').val() || defaultVectorMemory.rerankCandidateCount)),
-        rerankCandidateCount: Math.max(1, Number($('#bakemono-memory-vector-top-k').val() || defaultVectorMemory.rerankCandidateCount)),
-        maxRecallMessages: Math.max(1, Number($('#bakemono-memory-vector-max-recall-messages').val() || defaultVectorMemory.finalRecallCount)),
-        finalRecallCount: Math.max(1, Number($('#bakemono-memory-vector-max-recall-messages').val() || defaultVectorMemory.finalRecallCount)),
-        fullRecallCount: Math.max(0, Number($('#bakemono-memory-vector-full-recall-count').val() || defaultVectorMemory.fullRecallCount)),
-        maxPerMessage: Math.max(1, Number($('#bakemono-memory-vector-max-per-message').val() || defaultVectorMemory.maxPerMessage)),
-        perMessageMaxChars: Math.max(200, Number($('#bakemono-memory-vector-per-message-max-chars').val() || defaultVectorMemory.perMessageMaxChars)),
-        minScore: Math.max(0, Number($('#bakemono-memory-vector-min-score').val() || defaultVectorMemory.embeddingThreshold)),
-        embeddingThreshold: Math.max(0, Number($('#bakemono-memory-vector-min-score').val() || defaultVectorMemory.embeddingThreshold)),
-        rerankThreshold: Math.max(0, Number($('#bakemono-memory-vector-rerank-threshold').val() || defaultVectorMemory.rerankThreshold)),
-        keywordBoost: Math.max(0, Number($('#bakemono-memory-vector-keyword-boost').val() || defaultVectorMemory.keywordBoost)),
-        maxInjectChars: Math.max(200, Number($('#bakemono-memory-vector-max-chars').val() || defaultVectorMemory.maxInjectChars)),
-        summaryMaxChars: Math.max(120, Number($('#bakemono-memory-vector-summary-max-chars').val() || defaultVectorMemory.summaryMaxChars)),
-        keywordTriggers: String($('#bakemono-memory-vector-keywords').val() || ''),
-        excludeTags: String($('#bakemono-memory-vector-exclude-tags').val() || defaultVectorMemory.excludeTags),
-        summaryTags: String($('#bakemono-memory-vector-summary-tags').val() || defaultVectorMemory.summaryTags),
-        queryMode: String($('#bakemono-memory-vector-query-mode').val() || defaultVectorMemory.queryMode),
-        queryRewriteProvider: String($('#bakemono-memory-vector-query-provider').val() || defaultVectorMemory.queryRewriteProvider),
-        queryRewritePrompt: String($('#bakemono-memory-vector-query-prompt').val() || defaultVectorMemory.queryRewritePrompt),
-        queryCustomApi: {
-            baseUrl: String($('#bakemono-memory-vector-query-base-url').val() || '').trim(),
-            apiKey: String($('#bakemono-memory-vector-query-api-key').val() || '').trim(),
-            model: String($('#bakemono-memory-vector-query-model').val() || '').trim(),
-            models: Array.isArray(state.vectorMemory?.queryCustomApi?.models) ? state.vectorMemory.queryCustomApi.models : [],
-        },
-        startAfterAiMessages: Math.max(0, Number($('#bakemono-memory-vector-start-after-ai').val() || defaultVectorMemory.startAfterAiMessages)),
-        skipIfAllInContext: $('#bakemono-memory-vector-skip-context').length ? $('#bakemono-memory-vector-skip-context').prop('checked') : state.vectorMemory?.skipIfAllInContext !== false,
-        contextWindowMessages: Math.max(0, Number($('#bakemono-memory-vector-context-window').val() || defaultVectorMemory.contextWindowMessages)),
-        rerankMode: String($('#bakemono-memory-vector-rerank-mode').val() || defaultVectorMemory.rerankMode),
-        embeddingProvider: String($('#bakemono-memory-vector-provider').val() || defaultVectorMemory.embeddingProvider),
-        customApi: {
-            baseUrl: String($('#bakemono-memory-vector-base-url').val() || '').trim(),
-            apiKey: String($('#bakemono-memory-vector-api-key').val() || '').trim(),
-            model: String($('#bakemono-memory-vector-model').val() || defaultVectorMemory.customApi.model).trim(),
-            models: Array.isArray(state.vectorMemory?.customApi?.models) ? state.vectorMemory.customApi.models : [],
-        },
-        records: previousRecords,
-        embeddingCache: previousCache,
-        lastHits: previousHits,
-        lastEmbeddingCandidates: previousEmbeddingCandidates,
-        lastRerankCandidates: previousRerankCandidates,
-    };
-    return state;
-}
 
-function persistVectorMemoryFieldsFromUi() {
-    const state = ensureState();
-    readVectorMemoryFieldsFromUi(state);
-    persistSharedConfigurationFromState(state);
-    return state;
-}
 
 function readConfigFieldsFromUi(state = ensureState()) {
     readRuleFieldsFromUi(state);
@@ -9820,58 +8685,8 @@ function renderWorkbenchHeaderContext(tabName, state = ensureState()) {
 
 
 
-async function applyVectorMemorySettings() {
-    const state = ensureState();
-    readVectorMemoryFieldsFromUi(state);
-    if (state.vectorMemory.enabled) {
-        if (!state.vectorMemory.records.length || state.vectorMemory.lastIndexedSignature !== getVectorSourceSignature(state)) {
-            markVectorIndexDirty('配置已变更', state);
-        } else {
-            await retrieveVectorMemoryHits('', state);
-        }
-    }
-    persistSharedConfigurationFromState(state);
-    syncInjection();
-    renderWorkbenchScope(workbenchRenderScopes.VECTOR, '向量记忆配置已保存，并同步到所有角色卡。');
-}
 
-async function testVectorMemoryRetrieval() {
-    const state = ensureState();
-    readVectorMemoryFieldsFromUi(state);
-    if (!state.vectorMemory.records.length) {
-        toastr.warning('还没有索引。请先点击“建立/刷新索引”。');
-        renderWorkbenchScope(workbenchRenderScopes.VECTOR, '向量记忆尚未建立索引。');
-        return false;
-    }
-    const query = String($('#bakemono-memory-vector-test-query').val() || '').trim();
-    const hits = await retrieveVectorMemoryHits(query, state);
-    saveState();
-    syncInjection();
-    renderWorkbenchScope(workbenchRenderScopes.VECTOR, hits.length ? `向量召回完成：命中 ${hits.length} 条记忆。` : (state.vectorMemory.lastRecallSkippedReason || '向量召回完成：没有命中。'));
-    return true;
-}
 
-function clearVectorMemoryIndex() {
-    const state = ensureState();
-    if (!state.vectorMemory.records.length && !state.vectorMemory.lastHits.length) {
-        toastr.info('向量索引已经是空的。');
-        return;
-    }
-    if (!confirmDanger(
-        '清空向量索引？',
-        ['这只会删除本聊天保存的向量片段和最近召回，不会删除聊天正文。'],
-        '确认清空吗？',
-    )) {
-        return;
-    }
-    state.vectorMemory.records = [];
-    state.vectorMemory.lastHits = [];
-    state.vectorMemory.lastQuery = '';
-    state.vectorMemory.lastIndexAt = null;
-    saveState();
-    syncInjection();
-    renderWorkbenchScope(workbenchRenderScopes.VECTOR, '向量索引已清空。');
-}
 
 function renderInlinePromptPresetChange(statusText) {
     renderWorkbenchScope(workbenchRenderScopes.TABLES, statusText);

@@ -22,6 +22,10 @@ const tableStateServiceSource = fs.readFileSync(new URL('../src/features/table-s
 const tableMemoryModelSource = fs.readFileSync(new URL('../src/features/table-memory-model.js', import.meta.url), 'utf8');
 const tableWorkflowControllerSource = fs.readFileSync(new URL('../src/features/table-workflow-controller.js', import.meta.url), 'utf8');
 const tableWorkbenchUiSource = fs.readFileSync(new URL('../src/features/table-workbench-ui.js', import.meta.url), 'utf8');
+const vectorMemoryServiceSource = fs.readFileSync(new URL('../src/features/vector-memory-service.js', import.meta.url), 'utf8');
+const vectorSettingsModelSource = fs.readFileSync(new URL('../src/features/vector-settings-model.js', import.meta.url), 'utf8');
+const vectorWorkbenchUiSource = fs.readFileSync(new URL('../src/features/vector-workbench-ui.js', import.meta.url), 'utf8');
+const vectorActionsControllerSource = fs.readFileSync(new URL('../src/features/vector-actions-controller.js', import.meta.url), 'utf8');
 const helpPopoverSource = fs.readFileSync(new URL('../src/ui/help-popover.js', import.meta.url), 'utf8');
 const operationFeedbackSource = fs.readFileSync(new URL('../src/ui/operation-feedback.js', import.meta.url), 'utf8');
 const workbenchLayoutSource = fs.readFileSync(new URL('../src/ui/workbench-layout.js', import.meta.url), 'utf8');
@@ -210,10 +214,10 @@ test('table profiles, scoped storage, and rollback transactions share one table 
 });
 
 test('vector recall uses independent semantic and lexical candidates with explainable scores', () => {
-    assert.match(source, /selectHybridCandidates\(scored, queries, keywords/);
-    assert.match(source, /keywordBoost:\s*state\.vectorMemory\.keywordBoost/);
-    assert.match(source, /lexicalScore:\s*Number/);
-    assert.match(source, /matchedTerms:\s*Array\.isArray/);
+    assert.match(vectorMemoryServiceSource, /selectHybridCandidates\(scored, queries, keywords/);
+    assert.match(vectorMemoryServiceSource, /keywordBoost:\s*state\.vectorMemory\.keywordBoost/);
+    assert.match(vectorMemoryServiceSource, /lexicalScore:\s*Number/);
+    assert.match(vectorMemoryServiceSource, /matchedTerms:\s*Array\.isArray/);
     assert.match(settingsSource, /混合召回 v2：语义 \+ 稀有词 \+ 关键词/);
     assert.match(source, /title:\s*`混合初筛/);
     assert.match(hybridRetrievalSource, /export function selectHybridCandidates\(/);
@@ -221,6 +225,18 @@ test('vector recall uses independent semantic and lexical candidates with explai
     assert.match(hybridRetrievalSource, /lexicalRanked/);
     assert.match(hybridRetrievalSource, /keywordRanked/);
     assert.match(hybridRetrievalSource, /getInverseDocumentFrequency/);
+});
+
+test('vector indexing, settings, actions, and page rendering are assembled as separate boundaries', () => {
+    assert.match(source, /const vectorMemoryService = createVectorMemoryService\(\{/);
+    assert.match(source, /const vectorSettingsModel = createVectorSettingsModel\(\{/);
+    assert.match(source, /const vectorWorkbenchUi = createVectorWorkbenchUi\(\{/);
+    assert.match(source, /const vectorActionsController = createVectorActionsController\(\{/);
+    assert.match(vectorMemoryServiceSource, /async function retrieveVectorMemoryHits\(/);
+    assert.match(vectorSettingsModelSource, /function readVectorMemoryFieldsFromUi\(/);
+    assert.match(vectorWorkbenchUiSource, /function renderVectorMemoryPanel\(/);
+    assert.match(vectorActionsControllerSource, /async function fetchVectorEmbeddingModels\(/);
+    assert.doesNotMatch(source, /async function retrieveVectorMemoryHits\(|function renderVectorMemoryPanel\(/);
 });
 
 test('renderAll only scans heavy block collections and syncs forms for the active page', () => {
@@ -489,10 +505,6 @@ test('vector, draft, and table actions use page-scoped rendering', () => {
     assert.match(scopedRenderSource, /renderTurnSummaryPanel\(state\)/);
 
     for (const [name, scope] of [
-        ['buildVectorMemoryIndex', 'VECTOR'],
-        ['applyVectorMemorySettings', 'VECTOR'],
-        ['testVectorMemoryRetrieval', 'VECTOR'],
-        ['clearVectorMemoryIndex', 'VECTOR'],
         ['commitDraft', 'DRAFTS'],
         ['discardDraft', 'DRAFTS'],
         ['regenerateDraft', 'DRAFTS'],
@@ -501,6 +513,16 @@ test('vector, draft, and table actions use page-scoped rendering', () => {
         const functionSource = extractFunction(name);
         assert.match(functionSource, new RegExp(`renderWorkbenchScope\\(workbenchRenderScopes\\.${scope}`), `${name} should use ${scope} scoped rendering`);
         assert.doesNotMatch(functionSource, /renderAll\(/, `${name} should not refresh the whole workbench`);
+    }
+    for (const [moduleSource, name] of [
+        [vectorMemoryServiceSource, 'buildVectorMemoryIndex'],
+        [vectorActionsControllerSource, 'applyVectorMemorySettings'],
+        [vectorActionsControllerSource, 'testVectorMemoryRetrieval'],
+        [vectorActionsControllerSource, 'clearVectorMemoryIndex'],
+    ]) {
+        const functionSource = extractFunctionFrom(moduleSource, name);
+        assert.match(functionSource, /renderWorkbenchScope\(workbenchRenderScopes\.VECTOR/);
+        assert.doesNotMatch(functionSource, /renderAll\(/);
     }
     for (const [moduleSource, name] of [
         [tableStateServiceSource, 'undoLastTableOperation'],
@@ -671,8 +693,8 @@ test('saved settings become shared defaults while vector runtime remains chat-lo
     assert.match(source, /mergeSharedVectorConfig\(state\.vectorMemory, preset\.vectorMemory, defaultVectorMemory\)/);
     assert.match(source, /syncGlobalActiveConfigToState\(initialState, \{ force: true \}\)/);
     assert.match(source, /syncConfig:\s*state => \{/);
-    const vectorPersist = extractFunction('persistVectorMemoryFieldsFromUi');
-    const vectorApply = extractFunction('applyVectorMemorySettings');
+    const vectorPersist = extractFunctionFrom(vectorSettingsModelSource, 'persistVectorMemoryFieldsFromUi');
+    const vectorApply = extractFunctionFrom(vectorActionsControllerSource, 'applyVectorMemorySettings');
     assert.match(vectorPersist, /persistSharedConfigurationFromState\(state/);
     assert.match(vectorApply, /persistSharedConfigurationFromState\(state/);
 });
@@ -700,10 +722,10 @@ test('chat changes keep their side effects in one ordered coordinator', () => {
 
 test('vector model fetch preserves unsaved fields and reports failures accurately', () => {
     const operationSource = extractFunctionFrom(operationFeedbackSource, 'runVisible');
-    const persistSource = extractFunction('persistVectorMemoryFieldsFromUi');
+    const persistSource = extractFunctionFrom(vectorSettingsModelSource, 'persistVectorMemoryFieldsFromUi');
     const actionSource = extractFunction('runWorkbenchAction');
-    const embeddingSource = extractFunction('fetchVectorEmbeddingModels');
-    const querySource = extractFunction('fetchVectorQueryModels');
+    const embeddingSource = extractFunctionFrom(vectorActionsControllerSource, 'fetchVectorEmbeddingModels');
+    const querySource = extractFunctionFrom(vectorActionsControllerSource, 'fetchVectorQueryModels');
 
     assert.doesNotMatch(operationSource, /renderAll\(/);
     assert.match(persistSource, /readVectorMemoryFieldsFromUi\(state\)/);
