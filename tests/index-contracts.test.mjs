@@ -102,26 +102,39 @@ test('secondary workbench pages install a consistent parent navigation', () => {
     assert.match(styleSource, /@media \(max-width: 900px\)[\s\S]*?\.bakemono-memory-parent-link\s*\{[^}]*min-height:\s*44px;/s);
 });
 
-test('previous prompt inspector stays read-only, searchable, and lazy on mobile', () => {
+test('previous prompt inspector stays read-only, manually searchable, navigable, and lazy on mobile', () => {
     assert.match(settingsSource, /data-bakemono-nav="prompt-inspector"/);
     assert.match(settingsSource, /data-bakemono-panel="prompt-inspector"/);
+    assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-search-form"/);
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-query"[^>]*type="search"/);
+    assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-search-submit"[^>]*type="submit"/);
+    assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-search-previous"/);
+    assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-search-next"/);
+    assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-search-status"[^>]*aria-live="polite"/);
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-search-empty"/);
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-model"/);
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-preset"/);
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-floor"/);
     assert.match(source, /'prompt-inspector': \{ target: 'overview', label: '返回剪辑台' \}/);
     assert.match(source, /function applyPromptInspectorSearch\(/);
-    assert.match(source, /function schedulePromptInspectorSearch\(/);
+    assert.match(source, /function collectPromptInspectorSearchResults\(/);
+    assert.match(source, /function openPromptInspectorSearchResult\(/);
+    assert.match(source, /function navigatePromptInspectorSearch\(/);
+    assert.match(source, /function clearPromptInspectorSearch\(/);
     assert.match(source, /function renderPromptInspectorHighlightedContent\(/);
     assert.match(source, /label: '基础系统与预设'/);
     assert.match(source, /getActiveWorkbenchTab\(\) !== 'prompt-inspector'/);
     assert.match(source, /if \(content\) content\.textContent = ''/);
-    assert.match(source, /matchCount < 240/);
+    assert.match(source, /const maxPromptInspectorSearchResults = 2000/);
+    assert.match(source, /const maxPromptInspectorRenderedMatches = 240/);
     assert.doesNotMatch(extractFunction('applyPromptInspectorSearch'), /saveState|saveGlobalSettings|renderAll/);
-    assert.doesNotMatch(extractFunction('schedulePromptInspectorSearch'), /saveState|saveGlobalSettings|renderAll/);
+    assert.doesNotMatch(extractFunction('navigatePromptInspectorSearch'), /saveState|saveGlobalSettings|renderAll/);
+    assert.doesNotMatch(source, /function schedulePromptInspectorSearch\(/);
     assert.match(styleSource, /#bakemono-memory-prompt-inspector-query\s*\{[^}]*min-height:\s*44px;/s);
+    assert.match(styleSource, /#bakemono-memory-prompt-inspector-search-submit\s*\{[^}]*width:\s*40px;[^}]*height:\s*40px;/s);
+    assert.match(styleSource, /\.bakemono-memory-prompt-inspector-search-navigation\s*\{[^}]*min-height:\s*44px;/s);
     assert.match(styleSource, /\.bakemono-memory-prompt-inspector-item-body > pre mark/);
+    assert.match(styleSource, /\.bakemono-memory-prompt-inspector-item-body > pre mark\.is-current/);
 });
 
 test('vector recall uses independent semantic and lexical candidates with explainable scores', () => {

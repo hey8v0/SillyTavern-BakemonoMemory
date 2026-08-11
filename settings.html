@@ -176,11 +176,21 @@
           </div>
         </article>
 
-        <label class="bakemono-memory-prompt-inspector-search" for="bakemono-memory-prompt-inspector-query">
-          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-          <input id="bakemono-memory-prompt-inspector-query" type="search" inputmode="search" autocomplete="off" placeholder="搜索上一轮提示词" aria-controls="bakemono-memory-prompt-inspector-list">
-          <button id="bakemono-memory-prompt-inspector-clear" type="button" aria-label="清空搜索" title="清空搜索" hidden><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
-        </label>
+        <form id="bakemono-memory-prompt-inspector-search-form" class="bakemono-memory-prompt-inspector-search" role="search">
+          <div class="bakemono-memory-prompt-inspector-search-field">
+            <input id="bakemono-memory-prompt-inspector-query" type="search" inputmode="search" autocomplete="off" placeholder="输入关键词后搜索" aria-label="搜索上一轮提示词" aria-controls="bakemono-memory-prompt-inspector-list">
+            <button id="bakemono-memory-prompt-inspector-search-submit" type="submit" aria-label="执行搜索" title="搜索"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></button>
+          </div>
+          <div id="bakemono-memory-prompt-inspector-search-navigation" class="bakemono-memory-prompt-inspector-search-navigation" hidden>
+            <span class="bakemono-memory-prompt-inspector-search-position">
+              <strong id="bakemono-memory-prompt-inspector-search-scope">匹配位置</strong>
+              <output id="bakemono-memory-prompt-inspector-search-status" aria-live="polite">0 / 0</output>
+            </span>
+            <button id="bakemono-memory-prompt-inspector-search-previous" type="button" aria-label="上一个匹配" title="上一个匹配"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i></button>
+            <button id="bakemono-memory-prompt-inspector-search-next" type="button" aria-label="下一个匹配" title="下一个匹配"><i class="fa-solid fa-arrow-down" aria-hidden="true"></i></button>
+            <button id="bakemono-memory-prompt-inspector-clear" type="button" aria-label="清空搜索" title="清空搜索"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+          </div>
+        </form>
 
         <div class="bakemono-memory-prompt-inspector-divider" aria-hidden="true"><span>内容条目</span><i></i></div>
         <div id="bakemono-memory-prompt-inspector-list" class="bakemono-memory-prompt-inspector-list"></div>

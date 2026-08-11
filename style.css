@@ -12019,13 +12019,10 @@ details[open] > summary > .bakemono-memory-help-trigger {
 }
 
 .bakemono-memory-prompt-inspector-search {
-  min-height: 46px;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) 32px;
-  align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-top: 13px;
-  padding: 0 8px 0 13px;
+  padding: 6px;
   border: 1px solid var(--bk-line);
   border-radius: 15px;
   background: color-mix(in srgb, var(--bk-paper-raised) 90%, var(--bk-paper-soft));
@@ -12033,15 +12030,17 @@ details[open] > summary > .bakemono-memory-help-trigger {
   transition: border-color 0.18s var(--bk-ease), box-shadow 0.18s var(--bk-ease);
 }
 
+.bakemono-memory-prompt-inspector-search-field {
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 8px;
+}
+
 .bakemono-memory-prompt-inspector-search:focus-within {
   border-color: color-mix(in srgb, var(--bk-accent) 55%, var(--bk-line));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--bk-accent) 10%, transparent);
-}
-
-.bakemono-memory-prompt-inspector-search > i {
-  color: var(--bk-accent);
-  font-size: 12px;
-  text-align: center;
 }
 
 #bakemono-memory-prompt-inspector-query {
@@ -12049,9 +12048,9 @@ details[open] > summary > .bakemono-memory-help-trigger {
   min-width: 0;
   min-height: 44px;
   margin: 0;
-  padding: 0;
+  padding: 0 8px;
   border: 0 !important;
-  border-radius: 0;
+  border-radius: 10px;
   background: transparent !important;
   color: var(--SmartThemeBodyColor);
   font: inherit;
@@ -12071,9 +12070,79 @@ details[open] > summary > .bakemono-memory-help-trigger {
   opacity: 0.62;
 }
 
-#bakemono-memory-prompt-inspector-clear {
-  width: 32px;
-  height: 32px;
+#bakemono-memory-prompt-inspector-search-submit {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--bk-accent) 42%, var(--bk-line));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--bk-accent) 13%, var(--bk-paper-soft));
+  color: var(--bk-accent);
+  font-size: 12px;
+  box-shadow: 0 5px 12px color-mix(in srgb, var(--bk-shadow) 38%, transparent);
+  transition: background-color 0.18s var(--bk-ease), color 0.18s var(--bk-ease), transform 0.18s var(--bk-ease);
+}
+
+#bakemono-memory-prompt-inspector-search-submit:hover,
+.bakemono-memory-prompt-inspector-search.has-pending-query #bakemono-memory-prompt-inspector-search-submit {
+  background: var(--bk-accent);
+  color: var(--bk-paper-raised);
+}
+
+#bakemono-memory-prompt-inspector-search-submit:active {
+  transform: translateY(1px);
+}
+
+#bakemono-memory-prompt-inspector-search-submit:disabled {
+  cursor: wait;
+  opacity: 0.48;
+  transform: none;
+}
+
+.bakemono-memory-prompt-inspector-search-navigation {
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, 40px);
+  align-items: center;
+  gap: 5px;
+  padding: 6px 0 0 8px;
+  border-top: 1px solid var(--bk-line);
+}
+
+.bakemono-memory-prompt-inspector-search-navigation[hidden] {
+  display: none !important;
+}
+
+.bakemono-memory-prompt-inspector-search-position {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.bakemono-memory-prompt-inspector-search-position > strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--SmartThemeBodyColor);
+  font-size: 10px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#bakemono-memory-prompt-inspector-search-status {
+  flex: none;
+  color: var(--bk-accent);
+  font-size: 10px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.bakemono-memory-prompt-inspector-search-navigation > button {
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -12085,13 +12154,13 @@ details[open] > summary > .bakemono-memory-help-trigger {
   box-shadow: none;
 }
 
-#bakemono-memory-prompt-inspector-clear[hidden] {
-  display: none !important;
-}
-
-#bakemono-memory-prompt-inspector-clear:hover {
+.bakemono-memory-prompt-inspector-search-navigation > button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--bk-accent) 10%, var(--bk-paper-soft));
   color: var(--bk-accent);
+}
+
+.bakemono-memory-prompt-inspector-search-navigation > button:disabled {
+  opacity: 0.35;
 }
 
 .bakemono-memory-prompt-inspector-divider {
@@ -12281,9 +12350,16 @@ details[open] > summary > .bakemono-memory-help-trigger {
 .bakemono-memory-prompt-inspector-item-body > pre mark {
   padding: 0 2px;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--bk-accent) 24%, var(--bk-paper-raised));
+  background: color-mix(in srgb, var(--bk-accent) 18%, var(--bk-paper-raised));
   color: var(--SmartThemeBodyColor);
-  font-weight: 750;
+  font-weight: 700;
+}
+
+.bakemono-memory-prompt-inspector-item-body > pre mark.is-current {
+  outline: 2px solid color-mix(in srgb, var(--bk-accent) 72%, var(--bk-line));
+  outline-offset: 1px;
+  background: color-mix(in srgb, var(--bk-accent) 38%, var(--bk-paper-raised));
+  font-weight: 850;
 }
 
 .bakemono-memory-prompt-inspector-empty {

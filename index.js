@@ -992,15 +992,20 @@ let overviewTokenRenderRevision = 0;
 let promptInspectorRenderRevision = 0;
 let promptInspectorOpenEntryKey = '';
 let promptInspectorSearchQuery = '';
-let promptInspectorSearchTimer = null;
+let promptInspectorSearchResults = [];
+let promptInspectorSearchResultIndex = -1;
+let promptInspectorSearchTruncated = false;
 const overviewTokenCache = new Map();
 const overviewPromptUsageCache = new WeakMap();
 const promptInspectorEntries = new Map();
+const promptInspectorSearchResultsByEntry = new Map();
 const sanitizedChatLengths = new WeakMap();
 const vectorEmbeddingRuntimeCache = new Map();
 const maxStoredScanPreviewItems = 240;
 const mobileScanPreviewRenderLimit = 60;
 const desktopScanPreviewRenderLimit = 120;
+const maxPromptInspectorSearchResults = 2000;
+const maxPromptInspectorRenderedMatches = 240;
 const previewPageSize = 8;
 const historyPageSize = 10;
 const timelinePageSize = 25;
@@ -8344,9 +8349,18 @@ function setPromptInspectorEmptyState(empty) {
 
 function setPromptInspectorSearchEnabled(enabled) {
     const input = document.getElementById('bakemono-memory-prompt-inspector-query');
-    const clearButton = document.getElementById('bakemono-memory-prompt-inspector-clear');
+    const submitButton = document.getElementById('bakemono-memory-prompt-inspector-search-submit');
+    const navigation = document.getElementById('bakemono-memory-prompt-inspector-search-navigation');
     if (input) input.disabled = !enabled;
-    if (clearButton) clearButton.hidden = !enabled || !promptInspectorSearchQuery;
+    if (submitButton) submitButton.disabled = !enabled;
+    if (!enabled && navigation) navigation.hidden = true;
+}
+
+function resetPromptInspectorSearchResults() {
+    promptInspectorSearchResults = [];
+    promptInspectorSearchResultIndex = -1;
+    promptInspectorSearchTruncated = false;
+    promptInspectorSearchResultsByEntry.clear();
 }
 
 function closePromptInspectorItem(row) {
@@ -8360,7 +8374,7 @@ function closePromptInspectorItem(row) {
     if (content) content.textContent = '';
 }
 
-function renderPromptInspectorHighlightedContent(container, content, query = promptInspectorSearchQuery) {
+function renderPromptInspectorHighlightedContent(container, content, query = promptInspectorSearchQuery, activeResultIndex = promptInspectorSearchResultIndex) {
     if (!container) return;
     const text = String(content || '');
     const needle = String(query || '').trim();
@@ -8369,65 +8383,186 @@ function renderPromptInspectorHighlightedContent(container, content, query = pro
         container.textContent = text || '这一项没有可显示的文本内容。';
         return;
     }
-    const normalizedText = text.toLocaleLowerCase();
-    const normalizedNeedle = needle.toLocaleLowerCase();
-    let cursor = 0;
-    let matchCount = 0;
-    const fragment = document.createDocumentFragment();
-    while (cursor < text.length && matchCount < 240) {
-        const matchIndex = normalizedText.indexOf(normalizedNeedle, cursor);
-        if (matchIndex < 0) break;
-        if (matchIndex > cursor) fragment.append(document.createTextNode(text.slice(cursor, matchIndex)));
-        const mark = document.createElement('mark');
-        mark.textContent = text.slice(matchIndex, matchIndex + needle.length);
-        fragment.append(mark);
-        cursor = matchIndex + needle.length;
-        matchCount += 1;
+
+    const entryKey = String(container.closest('.bakemono-memory-prompt-inspector-item')?.dataset.promptEntryKey || '');
+    const entryMatches = promptInspectorSearchResultsByEntry.get(entryKey) || [];
+    if (!entryMatches.length) {
+        container.textContent = text || '这一项没有可显示的文本内容。';
+        return;
     }
+
+    let matchesToRender = entryMatches;
+    if (entryMatches.length > maxPromptInspectorRenderedMatches) {
+        const activePosition = Math.max(0, entryMatches.findIndex(match => match.resultIndex === activeResultIndex));
+        const halfWindow = Math.floor(maxPromptInspectorRenderedMatches / 2);
+        const windowStart = Math.min(
+            Math.max(0, activePosition - halfWindow),
+            entryMatches.length - maxPromptInspectorRenderedMatches,
+        );
+        matchesToRender = entryMatches.slice(windowStart, windowStart + maxPromptInspectorRenderedMatches);
+    }
+
+    let cursor = 0;
+    const fragment = document.createDocumentFragment();
+    matchesToRender.forEach(match => {
+        if (match.start > cursor) fragment.append(document.createTextNode(text.slice(cursor, match.start)));
+        const mark = document.createElement('mark');
+        mark.textContent = text.slice(match.start, match.end);
+        mark.dataset.bakemonoPromptSearchResult = String(match.resultIndex);
+        if (match.resultIndex === activeResultIndex) {
+            mark.classList.add('is-current');
+            mark.setAttribute('aria-current', 'true');
+        }
+        fragment.append(mark);
+        cursor = match.end;
+    });
     if (cursor < text.length) fragment.append(document.createTextNode(text.slice(cursor)));
     container.append(fragment);
 }
 
-function applyPromptInspectorSearch() {
+function collectPromptInspectorSearchResults(query) {
+    resetPromptInspectorSearchResults();
+    const needle = String(query || '').trim().toLocaleLowerCase();
+    if (!needle) return;
+
+    entryLoop:
+    for (const item of promptInspectorEntries.values()) {
+        const content = String(item.getContent() || '');
+        const normalizedContent = content.toLocaleLowerCase();
+        let cursor = 0;
+        while (cursor < normalizedContent.length) {
+            const start = normalizedContent.indexOf(needle, cursor);
+            if (start < 0) break;
+            if (promptInspectorSearchResults.length >= maxPromptInspectorSearchResults) {
+                promptInspectorSearchTruncated = true;
+                break entryLoop;
+            }
+            const result = {
+                entryKey: item.key,
+                start,
+                end: start + needle.length,
+                resultIndex: promptInspectorSearchResults.length,
+            };
+            promptInspectorSearchResults.push(result);
+            if (!promptInspectorSearchResultsByEntry.has(item.key)) {
+                promptInspectorSearchResultsByEntry.set(item.key, []);
+            }
+            promptInspectorSearchResultsByEntry.get(item.key).push(result);
+            cursor = result.end;
+        }
+    }
+}
+
+function updatePromptInspectorSearchNavigation() {
+    const navigation = document.getElementById('bakemono-memory-prompt-inspector-search-navigation');
+    const scope = document.getElementById('bakemono-memory-prompt-inspector-search-scope');
+    const status = document.getElementById('bakemono-memory-prompt-inspector-search-status');
+    const previousButton = document.getElementById('bakemono-memory-prompt-inspector-search-previous');
+    const nextButton = document.getElementById('bakemono-memory-prompt-inspector-search-next');
+    if (navigation) navigation.hidden = !promptInspectorSearchQuery;
+
+    const current = promptInspectorSearchResults[promptInspectorSearchResultIndex];
+    const item = current ? promptInspectorEntries.get(current.entryKey) : null;
+    if (scope) scope.textContent = item?.label || (promptInspectorSearchResults.length ? '匹配位置' : '没有命中');
+    if (status) {
+        const totalLabel = `${promptInspectorSearchResults.length.toLocaleString()}${promptInspectorSearchTruncated ? '+' : ''}`;
+        status.textContent = promptInspectorSearchResults.length
+            ? `${(promptInspectorSearchResultIndex + 1).toLocaleString()} / ${totalLabel}`
+            : '0 / 0';
+    }
+    const navigationDisabled = promptInspectorSearchResults.length <= 1;
+    if (previousButton) previousButton.disabled = navigationDisabled;
+    if (nextButton) nextButton.disabled = navigationDisabled;
+}
+
+function scrollPromptInspectorSearchResultIntoView(article, content, resultIndex, smooth = true) {
+    if (!article || !content) return;
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    const behavior = smooth && !reducedMotion ? 'smooth' : 'auto';
+    window.requestAnimationFrame(() => {
+        article.scrollIntoView({ block: 'center', inline: 'nearest', behavior });
+        window.requestAnimationFrame(() => {
+            const mark = content.querySelector(`[data-bakemono-prompt-search-result="${resultIndex}"]`);
+            if (!mark) return;
+            const contentRect = content.getBoundingClientRect();
+            const markRect = mark.getBoundingClientRect();
+            const centeredTop = content.scrollTop + markRect.top - contentRect.top - ((content.clientHeight - markRect.height) / 2);
+            content.scrollTo({ top: Math.max(0, centeredTop), behavior });
+        });
+    });
+}
+
+function openPromptInspectorSearchResult(resultIndex, { smooth = true } = {}) {
+    const list = document.getElementById('bakemono-memory-prompt-inspector-list');
+    if (!list || !promptInspectorSearchResults.length) return;
+    const total = promptInspectorSearchResults.length;
+    promptInspectorSearchResultIndex = ((Number(resultIndex) % total) + total) % total;
+    const result = promptInspectorSearchResults[promptInspectorSearchResultIndex];
+    const item = promptInspectorEntries.get(result.entryKey);
+    const article = list.querySelector(`.bakemono-memory-prompt-inspector-item[data-prompt-entry-key="${result.entryKey}"]`);
+    if (!item || !article) return;
+
+    list.querySelectorAll('.bakemono-memory-prompt-inspector-item').forEach(row => closePromptInspectorItem(row));
+    const trigger = article.querySelector('.bakemono-memory-prompt-inspector-item-toggle');
+    const body = article.querySelector('.bakemono-memory-prompt-inspector-item-body');
+    const content = body?.querySelector('pre');
+    article.hidden = false;
+    article.classList.add('is-open');
+    trigger?.setAttribute('aria-expanded', 'true');
+    if (body) body.hidden = false;
+    promptInspectorOpenEntryKey = result.entryKey;
+    renderPromptInspectorHighlightedContent(content, item.getContent(), promptInspectorSearchQuery, promptInspectorSearchResultIndex);
+    updatePromptInspectorSearchNavigation();
+    scrollPromptInspectorSearchResultIntoView(article, content, promptInspectorSearchResultIndex, smooth);
+}
+
+function navigatePromptInspectorSearch(step) {
+    if (!promptInspectorSearchResults.length) return;
+    openPromptInspectorSearchResult(promptInspectorSearchResultIndex + Number(step || 0));
+}
+
+function applyPromptInspectorSearch(value = document.getElementById('bakemono-memory-prompt-inspector-query')?.value, { focusFirst = true } = {}) {
     const list = document.getElementById('bakemono-memory-prompt-inspector-list');
     const searchEmpty = document.getElementById('bakemono-memory-prompt-inspector-search-empty');
-    const clearButton = document.getElementById('bakemono-memory-prompt-inspector-clear');
     if (!list) return;
-    const query = String(promptInspectorSearchQuery || '').trim();
-    const normalizedQuery = query.toLocaleLowerCase();
+    const query = String(value || '').trim();
+    promptInspectorSearchQuery = query;
+    collectPromptInspectorSearchResults(query);
+    document.getElementById('bakemono-memory-prompt-inspector-search-form')?.classList.remove('has-pending-query');
+
+    const matchingEntryKeys = new Set(promptInspectorSearchResults.map(result => result.entryKey));
     let visibleCount = 0;
     list.querySelectorAll('.bakemono-memory-prompt-inspector-item').forEach(row => {
         const item = promptInspectorEntries.get(String(row.dataset.promptEntryKey || ''));
-        const matches = !normalizedQuery || !!item && `${item.label}\n${item.description}\n${item.getContent()}`.toLocaleLowerCase().includes(normalizedQuery);
+        const matches = !query || !!item && matchingEntryKeys.has(item.key);
         row.hidden = !matches;
         if (matches) {
             visibleCount += 1;
-            if (row.classList.contains('is-open')) {
-                renderPromptInspectorHighlightedContent(row.querySelector('pre'), item.getContent(), query);
-            }
+            if (!query && row.classList.contains('is-open')) renderPromptInspectorHighlightedContent(row.querySelector('pre'), item.getContent(), '');
         } else if (row.classList.contains('is-open')) {
             closePromptInspectorItem(row);
             promptInspectorOpenEntryKey = '';
         }
     });
-    if (clearButton) clearButton.hidden = !query;
     if (searchEmpty) searchEmpty.hidden = !query || visibleCount > 0;
     $('#bakemono-memory-prompt-inspector-count').text(query
-        ? `${visibleCount.toLocaleString()} / ${promptInspectorEntries.size.toLocaleString()} 个条目`
+        ? `${promptInspectorSearchResults.length.toLocaleString()}${promptInspectorSearchTruncated ? '+' : ''} 处 · ${visibleCount.toLocaleString()} 个条目`
         : `${promptInspectorEntries.size.toLocaleString()} 个条目`);
+    updatePromptInspectorSearchNavigation();
+    if (promptInspectorSearchResults.length) {
+        openPromptInspectorSearchResult(0, { smooth: focusFirst });
+    } else if (!query && promptInspectorOpenEntryKey) {
+        const openItem = promptInspectorEntries.get(promptInspectorOpenEntryKey);
+        const openRow = list.querySelector(`.bakemono-memory-prompt-inspector-item[data-prompt-entry-key="${promptInspectorOpenEntryKey}"]`);
+        if (openItem && openRow) renderPromptInspectorHighlightedContent(openRow.querySelector('pre'), openItem.getContent(), '');
+    }
 }
 
-function schedulePromptInspectorSearch(value) {
-    promptInspectorSearchQuery = String(value || '');
-    const clearButton = document.getElementById('bakemono-memory-prompt-inspector-clear');
-    if (clearButton) clearButton.hidden = !promptInspectorSearchQuery.trim();
-    if (promptInspectorSearchTimer !== null) {
-        window.clearTimeout(promptInspectorSearchTimer);
-    }
-    promptInspectorSearchTimer = window.setTimeout(() => {
-        promptInspectorSearchTimer = null;
-        applyPromptInspectorSearch();
-    }, 160);
+function clearPromptInspectorSearch() {
+    const input = document.getElementById('bakemono-memory-prompt-inspector-query');
+    if (input) input.value = '';
+    applyPromptInspectorSearch('', { focusFirst: false });
+    input?.focus();
 }
 
 async function renderPromptInspector() {
@@ -8437,6 +8572,7 @@ async function renderPromptInspector() {
     list.replaceChildren();
     promptInspectorEntries.clear();
     promptInspectorOpenEntryKey = '';
+    resetPromptInspectorSearchResults();
     setPromptInspectorEmptyState(false);
     document.getElementById('bakemono-memory-prompt-inspector-search-empty')?.setAttribute('hidden', '');
     const searchInput = document.getElementById('bakemono-memory-prompt-inspector-query');
@@ -8488,7 +8624,7 @@ async function renderPromptInspector() {
     list.append(fragment);
     setPromptInspectorEmptyState(!entries.length);
     setPromptInspectorSearchEnabled(!!entries.length);
-    applyPromptInspectorSearch();
+    applyPromptInspectorSearch(promptInspectorSearchQuery, { focusFirst: false });
 }
 
 function togglePromptInspectorEntry(entryKey, trigger) {
@@ -8507,7 +8643,13 @@ function togglePromptInspectorEntry(entryKey, trigger) {
     article.classList.add('is-open');
     trigger.setAttribute('aria-expanded', 'true');
     if (body) body.hidden = false;
-    renderPromptInspectorHighlightedContent(content, item.getContent());
+    const entryResults = promptInspectorSearchResultsByEntry.get(entryKey) || [];
+    if (promptInspectorSearchQuery && entryResults.length) {
+        const currentBelongsToEntry = entryResults.some(match => match.resultIndex === promptInspectorSearchResultIndex);
+        if (!currentBelongsToEntry) promptInspectorSearchResultIndex = entryResults[0].resultIndex;
+        updatePromptInspectorSearchNavigation();
+    }
+    renderPromptInspectorHighlightedContent(content, item.getContent(), promptInspectorSearchQuery, promptInspectorSearchResultIndex);
 }
 
 function doesLastPromptMatchCurrentInjection(promptText, state = ensureState()) {
@@ -12942,22 +13084,19 @@ function bindSettingsEvents() {
     $('#bakemono-workbench-root').off('click.bakemonoPromptInspector').on('click.bakemonoPromptInspector', '[data-bakemono-prompt-entry]', function () {
         togglePromptInspectorEntry(String(this.dataset.bakemonoPromptEntry || ''), this);
     });
+    $('#bakemono-memory-prompt-inspector-search-form').off('submit.bakemonoPromptSearch').on('submit.bakemonoPromptSearch', function (event) {
+        event.preventDefault();
+        applyPromptInspectorSearch(document.getElementById('bakemono-memory-prompt-inspector-query')?.value);
+    });
     $('#bakemono-memory-prompt-inspector-query').off('input.bakemonoPromptSearch search.bakemonoPromptSearch').on('input.bakemonoPromptSearch search.bakemonoPromptSearch', function () {
-        schedulePromptInspectorSearch(this.value);
+        document.getElementById('bakemono-memory-prompt-inspector-search-form')?.classList.toggle(
+            'has-pending-query',
+            String(this.value || '').trim() !== promptInspectorSearchQuery,
+        );
     });
-    $('#bakemono-memory-prompt-inspector-clear').off('click.bakemonoPromptSearch').on('click.bakemonoPromptSearch', () => {
-        const input = document.getElementById('bakemono-memory-prompt-inspector-query');
-        if (promptInspectorSearchTimer !== null) {
-            window.clearTimeout(promptInspectorSearchTimer);
-            promptInspectorSearchTimer = null;
-        }
-        promptInspectorSearchQuery = '';
-        if (input) {
-            input.value = '';
-            input.focus();
-        }
-        applyPromptInspectorSearch();
-    });
+    $('#bakemono-memory-prompt-inspector-search-previous').off('click.bakemonoPromptSearch').on('click.bakemonoPromptSearch', () => navigatePromptInspectorSearch(-1));
+    $('#bakemono-memory-prompt-inspector-search-next').off('click.bakemonoPromptSearch').on('click.bakemonoPromptSearch', () => navigatePromptInspectorSearch(1));
+    $('#bakemono-memory-prompt-inspector-clear').off('click.bakemonoPromptSearch').on('click.bakemonoPromptSearch', clearPromptInspectorSearch);
     $('#bakemono-workbench-root').off('click.bakemonoPromptCopy').on('click.bakemonoPromptCopy', '[data-bakemono-prompt-copy]', async function () {
         const item = promptInspectorEntries.get(String(this.dataset.bakemonoPromptCopy || ''));
         if (!item) return;
