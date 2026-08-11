@@ -41,6 +41,9 @@ import { createVectorWorkbenchUi } from './src/features/vector-workbench-ui.js';
 import { createVectorActionsController } from './src/features/vector-actions-controller.js';
 import { createThemeSchema } from './src/theme/theme-schema.js';
 import { createThemeController } from './src/features/theme-controller.js';
+import { createPresetRegistry } from './src/features/preset-registry.js';
+import { createGlobalSettingsService } from './src/core/global-settings-service.js';
+import { createChatStateService } from './src/core/chat-state-service.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
 import { createOperationFeedback } from './src/ui/operation-feedback.js';
 import { installWorkbenchParentNavigation, organizeWorkbenchOwnedSections } from './src/ui/workbench-layout.js';
@@ -884,8 +887,6 @@ let scheduledRenderHandle = null;
 let scheduledRenderStatus = '';
 let overviewTokenRenderRevision = 0;
 const overviewTokenCache = new Map();
-const sanitizedChatLengths = new WeakMap();
-const maxStoredScanPreviewItems = 240;
 const mobileScanPreviewRenderLimit = 60;
 const desktopScanPreviewRenderLimit = 120;
 const previewPageSize = 8;
@@ -923,499 +924,6 @@ const tableUiState = {
     openSection: '',
     focusField: null,
 };
-function cloneDefaultState() {
-    return structuredClone(defaultState);
-}
-
-function ensureGlobalSettings() {
-    if (!extension_settings[STORAGE_KEY]) {
-        extension_settings[STORAGE_KEY] = {};
-    }
-    const settings = extension_settings[STORAGE_KEY];
-    if (!settings.ui || typeof settings.ui !== 'object') {
-        settings.ui = {};
-    }
-    if (settings.ui.showTopNavButton === undefined) {
-        settings.ui.showTopNavButton = false;
-    }
-    if (!['tavern', 'custom'].includes(settings.ui.themeMode)) {
-        settings.ui.themeMode = 'tavern';
-    }
-    const storedCustomTheme = settings.ui.customTheme && typeof settings.ui.customTheme === 'object'
-        ? structuredClone(settings.ui.customTheme)
-        : null;
-    settings.ui.customTheme = sanitizeCustomTheme(settings.ui.customTheme);
-    settings.ui.themePresets = Array.isArray(settings.ui.themePresets)
-        ? settings.ui.themePresets.map(normalizeCustomThemePreset)
-        : storedCustomTheme
-            ? [normalizeCustomThemePreset({ ...storedCustomTheme, id: storedCustomTheme.id || 'bakemono-legacy-custom-theme' })]
-            : [];
-    for (const builtInTheme of [...builtInCustomThemeDefinitions].reverse()) {
-        if (!settings.ui.themePresets.some(preset => preset.id === builtInTheme.id)) {
-            settings.ui.themePresets.unshift(normalizeCustomThemePreset(builtInTheme));
-        }
-    }
-    if (!settings.ui.selectedThemePresetId || !settings.ui.themePresets.some(preset => preset.id === settings.ui.selectedThemePresetId)) {
-        settings.ui.selectedThemePresetId = 'bakemono-warm-paper-day';
-    }
-    if (!Array.isArray(extension_settings[STORAGE_KEY].promptPresets)) {
-        extension_settings[STORAGE_KEY].promptPresets = [structuredClone(defaultPromptPreset), structuredClone(defaultGenericPromptPreset)];
-    }
-    if (!extension_settings[STORAGE_KEY].promptPresets.some(preset => preset.id === defaultPromptPreset.id)) {
-        extension_settings[STORAGE_KEY].promptPresets.unshift(structuredClone(defaultPromptPreset));
-    }
-    if (!extension_settings[STORAGE_KEY].promptPresets.some(preset => preset.id === defaultGenericPromptPreset.id)) {
-        extension_settings[STORAGE_KEY].promptPresets.push(structuredClone(defaultGenericPromptPreset));
-    }
-    for (const preset of extension_settings[STORAGE_KEY].promptPresets) {
-        migrateBuiltInInjectionDefaults(preset.injection, legacyInjectionTemplate, defaultInjectionTemplate);
-        if (preset.story === undefined) {
-            preset.story = defaultStoryGenerationPrompt;
-        }
-        if (preset.missing === undefined) {
-            preset.missing = defaultMissingSummaryPrompt;
-        }
-        migratePromptPresetTimelines(preset, {
-            stage: defaultStageGenerationPrompt,
-            epic: defaultEpicGenerationPrompt,
-        }, {
-            migrateStagePromptTimeSpan,
-            migrateEpicPromptTimeSpan,
-        });
-        if (preset.id === defaultGenericPromptPreset.id) {
-            preset.story = defaultGenericStoryGenerationPrompt;
-            preset.missing = defaultMissingSummaryPrompt;
-            preset.stage = defaultGenericStageGenerationPrompt;
-            preset.epic = defaultGenericEpicGenerationPrompt;
-            preset.scanRules = structuredClone(defaultGenericPromptPreset.scanRules);
-            preset.classificationRules = structuredClone(defaultGenericPromptPreset.classificationRules);
-            preset.previewLayouts = structuredClone(defaultGenericPromptPreset.previewLayouts);
-            preset.automation = structuredClone(defaultGenericPromptPreset.automation);
-            preset.outputMode = defaultGenericPromptPreset.outputMode;
-            preset.memoryStrategy = defaultGenericPromptPreset.memoryStrategy;
-            preset.workflowMode = defaultGenericPromptPreset.workflowMode;
-            preset.stageSourceMode = defaultGenericPromptPreset.stageSourceMode;
-        }
-        if (preset.id === defaultPromptPreset.id) {
-            preset.story = defaultStoryGenerationPrompt;
-            preset.missing = defaultMissingSummaryPrompt;
-            preset.stage = defaultStageGenerationPrompt;
-            preset.epic = defaultEpicGenerationPrompt;
-            preset.memoryStrategy = defaultPromptPreset.memoryStrategy;
-            preset.scanRules = structuredClone(defaultPromptPreset.scanRules);
-            preset.outputMode = defaultPromptPreset.outputMode;
-            preset.workflowMode = defaultPromptPreset.workflowMode;
-            preset.stageSourceMode = defaultPromptPreset.stageSourceMode;
-        }
-    }
-    if (!extension_settings[STORAGE_KEY].selectedPromptPresetId) {
-        extension_settings[STORAGE_KEY].selectedPromptPresetId = defaultPromptPreset.id;
-    }
-    if (!settings.activeConfig || typeof settings.activeConfig !== 'object') {
-        const selectedPreset = extension_settings[STORAGE_KEY].promptPresets.find(preset => preset.id === extension_settings[STORAGE_KEY].selectedPromptPresetId)
-            || structuredClone(defaultPromptPreset);
-        settings.activeConfig = {
-            ...structuredClone(selectedPreset),
-            id: selectedPreset.id || defaultPromptPreset.id,
-            name: selectedPreset.name || '默认摘要手账',
-            updatedAt: new Date().toISOString(),
-        };
-    }
-    if (settings.activeConfig.vectorMemory) {
-        settings.activeConfig.vectorMemory = createSharedVectorConfig(settings.activeConfig.vectorMemory);
-    }
-    if (settings.activeConfig.inlineGeneration) {
-        settings.activeConfig.inlineGeneration = createSharedInlineGenerationConfig(settings.activeConfig.inlineGeneration);
-    }
-    migrateBuiltInInjectionDefaults(settings.activeConfig.injection, legacyInjectionTemplate, defaultInjectionTemplate);
-    if (!extension_settings[STORAGE_KEY].areaPresets || typeof extension_settings[STORAGE_KEY].areaPresets !== 'object') {
-        extension_settings[STORAGE_KEY].areaPresets = {};
-    }
-    for (const scope of Object.values(areaPresetScopes)) {
-        if (!Array.isArray(extension_settings[STORAGE_KEY].areaPresets[scope])) {
-            extension_settings[STORAGE_KEY].areaPresets[scope] = [];
-        }
-    }
-    for (const preset of extension_settings[STORAGE_KEY].areaPresets[areaPresetScopes.INJECTION]) {
-        migrateBuiltInInjectionDefaults(preset.injection, legacyInjectionTemplate, defaultInjectionTemplate);
-    }
-    if (!extension_settings[STORAGE_KEY].selectedAreaPresetIds || typeof extension_settings[STORAGE_KEY].selectedAreaPresetIds !== 'object') {
-        extension_settings[STORAGE_KEY].selectedAreaPresetIds = {};
-    }
-    if (!Object.values(tableSchemaScopes).includes(settings.defaultTableSchemaScope)) {
-        settings.defaultTableSchemaScope = tableSchemaScopes.CHAT;
-    }
-    if (!settings.tableSchemaLibrary || typeof settings.tableSchemaLibrary !== 'object') {
-        settings.tableSchemaLibrary = { global: [], characters: {} };
-    }
-    if (!Array.isArray(settings.tableSchemaLibrary.global)) {
-        settings.tableSchemaLibrary.global = [];
-    }
-    if (!settings.tableSchemaLibrary.characters || typeof settings.tableSchemaLibrary.characters !== 'object') {
-        settings.tableSchemaLibrary.characters = {};
-    }
-    if (!settings.tableProfileLibrary || typeof settings.tableProfileLibrary !== 'object') {
-        settings.tableProfileLibrary = { global: [], characters: {}, selectedGlobalProfileId: '', selectedCharacterProfileIds: {} };
-    }
-    if (!Array.isArray(settings.tableProfileLibrary.global)) {
-        settings.tableProfileLibrary.global = [];
-    }
-    if (!settings.tableProfileLibrary.characters || typeof settings.tableProfileLibrary.characters !== 'object') {
-        settings.tableProfileLibrary.characters = {};
-    }
-    if (!settings.tableProfileLibrary.selectedCharacterProfileIds || typeof settings.tableProfileLibrary.selectedCharacterProfileIds !== 'object') {
-        settings.tableProfileLibrary.selectedCharacterProfileIds = {};
-    }
-    if (!settings.tableProfileLibrary.global.length && settings.tableSchemaLibrary.global.length) {
-        settings.tableProfileLibrary.global.push(createTableProfile('全局默认表格', settings.tableSchemaLibrary.global));
-    }
-    for (const [characterKey, schemas] of Object.entries(settings.tableSchemaLibrary.characters || {})) {
-        if (Array.isArray(schemas) && schemas.length && !Array.isArray(settings.tableProfileLibrary.characters[characterKey])) {
-            settings.tableProfileLibrary.characters[characterKey] = [createTableProfile('角色默认表格', schemas)];
-        }
-    }
-    if (!Array.isArray(settings.tablePromptPresets)) {
-        settings.tablePromptPresets = [{
-            id: 'default-table-prompt',
-            name: '默认表格修改提示词',
-            prompt: defaultTableEditPrompt,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-        }];
-    }
-    if (!settings.selectedTablePromptPresetId) {
-        settings.selectedTablePromptPresetId = settings.tablePromptPresets[0]?.id || '';
-    }
-    if (!Array.isArray(settings.inlinePromptPresets)) {
-        settings.inlinePromptPresets = [
-            {
-                id: 'default-inline-summary',
-                type: 'summary',
-                name: '默认随正文摘要',
-                prompt: defaultInlineSummaryPrompt,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-            },
-            {
-                id: 'default-inline-table',
-                type: 'table',
-                name: '默认随正文填表',
-                prompt: defaultInlineTablePrompt,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-            },
-        ];
-    }
-    const defaultInlineSummaryPreset = settings.inlinePromptPresets.find(preset => preset.id === 'default-inline-summary');
-    if (defaultInlineSummaryPreset && defaultInlineSummaryPreset.prompt !== defaultInlineSummaryPrompt) {
-        defaultInlineSummaryPreset.prompt = defaultInlineSummaryPrompt;
-        defaultInlineSummaryPreset.updatedAt = new Date().toISOString();
-    }
-    if (!settings.selectedInlinePromptPresetIds || typeof settings.selectedInlinePromptPresetIds !== 'object') {
-        settings.selectedInlinePromptPresetIds = {};
-    }
-    if (!settings.selectedInlinePromptPresetIds.summary) {
-        settings.selectedInlinePromptPresetIds.summary = settings.inlinePromptPresets.find(preset => preset.type === 'summary')?.id || '';
-    }
-    if (!settings.selectedInlinePromptPresetIds.table) {
-        settings.selectedInlinePromptPresetIds.table = settings.inlinePromptPresets.find(preset => preset.type === 'table')?.id || '';
-    }
-}
-
-function sanitizeChatStateWhenStructureChanges(state) {
-    const context = getContext();
-    const sourceChat = context.chat || chat || [];
-    const chatLength = Array.isArray(sourceChat) ? sourceChat.length : 0;
-    const previousLength = sanitizedChatLengths.get(state);
-    if (previousLength === chatLength) {
-        return;
-    }
-    if (previousLength === undefined || chatLength < previousLength) {
-        sanitizeCurrentChatState(state);
-    }
-    sanitizedChatLengths.set(state, chatLength);
-}
-
-function ensureState() {
-    const isNewChatState = !chat_metadata[STORAGE_KEY];
-    if (!chat_metadata[STORAGE_KEY]) {
-        chat_metadata[STORAGE_KEY] = cloneDefaultState();
-    }
-
-    const state = chat_metadata[STORAGE_KEY];
-    if (isNewChatState) {
-        applyGlobalActiveConfigToState(state);
-    } else if (state.configInitialized === undefined) {
-        state.configInitialized = true;
-    }
-    fillMissingDefaults(state, defaultState);
-    fillMissingDefaults(state.injection, defaultState.injection);
-    migrateBuiltInInjectionDefaults(state.injection, legacyInjectionTemplate, defaultInjectionTemplate);
-    if (!state.generationPrompts) {
-        state.generationPrompts = structuredClone(defaultState.generationPrompts);
-    }
-    fillMissingDefaults(state.generationPrompts, defaultState.generationPrompts);
-    migrateGenerationPrompts(state.generationPrompts, {
-        story: defaultStoryGenerationPrompt,
-        genericStory: defaultGenericStoryGenerationPrompt,
-        missing: defaultMissingSummaryPrompt,
-        stage: defaultStageGenerationPrompt,
-        genericStage: defaultGenericStageGenerationPrompt,
-        epic: defaultEpicGenerationPrompt,
-        genericEpic: defaultGenericEpicGenerationPrompt,
-    }, {
-        migrateBuiltInStructuredPrompt,
-        migrateStagePromptTimeSpan,
-        migrateEpicPromptTimeSpan,
-    });
-    for (const key of ['scanRules', 'classificationRules', 'previewLayouts']) {
-        if (!state[key]) {
-            state[key] = structuredClone(defaultState[key]);
-        }
-        fillMissingDefaults(state[key], defaultState[key]);
-    }
-
-    normalizeArrayFields(state, ['blocks', 'storySummaries', 'stageSummaries', 'epicSummaries']);
-    state.storySummaries.forEach(summary => { summary.level = getSummaryLevel({ ...summary, type: blockTypes.STORY }); });
-    state.stageSummaries.forEach(summary => { summary.level = getSummaryLevel({ ...summary, type: blockTypes.STAGE }); });
-    state.epicSummaries.forEach(summary => { summary.level = getSummaryLevel({ ...summary, type: blockTypes.EPIC }); });
-    sortSummariesBySource(state.storySummaries);
-    sortSummariesBySource(state.stageSummaries);
-    sortSummariesBySource(state.epicSummaries);
-    normalizeArrayFields(state, ['drafts', 'history', 'taskQueue', 'autoSummaryTransactions', 'memoryRecords']);
-    state.scanPreview = (Array.isArray(state.scanPreview) ? state.scanPreview : []).slice(-maxStoredScanPreviewItems);
-    const rawGeneratedMemory = String(state.generatedMemory || state.injection?.content || '');
-    state.generatedMemory = normalizeInjectionMemoryBody(rawGeneratedMemory, state.injection?.template, defaultInjectionTemplate);
-    if (rawGeneratedMemory.trim() && rawGeneratedMemory.trim() !== state.generatedMemory) {
-        state.injection.content = renderInjectionContent(state);
-        saveState();
-    }
-    normalizeArrayFields(state, ['coveredBlockHashes', 'coveredStageHashes', 'hiddenMessageIds', 'customHiddenMessageIds']);
-    ensureObjectField(state, 'autoHideRecent', defaultState.autoHideRecent);
-    fillMissingDefaults(state.autoHideRecent, defaultState.autoHideRecent);
-    state.autoHideRecent.preserveRecent = Math.max(0, Number(state.autoHideRecent.preserveRecent ?? defaultState.autoHideRecent.preserveRecent));
-    state.autoHideRecent.managedMessageIds = getFiniteMessageIds(state.autoHideRecent.managedMessageIds || []);
-    normalizeWorkflowState(state);
-    ensureObjectField(state, 'automation', defaultAutomation);
-    fillMissingDefaults(state.automation, defaultAutomation);
-    ensureObjectField(state.automation, 'customApi', defaultAutomation.customApi);
-    fillMissingDefaults(state.automation.customApi, defaultAutomation.customApi);
-    ensureObjectField(state, 'generationTargets', defaultGenerationTargets);
-    for (const [kind, defaults] of Object.entries(defaultGenerationTargets)) {
-        ensureObjectField(state.generationTargets, kind, defaults);
-        fillMissingDefaults(state.generationTargets[kind], defaults);
-    }
-    ensureObjectField(state, 'turnSummary', defaultState.turnSummary);
-    fillMissingDefaults(state.turnSummary, defaultState.turnSummary);
-    migrateTurnSummaryPrompt(state.turnSummary, defaultTurnSummaryPrompt, migrateBuiltInStructuredPrompt);
-    ensureObjectField(state, 'tableDatabase', defaultState.tableDatabase);
-    fillMissingDefaults(state.tableDatabase, defaultState.tableDatabase);
-    if (!Object.values(tableSchemaScopes).includes(state.tableDatabase.schemaScope)) {
-        ensureGlobalSettings();
-        state.tableDatabase.schemaScope = extension_settings[STORAGE_KEY].defaultTableSchemaScope || tableSchemaScopes.CHAT;
-    }
-    normalizeArrayFields(state.tableDatabase, ['tables', 'editDrafts', 'history', 'undoStack', 'redoStack', 'rollbackHistory']);
-    state.tableDatabase.lastAppliedSourceMessageIds = getFiniteMessageIds(state.tableDatabase.lastAppliedSourceMessageIds || []);
-    normalizeArrayFields(state.tableDatabase, ['chatProfiles']);
-    ensureObjectField(state.tableDatabase, 'profileRows', {});
-    ensureTableProfileForScope(state.tableDatabase.schemaScope, state);
-    mergeScopedTableSchemasIntoState(state);
-    ensureObjectField(state, 'inlineGeneration', defaultState.inlineGeneration);
-    fillMissingDefaults(state.inlineGeneration, defaultState.inlineGeneration);
-    migrateInlineSummaryPrompt(state.inlineGeneration, defaultInlineSummaryPrompt, migrateBuiltInStructuredPrompt);
-    if (state.inlineGeneration.hideTableEditMigratedToRegex !== true) {
-        state.inlineGeneration.hideTableEdit = false;
-        state.inlineGeneration.hideTableEditMigratedToRegex = true;
-    }
-    ensureObjectField(state, 'vectorMemory', defaultVectorMemory);
-    fillMissingDefaults(state.vectorMemory, defaultVectorMemory);
-    migrateVectorQueryRewritePrompt(state.vectorMemory, defaultVectorMemory.queryRewritePrompt);
-    ensureObjectField(state.vectorMemory, 'customApi', defaultVectorMemory.customApi);
-    fillMissingDefaults(state.vectorMemory.customApi, defaultVectorMemory.customApi);
-    ensureObjectField(state.vectorMemory, 'queryCustomApi', defaultVectorMemory.queryCustomApi);
-    fillMissingDefaults(state.vectorMemory.queryCustomApi, defaultVectorMemory.queryCustomApi);
-    normalizeArrayFields(state.vectorMemory, ['records', 'lastHits', 'lastEmbeddingCandidates', 'lastRerankCandidates']);
-    ensureObjectField(state.vectorMemory, 'embeddingCache', {});
-    ensureObjectField(state, 'chatGuard', defaultState.chatGuard);
-    sanitizeChatStateWhenStructureChanges(state);
-    return state;
-}
-
-function getCurrentChatMessageMap() {
-    const context = getContext();
-    const sourceChat = context.chat || chat || [];
-    if (!Array.isArray(sourceChat) || !sourceChat.length) {
-        return null;
-    }
-    const ids = new Set();
-    sourceChat.forEach((message, messageId) => {
-        if (message) {
-            ids.add(Number(messageId));
-        }
-    });
-    return {
-        ids,
-        sourceChat,
-        maxId: sourceChat.length - 1,
-    };
-}
-
-function isCurrentMessageId(messageId, messageMap) {
-    const id = Number(messageId);
-    if (!Number.isFinite(id)) {
-        return true;
-    }
-    if (id >= Number.MAX_SAFE_INTEGER) {
-        return true;
-    }
-    return messageMap.ids.has(id);
-}
-
-function hasCurrentSourceMessages(item, messageMap) {
-    const ids = getFiniteMessageIds(item?.sourceMessageIds || []);
-    if (ids.length) {
-        return ids.every(id => isCurrentMessageId(id, messageMap));
-    }
-    if (item?.messageId !== undefined && item.messageId !== null) {
-        return isCurrentMessageId(item.messageId, messageMap);
-    }
-    return true;
-}
-
-function hasExplicitCurrentSourceMessages(item, messageMap) {
-    const ids = getFiniteMessageIds(item?.sourceMessageIds || []);
-    return ids.length > 0 && ids.every(id => isCurrentMessageId(id, messageMap));
-}
-
-function isAllowedVectorMessage(messageId, role, state, messageMap) {
-    if (!isCurrentMessageId(messageId, messageMap)) {
-        return false;
-    }
-    if (state.vectorMemory?.includeUser === true) {
-        return true;
-    }
-    const id = Number(messageId);
-    const message = Number.isFinite(id) ? messageMap.sourceChat?.[id] : null;
-    if (message?.is_user) {
-        return false;
-    }
-    return String(role || '').toLowerCase() !== 'user';
-}
-
-function filterByHashList(values = [], validHashes = new Set()) {
-    return unique((Array.isArray(values) ? values : []).filter(hash => validHashes.has(hash)));
-}
-
-function sanitizeCurrentChatState(state) {
-    const messageMap = getCurrentChatMessageMap();
-    if (!messageMap) {
-        return false;
-    }
-
-    let prunedCount = 0;
-    const countPruned = (before, after) => {
-        prunedCount += Math.max(0, before - after);
-    };
-    const filterArray = (items, predicate) => {
-        const source = Array.isArray(items) ? items : [];
-        const filtered = source.filter(predicate);
-        countPruned(source.length, filtered.length);
-        return filtered;
-    };
-
-    state.blocks = filterArray(state.blocks, block => hasCurrentSourceMessages(block, messageMap));
-    state.scanPreview = filterArray(state.scanPreview, item => hasCurrentSourceMessages(item, messageMap));
-    state.storySummaries = filterArray(state.storySummaries, summary => hasCurrentSourceMessages(summary, messageMap));
-    const validStoryHashes = new Set([
-        ...state.blocks.map(block => block.hash).filter(Boolean),
-        ...state.storySummaries.map(summary => summary.hash).filter(Boolean),
-    ]);
-
-    state.stageSummaries = filterArray(state.stageSummaries, summary => {
-        if (!hasCurrentSourceMessages(summary, messageMap)) {
-            return false;
-        }
-        if (hasExplicitCurrentSourceMessages(summary, messageMap)) {
-            return true;
-        }
-        const sourceHashes = Array.isArray(summary.sourceHashes) ? summary.sourceHashes.filter(Boolean) : [];
-        return !sourceHashes.length || sourceHashes.every(hash => validStoryHashes.has(hash));
-    });
-    const validStageHashes = new Set(state.stageSummaries.map(summary => summary.hash).filter(Boolean));
-
-    state.epicSummaries = filterArray(state.epicSummaries, summary => {
-        if (!hasCurrentSourceMessages(summary, messageMap)) {
-            return false;
-        }
-        if (hasExplicitCurrentSourceMessages(summary, messageMap)) {
-            return true;
-        }
-        const sourceStageHashes = Array.isArray(summary.sourceStageHashes) ? summary.sourceStageHashes.filter(Boolean) : [];
-        const sourceHashes = Array.isArray(summary.sourceHashes) ? summary.sourceHashes.filter(Boolean) : [];
-        const stageOk = !sourceStageHashes.length || sourceStageHashes.every(hash => validStageHashes.has(hash));
-        const storyOk = !sourceHashes.length || sourceHashes.every(hash => validStoryHashes.has(hash) || validStageHashes.has(hash));
-        return stageOk && storyOk;
-    });
-    const validEpicHashes = new Set(state.epicSummaries.map(summary => summary.hash).filter(Boolean));
-
-    const previousCoveredBlockCount = state.coveredBlockHashes.length;
-    state.coveredBlockHashes = filterByHashList(state.coveredBlockHashes, validStoryHashes);
-    countPruned(previousCoveredBlockCount, state.coveredBlockHashes.length);
-    const previousCoveredStageCount = state.coveredStageHashes.length;
-    state.coveredStageHashes = [...getActiveCoveredStageHashes(state)];
-    countPruned(previousCoveredStageCount, state.coveredStageHashes.length);
-
-    for (const key of ['hiddenMessageIds', 'customHiddenMessageIds']) {
-        const previous = Array.isArray(state[key]) ? state[key] : [];
-        state[key] = unique(previous.filter(id => isCurrentMessageId(id, messageMap)));
-        countPruned(previous.length, state[key].length);
-    }
-    if (state.autoHideRecent && typeof state.autoHideRecent === 'object') {
-        const previous = Array.isArray(state.autoHideRecent.managedMessageIds) ? state.autoHideRecent.managedMessageIds : [];
-        state.autoHideRecent.managedMessageIds = unique(previous.filter(id => isCurrentMessageId(id, messageMap)));
-        countPruned(previous.length, state.autoHideRecent.managedMessageIds.length);
-    }
-    if (Array.isArray(state.autoSummaryTransactions)) {
-        const previous = state.autoSummaryTransactions;
-        state.autoSummaryTransactions = previous
-            .map(transaction => ({
-                ...transaction,
-                sourceMessageIds: unique(getFiniteMessageIds(transaction.sourceMessageIds || [])),
-                hiddenMessageIds: unique(getFiniteMessageIds(transaction.hiddenMessageIds || []).filter(id => isCurrentMessageId(id, messageMap))),
-            }))
-            .filter(transaction => transaction.summaryHash && transaction.status !== 'rolled_back');
-        countPruned(previous.length, state.autoSummaryTransactions.length);
-    }
-
-    if (state.vectorMemory && typeof state.vectorMemory === 'object') {
-        const previousRecordCount = Array.isArray(state.vectorMemory.records) ? state.vectorMemory.records.length : 0;
-        state.vectorMemory.records = filterArray(state.vectorMemory.records, record => isAllowedVectorMessage(record?.messageId, record?.role, state, messageMap));
-        const previousHitCount = Array.isArray(state.vectorMemory.lastHits) ? state.vectorMemory.lastHits.length : 0;
-        state.vectorMemory.lastHits = filterArray(state.vectorMemory.lastHits, hit => isAllowedVectorMessage(hit?.messageId, hit?.role, state, messageMap));
-        if (previousRecordCount !== state.vectorMemory.records.length) {
-            state.vectorMemory.dirty = true;
-            state.vectorMemory.dirtyReason = '当前聊天分支已清理越界索引';
-            state.vectorMemory.lastIndexedSignature = '';
-        }
-    }
-
-    const validMemoryHashes = new Set([...validStoryHashes, ...validStageHashes, ...validEpicHashes]);
-    state.memoryRecords = filterArray(state.memoryRecords, record => !record?.hash || validMemoryHashes.has(record.hash));
-
-    if (prunedCount > 0) {
-        state.chatGuard = {
-            lastPrunedAt: new Date().toISOString(),
-            lastPrunedCount: prunedCount,
-            lastPrunedReason: '当前聊天缺少部分来源楼层，已清理继承的旧记忆引用',
-        };
-        const parts = getInjectionMemoryParts(state);
-        state.generatedMemory = parts.memory;
-        state.injection.content = renderInjectionContent(state);
-        saveState();
-    }
-    return prunedCount > 0;
-}
-
 function escapeHtml(value) {
     const div = document.createElement('div');
     div.textContent = String(value ?? '');
@@ -1441,170 +949,6 @@ function saveState() {
 
 function saveGlobalSettings() {
     persistGlobalSettings(saveSettingsDebounced);
-}
-
-function getPromptPresets() {
-    ensureGlobalSettings();
-    return extension_settings[STORAGE_KEY].promptPresets;
-}
-
-function getSelectedPromptPresetId() {
-    ensureGlobalSettings();
-    return extension_settings[STORAGE_KEY].selectedPromptPresetId || defaultPromptPreset.id;
-}
-
-function setSelectedPromptPresetId(id) {
-    ensureGlobalSettings();
-    extension_settings[STORAGE_KEY].selectedPromptPresetId = id;
-    saveGlobalSettings();
-}
-
-function getAreaPresets(scope) {
-    ensureGlobalSettings();
-    return extension_settings[STORAGE_KEY].areaPresets[scope] || [];
-}
-
-function getSelectedAreaPresetId(scope) {
-    ensureGlobalSettings();
-    return extension_settings[STORAGE_KEY].selectedAreaPresetIds[scope] || '';
-}
-
-function setSelectedAreaPresetId(scope, id) {
-    ensureGlobalSettings();
-    extension_settings[STORAGE_KEY].selectedAreaPresetIds[scope] = id || '';
-    saveGlobalSettings();
-}
-
-function getTablePromptPresets() {
-    ensureGlobalSettings();
-    return extension_settings[STORAGE_KEY].tablePromptPresets || [];
-}
-
-function getSelectedTablePromptPresetId() {
-    ensureGlobalSettings();
-    return extension_settings[STORAGE_KEY].selectedTablePromptPresetId || getTablePromptPresets()[0]?.id || '';
-}
-
-function setSelectedTablePromptPresetId(id) {
-    ensureGlobalSettings();
-    extension_settings[STORAGE_KEY].selectedTablePromptPresetId = id || '';
-    saveGlobalSettings();
-}
-
-function makeTablePromptPreset(name, prompt) {
-    const now = new Date().toISOString();
-    return {
-        id: `table-prompt-${getHash(`${now}|${name || 'table'}`)}`,
-        name: String(name || '未命名表格提示词'),
-        prompt: String(prompt || defaultTableEditPrompt),
-        createdAt: now,
-        updatedAt: now,
-    };
-}
-
-function getInlinePromptPresets(type) {
-    ensureGlobalSettings();
-    return (extension_settings[STORAGE_KEY].inlinePromptPresets || []).filter(preset => preset.type === type);
-}
-
-function getSelectedInlinePromptPresetId(type) {
-    ensureGlobalSettings();
-    const selected = extension_settings[STORAGE_KEY].selectedInlinePromptPresetIds || {};
-    return selected[type] || getInlinePromptPresets(type)[0]?.id || '';
-}
-
-function setSelectedInlinePromptPresetId(type, id) {
-    ensureGlobalSettings();
-    if (!extension_settings[STORAGE_KEY].selectedInlinePromptPresetIds || typeof extension_settings[STORAGE_KEY].selectedInlinePromptPresetIds !== 'object') {
-        extension_settings[STORAGE_KEY].selectedInlinePromptPresetIds = {};
-    }
-    extension_settings[STORAGE_KEY].selectedInlinePromptPresetIds[type] = id || '';
-    saveGlobalSettings();
-}
-
-function makeInlinePromptPreset(type, name, prompt) {
-    const now = new Date().toISOString();
-    return {
-        id: `inline-${type}-${getHash(`${now}|${name || type}`)}`,
-        type,
-        name: String(name || (type === 'summary' ? '未命名随正文摘要' : '未命名随正文填表')),
-        prompt: String(prompt || (type === 'summary' ? defaultInlineSummaryPrompt : defaultInlineTablePrompt)),
-        createdAt: now,
-        updatedAt: now,
-    };
-}
-
-function isBuiltInPresetId(id) {
-    return id === defaultPromptPreset.id || id === defaultGenericPromptPreset.id;
-}
-
-function makePresetId(name) {
-    return `preset-${getHash(`${Date.now()}|${name || 'prompt'}`)}`;
-}
-
-function getActiveGlobalConfig() {
-    ensureGlobalSettings();
-    return readActiveConfig(extension_settings[STORAGE_KEY]);
-}
-
-function setActiveGlobalConfig(preset) {
-    ensureGlobalSettings();
-    const settings = extension_settings[STORAGE_KEY];
-    const presets = settings.promptPresets || [];
-    const normalizedPreset = structuredClone(preset);
-    if (normalizedPreset.vectorMemory) {
-        normalizedPreset.vectorMemory = createSharedVectorConfig(normalizedPreset.vectorMemory);
-    }
-    if (normalizedPreset.inlineGeneration) {
-        normalizedPreset.inlineGeneration = createSharedInlineGenerationConfig(normalizedPreset.inlineGeneration);
-    }
-    const config = {
-        ...normalizedPreset,
-        id: preset.id || makePresetId(preset.name || 'active'),
-        name: preset.name || '未命名全局配置',
-        updatedAt: new Date().toISOString(),
-    };
-    settings.activeConfig = config;
-    settings.sharedConfigVersion = sharedConfigVersion;
-    if (config.id && presets.some(item => item.id === config.id)) {
-        settings.selectedPromptPresetId = config.id;
-    }
-    saveGlobalSettings();
-    return config;
-}
-
-function applyGlobalActiveConfigToState(state) {
-    const config = getActiveGlobalConfig();
-    if (!config) {
-        markActiveConfigApplied(state, null);
-        return;
-    }
-    applyPromptPresetToState(config, {
-        state,
-        silent: true,
-        skipScan: true,
-        skipInjection: true,
-        skipVectorSchedule: true,
-        skipRender: true,
-        skipSave: true,
-    });
-    markActiveConfigApplied(state, config);
-}
-
-function syncGlobalActiveConfigToState(state, options = {}) {
-    const config = getActiveGlobalConfig();
-    if (!shouldSyncActiveConfig(state, config, options)) {
-        return false;
-    }
-    applyGlobalActiveConfigToState(state);
-    if (!options.skipSave) {
-        saveState();
-    }
-    return true;
-}
-
-function makeAreaPresetId(scope, name) {
-    return `${scope}-${getHash(`${Date.now()}|${scope}|${name || 'preset'}`)}`;
 }
 
 function extractConfiguredSegments(text, rules = ensureState().scanRules) {
@@ -5883,6 +5227,133 @@ const workbenchRenderScopes = Object.freeze({
     CONFIG: 'config',
     SETTINGS: 'settings',
 });
+
+const globalSettingsService = createGlobalSettingsService({
+    extensionSettings: extension_settings,
+    storageKey: STORAGE_KEY,
+    sanitizeCustomTheme,
+    normalizeCustomThemePreset,
+    builtInCustomThemeDefinitions,
+    defaultPromptPreset,
+    defaultGenericPromptPreset,
+    migrateBuiltInInjectionDefaults,
+    legacyInjectionTemplate,
+    defaultInjectionTemplate,
+    defaultStoryGenerationPrompt,
+    defaultMissingSummaryPrompt,
+    migratePromptPresetTimelines,
+    defaultStageGenerationPrompt,
+    defaultEpicGenerationPrompt,
+    migrateStagePromptTimeSpan,
+    migrateEpicPromptTimeSpan,
+    defaultGenericStoryGenerationPrompt,
+    defaultGenericStageGenerationPrompt,
+    defaultGenericEpicGenerationPrompt,
+    createSharedVectorConfig,
+    createSharedInlineGenerationConfig,
+    areaPresetScopes,
+    tableSchemaScopes,
+    createTableProfile: (...args) => tableStateService.createTableProfile(...args),
+    defaultTableEditPrompt,
+    defaultInlineSummaryPrompt,
+    defaultInlineTablePrompt,
+});
+const { ensureGlobalSettings } = globalSettingsService;
+
+const presetRegistry = createPresetRegistry({
+    ensureGlobalSettings,
+    extensionSettings: extension_settings,
+    storageKey: STORAGE_KEY,
+    saveGlobalSettings,
+    defaultPromptPreset,
+    defaultGenericPromptPreset,
+    defaultTableEditPrompt,
+    defaultInlineSummaryPrompt,
+    defaultInlineTablePrompt,
+    getHash,
+    readActiveConfig,
+    createSharedVectorConfig,
+    createSharedInlineGenerationConfig,
+    sharedConfigVersion,
+    markActiveConfigApplied,
+    shouldSyncActiveConfig,
+    applyPromptPresetToState,
+    saveState,
+});
+const {
+    applyGlobalActiveConfigToState,
+    getActiveGlobalConfig,
+    getAreaPresets,
+    getInlinePromptPresets,
+    getPromptPresets,
+    getSelectedAreaPresetId,
+    getSelectedInlinePromptPresetId,
+    getSelectedPromptPresetId,
+    getSelectedTablePromptPresetId,
+    getTablePromptPresets,
+    isBuiltInPresetId,
+    makeAreaPresetId,
+    makeInlinePromptPreset,
+    makePresetId,
+    makeTablePromptPreset,
+    setActiveGlobalConfig,
+    setSelectedAreaPresetId,
+    setSelectedInlinePromptPresetId,
+    setSelectedPromptPresetId,
+    setSelectedTablePromptPresetId,
+    syncGlobalActiveConfigToState,
+} = presetRegistry;
+
+const chatStateService = createChatStateService({
+    defaultState,
+    chatMetadata: chat_metadata,
+    storageKey: STORAGE_KEY,
+    extensionSettings: extension_settings,
+    getContext,
+    getFallbackChat: () => chat,
+    applyGlobalActiveConfigToState,
+    fillMissingDefaults,
+    migrateBuiltInInjectionDefaults,
+    legacyInjectionTemplate,
+    defaultInjectionTemplate,
+    migrateGenerationPrompts,
+    defaultStoryGenerationPrompt,
+    defaultGenericStoryGenerationPrompt,
+    defaultMissingSummaryPrompt,
+    defaultStageGenerationPrompt,
+    defaultGenericStageGenerationPrompt,
+    defaultEpicGenerationPrompt,
+    defaultGenericEpicGenerationPrompt,
+    migrateBuiltInStructuredPrompt,
+    migrateStagePromptTimeSpan,
+    migrateEpicPromptTimeSpan,
+    normalizeArrayFields,
+    getSummaryLevel,
+    blockTypes,
+    sortSummariesBySource,
+    normalizeInjectionMemoryBody,
+    renderInjectionContent: (...args) => renderInjectionContent(...args),
+    saveState,
+    getFiniteMessageIds,
+    ensureObjectField,
+    normalizeWorkflowState,
+    defaultAutomation,
+    defaultGenerationTargets,
+    migrateTurnSummaryPrompt,
+    defaultTurnSummaryPrompt,
+    tableSchemaScopes,
+    ensureGlobalSettings,
+    ensureTableProfileForScope: (...args) => tableStateService.ensureTableProfileForScope(...args),
+    mergeScopedTableSchemasIntoState: (...args) => tableStateService.mergeScopedTableSchemasIntoState(...args),
+    migrateInlineSummaryPrompt,
+    defaultInlineSummaryPrompt,
+    defaultVectorMemory,
+    migrateVectorQueryRewritePrompt,
+    unique,
+    getActiveCoveredStageHashes,
+    getInjectionMemoryParts: (...args) => getInjectionMemoryParts(...args),
+});
+const { ensureState, maxStoredScanPreviewItems, sanitizeCurrentChatState } = chatStateService;
 
 const themeController = createThemeController({
     query: $,

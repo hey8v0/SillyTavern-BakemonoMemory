@@ -7,6 +7,8 @@ const settingsSource = fs.readFileSync(new URL('../settings.html', import.meta.u
 const styleSource = fs.readFileSync(new URL('../style.css', import.meta.url), 'utf8');
 const chatSwitchSource = fs.readFileSync(new URL('../src/core/chat-switch.js', import.meta.url), 'utf8');
 const configSyncSource = fs.readFileSync(new URL('../src/core/config-sync.js', import.meta.url), 'utf8');
+const chatStateServiceSource = fs.readFileSync(new URL('../src/core/chat-state-service.js', import.meta.url), 'utf8');
+const globalSettingsServiceSource = fs.readFileSync(new URL('../src/core/global-settings-service.js', import.meta.url), 'utf8');
 const promptMigrationsSource = fs.readFileSync(new URL('../src/core/prompt-migrations.js', import.meta.url), 'utf8');
 const stateShapeSource = fs.readFileSync(new URL('../src/core/state-shape.js', import.meta.url), 'utf8');
 const workflowModeSource = fs.readFileSync(new URL('../src/core/workflow-mode.js', import.meta.url), 'utf8');
@@ -27,6 +29,7 @@ const vectorSettingsModelSource = fs.readFileSync(new URL('../src/features/vecto
 const vectorWorkbenchUiSource = fs.readFileSync(new URL('../src/features/vector-workbench-ui.js', import.meta.url), 'utf8');
 const vectorActionsControllerSource = fs.readFileSync(new URL('../src/features/vector-actions-controller.js', import.meta.url), 'utf8');
 const themeControllerSource = fs.readFileSync(new URL('../src/features/theme-controller.js', import.meta.url), 'utf8');
+const presetRegistrySource = fs.readFileSync(new URL('../src/features/preset-registry.js', import.meta.url), 'utf8');
 const themeSchemaSource = fs.readFileSync(new URL('../src/theme/theme-schema.js', import.meta.url), 'utf8');
 const helpPopoverSource = fs.readFileSync(new URL('../src/ui/help-popover.js', import.meta.url), 'utf8');
 const operationFeedbackSource = fs.readFileSync(new URL('../src/ui/operation-feedback.js', import.meta.url), 'utf8');
@@ -437,15 +440,15 @@ test('structured prompt migration only refreshes recognizable built-in prompts',
 });
 
 test('prompt migration orchestration stays outside the entry state adapter', () => {
-    const ensureSource = extractFunction('ensureState');
-    const settingsSource = extractFunction('ensureGlobalSettings');
+    const ensureSource = extractFunctionFrom(chatStateServiceSource, 'ensureState');
+    const globalSettingsSource = extractFunctionFrom(globalSettingsServiceSource, 'ensureGlobalSettings');
 
     assert.match(source, /from '.\/src\/core\/prompt-migrations\.js'/);
     assert.match(ensureSource, /migrateGenerationPrompts\(state\.generationPrompts/);
     assert.match(ensureSource, /migrateTurnSummaryPrompt\(state\.turnSummary/);
     assert.match(ensureSource, /migrateInlineSummaryPrompt\(state\.inlineGeneration/);
     assert.match(ensureSource, /migrateVectorQueryRewritePrompt\(state\.vectorMemory/);
-    assert.match(settingsSource, /migratePromptPresetTimelines\(preset/);
+    assert.match(globalSettingsSource, /migratePromptPresetTimelines\(preset/);
     assert.doesNotMatch(ensureSource, /可以不用 <bakemono> 标签，也不用 HTML|only\\s\+output\\s\+the\\s\+queries/);
     assert.match(promptMigrationsSource, /const storyPromptMarkers = \[/);
     assert.match(promptMigrationsSource, /const legacyVectorQueryRewritePattern =/);
@@ -480,7 +483,7 @@ test('hot paths use scoped or coalesced rendering', () => {
 });
 
 test('closed workbench and background queues avoid heavy DOM rendering', () => {
-    const ensureSource = extractFunction('ensureState');
+    const ensureSource = extractFunctionFrom(chatStateServiceSource, 'ensureState');
     const renderAllSource = extractFunction('renderAll');
     const scopedRenderSource = extractFunction('renderWorkbenchScope');
     const queueProgressSource = extractFunction('renderTaskQueueProgress');
@@ -599,7 +602,7 @@ test('large-chat scans avoid quadratic lookup and duplicate opening renders', ()
 });
 
 test('state normalization remains compatible with SillyTavern metadata objects', () => {
-    const ensureSource = extractFunction('ensureState');
+    const ensureSource = extractFunctionFrom(chatStateServiceSource, 'ensureState');
     assert.doesNotMatch(ensureSource, /setTransientStateArray|Object\.defineProperty/);
     assert.doesNotMatch(ensureSource, /normalizedChatStates/);
     assert.match(source, /from '.\/src\/core\/state-shape\.js'/);
@@ -672,8 +675,8 @@ test('custom themes stay token-only, global, and importable as JSON', () => {
     assert.match(themeControllerSource, /function downloadCustomThemeLibraryJson\(/);
     assert.match(themeControllerSource, /function importCustomThemeJson\(/);
     assert.match(source, /createThemeController\(\{/);
-    assert.match(source, /settings\.ui\.customTheme = sanitizeCustomTheme/);
-    assert.match(source, /settings\.ui\.themePresets = Array\.isArray\(settings\.ui\.themePresets\)[\s\S]*?settings\.ui\.themePresets\.map/);
+    assert.match(globalSettingsServiceSource, /settings\.ui\.customTheme = sanitizeCustomTheme/);
+    assert.match(globalSettingsServiceSource, /settings\.ui\.themePresets = Array\.isArray\(settings\.ui\.themePresets\)[\s\S]*?settings\.ui\.themePresets\.map/);
     assert.match(styleSource, /\.bakemono-workbench-root\.bakemono-custom-theme/);
     assert.match(styleSource, /v1\.2\.5 compact theme library/);
     assert.match(styleSource, /\.bakemono-memory-theme-section-panel\[hidden\]\s*\{[^}]*display:\s*none !important;/s);
@@ -683,7 +686,7 @@ test('active global config follows existing chats without removing the tavern mo
     assert.match(source, /from '.\/src\/core\/config-sync\.js'/);
     assert.match(configSyncSource, /export function getActiveConfigSignature\(/);
     assert.match(configSyncSource, /export function shouldSyncActiveConfig\(/);
-    assert.match(source, /function syncGlobalActiveConfigToState\(/);
+    assert.match(presetRegistrySource, /function syncGlobalActiveConfigToState\(/);
     assert.match(source, /syncGlobalActiveConfigToState\(initialState, \{ force: true \}\)/);
     assert.match(source, /syncConfig:\s*state => \{/);
     assert.match(source, /if \(state\.automation\.apiProvider !== 'custom'\) \{\s*return await generateRaw/s);
