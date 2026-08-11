@@ -14,6 +14,7 @@ const stateShapeSource = fs.readFileSync(new URL('../src/core/state-shape.js', i
 const workflowModeSource = fs.readFileSync(new URL('../src/core/workflow-mode.js', import.meta.url), 'utf8');
 const hybridRetrievalSource = fs.readFileSync(new URL('../src/vector/hybrid-retrieval.js', import.meta.url), 'utf8');
 const promptInspectorSource = fs.readFileSync(new URL('../src/features/prompt-inspector.js', import.meta.url), 'utf8');
+const archiveControllerSource = fs.readFileSync(new URL('../src/features/archive-controller.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -577,8 +578,6 @@ test('all business mutations use scoped rendering and reserve renderAll for life
         'rollbackAutoSummaryTransaction',
         'saveEditedSummary',
         'deleteSavedSummary',
-        'hideCoveredMessages',
-        'restoreHiddenMessages',
         'applyWorkflowPreset',
         'applyPromptPresetToState',
         'renderAreaPresetChange',
@@ -586,6 +585,8 @@ test('all business mutations use scoped rendering and reserve renderAll for life
     ]) {
         assert.doesNotMatch(extractFunction(name), /\brenderAll\(/, `${name} should not refresh the whole workbench`);
     }
+    assert.doesNotMatch(extractFunctionFrom(archiveControllerSource, 'hideCoveredMessages'), /\brenderAll\(/);
+    assert.doesNotMatch(extractFunctionFrom(archiveControllerSource, 'restoreHiddenMessages'), /\brenderAll\(/);
     assert.doesNotMatch(extractFunctionFrom(operationFeedbackSource, 'runGeneration'), /\brenderAll\(/);
 });
 
