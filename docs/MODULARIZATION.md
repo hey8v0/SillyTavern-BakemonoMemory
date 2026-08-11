@@ -50,6 +50,14 @@ index.js（启动与装配）
 - `src/features/help-guide-content.js` 与 `src/features/help-guide.js` 分离使用说明内容、阅读器状态、DOM 渲染和委托事件；入口只调用 `bind()` / `render()`。
 - 本批结束时 `index.js` 为 13,379 行；新增六个 UI/帮助模块共 718 行。契约文件已改为跨模块检查职责边界；遵照用户要求不运行测试、不打开浏览器。
 
+### 最终模块化第三批：摘要记忆模型与材料选择
+
+- `src/summary/levels.js` 统一普通摘要、阶段总结、多次总结与长期总览的层级判断和显示名称。
+- `src/features/summary-memory-model.js` 统一 summary → block 转换、多层总结覆盖关系、当前有效阶段/多次总结和记忆档案记录合并；不读取 DOM、不保存状态。
+- `src/features/summary-selectors.js` 统一扫描块与已保存摘要的材料选择、待总结筛选、自动批次数量和工作方式回退；状态与已有纯函数均通过依赖注入提供。
+- `index.js` 只装配三个摘要模型并公开原调用名，生成流程和 UI 无需同时重写；本批结束为 13,095 行。
+- 契约检查新增摘要模块无 DOM / 无保存 / 无完整渲染边界；未运行测试、未打开浏览器。
+
 ### 第一批：纯文本与本地向量数学
 
 - `src/shared/text.js`

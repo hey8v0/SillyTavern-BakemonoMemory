@@ -12,6 +12,7 @@ import { migrateBuiltInInjectionDefaults, normalizeInjectionMemoryBody, normaliz
 import { formatBlocksForPrompt, getPromptStructureExcerpt, migrateBuiltInStructuredPrompt, migrateEpicPromptTimeSpan, migrateStagePromptTimeSpan, renderGenerationPrompt, stripPostProcessNoise } from './src/shared/prompt-utils.js';
 import { countKeywordHits, extractAllTaggedBlocks, extractConfiguredTagBlocks, extractTaggedContent, getHash, matchesAnyKeyword, normalizeSearchText, parseList, stripConfiguredTags, stripTableEditTags } from './src/shared/text.js';
 import { parseMissingSummaryBatchResult } from './src/summary/draft-parser.js';
+import { getMultiSummaryLabel, getNextMultiSummaryLevel, getSummaryLevel } from './src/summary/levels.js';
 import { buildFloorMemoryIndex, createMemoryOrchestrationPlan } from './src/memory/floor-memory-index.js';
 import { formatSourceRange, getBlockSortKey, getFiniteMessageIds, getSourceEnd, getSourceMessageIdsFromBlocks, getSourceStart, getSummarySortKey, sortSummariesBySource } from './src/summary/source-metadata.js';
 import { parseTableEditOperations } from './src/tables/operation-parser.js';
@@ -26,6 +27,8 @@ import { extractChatCompletionText, parseVectorQueryRewritePayload } from './src
 import { compactEmbedding, getClippedVectorText, slimVectorMemoryForSave } from './src/vector/storage.js';
 import { createPromptInspector } from './src/features/prompt-inspector.js';
 import { createHelpGuide } from './src/features/help-guide.js';
+import { createSummaryMemoryModel } from './src/features/summary-memory-model.js';
+import { createSummarySelectors } from './src/features/summary-selectors.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
 import { createOperationFeedback } from './src/ui/operation-feedback.js';
 import { installWorkbenchParentNavigation, organizeWorkbenchOwnedSections } from './src/ui/workbench-layout.js';
@@ -3749,125 +3752,6 @@ function getBlocksByType(type) {
     return ensureState().blocks.filter(block => block.type === type);
 }
 
-function getStoryBlocks() {
-    const state = ensureState();
-    return dedupeByHash([
-        ...getBlocksByType(blockTypes.STORY),
-        ...state.storySummaries.map(summary => ({ ...summaryToBlock(summary), type: blockTypes.STORY })),
-    ]);
-}
-
-function getStageSourceMode(state = ensureState()) {
-    if (Object.values(stageSourceModes).includes(state.stageSourceMode)) {
-        return state.stageSourceMode;
-    }
-    return state.workflowMode === workflowModes.GENERIC ? stageSourceModes.BACKFILL : stageSourceModes.SUMMARIES;
-}
-
-function isRawSourceBlock(block) {
-    return block?.sourceKind === 'raw' || (block?.scanMode === 'full' && !block?.isGeneratedSummary && !block?.matchedTag);
-}
-
-function isBackfillSummary(block) {
-    return !!block?.isGeneratedSummary && (block?.metadata?.sourceKind === 'backfill' || block?.metadata?.trigger === 'backfill' || block?.trigger === 'backfill');
-}
-
-function getStoryMaterialBlocks(mode = getStageSourceMode()) {
-    const state = ensureState();
-    const scanned = getBlocksByType(blockTypes.STORY);
-    const saved = state.storySummaries.map(summary => ({ ...summaryToBlock(summary), type: blockTypes.STORY }));
-    const summaryLikeScanned = scanned.filter(block => !isRawSourceBlock(block));
-    const rawScanned = scanned.filter(isRawSourceBlock);
-
-    if (mode === stageSourceModes.BACKFILL) {
-        return dedupeByHash(saved);
-    }
-    if (mode === stageSourceModes.RAW) {
-        return dedupeByHash(rawScanned);
-    }
-    if (mode === stageSourceModes.MIXED) {
-        return dedupeByHash([...summaryLikeScanned, ...saved, ...rawScanned]);
-    }
-    if (mode === stageSourceModes.AUTO) {
-        const summaryBlocks = dedupeByHash([...summaryLikeScanned, ...saved]);
-        return summaryBlocks.length ? summaryBlocks : dedupeByHash(rawScanned);
-    }
-    return dedupeByHash([...summaryLikeScanned, ...saved]);
-}
-
-function getUnsummarizedStoryBlocks() {
-    const state = ensureState();
-    const covered = new Set(state.coveredBlockHashes);
-    return getStoryMaterialBlocks().filter(block => !covered.has(block.hash));
-}
-
-function getUnsummarizedStageBlocks() {
-    const state = ensureState();
-    const covered = new Set(state.coveredStageHashes);
-    return dedupeByHash([
-        ...getBlocksByType(blockTypes.STAGE),
-        ...state.stageSummaries.map(summaryToBlock),
-    ]).filter(block => !covered.has(block.hash));
-}
-
-function getSummaryLevel(item) {
-    const explicit = Number(item?.level ?? item?.metadata?.level);
-    if (Number.isFinite(explicit)) {
-        return Math.max(0, explicit);
-    }
-    if (item?.type === blockTypes.EPIC || item?.kind === blockTypes.EPIC) {
-        return 2;
-    }
-    if (item?.type === blockTypes.STAGE || item?.kind === blockTypes.STAGE) {
-        return 1;
-    }
-    return 0;
-}
-
-function getNextMultiSummaryLevel(targets = []) {
-    const maxLevel = targets.reduce((max, block) => Math.max(max, getSummaryLevel(block)), 1);
-    return Math.max(2, maxLevel + 1);
-}
-
-function getUnsummarizedMultiSummaryBlocks() {
-    const state = ensureState();
-    const covered = new Set(state.coveredStageHashes || []);
-    return dedupeByHash([
-        ...getBlocksByType(blockTypes.EPIC),
-        ...state.epicSummaries.map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
-    ]).filter(block => !covered.has(block.hash));
-}
-
-function getMultiSummaryLabel(levelOrItem = 2) {
-    const level = typeof levelOrItem === 'number' ? levelOrItem : getSummaryLevel(levelOrItem);
-    if (level <= 2) {
-        return '多次总结';
-    }
-    if (level === 3) {
-        return '长期总览';
-    }
-    return `长期总览 L${level}`;
-}
-
-function getAutoStageTargets(targets = []) {
-    const state = ensureState();
-    const sorted = getSortedTargetBlocks(targets);
-    if (state.automation.triggerType === 'chars') {
-        const limit = Math.max(100, Number(state.automation.charInterval || defaultAutomation.charInterval));
-        const selected = [];
-        let totalLength = 0;
-        for (const block of sorted) {
-            selected.push(block);
-            totalLength += String(block.content || '').length;
-            if (totalLength >= limit) {
-                break;
-            }
-        }
-        return selected.length ? selected : sorted.slice(0, 1);
-    }
-    const count = Math.max(1, Number(state.automation.floorInterval || defaultAutomation.floorInterval));
-    return sorted.slice(0, count);
-}
 
 function readGenerationTargetSettings() {
     const state = ensureState();
@@ -4182,221 +4066,6 @@ function confirmGenerationTargets(kind, targets, totalLength) {
     return confirmed;
 }
 
-function summaryToBlock(summary) {
-    const sourceSortKey = getSummarySortKey(summary);
-    return {
-        hash: summary.hash,
-        type: summary.type || blockTypes.STAGE,
-        messageId: summary.messageId ?? (sourceSortKey < Number.MAX_SAFE_INTEGER ? sourceSortKey : Number.MAX_SAFE_INTEGER),
-        blockIndex: 0,
-        title: summary.title,
-        content: summary.content,
-        sourceHashes: summary.sourceHashes || [],
-        sourceStageHashes: summary.sourceStageHashes || [],
-        sourceMessageIds: summary.sourceMessageIds || [],
-        sourceStart: summary.sourceStart,
-        sourceEnd: summary.sourceEnd,
-        sourceSortKey,
-        sourceKind: summary.sourceKind || summary.metadata?.sourceKind || summary.metadata?.trigger || 'summary',
-        metadata: summary.metadata || {},
-        level: getSummaryLevel(summary),
-        isGeneratedSummary: true,
-        createdAt: summary.createdAt,
-        isHidden: false,
-    };
-}
-
-function getEpicMemoryBlocks(state = ensureState()) {
-    return dedupeByHash([
-        ...(state.epicSummaries || []).map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
-        ...(state.blocks || []).filter(block => block.type === blockTypes.EPIC),
-    ]);
-}
-
-function getActiveEpicMemoryBlocks(state = ensureState()) {
-    const epicBlocks = getEpicMemoryBlocks(state);
-    const epicHashes = new Set(epicBlocks.map(summary => summary.hash).filter(Boolean));
-    const coveredEpicHashes = new Set();
-
-    for (const epic of epicBlocks) {
-        for (const hash of [...(epic.sourceStageHashes || []), ...(epic.sourceHashes || [])]) {
-            if (epicHashes.has(hash)) {
-                coveredEpicHashes.add(hash);
-            }
-        }
-    }
-
-    return epicBlocks
-        .filter(summary => !coveredEpicHashes.has(summary.hash))
-        .sort((a, b) => (
-            getSummarySortKey(a) - getSummarySortKey(b)
-            || getSummaryLevel(a) - getSummaryLevel(b)
-            || String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
-            || String(a.hash || '').localeCompare(String(b.hash || ''))
-        ));
-}
-
-function getCoveredStageHashesFromEpic(epic, epicByHash, stageHashes, visited = new Set()) {
-    const covered = new Set();
-    if (!epic?.hash || visited.has(epic.hash)) {
-        return covered;
-    }
-
-    visited.add(epic.hash);
-    for (const hash of [...(epic.sourceStageHashes || []), ...(epic.sourceHashes || [])]) {
-        if (stageHashes.has(hash)) {
-            covered.add(hash);
-            continue;
-        }
-
-        const childEpic = epicByHash.get(hash);
-        if (childEpic) {
-            for (const childHash of getCoveredStageHashesFromEpic(childEpic, epicByHash, stageHashes, visited)) {
-                covered.add(childHash);
-            }
-        }
-    }
-    return covered;
-}
-
-function getActiveCoveredStageHashes(state = ensureState()) {
-    const existingStageHashes = new Set(getStageMemoryBlocks(state).map(summary => summary.hash).filter(Boolean));
-    const covered = new Set();
-    const epicBlocks = getEpicMemoryBlocks(state);
-    const epicByHash = new Map(epicBlocks.map(epic => [epic.hash, epic]).filter(([hash]) => hash));
-
-    for (const epic of getActiveEpicMemoryBlocks(state)) {
-        for (const hash of getCoveredStageHashesFromEpic(epic, epicByHash, existingStageHashes)) {
-            covered.add(hash);
-        }
-    }
-    return covered;
-}
-
-function getStageMemoryBlocks(state = ensureState()) {
-    return dedupeByHash([
-        ...(state.stageSummaries || []).map(summary => ({ ...summaryToBlock(summary), type: blockTypes.STAGE })),
-        ...(state.blocks || []).filter(block => block.type === blockTypes.STAGE),
-    ]);
-}
-
-function buildMemoryRecords(state = ensureState()) {
-    const records = new Map();
-    const coveredStoryHashes = new Set(state.coveredBlockHashes || []);
-    const coveredStageHashes = getActiveCoveredStageHashes(state);
-    const activeEpicHashes = new Set(getActiveEpicMemoryBlocks(state).map(summary => summary.hash).filter(Boolean));
-    const epicCoveredStageHashes = getActiveCoveredStageHashes(state);
-    const stageInjectedHashes = new Set(state.stageSummaries
-        .filter(summary => !epicCoveredStageHashes.has(summary.hash))
-        .map(summary => summary.hash));
-    const storyInjectedHashes = new Set(state.memoryStrategy === memoryStrategies.GENERIC
-        ? state.storySummaries.filter(summary => !coveredStoryHashes.has(summary.hash)).map(summary => summary.hash)
-        : []);
-
-    const upsert = record => {
-        if (!record?.hash) {
-            return;
-        }
-        const previous = records.get(record.hash) || {};
-        records.set(record.hash, {
-            ...previous,
-            ...record,
-            sourceMessageIds: unique([
-                ...(previous.sourceMessageIds || []),
-                ...(record.sourceMessageIds || []),
-            ]),
-        });
-    };
-
-    for (const block of state.blocks || []) {
-        if (!block?.hash || block.isGeneratedSummary) {
-            continue;
-        }
-        const sourceMessageIds = getFiniteMessageIds([block.messageId, ...(block.sourceMessageIds || [])]);
-        const isCovered = block.type === blockTypes.STAGE
-            ? coveredStageHashes.has(block.hash)
-            : coveredStoryHashes.has(block.hash);
-        upsert({
-            id: `scan:${block.hash}`,
-            hash: block.hash,
-            kind: block.type || blockTypes.STORY,
-            title: block.title || getBlockTitle(block.content, '未命名片段'),
-            status: isCovered ? memoryRecordStatuses.COVERED : memoryRecordStatuses.SOURCE,
-            source: block.sourceKind === 'raw' ? '全文扫描' : `标签 <${block.matchedTag || 'unknown'}>`,
-            sourceMessageIds,
-            sourceRange: formatSourceRange(sourceMessageIds),
-            contentLength: String(block.content || '').length,
-            sourceHashes: block.sourceHashes || [],
-            sourceStageHashes: block.sourceStageHashes || [],
-            sortKey: getBlockSortKey(block),
-            updatedAt: block.createdAt || state.lastScanAt || '',
-        });
-    }
-
-    const addSummaryRecord = (summary, kind) => {
-        const sourceMessageIds = getFiniteMessageIds(summary.sourceMessageIds || []);
-        let status = memoryRecordStatuses.SAVED;
-        if (kind === blockTypes.STORY) {
-            status = storyInjectedHashes.has(summary.hash)
-                ? memoryRecordStatuses.INJECTED
-                : coveredStoryHashes.has(summary.hash)
-                    ? memoryRecordStatuses.COVERED
-                    : memoryRecordStatuses.SAVED;
-        } else if (kind === blockTypes.STAGE) {
-            status = stageInjectedHashes.has(summary.hash)
-                ? memoryRecordStatuses.INJECTED
-                : coveredStageHashes.has(summary.hash)
-                    ? memoryRecordStatuses.ARCHIVED
-                    : memoryRecordStatuses.SAVED;
-        } else if (kind === blockTypes.EPIC) {
-            status = activeEpicHashes.has(summary.hash) ? memoryRecordStatuses.INJECTED : memoryRecordStatuses.ARCHIVED;
-        }
-        upsert({
-            id: `summary:${summary.hash}`,
-            hash: summary.hash,
-            kind,
-            title: summary.title || getBlockTitle(summary.content, getKindLabel(kind)),
-            status,
-            source: summary.sourceKind === 'backfill' ? '插件补课' : '已保存摘要',
-            sourceMessageIds,
-            sourceRange: formatSourceRange(sourceMessageIds),
-            contentLength: String(summary.content || '').length,
-            sourceHashes: summary.sourceHashes || [],
-            sourceStageHashes: summary.sourceStageHashes || [],
-            sortKey: getSummarySortKey(summary),
-            updatedAt: summary.createdAt || '',
-        });
-    };
-
-    (state.storySummaries || []).forEach(summary => addSummaryRecord(summary, blockTypes.STORY));
-    (state.stageSummaries || []).forEach(summary => addSummaryRecord(summary, blockTypes.STAGE));
-    (state.epicSummaries || []).forEach(summary => addSummaryRecord(summary, blockTypes.EPIC));
-
-    for (const draft of state.drafts || []) {
-        const sourceMessageIds = getFiniteMessageIds(draft.sourceMessageIds || []);
-        upsert({
-            id: `draft:${draft.id}`,
-            hash: draft.id,
-            kind: draft.kind || blockTypes.STAGE,
-            title: draft.title || getDefaultDraftTitle(draft.kind || blockTypes.STAGE, state),
-            status: memoryRecordStatuses.DRAFT,
-            source: draft.trigger === 'auto' ? '自动草稿' : '草稿箱',
-            sourceMessageIds,
-            sourceRange: formatSourceRange(sourceMessageIds),
-            contentLength: String(draft.content || '').length,
-            sourceHashes: draft.sourceHashes || [],
-            sourceStageHashes: draft.sourceStageHashes || [],
-            sortKey: getSourceStart(sourceMessageIds),
-            updatedAt: draft.createdAt || '',
-        });
-    }
-
-    return [...records.values()].sort((a, b) => (
-        Number(a.sortKey ?? Number.MAX_SAFE_INTEGER) - Number(b.sortKey ?? Number.MAX_SAFE_INTEGER)
-        || String(a.updatedAt || '').localeCompare(String(b.updatedAt || ''))
-        || String(a.hash || '').localeCompare(String(b.hash || ''))
-    ));
-}
 
 async function generateStageSummary() {
     if (isBusy) {
@@ -5573,6 +5242,53 @@ const operationFeedback = createOperationFeedback({
 const { runGeneration, runVisible: runVisibleOperation } = operationFeedback;
 const helpPopover = createHelpPopover();
 const helpGuide = createHelpGuide({ escapeHtml });
+const summaryMemoryModel = createSummaryMemoryModel({
+    blockTypes,
+    memoryStrategies,
+    memoryRecordStatuses,
+    dedupeByHash,
+    getSummarySortKey,
+    getSummaryLevel,
+    getFiniteMessageIds,
+    unique,
+    getBlockTitle,
+    formatSourceRange,
+    getBlockSortKey,
+    getKindLabel,
+    getDefaultDraftTitle,
+    getSourceStart,
+});
+const {
+    buildMemoryRecords,
+    getActiveCoveredStageHashes,
+    getActiveEpicMemoryBlocks,
+    getCoveredStageHashesFromEpic,
+    getEpicMemoryBlocks,
+    getStageMemoryBlocks,
+    summaryToBlock,
+} = summaryMemoryModel;
+const summarySelectors = createSummarySelectors({
+    getState: ensureState,
+    getBlocksByType,
+    blockTypes,
+    stageSourceModes,
+    workflowModes,
+    defaultAutomation,
+    dedupeByHash,
+    summaryToBlock,
+    getSortedTargetBlocks,
+});
+const {
+    getAutoStageTargets,
+    getStageSourceMode,
+    getStoryBlocks,
+    getStoryMaterialBlocks,
+    getUnsummarizedMultiSummaryBlocks,
+    getUnsummarizedStageBlocks,
+    getUnsummarizedStoryBlocks,
+    isBackfillSummary,
+    isRawSourceBlock,
+} = summarySelectors;
 const workbenchNavigation = createWorkbenchNavigation({
     getPanelTitle: tabName => getWorkbenchPanelTitle(tabName),
     renderHeaderContext: tabName => renderWorkbenchHeaderContext(tabName),

@@ -14,10 +14,13 @@ const hybridRetrievalSource = fs.readFileSync(new URL('../src/vector/hybrid-retr
 const promptInspectorSource = fs.readFileSync(new URL('../src/features/prompt-inspector.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
+const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
+const summarySelectorsSource = fs.readFileSync(new URL('../src/features/summary-selectors.js', import.meta.url), 'utf8');
 const helpPopoverSource = fs.readFileSync(new URL('../src/ui/help-popover.js', import.meta.url), 'utf8');
 const operationFeedbackSource = fs.readFileSync(new URL('../src/ui/operation-feedback.js', import.meta.url), 'utf8');
 const workbenchLayoutSource = fs.readFileSync(new URL('../src/ui/workbench-layout.js', import.meta.url), 'utf8');
 const workbenchNavigationSource = fs.readFileSync(new URL('../src/ui/workbench-navigation.js', import.meta.url), 'utf8');
+const summaryLevelsSource = fs.readFileSync(new URL('../src/summary/levels.js', import.meta.url), 'utf8');
 
 test('workbench markup and stylesheet remain structurally balanced', () => {
     const ids = [...settingsSource.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
@@ -159,6 +162,19 @@ test('help guide owns its content, reader state, and delegated events outside th
     assert.match(helpGuideSource, /function openArticle\(/);
     assert.match(helpGuideSource, /function closeArticle\(/);
     assert.doesNotMatch(helpGuideSource, /saveState|saveGlobalSettings|renderAll/);
+});
+
+test('summary memory hierarchy and material selection stay DOM-free feature models', () => {
+    assert.match(source, /import \{ createSummaryMemoryModel \} from '\.\/src\/features\/summary-memory-model\.js';/);
+    assert.match(source, /import \{ createSummarySelectors \} from '\.\/src\/features\/summary-selectors\.js';/);
+    assert.match(source, /from '\.\/src\/summary\/levels\.js';/);
+    assert.match(summaryMemoryModelSource, /function buildMemoryRecords\(/);
+    assert.match(summaryMemoryModelSource, /function getActiveCoveredStageHashes\(/);
+    assert.match(summarySelectorsSource, /function getStoryMaterialBlocks\(/);
+    assert.match(summarySelectorsSource, /function getUnsummarizedMultiSummaryBlocks\(/);
+    assert.match(summaryLevelsSource, /export function getSummaryLevel\(/);
+    assert.doesNotMatch(summaryMemoryModelSource, /document\.|window\.|\$\(|saveState|renderAll/);
+    assert.doesNotMatch(summarySelectorsSource, /document\.|window\.|\$\(|saveState|renderAll/);
 });
 
 test('vector recall uses independent semantic and lexical candidates with explainable scores', () => {
