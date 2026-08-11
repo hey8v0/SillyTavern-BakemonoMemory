@@ -15,6 +15,8 @@ const workflowModeSource = fs.readFileSync(new URL('../src/core/workflow-mode.js
 const hybridRetrievalSource = fs.readFileSync(new URL('../src/vector/hybrid-retrieval.js', import.meta.url), 'utf8');
 const promptInspectorSource = fs.readFileSync(new URL('../src/features/prompt-inspector.js', import.meta.url), 'utf8');
 const archiveControllerSource = fs.readFileSync(new URL('../src/features/archive-controller.js', import.meta.url), 'utf8');
+const memoryOrchestratorSource = fs.readFileSync(new URL('../src/features/memory-orchestrator.js', import.meta.url), 'utf8');
+const turnProcessingControllerSource = fs.readFileSync(new URL('../src/features/turn-processing-controller.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -291,7 +293,8 @@ test('expanded disclosures expose anchored help and important operations expose 
 
 test('floor memory orchestration stays derived and the base ledger remains optional', () => {
     assert.match(source, /import \{ buildFloorMemoryIndex, createMemoryOrchestrationPlan \}/);
-    assert.match(source, /async function runMemoryOrchestrator\(/);
+    assert.match(memoryOrchestratorSource, /async function runMemoryOrchestrator\(/);
+    assert.match(source, /createMemoryOrchestrator\(\{/);
     assert.match(source, /event_types\.MESSAGE_RECEIVED, async \(\) => \{\s*await runMemoryOrchestrator/s);
     assert.match(settingsSource, /id="bakemono-memory-index-ready-floor"/);
     assert.match(settingsSource, /id="bakemono-memory-index-pending-count"/);
@@ -574,7 +577,6 @@ test('all business mutations use scoped rendering and reserve renderAll for life
         'generateStageBatchTasks',
         'generateEpicBatchTasks',
         'generateMissingSummaryQueue',
-        'maybeRunAutoSummary',
         'rollbackAutoSummaryTransaction',
         'saveEditedSummary',
         'deleteSavedSummary',
@@ -587,6 +589,7 @@ test('all business mutations use scoped rendering and reserve renderAll for life
     }
     assert.doesNotMatch(extractFunctionFrom(archiveControllerSource, 'hideCoveredMessages'), /\brenderAll\(/);
     assert.doesNotMatch(extractFunctionFrom(archiveControllerSource, 'restoreHiddenMessages'), /\brenderAll\(/);
+    assert.doesNotMatch(extractFunctionFrom(memoryOrchestratorSource, 'maybeRunAutoSummary'), /\brenderAll\(/);
     assert.doesNotMatch(extractFunctionFrom(operationFeedbackSource, 'runGeneration'), /\brenderAll\(/);
 });
 
