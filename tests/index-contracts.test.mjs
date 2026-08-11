@@ -16,6 +16,8 @@ const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-gui
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
 const summarySelectorsSource = fs.readFileSync(new URL('../src/features/summary-selectors.js', import.meta.url), 'utf8');
+const summaryTargetControllerSource = fs.readFileSync(new URL('../src/features/summary-target-controller.js', import.meta.url), 'utf8');
+const summaryTaskQueueSource = fs.readFileSync(new URL('../src/features/summary-task-queue.js', import.meta.url), 'utf8');
 const helpPopoverSource = fs.readFileSync(new URL('../src/ui/help-popover.js', import.meta.url), 'utf8');
 const operationFeedbackSource = fs.readFileSync(new URL('../src/ui/operation-feedback.js', import.meta.url), 'utf8');
 const workbenchLayoutSource = fs.readFileSync(new URL('../src/ui/workbench-layout.js', import.meta.url), 'utf8');
@@ -175,6 +177,18 @@ test('summary memory hierarchy and material selection stay DOM-free feature mode
     assert.match(summaryLevelsSource, /export function getSummaryLevel\(/);
     assert.doesNotMatch(summaryMemoryModelSource, /document\.|window\.|\$\(|saveState|renderAll/);
     assert.doesNotMatch(summarySelectorsSource, /document\.|window\.|\$\(|saveState|renderAll/);
+});
+
+test('summary target selection and task queue are assembled outside the entry file', () => {
+    assert.match(source, /import \{ createSummaryTargetController \} from '\.\/src\/features\/summary-target-controller\.js';/);
+    assert.match(source, /import \{ createSummaryTaskQueue \} from '\.\/src\/features\/summary-task-queue\.js';/);
+    assert.match(source, /const summaryTargetController = createSummaryTargetController\(\{/);
+    assert.match(source, /const summaryTaskQueue = createSummaryTaskQueue\(\{/);
+    assert.match(summaryTargetControllerSource, /function confirmGenerationTargets\(/);
+    assert.match(summaryTaskQueueSource, /async function processTaskQueue\(/);
+    assert.doesNotMatch(source, /function enqueueSummaryTask\(|async function processTaskQueue\(/);
+    assert.doesNotMatch(summaryTargetControllerSource, /renderAll\(/);
+    assert.doesNotMatch(summaryTaskQueueSource, /renderAll\(/);
 });
 
 test('vector recall uses independent semantic and lexical candidates with explainable scores', () => {
@@ -420,9 +434,7 @@ test('table rollback plan cascades through newer dependent transactions', async 
 });
 
 test('hot paths use scoped or coalesced rendering', () => {
-    const queueStart = source.indexOf('async function processTaskQueue()');
-    const queueEnd = source.indexOf('function retryQueueTask', queueStart);
-    const queueSource = source.slice(queueStart, queueEnd);
+    const queueSource = extractFunctionFrom(summaryTaskQueueSource, 'processTaskQueue');
     assert.match(queueSource, /renderTaskQueueProgress\(/);
     assert.doesNotMatch(queueSource, /renderAll\(`正在处理任务/);
 
@@ -507,8 +519,6 @@ test('all business mutations use scoped rendering and reserve renderAll for life
     assert.equal((workbenchNavigationSource.match(/renderAll\?\.\(\)/g) || []).length, 2);
     for (const name of [
         'scanBakemonoBlocks',
-        'generateStageSummary',
-        'generateEpicSummary',
         'generateStageBatchTasks',
         'generateEpicBatchTasks',
         'generateMissingSummaryQueue',

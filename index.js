@@ -29,6 +29,8 @@ import { createPromptInspector } from './src/features/prompt-inspector.js';
 import { createHelpGuide } from './src/features/help-guide.js';
 import { createSummaryMemoryModel } from './src/features/summary-memory-model.js';
 import { createSummarySelectors } from './src/features/summary-selectors.js';
+import { createSummaryTargetController } from './src/features/summary-target-controller.js';
+import { createSummaryTaskQueue } from './src/features/summary-task-queue.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
 import { createOperationFeedback } from './src/ui/operation-feedback.js';
 import { installWorkbenchParentNavigation, organizeWorkbenchOwnedSections } from './src/ui/workbench-layout.js';
@@ -990,8 +992,6 @@ const defaultState = {
 };
 
 let isBusy = false;
-let isQueueRunning = false;
-const cancelledQueueTaskIds = new Set();
 let vectorIndexTimer = null;
 let inlineCaptureTimer = null;
 let autoHideRecentTimer = null;
@@ -3753,683 +3753,8 @@ function getBlocksByType(type) {
 }
 
 
-function readGenerationTargetSettings() {
-    const state = ensureState();
-    const readKind = kind => {
-        const modeInput = $(`#bakemono-memory-${kind}-target-mode`);
-        const countInput = $(`#bakemono-memory-${kind}-target-count`);
-        const rangeInput = $(`#bakemono-memory-${kind}-target-range`);
-        if (!modeInput.length && !countInput.length && !rangeInput.length) {
-            return {
-                ...defaultGenerationTargets[kind],
-                ...(state.generationTargets?.[kind] || {}),
-            };
-        }
-        return {
-            mode: String(modeInput.val() || state.generationTargets[kind]?.mode || defaultGenerationTargets[kind].mode),
-            count: Math.max(1, Number(countInput.val() || state.generationTargets[kind]?.count || defaultGenerationTargets[kind].count)),
-            range: String(rangeInput.val() || state.generationTargets[kind]?.range || '').trim(),
-        };
-    };
-    state.generationTargets = {
-        stage: readKind('stage'),
-        epic: readKind('epic'),
-    };
-    persistSharedConfigurationFromState(state);
-    return state.generationTargets;
-}
-
-function getTargetSelectionLabel(kind, selectedLength, totalLength) {
-    const state = ensureState();
-    const config = state.generationTargets?.[kind] || defaultGenerationTargets[kind];
-    const modeLabels = {
-        [targetSelectionModes.ALL]: '全部',
-        [targetSelectionModes.OLDEST]: `最早 ${config.count || defaultGenerationTargets[kind].count} 个`,
-        [targetSelectionModes.RANGE]: `楼层 ${config.range || '未填写'}`,
-    };
-    return `${modeLabels[config.mode] || '全部'}：${selectedLength}/${totalLength} 个`;
-}
-
-function inferNextRange(range) {
-    const match = String(range || '').trim().match(/^(\d+)\s*-\s*(\d+)$/);
-    if (!match) {
-        return '';
-    }
-    const start = Number(match[1]);
-    const end = Number(match[2]);
-    if (!Number.isFinite(start) || !Number.isFinite(end)) {
-        return '';
-    }
-    const left = Math.min(start, end);
-    const right = Math.max(start, end);
-    const nextStart = right + 1;
-    const nextEnd = right + Math.max(1, right - left);
-    return `${nextStart}-${nextEnd}`;
-}
-
-function parseGenerationTargetInput(input, fallbackConfig = {}) {
-    const text = String(input || '').trim();
-    if (!text) {
-        return null;
-    }
-    if (/^(all|全部)$/i.test(text)) {
-        return {
-            ...fallbackConfig,
-            mode: targetSelectionModes.ALL,
-        };
-    }
-    const oldest = text.match(/^(?:oldest|前|最早|n)\s*[:：]?\s*(\d+)$/i);
-    if (oldest) {
-        return {
-            ...fallbackConfig,
-            mode: targetSelectionModes.OLDEST,
-            count: Math.max(1, Number(oldest[1])),
-        };
-    }
-    const range = text.match(/^(?:range|楼层|范围)?\s*[:：]?\s*(\d+(?:\s*-\s*\d+)?(?:[,\s，]+\d+(?:\s*-\s*\d+)?)*)$/i);
-    if (range) {
-        return {
-            ...fallbackConfig,
-            mode: targetSelectionModes.RANGE,
-            range: range[1].trim(),
-        };
-    }
-    return null;
-}
-
-function promptGenerationTargetSelection(kind, totalLength, options = {}) {
-    const state = ensureState();
-    const defaults = defaultGenerationTargets[kind] || defaultGenerationTargets.stage;
-    const isBatch = !!options.batch;
-    const current = {
-        ...defaults,
-        ...(state.generationTargets?.[kind] || {}),
-    };
-    const kindLabel = kind === 'epic' ? '多次总结' : '阶段总结';
-    const suggestedRange = current.mode === targetSelectionModes.RANGE
-        ? (inferNextRange(current.range) || current.range || defaults.range)
-        : (current.range || defaults.range);
-    return new Promise(resolve => {
-        document.querySelector('.bakemono-memory-target-dialog')?.remove();
-
-        const overlay = document.createElement('div');
-        overlay.className = 'bakemono-memory-target-dialog';
-        overlay.innerHTML = `
-            <section class="bakemono-memory-target-box" role="dialog" aria-modal="true">
-                <header>
-                    <div>
-                        <span>生成范围</span>
-                        <h3>${kindLabel}</h3>
-                    </div>
-                    <button type="button" class="menu_button" data-bakemono-target-cancel><i class="fa-solid fa-xmark"></i></button>
-                </header>
-                <div class="bakemono-memory-target-body">
-                    <p>${isBatch
-                        ? `本次可用材料：${totalLength} 个。设置每批数量后会分批加入队列。`
-                        : `本次可用材料：${totalLength} 个。你可以只合并一部分，避免一次压得太简洁。`}</p>
-                    <label class="bakemono-memory-field">
-                        <span>读取范围</span>
-                        <select class="text_pole" data-bakemono-target-mode>
-                            <option value="all">全部未总结内容</option>
-                            <option value="oldest">最早 N 个</option>
-                            <option value="range">指定来源楼层</option>
-                        </select>
-                    </label>
-                    <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
-                        <label class="bakemono-memory-field">
-                            <span>${isBatch ? '每批数量' : 'N 个'}</span>
-                            <input class="text_pole" data-bakemono-target-count type="number" min="1" step="1">
-                        </label>
-                        <label class="bakemono-memory-field">
-                            <span>来源楼层</span>
-                            <input class="text_pole" data-bakemono-target-range type="text" placeholder="例如 0-20, 80-120">
-                        </label>
-                    </div>
-                    <div class="bakemono-memory-prompt-hint" data-bakemono-target-hint></div>
-                </div>
-                <footer class="bakemono-memory-inline-actions">
-                    <button type="button" class="menu_button" data-bakemono-target-cancel><i class="fa-solid fa-ban"></i><span>取消</span></button>
-                    <button type="button" class="menu_button" data-bakemono-target-confirm><i class="fa-solid fa-check"></i><span>使用这个范围</span></button>
-                </footer>
-            </section>
-        `;
-
-        const modeInput = overlay.querySelector('[data-bakemono-target-mode]');
-        const countInput = overlay.querySelector('[data-bakemono-target-count]');
-        const rangeInput = overlay.querySelector('[data-bakemono-target-range]');
-        const hint = overlay.querySelector('[data-bakemono-target-hint]');
-
-        modeInput.value = current.mode || targetSelectionModes.ALL;
-        countInput.value = current.count || defaults.count;
-        rangeInput.value = current.mode === targetSelectionModes.RANGE
-            ? (suggestedRange || current.range || '0-20')
-            : (current.range || '');
-
-        const close = value => {
-            overlay.remove();
-            resolve(value);
-        };
-        const syncHint = () => {
-            const mode = modeInput.value;
-            countInput.disabled = !isBatch && mode !== targetSelectionModes.OLDEST;
-            rangeInput.disabled = mode !== targetSelectionModes.RANGE;
-            if (mode === targetSelectionModes.RANGE && !rangeInput.value.trim()) {
-                rangeInput.value = suggestedRange || '0-20';
-            }
-            if (isBatch) {
-                hint.textContent = mode === targetSelectionModes.RANGE
-                    ? `只处理指定楼层范围，并按每批 ${countInput.value || current.count || defaults.count} 个材料入队。`
-                    : `会按来源楼层从早到晚分批；每批 ${countInput.value || current.count || defaults.count} 个材料。`;
-                return;
-            }
-            hint.textContent = mode === targetSelectionModes.RANGE && current.range
-                ? `上次范围：${current.range}。已为你推导到：${rangeInput.value || suggestedRange}，可以直接修改。`
-                : mode === targetSelectionModes.OLDEST
-                    ? '会按来源楼层从早到晚取前 N 个。'
-                    : '会合并当前所有尚未进入上层总结的内容。';
-        };
-
-        overlay.querySelectorAll('[data-bakemono-target-cancel]').forEach(button => {
-            button.addEventListener('click', () => close(null));
-        });
-        overlay.querySelector('[data-bakemono-target-confirm]').addEventListener('click', () => {
-            const parsed = {
-                ...current,
-                mode: Object.values(targetSelectionModes).includes(modeInput.value) ? modeInput.value : targetSelectionModes.ALL,
-                count: Math.max(1, Number(countInput.value || current.count || defaults.count)),
-                range: String(rangeInput.value || '').trim(),
-            };
-            if (parsed.mode === targetSelectionModes.RANGE && !parseLooseNumberRange(parsed.range).ids.size) {
-                toastr.warning('请填写可识别的楼层范围，例如 0-20 或 0-20, 35-50。');
-                return;
-            }
-            state.generationTargets[kind] = parsed;
-            $(`#bakemono-memory-${kind}-target-mode`).val(parsed.mode);
-            $(`#bakemono-memory-${kind}-target-count`).val(parsed.count);
-            $(`#bakemono-memory-${kind}-target-range`).val(parsed.range);
-            saveState();
-            close(parsed);
-        });
-        modeInput.addEventListener('change', syncHint);
-        countInput.addEventListener('input', syncHint);
-        syncHint();
-
-        const host = document.getElementById('bakemono-workbench-root') || document.body;
-        host.append(overlay);
-        modeInput.focus();
-    });
-}
-
-function promptGenerationModeSelection(kind) {
-    const kindLabel = kind === 'epic' ? '多次总结' : '阶段总结';
-    const batchLabel = kind === 'epic' ? '批量多次总结' : '批量阶段总结';
-    const singleHint = kind === 'epic'
-        ? '选范围，生成一条上层草稿。'
-        : '选范围，生成一条阶段草稿。';
-    const batchHint = kind === 'epic'
-        ? '大量总结分批入队。'
-        : '大量摘要分批入队。';
-
-    return new Promise(resolve => {
-        document.querySelector('.bakemono-memory-generation-mode-dialog')?.remove();
-
-        const overlay = document.createElement('div');
-        overlay.className = 'bakemono-memory-target-dialog bakemono-memory-generation-mode-dialog';
-        overlay.innerHTML = `
-            <section class="bakemono-memory-target-box bakemono-memory-generation-mode-box" role="dialog" aria-modal="true">
-                <header>
-                    <div>
-                        <span>选择生成方式</span>
-                        <h3>${kindLabel}</h3>
-                    </div>
-                    <button type="button" class="menu_button" data-bakemono-mode-cancel><i class="fa-solid fa-xmark"></i></button>
-                </header>
-                <div class="bakemono-memory-generation-mode-list">
-                    <button type="button" class="menu_button bakemono-memory-generation-mode-option" data-bakemono-mode-choice="single">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i>
-                        <span>
-                            <strong>单次生成</strong>
-                            <small>${singleHint}</small>
-                        </span>
-                    </button>
-                    <button type="button" class="menu_button bakemono-memory-generation-mode-option" data-bakemono-mode-choice="batch">
-                        <i class="fa-solid fa-list-check"></i>
-                        <span>
-                            <strong>${batchLabel}</strong>
-                            <small>${batchHint}</small>
-                        </span>
-                    </button>
-                </div>
-                <footer class="bakemono-memory-inline-actions">
-                    <button type="button" class="menu_button" data-bakemono-mode-cancel><i class="fa-solid fa-ban"></i><span>取消</span></button>
-                </footer>
-            </section>
-        `;
-
-        const close = value => {
-            overlay.remove();
-            resolve(value);
-        };
-        overlay.querySelectorAll('[data-bakemono-mode-cancel]').forEach(button => {
-            button.addEventListener('click', () => close(null));
-        });
-        overlay.querySelectorAll('[data-bakemono-mode-choice]').forEach(button => {
-            button.addEventListener('click', () => close(button.dataset.bakemonoModeChoice));
-        });
-
-        const host = document.getElementById('bakemono-workbench-root') || document.body;
-        host.append(overlay);
-        overlay.querySelector('[data-bakemono-mode-choice]')?.focus();
-    });
-}
-
-async function chooseStageGenerationMode() {
-    if (isBusy) {
-        return;
-    }
-    const mode = await promptGenerationModeSelection('stage');
-    if (mode === 'single') {
-        await generateStageDraft();
-    } else if (mode === 'batch') {
-        await generateStageBatchTasks();
-    }
-}
-
-async function chooseEpicGenerationMode() {
-    if (isBusy) {
-        return;
-    }
-    const mode = await promptGenerationModeSelection('epic');
-    if (mode === 'single') {
-        await generateEpicDraft();
-    } else if (mode === 'batch') {
-        await generateEpicBatchTasks();
-    }
-}
-
-function confirmGenerationTargets(kind, targets, totalLength) {
-    const state = ensureState();
-    const kindLabel = kind === 'epic' ? '多次总结' : '阶段总结';
-    const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
-    const confirmed = confirmDanger(
-        `生成【${kindLabel}】草稿？`,
-        [
-            `本次范围：${getTargetSelectionLabel(kind, targets.length, totalLength)}`,
-            `来源：${formatSourceRange(sourceMessageIds)}`,
-            '生成结果会先进入草稿箱，确认保存后才会写入长期记忆。',
-        ],
-        '确认生成吗？',
-    );
-    if (!confirmed) {
-        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `已取消${kindLabel}生成。`);
-    }
-    return confirmed;
-}
 
 
-async function generateStageSummary() {
-    if (isBusy) {
-        return;
-    }
-
-    scanBakemonoBlocks({ persist: false });
-    const state = ensureState();
-    const targets = getUnsummarizedStoryBlocks();
-    if (!targets.length) {
-        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有新的剧情摘要需要生成阶段总结。');
-        toastr.info('没有新的剧情摘要需要生成阶段总结。');
-        return;
-    }
-
-    await runGeneration('正在生成阶段总结...', async () => {
-        const result = normalizeGeneratedBakemono(await generateRaw({
-            prompt: buildStageUserPrompt(targets),
-            systemPrompt: buildStageSystemPrompt(),
-        }));
-
-        const hash = getHash(result);
-        const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
-        const sourceSortKey = getSourceStart(sourceMessageIds);
-        state.stageSummaries.push({
-            hash,
-            type: blockTypes.STAGE,
-            title: getBlockTitle(result, `剧集终了 ${state.stageSummaries.length + 1}`),
-            content: result,
-            sourceHashes: targets.map(block => block.hash),
-            sourceMessageIds,
-            sourceStart: getSourceStart(sourceMessageIds),
-            sourceEnd: getSourceEnd(sourceMessageIds),
-            sourceSortKey,
-            sourceKind: 'stage',
-            createdAt: new Date().toISOString(),
-        });
-        state.coveredBlockHashes = unique([...state.coveredBlockHashes, ...targets.map(block => block.hash)]);
-        state.blocks = mergeBlocks(state.blocks, [{
-            hash,
-            type: blockTypes.STAGE,
-            messageId: Number.isFinite(sourceSortKey) && sourceSortKey < Number.MAX_SAFE_INTEGER ? sourceSortKey : Number.MAX_SAFE_INTEGER,
-            blockIndex: state.stageSummaries.length,
-            title: getBlockTitle(result, `剧集终了 ${state.stageSummaries.length}`),
-            content: result,
-            sourceHashes: targets.map(block => block.hash),
-            sourceMessageIds,
-            sourceSortKey,
-            sourceKind: 'stage',
-            isHidden: false,
-        }]);
-        updateInjectionFromSummaries();
-        saveState();
-        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '阶段总结已生成并写入注入内容。');
-        toastr.success('阶段总结已生成。');
-    }, '阶段总结已生成');
-}
-
-async function generateEpicSummary() {
-    if (isBusy) {
-        return;
-    }
-
-    scanBakemonoBlocks({ persist: false });
-    const state = ensureState();
-    const stageTargets = getUnsummarizedStageBlocks();
-    const multiTargets = getUnsummarizedMultiSummaryBlocks();
-    const storyFallback = getStoryMaterialBlocks().filter(block => !state.coveredBlockHashes.includes(block.hash));
-    const targets = stageTargets.length ? stageTargets : multiTargets.length ? multiTargets : storyFallback;
-    const nextLevel = getNextMultiSummaryLevel(targets);
-
-    if (!targets.length) {
-        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有可用于生成多次总结的内容。');
-        toastr.info('没有可用于生成多次总结的内容。');
-        return;
-    }
-
-    const latestEpicAt = state.epicSummaries.at(-1)?.createdAt;
-    const confirmed = window.confirm([
-        `即将生成【${getMultiSummaryLabel(nextLevel)}】。`,
-        '',
-        `阶段总结来源：${stageTargets.length} 个`,
-        `多次总结来源：${multiTargets.length} 个`,
-        `普通摘要 fallback：${storyFallback.length} 个`,
-        `上次多次总结：${latestEpicAt ? new Date(latestEpicAt).toLocaleString() : '尚未生成'}`,
-        '',
-        '这个操作会把更高层级总结写入长期记忆。确认继续吗？',
-    ].join('\n'));
-    if (!confirmed) {
-        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消多次总结生成。');
-        return;
-    }
-
-    await runGeneration('正在生成多次总结...', async () => {
-        const result = normalizeGeneratedBakemono(await generateRaw({
-            prompt: buildEpicUserPrompt(targets),
-            systemPrompt: buildEpicSystemPrompt(),
-        }));
-
-        const hash = getHash(result);
-        state.epicSummaries.push({
-            hash,
-            type: blockTypes.EPIC,
-            title: getBlockTitle(result, `${getMultiSummaryLabel(nextLevel)} ${state.epicSummaries.length + 1}`),
-            content: result,
-            sourceHashes: targets.map(block => block.hash),
-            sourceStageHashes: targets.filter(block => block.type === blockTypes.STAGE || block.type === blockTypes.EPIC).map(block => block.hash),
-            level: nextLevel,
-            createdAt: new Date().toISOString(),
-        });
-        state.coveredStageHashes = unique([...state.coveredStageHashes, ...targets.filter(block => block.type === blockTypes.STAGE || block.type === blockTypes.EPIC).map(block => block.hash)]);
-        state.blocks = mergeBlocks(state.blocks, [{
-            hash,
-            type: blockTypes.EPIC,
-            messageId: Number.MAX_SAFE_INTEGER,
-            blockIndex: state.epicSummaries.length,
-            title: getBlockTitle(result, `${getMultiSummaryLabel(nextLevel)} ${state.epicSummaries.length}`),
-            content: result,
-            sourceHashes: targets.map(block => block.hash),
-            sourceStageHashes: targets.filter(block => block.type === blockTypes.STAGE || block.type === blockTypes.EPIC).map(block => block.hash),
-            level: nextLevel,
-            isHidden: false,
-        }]);
-        updateInjectionFromSummaries();
-        saveState();
-        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '多次总结已生成并写入注入内容。');
-        toastr.success('多次总结已生成。');
-    }, '多次总结已生成');
-}
-
-function enqueueSummaryTask({ kind, prompt, systemPrompt, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], trigger = 'manual', label = '', metadata = {}, autoStart = true, silent = false }) {
-    const state = ensureState();
-    const task = {
-        id: `task-${getHash(`${kind}|${Date.now()}|${prompt}`)}`,
-        kind,
-        label: label || getKindLabel(kind),
-        prompt,
-        systemPrompt,
-        sourceHashes,
-        sourceStageHashes,
-        sourceMessageIds,
-        trigger,
-        metadata,
-        status: 'queued',
-        error: '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-    };
-    state.taskQueue.push(task);
-    saveState();
-    if (!silent) {
-        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '任务已加入队列。');
-    }
-    if (autoStart) {
-        processTaskQueue();
-    }
-    return task;
-}
-
-async function processTaskQueue() {
-    const state = ensureState();
-    if (isQueueRunning || isBusy || !state.taskQueue.some(task => task.status === 'queued')) {
-        return;
-    }
-
-    isQueueRunning = true;
-    setBusy(true);
-    const toast = toastr.info('正在处理总结任务队列...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
-    let createdDrafts = 0;
-    let autoCommitted = 0;
-    try {
-        while (true) {
-            const task = state.taskQueue.find(item => item.status === 'queued');
-            if (!task) {
-                break;
-            }
-
-            task.status = 'running';
-            task.updatedAt = new Date().toISOString();
-            saveState();
-            renderTaskQueueProgress(`正在处理任务：${task.label}`);
-
-            try {
-                const rawResult = await callGenerationModel({
-                    prompt: task.prompt,
-                    systemPrompt: task.systemPrompt,
-                });
-                if (cancelledQueueTaskIds.has(task.id)) {
-                    cancelledQueueTaskIds.delete(task.id);
-                    task.status = 'cancelled';
-                    task.error = '任务已被手动解除。';
-                    task.updatedAt = new Date().toISOString();
-                    saveState();
-                    renderTaskQueueProgress();
-                    continue;
-                }
-                if (task.trigger === 'missing_summary_batch') {
-                    const items = parseMissingSummaryBatchResult(rawResult, task, normalizeGeneratedBakemono);
-                    if (!items.length) {
-                        throw new Error('这一批没有解析出任何楼层摘要。请检查模型是否按“===楼层#数字===”分隔输出。');
-                    }
-                    const createdMessageIds = new Set();
-                    for (const item of items) {
-                        createMissingSummaryDraftFromBatchItem(item, task);
-                        createdMessageIds.add(Number(item.target.messageId));
-                    }
-                    createdDrafts += items.length;
-                    const expectedCount = Array.isArray(task.metadata?.missingTargets) ? task.metadata.missingTargets.length : 0;
-                    if (expectedCount && items.length < expectedCount) {
-                        const expectedIds = task.metadata.missingTargets.map(target => Number(target.messageId));
-                        const missed = expectedIds.filter(id => !createdMessageIds.has(id));
-                        task.error = `部分完成：本批 ${expectedCount} 楼中解析出 ${items.length} 楼，缺少 ${missed.map(id => `#${id}`).join(', ')}。`;
-                    } else {
-                        task.error = '';
-                    }
-                    task.status = 'done';
-                    task.updatedAt = new Date().toISOString();
-                    saveState();
-                    renderTaskQueueProgress(`已处理任务：${task.label}`);
-                    continue;
-                }
-
-                const result = normalizeGeneratedBakemono(rawResult);
-                const draft = createDraft({
-                    kind: task.kind,
-                    content: result,
-                    sourceHashes: task.sourceHashes || [],
-                    sourceStageHashes: task.sourceStageHashes || [],
-                    sourceMessageIds: task.sourceMessageIds || [],
-                    prompt: task.prompt,
-                    trigger: task.trigger || 'manual',
-                    metadata: task.metadata || {},
-                });
-                if (task.trigger === 'auto' && state.automation.mode === 'commit_hide' && task.kind === blockTypes.STAGE) {
-                    const summary = await commitDraft(draft.id, draft.content, { silent: true });
-                    autoCommitted += 1;
-                    const preserveRecent = Math.max(0, Number(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent));
-                    task.metadata = {
-                        ...(task.metadata || {}),
-                        autoCommitted: true,
-                        autoHiddenPreserveRecent: preserveRecent,
-                    };
-                    const hiddenBefore = new Set(state.hiddenMessageIds || []);
-                    const hiddenIds = await hideCoveredMessages({ confirm: false, preserveRecent, silent: true }) || [];
-                    const newlyHiddenIds = hiddenIds.filter(id => !hiddenBefore.has(id));
-                    recordAutoSummaryTransaction({
-                        task,
-                        summary,
-                        hiddenMessageIds: newlyHiddenIds,
-                        preserveRecent,
-                    });
-                    toastr.info(`自动阶段总结已保存进长期记忆，并已隐藏被覆盖楼层（保留最近 ${preserveRecent} 楼）。`, '剧情剪辑台');
-                } else {
-                    createdDrafts += 1;
-                }
-                task.status = 'done';
-                task.error = '';
-                task.updatedAt = new Date().toISOString();
-                if (task.trigger === 'auto') {
-                    state.automation.lastAutoAt = new Date().toISOString();
-                }
-            } catch (error) {
-                task.status = 'failed';
-                task.error = error?.message || String(error);
-                task.updatedAt = new Date().toISOString();
-                toastr.error(task.error, '任务失败');
-            }
-            saveState();
-            renderTaskQueueProgress();
-        }
-        if (createdDrafts) {
-            switchWorkbenchTab('drafts');
-        }
-        const message = autoCommitted && !createdDrafts
-            ? `任务队列处理完成，已自动保存 ${autoCommitted} 个阶段总结并收纳旧楼层。`
-            : autoCommitted
-                ? `任务队列处理完成，已自动保存 ${autoCommitted} 个阶段总结，另有 ${createdDrafts} 个草稿待确认。`
-                : '任务队列处理完成，生成结果已进入草稿箱。';
-        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, message);
-    } finally {
-        toastr.clear(toast);
-        isQueueRunning = false;
-        setBusy(false);
-        renderTaskQueueProgress();
-    }
-}
-
-function retryQueueTask(taskId) {
-    const state = ensureState();
-    const task = state.taskQueue.find(item => item.id === taskId);
-    if (!task) {
-        return;
-    }
-    task.status = 'queued';
-    task.error = '';
-    task.updatedAt = new Date().toISOString();
-    saveState();
-    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '失败任务已重新排队。');
-    processTaskQueue();
-}
-
-function removeQueueTask(taskId) {
-    const state = ensureState();
-    const task = state.taskQueue.find(item => item.id === taskId);
-    const isRunningTask = task?.status === 'running';
-    const confirmed = confirmDanger(
-        `${isRunningTask ? '强制移除卡住任务' : '移除任务'}「${task?.label || '未命名任务'}」？`,
-        [
-            '任务移除后不会删除已保存摘要，但这个队列项无法从队列中恢复。',
-            ...(isRunningTask ? [
-                '如果旧请求稍后返回，插件会忽略它，不再写入草稿。',
-                '这只解除插件队列状态，不能中止已经发出的模型请求。',
-            ] : []),
-        ],
-    );
-    if (!confirmed) {
-        return;
-    }
-    if (isRunningTask) {
-        cancelledQueueTaskIds.add(task.id);
-        isQueueRunning = false;
-        setBusy(false);
-    }
-    state.taskQueue = state.taskQueue.filter(task => task.id !== taskId);
-    saveState();
-    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, isRunningTask ? '已解除卡住的队列任务。' : '任务已从队列移除。');
-    processTaskQueue();
-}
-
-function clearFinishedQueueTasks() {
-    const state = ensureState();
-    const count = state.taskQueue.filter(task => ['done', 'failed'].includes(task.status)).length;
-    if (!count) {
-        toastr.info('没有可清理的完成/失败队列记录。');
-        return;
-    }
-    const confirmed = confirmDanger(
-        `清理 ${count} 条完成/失败队列记录？`,
-        ['只会清理队列记录，不会删除已保存摘要。'],
-    );
-    if (!confirmed) {
-        return;
-    }
-    state.taskQueue = state.taskQueue.filter(task => !['done', 'failed'].includes(task.status));
-    saveState();
-    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '已清理完成/失败的队列记录。');
-}
-
-function clearHistoryRecords() {
-    const state = ensureState();
-    if (!state.history.length) {
-        toastr.info('暂无保存记录可清理。');
-        return;
-    }
-    const confirmed = window.confirm('只清理保存记录列表，不删除已保存的总结和注入记忆。确定继续吗？');
-    if (!confirmed) {
-        return;
-    }
-    state.history = [];
-    historyState.page = 0;
-    saveState();
-    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '保存记录已清理。');
-    toastr.success('保存记录已清理。');
-}
 
 async function generateStageDraft(options = {}) {
     if (isBusy) {
@@ -5768,10 +5093,10 @@ function clearStuckQueueTasks(predicate = () => true, label = '任务') {
     if (!confirmed) {
         return;
     }
-    stuckTasks.forEach(task => cancelledQueueTaskIds.add(task.id));
+    summaryTaskQueue.cancelTasks(stuckTasks.map(task => task.id));
     const stuckTaskIds = new Set(stuckTasks.map(task => task.id));
     state.taskQueue = state.taskQueue.filter(task => !stuckTaskIds.has(task.id));
-    isQueueRunning = false;
+    summaryTaskQueue.resetRunning();
     setBusy(false);
     saveState();
     renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `已解除 ${stuckTasks.length} 个卡住的${label}。`);
@@ -7625,7 +6950,7 @@ function getCurrentFloorMemoryIndex(state = ensureState()) {
 }
 
 function getMemoryOrchestrationPlan(state = ensureState(), index = getCurrentFloorMemoryIndex(state)) {
-    return createMemoryOrchestrationPlan(index, state, { busy: isBusy || isQueueRunning });
+    return createMemoryOrchestrationPlan(index, state, { busy: isBusy || summaryTaskQueue.isRunning() });
 }
 
 function getOverviewRecommendation(state = ensureState(), index = getCurrentFloorMemoryIndex(state)) {
@@ -7786,7 +7111,7 @@ function getOverviewHealth(floorStats, state = ensureState()) {
             tone: 'attention',
         };
     }
-    if (floorStats.activeTaskCount || isBusy || isQueueRunning) {
+    if (floorStats.activeTaskCount || isBusy || summaryTaskQueue.isRunning()) {
         return {
             badge: '正在处理',
             title: '记忆正在整理',
@@ -8930,6 +8255,71 @@ const workbenchRenderScopes = Object.freeze({
     CONFIG: 'config',
     SETTINGS: 'settings',
 });
+
+const summaryTargetController = createSummaryTargetController({
+    query: $,
+    getState: ensureState,
+    defaultGenerationTargets,
+    targetSelectionModes,
+    persistSharedConfigurationFromState,
+    parseLooseNumberRange,
+    toastr,
+    saveState,
+    getIsBusy: () => isBusy,
+    generateStageDraft,
+    generateStageBatchTasks,
+    generateEpicDraft,
+    generateEpicBatchTasks,
+    confirmDanger,
+    getSourceMessageIdsFromBlocks,
+    formatSourceRange,
+    renderWorkbenchScope,
+    workbenchRenderScopes,
+});
+const {
+    chooseEpicGenerationMode,
+    chooseStageGenerationMode,
+    confirmGenerationTargets,
+    getTargetSelectionLabel,
+    parseGenerationTargetInput,
+    promptGenerationModeSelection,
+    promptGenerationTargetSelection,
+    readGenerationTargetSettings,
+} = summaryTargetController;
+
+const summaryTaskQueue = createSummaryTaskQueue({
+    getState: ensureState,
+    getHash,
+    getKindLabel,
+    saveState,
+    renderWorkbenchScope,
+    renderTaskQueueProgress,
+    workbenchRenderScopes,
+    getIsBusy: () => isBusy,
+    setBusy,
+    toastr,
+    callGenerationModel,
+    parseMissingSummaryBatchResult,
+    normalizeGeneratedBakemono,
+    createMissingSummaryDraftFromBatchItem,
+    createDraft,
+    commitDraft,
+    blockTypes,
+    defaultAutomation,
+    hideCoveredMessages,
+    recordAutoSummaryTransaction,
+    switchWorkbenchTab,
+    confirmDanger,
+    historyState,
+});
+const {
+    clearFinishedQueueTasks,
+    clearHistoryRecords,
+    enqueueSummaryTask,
+    processTaskQueue,
+    removeQueueTask,
+    retryQueueTask,
+} = summaryTaskQueue;
 
 function renderWorkbenchSharedChrome(activeTab, state, statusText = '', options = {}) {
     $('#bakemono-memory-count-drafts').text(state.drafts.length);
