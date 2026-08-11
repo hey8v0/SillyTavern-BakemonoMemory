@@ -12,6 +12,12 @@ const stateShapeSource = fs.readFileSync(new URL('../src/core/state-shape.js', i
 const workflowModeSource = fs.readFileSync(new URL('../src/core/workflow-mode.js', import.meta.url), 'utf8');
 const hybridRetrievalSource = fs.readFileSync(new URL('../src/vector/hybrid-retrieval.js', import.meta.url), 'utf8');
 const promptInspectorSource = fs.readFileSync(new URL('../src/features/prompt-inspector.js', import.meta.url), 'utf8');
+const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
+const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
+const helpPopoverSource = fs.readFileSync(new URL('../src/ui/help-popover.js', import.meta.url), 'utf8');
+const operationFeedbackSource = fs.readFileSync(new URL('../src/ui/operation-feedback.js', import.meta.url), 'utf8');
+const workbenchLayoutSource = fs.readFileSync(new URL('../src/ui/workbench-layout.js', import.meta.url), 'utf8');
+const workbenchNavigationSource = fs.readFileSync(new URL('../src/ui/workbench-navigation.js', import.meta.url), 'utf8');
 
 test('workbench markup and stylesheet remain structurally balanced', () => {
     const ids = [...settingsSource.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
@@ -79,25 +85,26 @@ test('settings center owns global preferences while feature settings stay with t
     assert.match(settingsSource, /data-bakemono-owned-section="archive"/);
     assert.match(settingsSource, /data-bakemono-owned-section="generation"/);
     assert.match(settingsSource, /data-bakemono-owned-section="config"/);
-    assert.match(source, /function organizeWorkbenchOwnedSections\(/);
-    assert.match(source, /\['database', 'bakemono-memory-data-status-slot'\]/);
-    assert.match(source, /\['batch', 'bakemono-memory-batch-summary-slot'\]/);
-    assert.match(source, /\['archive', 'bakemono-memory-floor-archive-slot'\]/);
-    assert.match(source, /\['generation', 'bakemono-memory-generation-settings-slot'\]/);
-    assert.match(source, /\['config', 'bakemono-memory-config-settings-slot'\]/);
+    assert.match(source, /organizeWorkbenchOwnedSections\(summaryGenerationMode\)/);
+    assert.match(workbenchLayoutSource, /export function organizeWorkbenchOwnedSections\(/);
+    assert.match(workbenchLayoutSource, /\['database', 'bakemono-memory-data-status-slot'\]/);
+    assert.match(workbenchLayoutSource, /\['batch', 'bakemono-memory-batch-summary-slot'\]/);
+    assert.match(workbenchLayoutSource, /\['archive', 'bakemono-memory-floor-archive-slot'\]/);
+    assert.match(workbenchLayoutSource, /\['generation', 'bakemono-memory-generation-settings-slot'\]/);
+    assert.match(workbenchLayoutSource, /\['config', 'bakemono-memory-config-settings-slot'\]/);
     assert.doesNotMatch(settingsSource, /id="bakemono-memory-undo"|id="bakemono-memory-hide"|id="bakemono-memory-restore"/);
     assert.doesNotMatch(settingsSource, />专家设置</);
 });
 
 test('secondary workbench pages install a consistent parent navigation', () => {
-    assert.match(source, /const workbenchParentNavigation = Object\.freeze\(\{/);
-    assert.match(source, /'turn-summary': \{ target: 'data-hub', label: '返回自动与数据' \}/);
-    assert.match(source, /vector: \{ target: 'data-hub', label: '返回自动与数据' \}/);
-    assert.match(source, /settings: \{ target: 'settings-hub', label: '返回设置中心' \}/);
-    assert.match(source, /prompts: \{ target: 'settings-hub', label: '返回设置中心' \}/);
-    assert.match(source, /archive: \{ target: 'settings-hub', label: '返回设置中心' \}/);
-    assert.match(source, /timeline: \{ target: 'preview', label: '返回总结' \}/);
-    assert.match(source, /function installWorkbenchParentNavigation\(\)/);
+    assert.match(workbenchLayoutSource, /const workbenchParentNavigation = Object\.freeze\(\{/);
+    assert.match(workbenchLayoutSource, /'turn-summary': \{ target: 'data-hub', label: '返回自动与数据' \}/);
+    assert.match(workbenchLayoutSource, /vector: \{ target: 'data-hub', label: '返回自动与数据' \}/);
+    assert.match(workbenchLayoutSource, /settings: \{ target: 'settings-hub', label: '返回设置中心' \}/);
+    assert.match(workbenchLayoutSource, /prompts: \{ target: 'settings-hub', label: '返回设置中心' \}/);
+    assert.match(workbenchLayoutSource, /archive: \{ target: 'settings-hub', label: '返回设置中心' \}/);
+    assert.match(workbenchLayoutSource, /timeline: \{ target: 'preview', label: '返回总结' \}/);
+    assert.match(workbenchLayoutSource, /function installWorkbenchParentNavigation\(/);
     assert.match(source, /installWorkbenchParentNavigation\(\);/);
     assert.match(styleSource, /\.bakemono-memory-parent-link\s*\{[^}]*min-height:\s*40px;/s);
     assert.match(styleSource, /@media \(max-width: 900px\)[\s\S]*?\.bakemono-memory-parent-link\s*\{[^}]*min-height:\s*44px;/s);
@@ -116,7 +123,7 @@ test('previous prompt inspector stays read-only, manually searchable, navigable,
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-model"/);
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-preset"/);
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-floor"/);
-    assert.match(source, /'prompt-inspector': \{ target: 'overview', label: '返回剪辑台' \}/);
+    assert.match(workbenchLayoutSource, /'prompt-inspector': \{ target: 'overview', label: '返回剪辑台' \}/);
     assert.match(source, /import \{ createPromptInspector \} from '\.\/src\/features\/prompt-inspector\.js';/);
     assert.match(source, /const promptInspector = createPromptInspector\(\{/);
     assert.match(source, /promptInspector\.bindEvents\(document\.getElementById\('bakemono-workbench-root'\)\)/);
@@ -140,6 +147,18 @@ test('previous prompt inspector stays read-only, manually searchable, navigable,
     assert.match(styleSource, /\.bakemono-memory-prompt-inspector-search-navigation\s*\{[^}]*min-height:\s*44px;/s);
     assert.match(styleSource, /\.bakemono-memory-prompt-inspector-item-body > pre mark/);
     assert.match(styleSource, /\.bakemono-memory-prompt-inspector-item-body > pre mark\.is-current/);
+});
+
+test('help guide owns its content, reader state, and delegated events outside the entry file', () => {
+    assert.match(source, /import \{ createHelpGuide \} from '\.\/src\/features\/help-guide\.js';/);
+    assert.match(source, /const helpGuide = createHelpGuide\(\{ escapeHtml \}\)/);
+    assert.match(source, /helpGuide\.bind\(rootElement\)/);
+    assert.match(helpGuideContentSource, /export const helpGuideCategories =/);
+    assert.match(helpGuideContentSource, /export const helpGuideArticles =/);
+    assert.match(helpGuideSource, /function renderArticle\(/);
+    assert.match(helpGuideSource, /function openArticle\(/);
+    assert.match(helpGuideSource, /function closeArticle\(/);
+    assert.doesNotMatch(helpGuideSource, /saveState|saveGlobalSettings|renderAll/);
 });
 
 test('vector recall uses independent semantic and lexical candidates with explainable scores', () => {
@@ -185,15 +204,19 @@ test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
 test('expanded disclosures expose anchored help and important operations expose live feedback', () => {
     assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 12);
     assert.match(settingsSource, /class="bakemono-memory-help-content"/);
-    assert.match(source, /function toggleWorkbenchHelpPopover\(/);
-    assert.match(source, /function positionWorkbenchHelpPopover\(/);
-    assert.match(source, /event\.key === 'Escape'/);
+    assert.match(source, /import \{ createHelpPopover \} from '\.\/src\/ui\/help-popover\.js';/);
+    assert.match(source, /const helpPopover = createHelpPopover\(\)/);
+    assert.match(helpPopoverSource, /function toggle\(/);
+    assert.match(helpPopoverSource, /function position\(/);
+    assert.match(helpPopoverSource, /event\.key === 'Escape'/);
     assert.match(styleSource, /details\[open\] > summary > \.bakemono-memory-help-trigger\s*\{[^}]*display:\s*inline-flex;/s);
     assert.match(styleSource, /\.bakemono-memory-help-popover::before/);
-    assert.match(source, /toast\.setAttribute\('role', 'status'\)/);
-    assert.match(source, /toast\.setAttribute\('aria-live', 'polite'\)/);
-    assert.match(source, /setOperationFeedback\('success'/);
-    assert.match(source, /setOperationFeedback\('error'/);
+    assert.match(source, /import \{ createOperationFeedback \} from '\.\/src\/ui\/operation-feedback\.js';/);
+    assert.match(source, /const operationFeedback = createOperationFeedback\(\{/);
+    assert.match(operationFeedbackSource, /toast\.setAttribute\('role', 'status'\)/);
+    assert.match(operationFeedbackSource, /toast\.setAttribute\('aria-live', 'polite'\)/);
+    assert.match(operationFeedbackSource, /set\('success'/);
+    assert.match(operationFeedbackSource, /set\('error'/);
 });
 
 test('floor memory orchestration stays derived and the base ledger remains optional', () => {
@@ -464,7 +487,8 @@ test('all business mutations use scoped rendering and reserve renderAll for life
     assert.match(actionScopeSource, /'hide-before-recent'/);
 
     const renderAllOccurrences = source.match(/\brenderAll\(/g) || [];
-    assert.equal(renderAllOccurrences.length, 5, 'renderAll should remain only as one definition and four lifecycle calls');
+    assert.equal(renderAllOccurrences.length, 4, 'index should keep one definition, two lifecycle calls, and one navigation adapter');
+    assert.equal((workbenchNavigationSource.match(/renderAll\?\.\(\)/g) || []).length, 2);
     for (const name of [
         'scanBakemonoBlocks',
         'generateStageSummary',
@@ -473,7 +497,6 @@ test('all business mutations use scoped rendering and reserve renderAll for life
         'generateEpicBatchTasks',
         'generateMissingSummaryQueue',
         'maybeRunAutoSummary',
-        'runGeneration',
         'rollbackAutoSummaryTransaction',
         'saveEditedSummary',
         'deleteSavedSummary',
@@ -486,17 +509,19 @@ test('all business mutations use scoped rendering and reserve renderAll for life
     ]) {
         assert.doesNotMatch(extractFunction(name), /\brenderAll\(/, `${name} should not refresh the whole workbench`);
     }
+    assert.doesNotMatch(extractFunctionFrom(operationFeedbackSource, 'runGeneration'), /\brenderAll\(/);
 });
 
 test('large-chat scans avoid quadratic lookup and duplicate opening renders', () => {
     const scanSource = extractFunction('scanBakemonoBlocks');
-    const openSource = extractFunction('openWorkbench');
+    const openSource = extractFunctionFrom(workbenchNavigationSource, 'open');
 
     assert.match(scanSource, /previousBlockByContent\s*=\s*new Map/);
     assert.doesNotMatch(scanSource, /previousBlocks\.find\(/);
     assert.match(scanSource, /preview\.slice\(-maxStoredScanPreviewItems\)/);
-    assert.match(openSource, /scanBakemonoBlocks\(\{ persist: false, render: false \}\)/);
-    assert.equal((openSource.match(/renderAll\(/g) || []).length, 1);
+    assert.match(source, /scanBlocks: options => scanBakemonoBlocks\(options\)/);
+    assert.match(openSource, /scanBlocks\?\.\(\{ persist: false, render: false \}\)/);
+    assert.equal((openSource.match(/renderAll\?\.\(\)/g) || []).length, 1);
 });
 
 test('state normalization remains compatible with SillyTavern metadata objects', () => {
@@ -624,7 +649,7 @@ test('chat changes keep their side effects in one ordered coordinator', () => {
 });
 
 test('vector model fetch preserves unsaved fields and reports failures accurately', () => {
-    const operationSource = extractFunction('runVisibleOperation');
+    const operationSource = extractFunctionFrom(operationFeedbackSource, 'runVisible');
     const persistSource = extractFunction('persistVectorMemoryFieldsFromUi');
     const actionSource = extractFunction('runWorkbenchAction');
     const embeddingSource = extractFunction('fetchVectorEmbeddingModels');

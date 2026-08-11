@@ -41,6 +41,15 @@ index.js（启动与装配）
 
 > 这一轮不再把“文件已经变多”视为终点。后续继续按提示词清单 → 工作台 UI 基础 → 摘要 → 表格 → 向量 → 自动化/注入/收纳/主题/配置 → 状态与命令入口的顺序拆分，直到 `index.js` 只负责启动、SillyTavern 适配和模块装配。
 
+### 最终模块化第二批：工作台公共 UI 基础
+
+- `src/ui/operation-feedback.js` 管理操作浮层、状态捕获窗口、生成与普通操作的成功/失败生命周期；入口只注入忙碌状态和定向刷新函数。
+- `src/ui/help-popover.js` 管理小 `i` 帮助的定位、屏幕边缘避让、展开/关闭和全局事件，不再由 `bindSettingsEvents()` 保存活动按钮。
+- `src/ui/workbench-navigation.js` 管理页面切换、菜单开关、手机折叠与滚动稳定，以及工作台打开/关闭；标题、扫描与完整刷新作为适配器注入。
+- `src/ui/workbench-layout.js` 管理设置区块归属和二级页面返回导航。
+- `src/features/help-guide-content.js` 与 `src/features/help-guide.js` 分离使用说明内容、阅读器状态、DOM 渲染和委托事件；入口只调用 `bind()` / `render()`。
+- 本批结束时 `index.js` 为 13,379 行；新增六个 UI/帮助模块共 718 行。契约文件已改为跨模块检查职责边界；遵照用户要求不运行测试、不打开浏览器。
+
 ### 第一批：纯文本与本地向量数学
 
 - `src/shared/text.js`

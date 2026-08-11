@@ -1,5 +1,15 @@
 # 剧情剪辑台开发交接文档
 
+## 2026-08-11 / v1.3.5 / 最终模块化第二批（本地）
+
+- 新建 `src/ui/operation-feedback.js`，统一操作反馈计时、状态文本捕获、生成流程与可见操作反馈；重要按钮捕获事件也由控制器绑定，不再使用入口全局变量。
+- 新建 `src/ui/help-popover.js`，统一小 `i` 弹层定位、边缘避让、详情折叠/切页/滚动/外部点击/Esc 关闭和事件解绑。
+- 新建 `src/ui/workbench-navigation.js`，接管工作台页面与菜单切换、手机折叠和滚动稳定、打开与关闭；仍由入口注入标题、扫描、完整渲染和其他 UI 控制器。
+- 新建 `src/ui/workbench-layout.js`，接管设置区块归属与所有二级页返回导航；`summaryGenerationMode` 作为显式参数传入。
+- 使用说明拆成 `src/features/help-guide-content.js` 与 `src/features/help-guide.js`：前者只保存文章，后者管理分类/文章状态、渲染和委托事件。
+- `index.js` 从第一批检查点的 13,993 行继续降到 13,379 行。契约断言已迁到对应模块；入口与新模块语法检查、`git diff --check` 通过，未运行测试、未打开浏览器。
+- 下一批开始拆摘要功能域；工作台定向刷新编排暂时保留入口，等摘要/表格/向量视图各自形成公开渲染接口后再统一抽成 app renderer，避免先制造一份几十个回调的空壳。
+
 ## 2026-08-11 / v1.3.5 / 最终模块化第一批（本地）
 
 - 用户要求继续拆到最终结构后停下；本轮以已发布的 `fb5b876` 为完整回退点，建立注释标签 `backup/pre-modularization-v1.3.5-20260811`，并在仓库同级备份目录生成经过 `git bundle verify` 的完整历史包 `BakemonoMemory-v1.3.5-pre-final-modularization.bundle`。
