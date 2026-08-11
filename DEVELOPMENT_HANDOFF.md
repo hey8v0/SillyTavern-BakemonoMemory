@@ -1136,5 +1136,6 @@ git -C BakemonoMemory log --reverse --stat --date=short --pretty=format:"commit 
 - 已先建立 `backup/pre-modularization-v1.3.5-20260811` 标签与完整 Git bundle，原发布提交 `fb5b876` 可随时恢复。
 - 提示词清单、帮助手册、工作台导航/布局、操作反馈与小 i 帮助弹层已从 `index.js` 分离。
 - 摘要层级、记忆记录模型、材料选择、生成目标选择和摘要任务队列已分离为独立模块。
+- 表格作用域/表格组/行数据、撤销与级联回退、表格提示与操作模型、最新回合表格流程及表格工作台 UI 已按职责分离。
 - `index.js` 正在逐步收缩为启动、SillyTavern 适配和模块装配入口；此阶段不改变数据格式，不推送远端。
 - 当前只执行 `node --check` 与 `git diff --check` 等源码检查；完整测试和浏览器验证留到全部拆分完成后由用户决定。

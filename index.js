@@ -31,6 +31,10 @@ import { createSummaryMemoryModel } from './src/features/summary-memory-model.js
 import { createSummarySelectors } from './src/features/summary-selectors.js';
 import { createSummaryTargetController } from './src/features/summary-target-controller.js';
 import { createSummaryTaskQueue } from './src/features/summary-task-queue.js';
+import { createTableStateService } from './src/features/table-state-service.js';
+import { createTableMemoryModel } from './src/features/table-memory-model.js';
+import { createTableWorkflowController } from './src/features/table-workflow-controller.js';
+import { createTableWorkbenchUi } from './src/features/table-workbench-ui.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
 import { createOperationFeedback } from './src/ui/operation-feedback.js';
 import { installWorkbenchParentNavigation, organizeWorkbenchOwnedSections } from './src/ui/workbench-layout.js';
@@ -1850,478 +1854,6 @@ function importCustomThemeJson(text, message = '主题已导入并应用。') {
     return selected;
 }
 
-function getTableSchemaScopeLabel(scope) {
-    if (scope === tableSchemaScopes.GLOBAL) return '全局表格框架';
-    if (scope === tableSchemaScopes.CHARACTER) return '当前角色表格框架';
-    return '当前聊天表格';
-}
-
-function getTableProfileScopeLabel(scope) {
-    if (scope === tableSchemaScopes.GLOBAL) return '全局';
-    if (scope === tableSchemaScopes.CHARACTER) return '当前角色';
-    return '当前聊天';
-}
-
-function getCurrentCharacterSchemaKey() {
-    const context = getContext();
-    const character = context.characters?.[context.characterId] || {};
-    return String(character.avatar || character.name || context.characterId || context.name2 || 'unknown-character');
-}
-
-function getCurrentCharacterSchemaLabel() {
-    const context = getContext();
-    const character = context.characters?.[context.characterId] || {};
-    return String(character.name || context.name2 || getCurrentCharacterSchemaKey());
-}
-
-function getTableSchemaLibrary() {
-    ensureGlobalSettings();
-    return extension_settings[STORAGE_KEY].tableSchemaLibrary;
-}
-
-function createTableProfile(name = '未命名表格组', tables = []) {
-    const now = new Date().toISOString();
-    return {
-        id: `table-profile-${getHash(`${now}|${name}|${Math.random()}`)}`,
-        name: String(name || '未命名表格组'),
-        tables: normalizeTableSchemas(tables),
-        createdAt: now,
-        updatedAt: now,
-    };
-}
-
-function getScopedTableSchemas(scope = tableSchemaScopes.CHAT, state = chat_metadata[STORAGE_KEY]) {
-    if (!state?.tableDatabase) {
-        return [];
-    }
-    return normalizeTableSchemas(getActiveTableProfile(state)?.tables || state.tableDatabase.tables || []);
-}
-
-function saveScopedTableSchemas(tables = [], scope = tableSchemaScopes.CHAT) {
-    const schemas = normalizeTableSchemas(tables);
-    const state = ensureState();
-    if (scope === tableSchemaScopes.CHAT) {
-        const profiles = ensureChatTableProfiles(state);
-        const profile = profiles.find(item => item.id === state.tableDatabase.activeProfileId) || profiles[0];
-        if (profile) {
-            profile.tables = schemas;
-            profile.updatedAt = new Date().toISOString();
-        }
-        return;
-    }
-    const library = getTableProfileLibrary();
-    if (scope === tableSchemaScopes.GLOBAL) {
-        const profile = getActiveTableProfile(state);
-        if (profile) {
-            profile.tables = schemas;
-            profile.updatedAt = new Date().toISOString();
-        }
-    } else if (scope === tableSchemaScopes.CHARACTER) {
-        const key = getCurrentCharacterSchemaKey();
-        const profile = getActiveTableProfile(state);
-        if (profile) {
-            if (!Array.isArray(library.characters[key])) {
-                library.characters[key] = [];
-            }
-            const index = library.characters[key].findIndex(item => item.id === profile.id);
-            if (index >= 0) {
-                library.characters[key][index] = { ...profile, tables: schemas, updatedAt: new Date().toISOString() };
-            }
-        }
-    }
-    saveGlobalSettings();
-}
-
-function getTableProfileLibrary() {
-    ensureGlobalSettings();
-    return extension_settings[STORAGE_KEY].tableProfileLibrary;
-}
-
-function ensureChatTableProfiles(state = ensureState()) {
-    state.tableDatabase.chatProfiles = Array.isArray(state.tableDatabase.chatProfiles) ? state.tableDatabase.chatProfiles : [];
-    if (!state.tableDatabase.chatProfiles.length) {
-        state.tableDatabase.chatProfiles.push(createTableProfile('当前聊天默认表格', state.tableDatabase.tables || []));
-    }
-    if (!state.tableDatabase.activeProfileId) {
-        state.tableDatabase.activeProfileId = state.tableDatabase.chatProfiles[0]?.id || '';
-    }
-    return state.tableDatabase.chatProfiles;
-}
-
-function getTableProfilesForScope(scope = tableSchemaScopes.CHAT, state = ensureState()) {
-    if (scope === tableSchemaScopes.CHAT) {
-        return ensureChatTableProfiles(state);
-    }
-    const library = getTableProfileLibrary();
-    if (scope === tableSchemaScopes.GLOBAL) {
-        return library.global;
-    }
-    const key = getCurrentCharacterSchemaKey();
-    if (!Array.isArray(library.characters[key])) {
-        library.characters[key] = [];
-    }
-    return library.characters[key];
-}
-
-function ensureTableProfileForScope(scope = tableSchemaScopes.CHAT, state = ensureState()) {
-    const profiles = getTableProfilesForScope(scope, state);
-    if (!profiles.length) {
-        profiles.push(createTableProfile(`${getTableProfileScopeLabel(scope)}默认表格`, state.tableDatabase.tables || []));
-    }
-    if (!state.tableDatabase.activeProfileId || !profiles.some(profile => profile.id === state.tableDatabase.activeProfileId)) {
-        state.tableDatabase.activeProfileId = profiles[0]?.id || '';
-    }
-    return profiles.find(profile => profile.id === state.tableDatabase.activeProfileId) || profiles[0] || null;
-}
-
-function getActiveTableProfile(state = ensureState()) {
-    const scope = state.tableDatabase?.schemaScope || tableSchemaScopes.CHAT;
-    return ensureTableProfileForScope(scope, state);
-}
-
-function getActiveTableProfileKey(state = ensureState()) {
-    const scope = state.tableDatabase?.schemaScope || tableSchemaScopes.CHAT;
-    const profile = getActiveTableProfile(state);
-    return `${scope}:${scope === tableSchemaScopes.CHARACTER ? getCurrentCharacterSchemaKey() : 'default'}:${profile?.id || 'default'}`;
-}
-
-function saveCurrentTableProfileRows(state = ensureState()) {
-    state.tableDatabase.profileRows = state.tableDatabase.profileRows && typeof state.tableDatabase.profileRows === 'object'
-        ? state.tableDatabase.profileRows
-        : {};
-    state.tableDatabase.profileRows[getActiveTableProfileKey(state)] = structuredClone(state.tableDatabase.tables || []);
-}
-
-function loadActiveTableProfileRows(state = ensureState()) {
-    const profile = getActiveTableProfile(state);
-    const key = getActiveTableProfileKey(state);
-    const savedTables = state.tableDatabase.profileRows?.[key] || [];
-    const schemas = normalizeTableSchemas(profile?.tables || []);
-    state.tableDatabase.tables = schemas.map(schema => mergeTableSchemaWithRows(schema, findMatchingTable(schema, savedTables)));
-}
-
-function mergeScopedTableSchemasIntoState(state) {
-    const scope = state?.tableDatabase?.schemaScope || tableSchemaScopes.CHAT;
-    const schemas = getScopedTableSchemas(scope, state);
-    if (!schemas.length) {
-        return;
-    }
-    const currentTables = Array.isArray(state.tableDatabase.tables) ? state.tableDatabase.tables : [];
-    const merged = schemas.map(schema => mergeTableSchemaWithRows(schema, findMatchingTable(schema, currentTables)));
-    const extraLocalTables = currentTables.filter(table => !schemas.some(schema => findMatchingTable(schema, [table])));
-    state.tableDatabase.tables = [...merged, ...extraLocalTables];
-}
-
-function setTableSchemaScope(scope, state = ensureState()) {
-    const nextScope = Object.values(tableSchemaScopes).includes(scope) ? scope : tableSchemaScopes.CHAT;
-    const previousScope = state.tableDatabase.schemaScope || tableSchemaScopes.CHAT;
-    saveCurrentTableProfileRows(state);
-    state.tableDatabase.schemaScope = nextScope;
-    ensureGlobalSettings();
-    extension_settings[STORAGE_KEY].defaultTableSchemaScope = nextScope;
-    ensureTableProfileForScope(nextScope, state);
-    loadActiveTableProfileRows(state);
-    if (previousScope !== nextScope) {
-        saveGlobalSettings();
-    }
-}
-
-function syncCurrentTableSchemas(state = ensureState()) {
-    const scope = state.tableDatabase?.schemaScope || tableSchemaScopes.CHAT;
-    saveCurrentTableProfileRows(state);
-    saveScopedTableSchemas(state.tableDatabase?.tables || [], scope);
-}
-
-function persistCurrentTableDatabase(state = ensureState()) {
-    syncCurrentTableSchemas(state);
-    updateInjectionFromSummaries();
-    saveState();
-    if ([tableSchemaScopes.GLOBAL, tableSchemaScopes.CHARACTER].includes(state.tableDatabase?.schemaScope)) {
-        saveGlobalSettings();
-    }
-}
-
-function pushTableUndoSnapshot(label = '表格操作', state = ensureState(), options = {}) {
-    state.tableDatabase.undoStack = Array.isArray(state.tableDatabase.undoStack) ? state.tableDatabase.undoStack : [];
-    const snapshot = {
-        id: `table-undo-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        label: String(label || '表格操作'),
-        createdAt: new Date().toISOString(),
-        schemaScope: state.tableDatabase.schemaScope || tableSchemaScopes.CHAT,
-        activeProfileId: state.tableDatabase.activeProfileId || '',
-        profileKey: getActiveTableProfileKey(state),
-        sourceMessageIds: getFiniteMessageIds(options.sourceMessageIds || []),
-        tables: structuredClone(state.tableDatabase.tables || []),
-    };
-    state.tableDatabase.undoStack.unshift(snapshot);
-    state.tableDatabase.undoStack = state.tableDatabase.undoStack.slice(0, 20);
-    if (options.clearRedo !== false) {
-        state.tableDatabase.redoStack = [];
-    }
-    return snapshot;
-}
-
-function undoLastTableOperation(state = ensureState()) {
-    state.tableDatabase.undoStack = Array.isArray(state.tableDatabase.undoStack) ? state.tableDatabase.undoStack : [];
-    const snapshot = state.tableDatabase.undoStack[0];
-    if (!snapshot) {
-        toastr.info('没有可撤销的表格操作。');
-        return false;
-    }
-    const confirmed = confirmDanger(
-        `撤销上次表格操作「${snapshot.label || '表格操作'}」？`,
-        [
-            snapshot.createdAt ? `记录时间：${new Date(snapshot.createdAt).toLocaleString()}` : '',
-            '这会把当前表格恢复到该操作之前的状态。',
-        ],
-    );
-    if (!confirmed) {
-        return false;
-    }
-    state.tableDatabase.undoStack.shift();
-    state.tableDatabase.redoStack = Array.isArray(state.tableDatabase.redoStack) ? state.tableDatabase.redoStack : [];
-    state.tableDatabase.redoStack.unshift({
-        ...snapshot,
-        redoTables: structuredClone(state.tableDatabase.tables || []),
-        undoneAt: new Date().toISOString(),
-    });
-    state.tableDatabase.redoStack = state.tableDatabase.redoStack.slice(0, 20);
-    state.tableDatabase.tables = structuredClone(snapshot.tables || []);
-    persistCurrentTableDatabase(state);
-    renderWorkbenchScope(workbenchRenderScopes.TABLES, `已撤销表格操作：${snapshot.label || '表格操作'}`);
-    toastr.success('已撤销上次表格操作。');
-    return true;
-}
-
-function redoLastTableOperation(state = ensureState()) {
-    state.tableDatabase.redoStack = Array.isArray(state.tableDatabase.redoStack) ? state.tableDatabase.redoStack : [];
-    const snapshot = state.tableDatabase.redoStack[0];
-    if (!snapshot) {
-        toastr.info('没有可重做的表格操作。');
-        return false;
-    }
-    const confirmed = confirmDanger(
-        `重做表格操作「${snapshot.label || '表格操作'}」？`,
-        [
-            snapshot.undoneAt ? `撤销时间：${new Date(snapshot.undoneAt).toLocaleString()}` : '',
-            '这会把表格恢复到撤销前的状态。',
-        ],
-    );
-    if (!confirmed) {
-        return false;
-    }
-    state.tableDatabase.redoStack.shift();
-    state.tableDatabase.undoStack = Array.isArray(state.tableDatabase.undoStack) ? state.tableDatabase.undoStack : [];
-    state.tableDatabase.undoStack.unshift({
-        ...snapshot,
-        redoTables: undefined,
-        redoneAt: new Date().toISOString(),
-    });
-    state.tableDatabase.undoStack = state.tableDatabase.undoStack.slice(0, 20);
-    state.tableDatabase.tables = structuredClone(snapshot.redoTables || []);
-    persistCurrentTableDatabase(state);
-    renderWorkbenchScope(workbenchRenderScopes.TABLES, `已重做表格操作：${snapshot.label || '表格操作'}`);
-    toastr.success('已重做上次表格操作。');
-    return true;
-}
-
-function getAppliedTableHistoriesForMessage(messageId, state = ensureState()) {
-    const id = Number(messageId);
-    if (!Number.isFinite(id)) {
-        return [];
-    }
-    return (state.tableDatabase.history || []).filter(item => (
-        item?.appliedAt && getFiniteMessageIds(item.sourceMessageIds || []).includes(id)
-    ));
-}
-
-function hasAppliedTableEditForMessage(messageId, state = ensureState()) {
-    return getAppliedTableHistoriesForMessage(messageId, state).length > 0;
-}
-
-function rollbackTableOperationsForMessages(messageIds = [], state = ensureState(), options = {}) {
-    const affectedIds = getFiniteMessageIds(messageIds);
-    const profileKey = getActiveTableProfileKey(state);
-    const plan = buildTableRollbackPlan(state.tableDatabase.undoStack || [], affectedIds, profileKey);
-    if (!plan) {
-        return false;
-    }
-    const rollbackIds = new Set(plan.rollbackSnapshotIds);
-    state.tableDatabase.undoStack = (state.tableDatabase.undoStack || []).filter(snapshot => !rollbackIds.has(snapshot.id));
-    state.tableDatabase.redoStack = [];
-    state.tableDatabase.tables = structuredClone(plan.restoreSnapshot.tables || []);
-    state.tableDatabase.history = (state.tableDatabase.history || []).filter(item => !rollbackIds.has(item.undoSnapshotId));
-    state.tableDatabase.editDrafts = (state.tableDatabase.editDrafts || []).filter(draft => (
-        !getFiniteMessageIds(draft.sourceMessageIds || []).some(id => affectedIds.includes(id))
-    ));
-    state.tableDatabase.lastAppliedSourceMessageIds = [];
-    state.tableDatabase.rollbackHistory = Array.isArray(state.tableDatabase.rollbackHistory) ? state.tableDatabase.rollbackHistory : [];
-    state.tableDatabase.rollbackHistory.unshift({
-        id: `table-rollback-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        reason: String(options.reason || '来源消息变更'),
-        affectedMessageIds: affectedIds,
-        cascadedSnapshotIds: plan.cascadedSnapshotIds,
-        cascadedSourceMessageIds: plan.cascadedSourceMessageIds,
-        rollbackSnapshotIds: plan.rollbackSnapshotIds,
-        restoredSnapshotId: plan.restoreSnapshot.id,
-        createdAt: new Date().toISOString(),
-    });
-    state.tableDatabase.rollbackHistory = state.tableDatabase.rollbackHistory.slice(0, 20);
-    persistCurrentTableDatabase(state);
-    const cascadeText = plan.cascadedSnapshotIds.length
-        ? `；同时安全回退其后的 ${plan.cascadedSnapshotIds.length} 组依赖修改`
-        : '';
-    scheduleRenderAll(`已回退受影响的表格事务${cascadeText}。`);
-    toastr.info(`${options.toast || '已检测到来源楼层变更并回退表格事务'}${cascadeText}。`);
-    return plan;
-}
-
-function rollbackLatestTableOperationForDeletedMessages(messageIds = [], state = ensureState()) {
-    return !!rollbackTableOperationsForMessages(messageIds, state, {
-        reason: '来源楼层删除',
-        toast: '已检测到来源楼层被删除，并恢复到对应表格事务之前',
-    });
-}
-
-function rollbackLatestTableOperationForChangedMessages(messageIds = [], state = ensureState()) {
-    return !!rollbackTableOperationsForMessages(messageIds, state, {
-        reason: '来源楼层更新或重 roll',
-        toast: '已检测到来源楼层变更，撤销旧表格事务并等待重新捕获',
-    });
-}
-
-function collectMessageIdsFromEventArgs(args = []) {
-    const ids = new Set();
-    const visit = (value) => {
-        if (value === null || value === undefined) {
-            return;
-        }
-        if (typeof value === 'number' || typeof value === 'string') {
-            const id = Number(value);
-            if (Number.isInteger(id) && id >= 0) {
-                ids.add(id);
-            }
-            return;
-        }
-        if (Array.isArray(value)) {
-            value.forEach(visit);
-            return;
-        }
-        if (typeof value === 'object') {
-            for (const key of ['messageId', 'message_id', 'id', 'index', 'mesId', 'mes_id']) {
-                if (value[key] !== undefined) {
-                    visit(value[key]);
-                }
-            }
-        }
-    };
-    args.forEach(visit);
-    return [...ids];
-}
-
-function switchTableProfile(scope, profileId, state = ensureState(), options = {}) {
-    const nextScope = Object.values(tableSchemaScopes).includes(scope) ? scope : tableSchemaScopes.CHAT;
-    const profiles = getTableProfilesForScope(nextScope, state);
-    const target = profiles.find(profile => profile.id === profileId) || profiles[0];
-    if (!target) {
-        toastr.warning('没有可切换的表格组。');
-        return false;
-    }
-    if (options.confirm !== false) {
-        const rows = (state.tableDatabase.tables || []).reduce((sum, table) => sum + (table.rows?.length || 0), 0);
-        const confirmed = confirmDanger(
-            `切换到表格组「${target.name}」？`,
-            [
-                `当前表格组：${getActiveTableProfile(state)?.name || '未命名'}`,
-                `当前行数：${rows}，未应用草稿：${state.tableDatabase.editDrafts?.length || 0}`,
-                '当前行数据会先保存到原表格组；切换后，上下文会使用目标表格组。',
-            ],
-        );
-        if (!confirmed) {
-            return false;
-        }
-    }
-    saveCurrentTableProfileRows(state);
-    state.tableDatabase.schemaScope = nextScope;
-    state.tableDatabase.activeProfileId = target.id;
-    loadActiveTableProfileRows(state);
-    saveGlobalSettings();
-    saveState();
-    return true;
-}
-
-function createTableProfileForCurrentScope(name, state = ensureState()) {
-    saveCurrentTableProfileRows(state);
-    const scope = state.tableDatabase.schemaScope || tableSchemaScopes.CHAT;
-    const profiles = getTableProfilesForScope(scope, state);
-    const profile = createTableProfile(name || `${getTableProfileScopeLabel(scope)}表格组 ${profiles.length + 1}`, []);
-    profiles.push(profile);
-    state.tableDatabase.activeProfileId = profile.id;
-    state.tableDatabase.tables = [];
-    saveCurrentTableProfileRows(state);
-    saveGlobalSettings();
-    saveState();
-    return profile;
-}
-
-function createBaseStoryLedgerProfile(state = ensureState()) {
-    const scope = state.tableDatabase.schemaScope || tableSchemaScopes.CHAT;
-    const profiles = getTableProfilesForScope(scope, state);
-    const existing = profiles.find(profile => [baseStoryLedgerPreset.name, '剧情基础台账'].includes(profile.name));
-    if (existing) {
-        const switched = switchTableProfile(scope, existing.id, state);
-        if (!switched) return null;
-        existing.name = baseStoryLedgerPreset.name;
-        existing.updatedAt = new Date().toISOString();
-        state.tableDatabase.enabled = true;
-        persistCurrentTableDatabase(state);
-        return existing;
-    }
-
-    const confirmed = confirmDanger(
-        `创建表格组「${baseStoryLedgerPreset.name}」？`,
-        ['会保留当前表格组，并新建 6 张基础表；不会创建事件摘要或大总结表。'],
-    );
-    if (!confirmed) return null;
-
-    saveCurrentTableProfileRows(state);
-    const profile = createTableProfile(baseStoryLedgerPreset.name, createBaseStoryLedgerTables());
-    profiles.push(profile);
-    state.tableDatabase.activeProfileId = profile.id;
-    state.tableDatabase.tables = normalizeTableSchemas(profile.tables);
-    state.tableDatabase.enabled = true;
-    saveCurrentTableProfileRows(state);
-    persistCurrentTableDatabase(state);
-    return profile;
-}
-
-function deleteActiveTableProfile(state = ensureState()) {
-    const scope = state.tableDatabase.schemaScope || tableSchemaScopes.CHAT;
-    const profiles = getTableProfilesForScope(scope, state);
-    if (profiles.length <= 1) {
-        toastr.warning('至少需要保留一个表格组。');
-        return false;
-    }
-    const active = getActiveTableProfile(state);
-    const confirmed = confirmDanger(
-        `删除表格组「${active?.name || '未命名'}」？`,
-        ['这会删除这个表格组的框架和当前聊天里对应的行数据；不会删除摘要。'],
-    );
-    if (!confirmed) {
-        return false;
-    }
-    const key = getActiveTableProfileKey(state);
-    const index = profiles.findIndex(profile => profile.id === active?.id);
-    if (index >= 0) {
-        profiles.splice(index, 1);
-    }
-    delete state.tableDatabase.profileRows[key];
-    state.tableDatabase.activeProfileId = profiles[0]?.id || '';
-    loadActiveTableProfileRows(state);
-    saveGlobalSettings();
-    saveState();
-    return true;
-}
 
 function getPromptPresets() {
     ensureGlobalSettings();
@@ -5848,191 +5380,16 @@ async function buildTurnReferenceSystemPrompt(blocks, purpose = 'summary', state
         : base;
 }
 
-function formatTableGuideForPrompt(state = ensureState()) {
-    const tables = state.tableDatabase.tables || [];
-    if (!tables.length) {
-        return '暂无表格结构。';
-    }
-    return tables.map(table => [
-        `${table.tableIndex}: ${table.name} (${table.columns.map((col, index) => `${index}:${col}`).join(', ')})`,
-        `权限：${table.readOnly ? '只读' : '可写'} / ${table.allowAiEdit === false || table.readOnly ? '禁止 AI 修改' : '允许 AI 修改'}`,
-        table.columnPrompts?.some(Boolean)
-            ? `columns:\n${table.columns.map((col, index) => `${index}:${col}${table.columnPrompts?.[index] ? ` -> ${table.columnPrompts[index]}` : ''}`).join('\n')}`
-            : '',
-        table.note ? `note: ${table.note}` : '',
-        table.insertNode ? `insert: ${table.insertNode}` : '',
-        table.updateNode ? `update: ${table.updateNode}` : '',
-        table.deleteNode ? `delete: ${table.deleteNode}` : '',
-    ].filter(Boolean).join('\n')).join('\n\n');
-}
 
-function getWritableTables(state = ensureState()) {
-    return (state.tableDatabase.tables || []).filter(table => !table.readOnly && table.allowAiEdit !== false);
-}
 
-function getReadonlyTables(state = ensureState()) {
-    return (state.tableDatabase.tables || []).filter(table => table.readOnly || table.allowAiEdit === false);
-}
 
-function formatTableDataForPrompt(state = ensureState()) {
-    const tables = state.tableDatabase.tables || [];
-    if (!tables.length) {
-        return '暂无表格数据。';
-    }
-    return tables.map(table => {
-        const header = `## ${table.tableIndex}: ${table.name}\nColumns: ${table.columns.map((col, index) => `${index}:${col}`).join(' | ')}`;
-        const rows = table.rows?.length
-            ? table.rows.map((row, rowIndex) => `row ${rowIndex}: ${row.map((cell, colIndex) => `${colIndex}:${cell}`).join(' | ')}`).join('\n')
-            : '(无数据行)';
-        return `${header}\n${rows}`;
-    }).join('\n\n');
-}
 
-function formatSpecificTablesForPrompt(tables = [], options = {}) {
-    if (!tables.length) {
-        return '无。';
-    }
-    const includeRows = options.includeRows !== false;
-    return tables.map(table => {
-        const header = `## ${table.tableIndex}: ${table.name}\nColumns: ${table.columns.map((col, index) => `${index}:${col}`).join(' | ')}`;
-        const rows = includeRows
-            ? (table.rows?.length
-                ? table.rows.map((row, rowIndex) => `row ${rowIndex}: ${row.map((cell, colIndex) => `${colIndex}:${cell}`).join(' | ')}`).join('\n')
-                : '(无数据行)')
-            : 'Rows: 已省略；表格内容请读取长期上下文里的“表格记忆”。';
-        return `${header}\n${rows}`;
-    }).join('\n\n');
-}
 
-function renderInjectedTablesSection(state = ensureState()) {
-    const tables = state.tableDatabase.tables || [];
-    if (state.tableDatabase.injectMemory === false || !tables.length) {
-        return '';
-    }
-    const sections = [];
-    for (const table of tables) {
-        const limit = Math.max(120, Number(table.injectLimit || 1200));
-        const rows = Array.isArray(table.rows) ? table.rows : [];
-        const lines = [
-            `### ${table.tableIndex}: ${table.name}${table.readOnly ? '（只读）' : ''}`,
-            table.note ? `规则：${table.note}` : '',
-            `字段：${table.columns.map((col, index) => `${index}:${col}`).join(' | ')}`,
-        ].filter(Boolean);
-        if (rows.length) {
-            for (const [rowIndex, row] of rows.entries()) {
-                lines.push(`row ${rowIndex}: ${table.columns.map((col, colIndex) => `${col}:${row?.[colIndex] ?? ''}`).join(' | ')}`);
-            }
-        } else {
-            lines.push('(暂无数据行)');
-        }
-        let text = lines.join('\n');
-        if (text.length > limit) {
-            text = `${text.slice(0, limit)}\n...（已按表格记忆安全上限裁剪）`;
-        }
-        sections.push(text);
-    }
-    return sections.length ? `## 表格记忆\n${sections.join('\n\n')}` : '';
-}
 
-function buildTableEditPrompt(blocks, state = ensureState()) {
-    const blockText = formatBlocksForPrompt(blocks, {
-        sourceRange: formatSourceRange(getSourceMessageIdsFromBlocks(blocks)),
-    });
-    const template = String(state.turnSummary.tablePrompt || defaultTableEditPrompt);
-    return template
-        .replaceAll('{{blocks}}', blockText)
-        .replaceAll('{{tableData}}', formatTableDataForPrompt(state))
-        .replaceAll('{{tableGuide}}', formatTableGuideForPrompt(state))
-        .replaceAll('{{readonlyTables}}', formatSpecificTablesForPrompt(getReadonlyTables(state)))
-        .replaceAll('{{writableTables}}', formatSpecificTablesForPrompt(getWritableTables(state)));
-}
 
-function getTableSchemasForPreset(state = ensureState()) {
-    return (state.tableDatabase.tables || []).map(table => ({
-        id: table.id || `table-${getHash(`${table.name || table.tableIndex}`)}`,
-        tableIndex: Number.isFinite(Number(table.tableIndex)) ? Number(table.tableIndex) : 0,
-        name: String(table.name || '未命名表格'),
-        columns: Array.isArray(table.columns) ? table.columns.map(col => String(col || '')) : [],
-        columnPrompts: Array.isArray(table.columnPrompts) ? table.columnPrompts.map(text => String(text || '')) : [],
-        note: String(table.note || ''),
-        initNode: String(table.initNode || ''),
-        insertNode: String(table.insertNode || ''),
-        updateNode: String(table.updateNode || ''),
-        deleteNode: String(table.deleteNode || ''),
-        required: !!table.required,
-        rows: [],
-    }));
-}
 
-function getNextTableIndex(state = ensureState()) {
-    const indexes = (state.tableDatabase.tables || []).map(table => Number(table.tableIndex)).filter(Number.isFinite);
-    return indexes.length ? Math.max(...indexes) + 1 : 0;
-}
 
-function createTableEditDraft(raw, blocks, state = ensureState()) {
-    const operations = parseTableEditOperations(raw);
-    if (!operations.length) {
-        return null;
-    }
-    const now = new Date().toISOString();
-    const draft = {
-        id: `table-draft-${getHash(`${now}|${raw}`)}`,
-        raw,
-        operations,
-        sourceMessageIds: getSourceMessageIdsFromBlocks(blocks),
-        createdAt: now,
-    };
-    state.tableDatabase.editDrafts.unshift(draft);
-    return draft;
-}
 
-function applyTableOperations(operations = [], state = ensureState(), options = {}) {
-    const sourceMessageIds = getFiniteMessageIds(options.sourceMessageIds || []);
-    let snapshot = null;
-    if (options.recordUndo !== false && operations.length) {
-        snapshot = pushTableUndoSnapshot(options.undoLabel || `AI 表格修改 ${operations.length} 项`, state, { sourceMessageIds });
-    }
-    const tablesByIndex = new Map((state.tableDatabase.tables || []).map(table => [Number(table.tableIndex), table]));
-    const deletes = [];
-    for (const operation of operations) {
-        const table = tablesByIndex.get(Number(operation.tableIndex));
-        if (!table) {
-            throw new Error(`表格 ${operation.tableIndex} 不存在。`);
-        }
-        if (table.readOnly || table.allowAiEdit === false) {
-            throw new Error(`表格 ${operation.tableIndex}「${table.name || ''}」是只读或禁止 AI 修改，已拒绝本次操作。`);
-        }
-        table.rows = Array.isArray(table.rows) ? table.rows : [];
-        if (operation.op === 'insert') {
-            const row = table.columns.map((_, index) => normalizeTableText(operation.data?.[String(index)] ?? operation.data?.[index] ?? ''));
-            table.rows.push(row);
-        } else if (operation.op === 'update') {
-            const row = table.rows[operation.rowIndex];
-            if (!row) {
-                throw new Error(`表格 ${operation.tableIndex} 的 row ${operation.rowIndex} 不存在。`);
-            }
-            for (const [key, value] of Object.entries(operation.data || {})) {
-                const colIndex = Number(key);
-                if (Number.isFinite(colIndex) && colIndex >= 0 && colIndex < table.columns.length) {
-                    row[colIndex] = normalizeTableText(value);
-                }
-            }
-        } else if (operation.op === 'delete') {
-            deletes.push({ table, rowIndex: operation.rowIndex });
-        }
-    }
-    deletes.sort((a, b) => b.rowIndex - a.rowIndex).forEach(({ table, rowIndex }) => {
-        if (table.rows[rowIndex]) {
-            table.rows.splice(rowIndex, 1);
-        }
-    });
-    saveCurrentTableProfileRows(state);
-    updateInjectionFromSummaries();
-    if (sourceMessageIds.length) {
-        state.tableDatabase.lastAppliedSourceMessageIds = sourceMessageIds;
-    }
-    return snapshot;
-}
 
 async function processLatestTurnSummary(options = {}) {
     const state = ensureState();
@@ -6117,57 +5474,6 @@ async function processLatestTurnSummary(options = {}) {
     }, options.manual ? '最新正文已处理' : '正文摘要草稿已生成', workbenchRenderScopes.TABLES);
 }
 
-async function processLatestTableEdit(options = {}) {
-    const state = ensureState();
-    const turn = findLatestAssistantTurn();
-    if (!turn) {
-        toastr.info('没有找到可处理的最新正文。');
-        return;
-    }
-    if (!options.manual && state.turnSummary.lastProcessedMessageId === turn.assistantMessage.messageId) {
-        return;
-    }
-    const blocks = buildLatestTurnBlocks(state);
-    if (!blocks.length) {
-        toastr.info('没有找到可处理的最新正文。');
-        return;
-    }
-    if (!state.tableDatabase.tables.length) {
-        toastr.warning('还没有表格。请先创建或导入表格。');
-        return;
-    }
-
-    await runGeneration(options.manual ? '正在单独生成表格修改草稿...' : '正在自动生成表格修改草稿...', async () => {
-        const tableResult = await callGenerationModel({
-            prompt: buildTableEditPrompt(blocks, state),
-            systemPrompt: await buildTurnReferenceSystemPrompt(blocks, 'table', state),
-        });
-        const draft = createTableEditDraft(tableResult, blocks, state);
-        if (!draft) {
-            state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
-            saveState();
-            renderWorkbenchScope(workbenchRenderScopes.TABLES, '本轮正文没有生成表格修改。');
-            toastr.info('本轮正文没有需要修改的表格。');
-            return;
-        }
-        if (state.tableDatabase.autoApply && !options.manual) {
-            const undoSnapshot = applyTableOperations(draft.operations, state, {
-                sourceMessageIds: draft.sourceMessageIds,
-                undoLabel: `回复后表格修改：${formatSourceRange(draft.sourceMessageIds || [])}`,
-            });
-            state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString(), undoSnapshotId: undoSnapshot?.id || '' });
-            state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draft.id);
-            state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
-            saveState();
-            renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改已自动应用。');
-            return;
-        }
-        state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
-        saveState();
-        renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改草稿已生成，请确认后应用。');
-        switchWorkbenchTab('tables');
-    }, '表格修改草稿已生成', workbenchRenderScopes.TABLES);
-}
 
 function updateInjectionFromSummaries() {
     const state = ensureState();
@@ -7581,401 +6887,13 @@ function renderInlinePromptPresetControls(type, selectSelector, nameSelector) {
     $(nameSelector).val(selected?.name || '');
 }
 
-function renderTableProfileControls(state = ensureState()) {
-    const select = document.querySelector('#bakemono-memory-table-profile-select');
-    if (!select) {
-        return;
-    }
-    const profiles = getTableProfilesForScope(state.tableDatabase.schemaScope || tableSchemaScopes.CHAT, state);
-    select.innerHTML = '';
-    for (const profile of profiles) {
-        const option = document.createElement('option');
-        option.value = profile.id;
-        option.textContent = profile.name || '未命名表格组';
-        select.append(option);
-    }
-    select.value = state.tableDatabase.activeProfileId || profiles[0]?.id || '';
-    $('#bakemono-memory-table-profile-name').val(getActiveTableProfile(state)?.name || '');
-    renderTablePromptPresetControls();
-}
 
-function renderTablePromptPresetControls() {
-    const select = document.querySelector('#bakemono-memory-table-preset-select');
-    if (!select) {
-        return;
-    }
-    const presets = getTablePromptPresets();
-    select.innerHTML = '';
-    for (const preset of presets) {
-        const option = document.createElement('option');
-        option.value = preset.id;
-        option.textContent = preset.name || '未命名表格提示词';
-        select.append(option);
-    }
-    select.value = getSelectedTablePromptPresetId();
-}
 
-function renderTablePreviewMarkup(table) {
-    const columns = Array.isArray(table.columns) ? table.columns : [];
-    const rows = Array.isArray(table.rows) ? table.rows : [];
-    const headerCells = columns.length
-        ? columns.map((column, index) => `<th>${escapeHtml(column || `字段 ${index}`)}</th>`).join('')
-        : '<th>暂无字段</th>';
-    const rowCells = rows.length
-        ? rows.map((row, rowIndex) => `
-            <tr>
-                ${columns.map((_, colIndex) => `<td>${escapeHtml(row?.[colIndex] ?? '') || '<span class="bakemono-memory-table-muted">空</span>'}</td>`).join('')}
-            </tr>
-        `).join('')
-        : `<tr><td colspan="${Math.max(1, columns.length)}" class="bakemono-memory-table-preview-empty">暂无数据行</td></tr>`;
-    return `
-        <div class="bakemono-memory-table-preview-scroll" aria-label="${escapeHtml(table.name || '表格')}预览">
-            <table class="bakemono-memory-table-preview">
-                <thead><tr>${headerCells}</tr></thead>
-                <tbody>${rowCells}</tbody>
-            </table>
-        </div>
-    `;
-}
 
-function renderTableList(state = ensureState()) {
-    const container = document.querySelector('#bakemono-memory-table-list');
-    if (!container) {
-        return;
-    }
-    const openTableIndexes = new Set(
-        [...container.querySelectorAll('.bakemono-memory-table-item[open]')]
-            .map(item => String(item.dataset.tableIndex || '')),
-    );
-    const openSections = new Set(
-        [...container.querySelectorAll('.bakemono-memory-table-section[open]')]
-            .map(item => `${item.closest('.bakemono-memory-table-item')?.dataset.tableIndex || ''}:${item.dataset.tableSection || ''}`),
-    );
-    if (tableUiState.openTableIndex !== '') {
-        openTableIndexes.add(String(tableUiState.openTableIndex));
-    }
-    if (tableUiState.openTableIndex !== '' && tableUiState.openSection) {
-        openSections.add(`${tableUiState.openTableIndex}:${tableUiState.openSection}`);
-    }
-    container.innerHTML = '';
-    const tables = state.tableDatabase.tables || [];
-    if (!tables.length) {
-        const empty = document.createElement('div');
-        empty.className = 'bakemono-memory-empty';
-        empty.textContent = '暂无表格。可以导入表格结构或聊天表格数据。';
-        container.append(empty);
-        return;
-    }
-    const fragment = document.createDocumentFragment();
-    tables.forEach(table => {
-        table.columnPrompts = Array.isArray(table.columnPrompts) ? table.columnPrompts : [];
-        const row = document.createElement('details');
-        row.className = 'bakemono-memory-table-item';
-        row.dataset.tableIndex = String(table.tableIndex);
-        row.open = openTableIndexes.has(String(table.tableIndex));
-        const summary = document.createElement('summary');
-        const statusChips = [
-            `${table.columns.length} 列`,
-            `${(table.rows || []).length} 行`,
-            table.readOnly ? '只读' : (table.allowAiEdit === false ? '禁止 AI 修改' : 'AI 可改'),
-        ];
-        summary.innerHTML = `
-            <div class="bakemono-memory-table-summary-main">
-                <div class="bakemono-memory-table-summary-head">
-                    <strong>#${escapeHtml(table.tableIndex)} ${escapeHtml(table.name)}</strong>
-                    <span>${statusChips.map(chip => escapeHtml(chip)).join(' / ')}</span>
-                </div>
-                ${renderTablePreviewMarkup(table)}
-                <div class="bakemono-memory-table-summary-hint">
-                    <i class="fa-solid fa-hand-pointer"></i>
-                    <span>点开后编辑字段、数据行和操作</span>
-                </div>
-            </div>
-        `;
-        const body = document.createElement('div');
-        body.className = 'bakemono-memory-table-body';
-        const rows = Array.isArray(table.rows) ? table.rows : [];
-        const fieldEditors = table.columns.map((col, index) => `
-            <div class="bakemono-memory-table-field" data-table-field="${index}">
-                <label>
-                    <span>${escapeHtml(index)} · 字段名</span>
-                    <input class="text_pole" data-table-column-name="${index}" type="text" value="${escapeHtml(col)}">
-                </label>
-                <label>
-                    <span>字段提示词</span>
-                    <textarea class="text_pole textarea_compact" data-table-column-prompt="${index}" rows="3" spellcheck="false" placeholder="告诉 AI 这一栏应该记录什么、什么时候更新、不要写什么。">${escapeHtml(table.columnPrompts?.[index] || '')}</textarea>
-                </label>
-                <button type="button" class="menu_button danger_button" data-bakemono-table-action="delete-column" data-table-col="${index}"><i class="fa-solid fa-trash"></i><span>删除字段</span></button>
-            </div>
-        `).join('');
-        const headerCells = table.columns.map((col, index) => `<th>${escapeHtml(index)} · ${escapeHtml(col)}</th>`).join('');
-        const rowCells = rows.length
-            ? rows.map((cells, rowIndex) => `
-                <tr data-table-row="${rowIndex}">
-                    ${table.columns.map((_, colIndex) => `<td><textarea class="text_pole textarea_compact bakemono-memory-table-cell" data-table-col="${colIndex}" rows="2" spellcheck="false">${escapeHtml(cells?.[colIndex] ?? '')}</textarea></td>`).join('')}
-                    <td class="bakemono-memory-table-row-tools"><button type="button" class="menu_button danger_button" data-bakemono-table-action="delete-row"><i class="fa-solid fa-trash"></i><span>删行</span></button></td>
-                </tr>`).join('')
-            : `<tr class="bakemono-memory-table-empty-row"><td colspan="${Math.max(1, table.columns.length + 1)}">暂无数据行。点“新增一行”开始编辑。</td></tr>`;
-        body.innerHTML = `
-            <details class="bakemono-memory-table-section" data-table-section="fields" ${openSections.has(`${table.tableIndex}:fields`) ? 'open' : ''}>
-                <summary><i class="fa-solid fa-wand-magic-sparkles"></i><span>字段提示词</span><small>${table.columns.length} 栏</small></summary>
-                <label class="bakemono-memory-editor">
-                    <span>表格名称</span>
-                    <input class="text_pole" data-table-name type="text" value="${escapeHtml(table.name || '')}">
-                </label>
-                <label class="bakemono-memory-editor">
-                    <span>整张表规则</span>
-                    <textarea class="text_pole textarea_compact" data-table-note rows="3" spellcheck="false" placeholder="这张表的整体用途、更新原则、禁止事项。">${escapeHtml(table.note || '')}</textarea>
-                </label>
-                <div class="bakemono-memory-table-flags">
-                    <label class="checkbox_label bakemono-memory-switch">
-                        <input type="checkbox" data-table-readonly ${table.readOnly ? 'checked' : ''}>
-                        <span>只读，禁止 AI 修改</span>
-                    </label>
-                    <label class="checkbox_label bakemono-memory-switch">
-                        <input type="checkbox" data-table-allow-ai ${!table.readOnly && table.allowAiEdit !== false ? 'checked' : ''} ${table.readOnly ? 'disabled' : ''}>
-                        <span>允许 AI 修改</span>
-                    </label>
-                </div>
-                <div class="bakemono-memory-table-fields">${fieldEditors}</div>
-                <div class="bakemono-memory-inline-actions">
-                    <button type="button" class="menu_button" data-bakemono-table-action="add-column"><i class="fa-solid fa-plus"></i><span>新增字段</span></button>
-                </div>
-            </details>
-            <details class="bakemono-memory-table-section" data-table-section="rows" ${openSections.has(`${table.tableIndex}:rows`) || !openSections.has(`${table.tableIndex}:fields`) ? 'open' : ''}>
-                <summary><i class="fa-solid fa-table"></i><span>数据行</span><small>${rows.length} 行</small></summary>
-                <div class="bakemono-memory-table-scroll">
-                    <table class="bakemono-memory-edit-table">
-                        <thead><tr>${headerCells}<th>操作</th></tr></thead>
-                        <tbody>${rowCells}</tbody>
-                    </table>
-                </div>
-            </details>
-            <div class="bakemono-memory-inline-actions">
-                <button type="button" class="menu_button" data-bakemono-table-action="add-row"><i class="fa-solid fa-plus"></i><span>新增一行</span></button>
-                <button type="button" class="menu_button" data-bakemono-table-action="save-table"><i class="fa-solid fa-floppy-disk"></i><span>保存表格</span></button>
-                <button type="button" class="menu_button danger_button" data-bakemono-table-action="delete-table"><i class="fa-solid fa-trash"></i><span>删除表格</span></button>
-            </div>
-        `;
-        row.append(summary, body);
-        fragment.append(row);
-    });
-    container.append(fragment);
-    if (tableUiState.focusCell) {
-        const { tableIndex, rowIndex, colIndex } = tableUiState.focusCell;
-        tableUiState.focusCell = null;
-        requestAnimationFrame(() => {
-            const tableItem = container.querySelector(`.bakemono-memory-table-item[data-table-index="${tableIndex}"]`);
-            tableItem?.setAttribute('open', '');
-            const cell = tableItem?.querySelector(`tr[data-table-row="${rowIndex}"] [data-table-col="${colIndex}"]`);
-            cell?.focus();
-            cell?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-        });
-    }
-    if (tableUiState.focusField) {
-        const { tableIndex, colIndex } = tableUiState.focusField;
-        tableUiState.focusField = null;
-        requestAnimationFrame(() => {
-            const tableItem = container.querySelector(`.bakemono-memory-table-item[data-table-index="${tableIndex}"]`);
-            tableItem?.setAttribute('open', '');
-            tableItem?.querySelector('[data-table-section="fields"]')?.setAttribute('open', '');
-            const field = tableItem?.querySelector(`[data-table-column-name="${colIndex}"]`);
-            field?.focus();
-            field?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-        });
-    }
-}
 
-function renderTableEditDrafts(state = ensureState()) {
-    const container = document.querySelector('#bakemono-memory-table-draft-list');
-    if (!container) {
-        return;
-    }
-    container.innerHTML = '';
-    const drafts = state.tableDatabase.editDrafts || [];
-    if (!drafts.length) {
-        const empty = document.createElement('div');
-        empty.className = 'bakemono-memory-empty';
-        empty.textContent = '暂无表格修改草稿。';
-        container.append(empty);
-        return;
-    }
-    const fragment = document.createDocumentFragment();
-    drafts.forEach(draft => {
-        const operations = Array.isArray(draft.operations) ? draft.operations : [];
-        const card = document.createElement('article');
-        card.className = 'bakemono-memory-table-draft-card';
-        card.dataset.tableDraftId = draft.id;
-        const header = document.createElement('div');
-        header.className = 'bakemono-memory-table-draft-header';
-        const badge = document.createElement('span');
-        badge.className = 'bakemono-memory-table-draft-badge';
-        badge.textContent = '表格修改';
-        const time = document.createElement('small');
-        time.textContent = draft.createdAt ? new Date(draft.createdAt).toLocaleString() : '刚刚生成';
-        header.append(badge, time);
-        const title = document.createElement('h4');
-        title.textContent = `${operations.length} 处变化等待应用`;
-        const meta = document.createElement('span');
-        meta.className = 'bakemono-memory-table-draft-meta';
-        meta.textContent = formatSourceRange(draft.sourceMessageIds || []) || '本轮正文';
 
-        const preview = document.createElement('div');
-        preview.className = 'bakemono-memory-table-diff-list';
-        operations.slice(0, 4).forEach(operation => {
-            const item = document.createElement('div');
-            item.className = `bakemono-memory-table-diff-item is-${operation.op || 'update'}`;
-            const sign = document.createElement('span');
-            sign.className = 'bakemono-memory-table-diff-sign';
-            sign.textContent = operation.op === 'insert' ? '+' : operation.op === 'delete' ? '−' : '~';
-            const copy = document.createElement('div');
-            const itemTitle = document.createElement('strong');
-            const operationLabel = operation.op === 'insert' ? '新增记录' : operation.op === 'delete' ? '删除记录' : '更新记录';
-            itemTitle.textContent = `表格 #${operation.tableIndex} · ${operationLabel}`;
-            const itemText = document.createElement('p');
-            const dataText = Object.entries(operation.data || {}).map(([key, value]) => `${key}：${value}`).join(' · ');
-            itemText.textContent = dataText || (Number.isFinite(operation.rowIndex) ? `第 ${operation.rowIndex} 行` : '等待查看具体内容');
-            copy.append(itemTitle, itemText);
-            item.append(sign, copy);
-            preview.append(item);
-        });
-        if (operations.length > 4) {
-            const more = document.createElement('small');
-            more.className = 'bakemono-memory-table-diff-more';
-            more.textContent = `另有 ${operations.length - 4} 处修改，可在原始指令中查看。`;
-            preview.append(more);
-        }
 
-        const textarea = document.createElement('textarea');
-        textarea.className = 'text_pole textarea_compact bakemono-memory-table-draft-editor';
-        textarea.rows = 7;
-        textarea.spellcheck = false;
-        textarea.value = draft.raw || '';
-        const details = document.createElement('details');
-        details.className = 'bakemono-memory-table-draft-details bakemono-memory-console-disclosure';
-        details.innerHTML = '<summary><span><i class="fa-solid fa-code"></i> 查看原始修改指令</span><small>重新解析或丢弃</small></summary>';
-        const secondaryActions = document.createElement('div');
-        secondaryActions.className = 'bakemono-memory-table-draft-secondary-actions';
-        secondaryActions.innerHTML = `
-            <button type="button" class="menu_button" data-bakemono-table-draft-action="reparse"><i class="fa-solid fa-code"></i><span>重新解析</span></button>
-            <button type="button" class="menu_button danger_button" data-bakemono-table-draft-action="discard"><i class="fa-solid fa-trash"></i><span>丢弃</span></button>
-        `;
-        details.append(textarea, secondaryActions);
-        const apply = document.createElement('button');
-        apply.type = 'button';
-        apply.className = 'menu_button bakemono-memory-table-draft-apply';
-        apply.dataset.bakemonoTableDraftAction = 'apply';
-        apply.innerHTML = '<i class="fa-solid fa-check"></i><span>应用修改</span>';
-        card.append(header, title, meta, preview, details, apply);
-        fragment.append(card);
-    });
-    container.append(fragment);
-}
 
-function saveEditedTableFromElement(details, options = {}) {
-    const state = options.state || ensureState();
-    const tableIndex = Number(details?.dataset.tableIndex);
-    const table = (state.tableDatabase.tables || []).find(item => Number(item.tableIndex) === tableIndex);
-    if (!table) {
-        toastr.warning('没有找到这张表。');
-        return;
-    }
-    table.name = String(details.querySelector('[data-table-name]')?.value || table.name || '').trim() || '未命名表格';
-    const columnNames = table.columns.map((name, colIndex) => String(details.querySelector(`[data-table-column-name="${colIndex}"]`)?.value || name || '').trim() || `字段 ${colIndex}`);
-    table.columns = columnNames;
-    table.columnPrompts = columnNames.map((_, colIndex) => String(details.querySelector(`[data-table-column-prompt="${colIndex}"]`)?.value || '').trim());
-    table.note = String(details.querySelector('[data-table-note]')?.value || '').trim();
-    table.readOnly = !!details.querySelector('[data-table-readonly]')?.checked;
-    table.allowAiEdit = table.readOnly ? false : !!details.querySelector('[data-table-allow-ai]')?.checked;
-    table.inject = true;
-    table.injectLimit = Math.max(120, Number(table.injectLimit || 1200));
-    const rows = [...details.querySelectorAll('tbody tr[data-table-row]')].map(row => (
-        table.columns.map((_, colIndex) => String(row.querySelector(`[data-table-col="${colIndex}"]`)?.value || '').trim())
-    ));
-    table.rows = rows;
-    if (options.persist !== false) {
-        persistCurrentTableDatabase(state);
-    }
-    if (options.render !== false) {
-        renderWorkbenchScope(workbenchRenderScopes.TABLES, `已保存表格：${table.name}`);
-    }
-    return table;
-}
-
-function importTablesFromText(raw, sourceLabel = '表格数据') {
-    const text = String(raw || '').trim();
-    if (!text) {
-        toastr.warning('请先选择或粘贴表格数据。');
-        return false;
-    }
-    let tables;
-    try {
-        tables = normalizeImportedTablesFromJson(text);
-    } catch (error) {
-        toastr.error(`表格数据解析失败：${error?.message || error}`);
-        return false;
-    }
-    if (!tables.length) {
-        toastr.warning('没有在导入内容中找到可用表格。');
-        return false;
-    }
-    const confirmed = confirmDanger(
-        `导入 ${tables.length} 张表格？`,
-        [`来源：${sourceLabel}`, '这会覆盖当前聊天里剧情剪辑台保存的表格数据库，但不会删除摘要。'],
-    );
-    if (!confirmed) {
-        return false;
-    }
-    const state = ensureState();
-    state.tableDatabase.tables = tables;
-    state.tableDatabase.lastImportAt = new Date().toISOString();
-    state.tableDatabase.enabled = true;
-    syncCurrentTableSchemas(state);
-    updateInjectionFromSummaries();
-    renderWorkbenchScope(workbenchRenderScopes.TABLES, `已导入 ${tables.length} 张表格。`);
-    toastr.success(`已导入 ${tables.length} 张表格。`);
-    return true;
-}
-
-function createCustomTableFromUi() {
-    const state = ensureState();
-    const name = String($('#bakemono-memory-new-table-name').val() || '').trim();
-    const columns = parseList($('#bakemono-memory-new-table-columns').val()).filter(Boolean);
-    if (!name) {
-        toastr.warning('请先填写新表名称。');
-        return;
-    }
-    if (!columns.length) {
-        toastr.warning('请至少填写一个字段名。');
-        return;
-    }
-    const table = {
-        id: `table-${getHash(`${Date.now()}|${name}|${columns.join('|')}`)}`,
-        tableIndex: getNextTableIndex(state),
-        name,
-        columns,
-        columnPrompts: columns.map(() => ''),
-        note: '',
-        initNode: '',
-        insertNode: '',
-        updateNode: '',
-        deleteNode: '',
-        rows: [],
-        required: false,
-        readOnly: false,
-        inject: true,
-        injectLimit: 1200,
-        allowAiEdit: true,
-    };
-    state.tableDatabase.tables.push(table);
-    state.tableDatabase.enabled = true;
-    syncCurrentTableSchemas(state);
-    $('#bakemono-memory-new-table-name').val('');
-    $('#bakemono-memory-new-table-columns').val('');
-    updateInjectionFromSummaries();
-    renderWorkbenchScope(workbenchRenderScopes.TABLES, `已创建表格：${name}`);
-    toastr.success('表格已创建。');
-}
 
 function scheduleRenderAll(statusText = '') {
     if (statusText) {
@@ -8255,6 +7173,154 @@ const workbenchRenderScopes = Object.freeze({
     CONFIG: 'config',
     SETTINGS: 'settings',
 });
+
+const tableStateService = createTableStateService({
+    tableSchemaScopes,
+    getContext,
+    ensureGlobalSettings,
+    extensionSettings: extension_settings,
+    storageKey: STORAGE_KEY,
+    getChatState: () => chat_metadata[STORAGE_KEY],
+    getHash,
+    normalizeTableSchemas,
+    getState: ensureState,
+    saveGlobalSettings,
+    findMatchingTable,
+    mergeTableSchemaWithRows,
+    updateInjectionFromSummaries,
+    saveState,
+    getFiniteMessageIds,
+    toastr,
+    confirmDanger,
+    renderWorkbenchScope,
+    workbenchRenderScopes,
+    buildTableRollbackPlan,
+    scheduleRenderAll,
+    baseStoryLedgerPreset,
+    createBaseStoryLedgerTables,
+});
+const {
+    collectMessageIdsFromEventArgs,
+    createBaseStoryLedgerProfile,
+    createTableProfile,
+    createTableProfileForCurrentScope,
+    deleteActiveTableProfile,
+    ensureChatTableProfiles,
+    ensureTableProfileForScope,
+    getActiveTableProfile,
+    getActiveTableProfileKey,
+    getAppliedTableHistoriesForMessage,
+    getCurrentCharacterSchemaKey,
+    getCurrentCharacterSchemaLabel,
+    getScopedTableSchemas,
+    getTableProfileLibrary,
+    getTableProfileScopeLabel,
+    getTableProfilesForScope,
+    getTableSchemaLibrary,
+    getTableSchemaScopeLabel,
+    hasAppliedTableEditForMessage,
+    loadActiveTableProfileRows,
+    mergeScopedTableSchemasIntoState,
+    persistCurrentTableDatabase,
+    pushTableUndoSnapshot,
+    redoLastTableOperation,
+    rollbackLatestTableOperationForChangedMessages,
+    rollbackLatestTableOperationForDeletedMessages,
+    rollbackTableOperationsForMessages,
+    saveCurrentTableProfileRows,
+    saveScopedTableSchemas,
+    setTableSchemaScope,
+    switchTableProfile,
+    syncCurrentTableSchemas,
+    undoLastTableOperation,
+} = tableStateService;
+
+const tableMemoryModel = createTableMemoryModel({
+    getState: ensureState,
+    formatBlocksForPrompt,
+    formatSourceRange,
+    getSourceMessageIdsFromBlocks,
+    defaultTableEditPrompt,
+    getHash,
+    parseTableEditOperations,
+    getFiniteMessageIds,
+    pushTableUndoSnapshot,
+    normalizeTableText,
+    saveCurrentTableProfileRows,
+    updateInjectionFromSummaries,
+});
+const {
+    applyTableOperations,
+    buildTableEditPrompt,
+    createTableEditDraft,
+    formatSpecificTablesForPrompt,
+    formatTableDataForPrompt,
+    formatTableGuideForPrompt,
+    getNextTableIndex,
+    getReadonlyTables,
+    getTableSchemasForPreset,
+    getWritableTables,
+    renderInjectedTablesSection,
+} = tableMemoryModel;
+
+const tableWorkflowController = createTableWorkflowController({
+    getState: ensureState,
+    findLatestAssistantTurn,
+    toastr,
+    buildLatestTurnBlocks,
+    runGeneration,
+    callGenerationModel,
+    buildTableEditPrompt,
+    buildTurnReferenceSystemPrompt,
+    createTableEditDraft,
+    saveState,
+    renderWorkbenchScope,
+    workbenchRenderScopes,
+    applyTableOperations,
+    formatSourceRange,
+    switchWorkbenchTab,
+});
+const { processLatestTableEdit } = tableWorkflowController;
+
+const tableWorkbenchUi = createTableWorkbenchUi({
+    query: $,
+    document,
+    requestFrame: callback => (
+        typeof globalThis.requestAnimationFrame === 'function'
+            ? globalThis.requestAnimationFrame(callback)
+            : globalThis.setTimeout(callback, 16)
+    ),
+    getState: ensureState,
+    getTableProfilesForScope,
+    tableSchemaScopes,
+    getActiveTableProfile,
+    getTablePromptPresets,
+    getSelectedTablePromptPresetId,
+    escapeHtml,
+    formatSourceRange,
+    toastr,
+    persistCurrentTableDatabase,
+    renderWorkbenchScope,
+    workbenchRenderScopes,
+    normalizeImportedTablesFromJson,
+    confirmDanger,
+    syncCurrentTableSchemas,
+    updateInjectionFromSummaries,
+    parseList,
+    getHash,
+    getNextTableIndex,
+});
+const {
+    createCustomTableFromUi,
+    importTablesFromText,
+    renderTableEditDrafts,
+    renderTableList,
+    renderTablePreviewMarkup,
+    renderTableProfileControls,
+    renderTablePromptPresetControls,
+    saveEditedTableFromElement,
+    uiState: tableUiState,
+} = tableWorkbenchUi;
 
 const summaryTargetController = createSummaryTargetController({
     query: $,

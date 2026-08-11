@@ -18,6 +18,10 @@ const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summar
 const summarySelectorsSource = fs.readFileSync(new URL('../src/features/summary-selectors.js', import.meta.url), 'utf8');
 const summaryTargetControllerSource = fs.readFileSync(new URL('../src/features/summary-target-controller.js', import.meta.url), 'utf8');
 const summaryTaskQueueSource = fs.readFileSync(new URL('../src/features/summary-task-queue.js', import.meta.url), 'utf8');
+const tableStateServiceSource = fs.readFileSync(new URL('../src/features/table-state-service.js', import.meta.url), 'utf8');
+const tableMemoryModelSource = fs.readFileSync(new URL('../src/features/table-memory-model.js', import.meta.url), 'utf8');
+const tableWorkflowControllerSource = fs.readFileSync(new URL('../src/features/table-workflow-controller.js', import.meta.url), 'utf8');
+const tableWorkbenchUiSource = fs.readFileSync(new URL('../src/features/table-workbench-ui.js', import.meta.url), 'utf8');
 const helpPopoverSource = fs.readFileSync(new URL('../src/ui/help-popover.js', import.meta.url), 'utf8');
 const operationFeedbackSource = fs.readFileSync(new URL('../src/ui/operation-feedback.js', import.meta.url), 'utf8');
 const workbenchLayoutSource = fs.readFileSync(new URL('../src/ui/workbench-layout.js', import.meta.url), 'utf8');
@@ -189,6 +193,20 @@ test('summary target selection and task queue are assembled outside the entry fi
     assert.doesNotMatch(source, /function enqueueSummaryTask\(|async function processTaskQueue\(/);
     assert.doesNotMatch(summaryTargetControllerSource, /renderAll\(/);
     assert.doesNotMatch(summaryTaskQueueSource, /renderAll\(/);
+});
+
+test('table profiles, scoped storage, and rollback transactions share one table state boundary', () => {
+    assert.match(source, /import \{ createTableStateService \} from '\.\/src\/features\/table-state-service\.js';/);
+    assert.match(source, /const tableStateService = createTableStateService\(\{/);
+    assert.match(tableStateServiceSource, /function getActiveTableProfile\(/);
+    assert.match(tableStateServiceSource, /function persistCurrentTableDatabase\(/);
+    assert.match(tableStateServiceSource, /function rollbackTableOperationsForMessages\(/);
+    assert.doesNotMatch(source, /function getActiveTableProfile\(|function rollbackTableOperationsForMessages\(/);
+    assert.doesNotMatch(tableStateServiceSource, /renderAll\(/);
+    assert.match(tableMemoryModelSource, /function applyTableOperations\(/);
+    assert.match(tableWorkflowControllerSource, /async function processLatestTableEdit\(/);
+    assert.match(tableWorkbenchUiSource, /function renderTableList\(/);
+    assert.doesNotMatch(source, /function applyTableOperations\(|async function processLatestTableEdit\(|function renderTableList\(/);
 });
 
 test('vector recall uses independent semantic and lexical candidates with explainable scores', () => {
@@ -479,13 +497,19 @@ test('vector, draft, and table actions use page-scoped rendering', () => {
         ['discardDraft', 'DRAFTS'],
         ['regenerateDraft', 'DRAFTS'],
         ['undoLastCommit', 'DRAFTS'],
-        ['undoLastTableOperation', 'TABLES'],
-        ['redoLastTableOperation', 'TABLES'],
-        ['createCustomTableFromUi', 'TABLES'],
     ]) {
         const functionSource = extractFunction(name);
         assert.match(functionSource, new RegExp(`renderWorkbenchScope\\(workbenchRenderScopes\\.${scope}`), `${name} should use ${scope} scoped rendering`);
         assert.doesNotMatch(functionSource, /renderAll\(/, `${name} should not refresh the whole workbench`);
+    }
+    for (const [moduleSource, name] of [
+        [tableStateServiceSource, 'undoLastTableOperation'],
+        [tableStateServiceSource, 'redoLastTableOperation'],
+        [tableWorkbenchUiSource, 'createCustomTableFromUi'],
+    ]) {
+        const functionSource = extractFunctionFrom(moduleSource, name);
+        assert.match(functionSource, /renderWorkbenchScope\(workbenchRenderScopes\.TABLES/);
+        assert.doesNotMatch(functionSource, /renderAll\(/);
     }
 });
 
