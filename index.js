@@ -70,6 +70,7 @@ import { createMaintenanceUi } from './src/features/maintenance-ui.js';
 import { createSummaryTimelineUi } from './src/features/summary-timeline-ui.js';
 import { createPresetControlsUi } from './src/features/preset-controls-ui.js';
 import { createWorkbenchHeaderUi } from './src/features/workbench-header-ui.js';
+import { createWorkbenchRenderer, workbenchRenderScopes } from './src/features/workbench-renderer.js';
 import { createGlobalSettingsService } from './src/core/global-settings-service.js';
 import { createChatStateService } from './src/core/chat-state-service.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
@@ -909,8 +910,6 @@ const defaultState = {
 };
 
 let isBusy = false;
-let scheduledRenderHandle = null;
-let scheduledRenderStatus = '';
 const tableUiState = {
     openTableIndex: '',
     focusCell: null,
@@ -949,6 +948,23 @@ function setBusy(value) {
     $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-stage-batch"], [data-bakemono-action="generate-epic"], [data-bakemono-action="generate-epic-batch"], [data-bakemono-action="backfill"], [data-bakemono-action="batch-summary"], [data-bakemono-action="commit-missing-all"], [data-bakemono-action="remove-missing-all"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-test"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-auto-tx-action], [data-bakemono-table-draft-action]').prop('disabled', value);
 }
 
+let workbenchRenderer = null;
+function renderAll(...args) {
+    return workbenchRenderer?.renderAll(...args);
+}
+function scheduleRenderAll(...args) {
+    return workbenchRenderer?.scheduleRenderAll(...args);
+}
+function renderWorkbenchScope(...args) {
+    return workbenchRenderer?.renderScope(...args) ?? false;
+}
+function renderTaskQueueProgress(...args) {
+    return workbenchRenderer?.renderTaskQueueProgress(...args);
+}
+function renderActivePresetControls(...args) {
+    return workbenchRenderer?.renderActivePresetControls(...args);
+}
+
 function renderInlinePromptPresetControls(type, selectSelector, nameSelector) {
     const select = document.querySelector(selectSelector);
     if (!select) {
@@ -974,188 +990,6 @@ function renderInlinePromptPresetControls(type, selectSelector, nameSelector) {
 
 
 
-
-function scheduleRenderAll(statusText = '') {
-    if (statusText) {
-        scheduledRenderStatus = statusText;
-    }
-    if (scheduledRenderHandle !== null) {
-        return;
-    }
-    const flush = () => {
-        scheduledRenderHandle = null;
-        const nextStatus = scheduledRenderStatus;
-        scheduledRenderStatus = '';
-        renderAll(nextStatus);
-    };
-    scheduledRenderHandle = typeof globalThis.requestAnimationFrame === 'function'
-        ? globalThis.requestAnimationFrame(flush)
-        : globalThis.setTimeout(flush, 16);
-}
-
-
-function renderTaskQueueProgress(statusText = '') {
-    renderWorkbenchScope(workbenchRenderScopes.DRAFTS, statusText, { feedback: false, refreshDataHub: false });
-}
-
-
-function renderActivePresetControls(tabName) {
-    if (tabName === 'config') {
-        renderPresetControlPair('#bakemono-memory-preset-select', '#bakemono-memory-preset-name');
-    } else if (tabName === 'scan') {
-        renderAreaPresetControl(areaPresetScopes.SCAN, '#bakemono-memory-scan-preset-select', '#bakemono-memory-scan-preset-name');
-    } else if (tabName === 'automation') {
-        renderAreaPresetControl(areaPresetScopes.AUTOMATION, '#bakemono-memory-automation-preset-select', '#bakemono-memory-automation-preset-name');
-    } else if (tabName === 'generation') {
-        renderAreaPresetControl(areaPresetScopes.API, '#bakemono-memory-api-preset-select', '#bakemono-memory-api-preset-name');
-    } else if (tabName === 'prompts') {
-        renderAreaPresetControl(areaPresetScopes.PROMPTS, '#bakemono-memory-prompts-preset-select', '#bakemono-memory-prompts-preset-name');
-    } else if (tabName === 'turn-summary' || tabName === 'tables') {
-        renderAreaPresetControl(areaPresetScopes.TURN, '#bakemono-memory-turn-preset-select', '#bakemono-memory-turn-preset-name');
-    } else if (tabName === 'injection') {
-        renderAreaPresetControl(areaPresetScopes.INJECTION, '#bakemono-memory-injection-preset-select', '#bakemono-memory-injection-preset-name');
-    } else if (tabName === 'vector') {
-        renderAreaPresetControl(areaPresetScopes.VECTOR, '#bakemono-memory-vector-preset-select', '#bakemono-memory-vector-preset-name');
-    }
-}
-
-function renderActiveWorkbenchPanel(tabName, state, blocks) {
-    renderActivePresetControls(tabName);
-    if (tabName === 'overview') {
-        renderWorkflowGuide(state);
-        renderMemoryDatabaseSummary(state);
-    } else if (tabName === 'prompt-inspector') {
-        void promptInspector.render();
-    } else if (tabName === 'data-hub') {
-        renderWorkbenchHubPanels(state);
-        renderMemoryDatabaseSummary(state);
-    } else if (tabName === 'settings-hub') {
-        renderWorkbenchHubPanels(state);
-    } else if (tabName === 'settings') {
-        renderWorkflowGuide(state);
-    } else if (tabName === 'preview') {
-        renderSummaryGenerationPanel(state, blocks);
-        renderPreviewSections(blocks.story, blocks.stage, blocks.epic);
-    } else if (tabName === 'records') {
-        renderMemoryRecordList();
-    } else if (tabName === 'timeline') {
-        renderTimeline();
-    } else if (tabName === 'drafts') {
-        renderDrafts();
-        renderHistory();
-        renderTaskQueue();
-    } else if (tabName === 'turn-summary' || tabName === 'tables') {
-        renderTurnSummaryPanel(state);
-    } else if (tabName === 'injection') {
-        renderInjectionOverview(state);
-    } else if (tabName === 'prompts') {
-        renderPromptOverview(state);
-    } else if (tabName === 'vector') {
-        renderVectorMemoryPanel(state);
-    } else if (tabName === 'scan') {
-        renderScanOverview(state);
-        renderScanPreview();
-    } else if (tabName === 'generation') {
-        renderCustomModelOptions(state.automation.customApi?.models || []);
-    } else if (tabName === 'appearance') {
-        renderAppearanceSettings();
-    } else if (tabName === 'maintenance') {
-        renderAutoHideRecentPanel(state);
-        renderMaintenanceOverview(state);
-    } else if (tabName === 'help') {
-        helpGuide.render();
-    }
-}
-
-function buildWorkbenchBlockBundle(state = ensureState()) {
-    const story = getStoryBlocks();
-    const stage = dedupeByHash([
-        ...getBlocksByType(blockTypes.STAGE),
-        ...state.stageSummaries.map(summaryToBlock),
-    ]);
-    const epic = dedupeByHash([
-        ...getBlocksByType(blockTypes.EPIC),
-        ...state.epicSummaries.map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
-    ]);
-    return { story, stage, epic };
-}
-
-function syncActiveWorkbenchFormFields(activeTab, state = ensureState()) {
-    if (activeTab === 'settings') {
-        $('#bakemono-memory-memory-strategy').val(state.memoryStrategy || memoryStrategies.BAKEMONO);
-        $('#bakemono-memory-workflow-mode').val(state.workflowMode || workflowModes.BAKEMONO);
-        $('#bakemono-memory-stage-source-mode').val(getStageSourceMode(state));
-        $('#bakemono-memory-output-mode').val(state.outputMode || 'bakemono');
-        $('#bakemono-memory-strategy-label').text(getMemoryStrategyLabel(state.memoryStrategy));
-        $('#bakemono-memory-workflow-label').text(`${getWorkflowModeLabel(state.workflowMode)} / ${getStageSourceModeLabel(getStageSourceMode(state))}`);
-        const injectionParts = getInjectionMemoryParts(state);
-        const uncoveredStory = state.storySummaries.filter(item => !(state.coveredBlockHashes || []).includes(item.hash)).length;
-        $('#bakemono-memory-injection-stats').text(`注入：多次 ${injectionParts.stats.epic} / 阶段 ${injectionParts.stats.stage} / 普通 ${injectionParts.stats.story} / 表格 ${injectionParts.stats.table || 0} / 向量 ${injectionParts.stats.vector || 0}`);
-        $('#bakemono-memory-memory-warning').text(getWorkflowStatusText(state, injectionParts.stats, uncoveredStory));
-    } else if (activeTab === 'injection') {
-        $('#bakemono-memory-injection-enabled').prop('checked', !!state.injection.enabled);
-        $('#bakemono-memory-depth').val(state.injection.depth);
-        $('#bakemono-memory-role').val(String(state.injection.role));
-        $('#bakemono-memory-source-content').val(state.generatedMemory || '');
-        $('#bakemono-memory-injection-template').val(state.injection.template || defaultInjectionTemplate);
-        $('#bakemono-memory-injection-content').val(renderInjectionContent(state));
-    } else if (activeTab === 'prompts') {
-        $('#bakemono-memory-story-prompt').val(state.generationPrompts.story || defaultStoryGenerationPrompt);
-        $('#bakemono-memory-missing-prompt').val(state.generationPrompts.missing || defaultMissingSummaryPrompt);
-        $('#bakemono-memory-stage-prompt').val(state.generationPrompts.stage || defaultStageGenerationPrompt);
-        $('#bakemono-memory-epic-prompt').val(state.generationPrompts.epic || defaultEpicGenerationPrompt);
-    } else if (activeTab === 'scan') {
-        $('#bakemono-memory-scan-mode').val(state.scanRules.mode || defaultScanRules.mode);
-        $('#bakemono-memory-include-tags').val(state.scanRules.includeTags || defaultScanRules.includeTags);
-        $('#bakemono-memory-exclude-tags').val(state.scanRules.excludeTags || defaultScanRules.excludeTags);
-        $('#bakemono-memory-full-min-length').val(state.scanRules.fullTextMinLength ?? defaultScanRules.fullTextMinLength);
-        $('#bakemono-memory-include-hidden').prop('checked', state.scanRules.includeHidden !== false);
-        $('#bakemono-memory-class-story').val(state.classificationRules.story || defaultClassificationRules.story);
-        $('#bakemono-memory-class-stage').val(state.classificationRules.stage || defaultClassificationRules.stage);
-        $('#bakemono-memory-class-epic').val(state.classificationRules.epic || defaultClassificationRules.epic);
-        $('#bakemono-memory-layout-story').val(state.previewLayouts.story || defaultPreviewLayouts.story);
-        $('#bakemono-memory-layout-stage').val(state.previewLayouts.stage || defaultPreviewLayouts.stage);
-        $('#bakemono-memory-layout-epic').val(state.previewLayouts.epic || defaultPreviewLayouts.epic);
-    } else if (activeTab === 'automation') {
-        $('#bakemono-memory-auto-enabled').prop('checked', !!state.automation.enabled);
-        $('#bakemono-memory-auto-mode').val(state.automation.mode || defaultAutomation.mode);
-        $('#bakemono-memory-auto-trigger').val(state.automation.triggerType || defaultAutomation.triggerType);
-        $('#bakemono-memory-auto-floor-interval').val(state.automation.floorInterval ?? defaultAutomation.floorInterval);
-        $('#bakemono-memory-auto-char-interval').val(state.automation.charInterval ?? defaultAutomation.charInterval);
-        $('#bakemono-memory-auto-hide-preserve-recent').val(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent);
-    } else if (activeTab === 'preview') {
-        $('#bakemono-memory-batch-summary-size').val(state.automation.backfillBatchSize ?? defaultAutomation.backfillBatchSize);
-        $('#bakemono-memory-stage-target-mode').val(state.generationTargets.stage.mode || defaultGenerationTargets.stage.mode);
-        $('#bakemono-memory-stage-target-count').val(state.generationTargets.stage.count ?? defaultGenerationTargets.stage.count);
-        $('#bakemono-memory-stage-target-range').val(state.generationTargets.stage.range || '');
-        $('#bakemono-memory-epic-target-mode').val(state.generationTargets.epic.mode || defaultGenerationTargets.epic.mode);
-        $('#bakemono-memory-epic-target-count').val(state.generationTargets.epic.count ?? defaultGenerationTargets.epic.count);
-        $('#bakemono-memory-epic-target-range').val(state.generationTargets.epic.range || '');
-    } else if (activeTab === 'generation') {
-        $('#bakemono-memory-api-provider').val(state.automation.apiProvider || defaultAutomation.apiProvider);
-        $('#bakemono-memory-custom-base-url').val(state.automation.customApi?.baseUrl || '');
-        $('#bakemono-memory-custom-api-key').val(state.automation.customApi?.apiKey || '');
-        $('#bakemono-memory-custom-model').val(state.automation.customApi?.model || '');
-        $('#bakemono-memory-custom-temperature').val(state.automation.customApi?.temperature ?? defaultAutomation.customApi.temperature);
-        $('#bakemono-memory-custom-max-tokens').val(state.automation.customApi?.maxTokens ?? defaultAutomation.customApi.maxTokens);
-        $('#bakemono-memory-custom-stream').val(String(!!state.automation.customApi?.stream));
-    }
-}
-
-const workbenchRenderScopes = Object.freeze({
-    VECTOR: 'vector',
-    DRAFTS: 'drafts',
-    TABLES: 'tables',
-    SUMMARY: 'summary',
-    SCAN: 'scan',
-    ARCHIVE: 'archive',
-    INJECTION: 'injection',
-    AUTOMATION: 'automation',
-    PROMPTS: 'prompts',
-    GENERATION: 'generation',
-    CONFIG: 'config',
-    SETTINGS: 'settings',
-});
 
 const operationFeedback = createOperationFeedback({
     escapeHtml,
@@ -2526,235 +2360,67 @@ const {
     retryQueueTask,
 } = summaryTaskQueue;
 
-function renderWorkbenchSharedChrome(activeTab, state, statusText = '', options = {}) {
-    $('#bakemono-memory-count-drafts').text(state.drafts.length);
-    $('#bakemono-memory-menu-draft-count').text(state.drafts.length.toLocaleString());
-    if (statusText) {
-        $('#bakemono-memory-status-line').text(statusText);
-    }
-    renderWorkbenchHeaderContext(activeTab, state);
-    if (statusText && options.feedback !== false) {
-        operationFeedback.captureFromStatus(statusText);
-    }
-}
-
-function renderWorkbenchDataHubMemory(state) {
-    const blocks = buildWorkbenchBlockBundle(state);
-    state.memoryRecords = buildMemoryRecords(state);
-    $('#bakemono-memory-count-story').text(blocks.story.length);
-    $('#bakemono-memory-count-stage').text(blocks.stage.length);
-    $('#bakemono-memory-count-epic').text(blocks.epic.length);
-    renderWorkbenchHubPanels(state);
-    renderMemoryDatabaseSummary(state);
-}
-
-function renderWorkbenchOverviewMemory(state) {
-    state.memoryRecords = buildMemoryRecords(state);
-    renderWorkflowGuide(state);
-    renderMemoryDatabaseSummary(state);
-}
-
-function renderWorkbenchSummarySurface(activeTab, state) {
-    if (activeTab === 'preview') {
-        const blocks = buildWorkbenchBlockBundle(state);
-        $('#bakemono-memory-tab-count-story').text(blocks.story.length);
-        $('#bakemono-memory-tab-count-stage').text(blocks.stage.length);
-        $('#bakemono-memory-tab-count-epic').text(blocks.epic.length);
-        renderSummaryGenerationPanel(state, blocks);
-        renderPreviewSections(blocks.story, blocks.stage, blocks.epic);
-    } else if (activeTab === 'overview') {
-        renderWorkbenchOverviewMemory(state);
-    } else if (activeTab === 'data-hub') {
-        renderWorkbenchDataHubMemory(state);
-    } else if (activeTab === 'records') {
-        state.memoryRecords = buildMemoryRecords(state);
-        renderMemoryRecordList();
-    } else if (activeTab === 'timeline') {
-        renderTimeline();
-    } else if (activeTab === 'drafts') {
-        renderDrafts();
-        renderHistory();
-        renderTaskQueue();
-    } else if (activeTab === 'maintenance') {
-        renderMaintenanceOverview(state);
-    } else if (activeTab === 'turn-summary' || activeTab === 'tables') {
-        renderActivePresetControls(activeTab);
-        renderTurnSummaryPanel(state);
-    }
-}
-
-function renderWorkbenchScope(scope, statusText = '', options = {}) {
-    if (!isWorkbenchOpen()) {
-        return false;
-    }
-    const state = ensureState();
-    const activeTab = getActiveWorkbenchTab();
-
-    if (scope === workbenchRenderScopes.VECTOR) {
-        if (activeTab === 'vector') {
-            renderActivePresetControls(activeTab);
-            renderVectorMemoryPanel(state);
-        } else if (activeTab === 'data-hub') {
-            renderWorkbenchHubPanels(state);
-        }
-    } else if (scope === workbenchRenderScopes.DRAFTS) {
-        if (activeTab === 'drafts') {
-            renderDrafts();
-            renderHistory();
-            renderTaskQueue();
-        } else if (activeTab === 'maintenance') {
-            renderMaintenanceOverview(state);
-        } else if (activeTab === 'data-hub') {
-            if (options.refreshDataHub !== false) {
-                renderWorkbenchDataHubMemory(state);
-            }
-        }
-    } else if (scope === workbenchRenderScopes.TABLES) {
-        if (activeTab === 'turn-summary' || activeTab === 'tables') {
-            renderActivePresetControls(activeTab);
-            renderTurnSummaryPanel(state);
-        } else if (activeTab === 'data-hub') {
-            renderWorkbenchDataHubMemory(state);
-        }
-    } else if (scope === workbenchRenderScopes.SUMMARY) {
-        renderWorkbenchSummarySurface(activeTab, state);
-    } else if (scope === workbenchRenderScopes.SCAN) {
-        if (activeTab === 'scan') {
-            syncActiveWorkbenchFormFields(activeTab, state);
-            renderActivePresetControls(activeTab);
-            renderScanOverview(state);
-            renderScanPreview();
-        } else {
-            renderWorkbenchSummarySurface(activeTab, state);
-        }
-    } else if (scope === workbenchRenderScopes.ARCHIVE) {
-        if (activeTab === 'maintenance') {
-            renderAutoHideRecentPanel(state);
-            renderMaintenanceOverview(state);
-        } else if (activeTab === 'overview') {
-            renderWorkbenchOverviewMemory(state);
-        } else if (activeTab === 'data-hub') {
-            renderWorkbenchDataHubMemory(state);
-        } else if (activeTab === 'records') {
-            state.memoryRecords = buildMemoryRecords(state);
-            renderMemoryRecordList();
-        } else if (activeTab === 'vector') {
-            renderVectorMemoryPanel(state);
-        }
-    } else if (scope === workbenchRenderScopes.INJECTION) {
-        if (activeTab === 'injection') {
-            syncActiveWorkbenchFormFields(activeTab, state);
-            renderActivePresetControls(activeTab);
-            renderInjectionOverview(state);
-        } else if (activeTab === 'settings') {
-            syncActiveWorkbenchFormFields(activeTab, state);
-            renderWorkflowGuide(state);
-        } else if (activeTab === 'settings-hub' || activeTab === 'data-hub') {
-            renderWorkbenchHubPanels(state);
-        }
-    } else if (scope === workbenchRenderScopes.AUTOMATION) {
-        if (activeTab === 'automation') {
-            syncActiveWorkbenchFormFields(activeTab, state);
-            renderActivePresetControls(activeTab);
-            renderAutomationOverview(state);
-        } else if (activeTab === 'data-hub' || activeTab === 'settings-hub') {
-            renderWorkbenchHubPanels(state);
-        } else if (activeTab === 'overview') {
-            renderWorkflowGuide(state);
-        } else if (activeTab === 'maintenance') {
-            renderMaintenanceOverview(state);
-        }
-    } else if (scope === workbenchRenderScopes.PROMPTS) {
-        if (activeTab === 'prompts') {
-            syncActiveWorkbenchFormFields(activeTab, state);
-            renderActivePresetControls(activeTab);
-            renderPromptOverview(state);
-            syncPromptHintButtons();
-        }
-    } else if (scope === workbenchRenderScopes.GENERATION) {
-        if (activeTab === 'generation') {
-            syncActiveWorkbenchFormFields(activeTab, state);
-            renderActivePresetControls(activeTab);
-            renderCustomModelOptions(state.automation.customApi?.models || []);
-        } else if (activeTab === 'settings-hub') {
-            renderWorkbenchHubPanels(state);
-        }
-    } else if (scope === workbenchRenderScopes.CONFIG) {
-        if (activeTab === 'config') {
-            renderActivePresetControls(activeTab);
-        } else if (activeTab === 'settings-hub' || activeTab === 'data-hub') {
-            renderWorkbenchHubPanels(state);
-        }
-    } else if (scope === workbenchRenderScopes.SETTINGS) {
-        if (activeTab === 'settings') {
-            syncActiveWorkbenchFormFields(activeTab, state);
-            renderWorkflowGuide(state);
-        } else if (activeTab === 'overview') {
-            renderWorkflowGuide(state);
-        } else if (activeTab === 'settings-hub' || activeTab === 'data-hub') {
-            renderWorkbenchHubPanels(state);
-        }
-    } else {
-        return false;
-    }
-
-    renderWorkbenchSharedChrome(activeTab, state, statusText, options);
-    return true;
-}
-
-function renderAll(statusText = '') {
-    if (scheduledRenderHandle !== null) {
-        if (typeof globalThis.cancelAnimationFrame === 'function') {
-            globalThis.cancelAnimationFrame(scheduledRenderHandle);
-        } else {
-            globalThis.clearTimeout(scheduledRenderHandle);
-        }
-        scheduledRenderHandle = null;
-        scheduledRenderStatus = '';
-    }
-    const state = ensureState();
-    if (!isWorkbenchOpen()) {
-        return;
-    }
-    const activeTab = getActiveWorkbenchTab();
-    if (activeTab === 'overview' || activeTab === 'records' || activeTab === 'data-hub') {
-        state.memoryRecords = buildMemoryRecords(state);
-    }
-    const blocks = activeTab === 'preview' || activeTab === 'data-hub'
-        ? buildWorkbenchBlockBundle(state)
-        : null;
-    $('#bakemono-memory-count-drafts').text(state.drafts.length);
-    $('#bakemono-memory-menu-draft-count').text(state.drafts.length.toLocaleString());
-    if (activeTab === 'data-hub' && blocks) {
-        $('#bakemono-memory-count-story').text(blocks.story.length);
-        $('#bakemono-memory-count-stage').text(blocks.stage.length);
-        $('#bakemono-memory-count-epic').text(blocks.epic.length);
-    } else if (activeTab === 'preview' && blocks) {
-        $('#bakemono-memory-tab-count-story').text(blocks.story.length);
-        $('#bakemono-memory-tab-count-stage').text(blocks.stage.length);
-        $('#bakemono-memory-tab-count-epic').text(blocks.epic.length);
-    }
-    syncActiveWorkbenchFormFields(activeTab, state);
-    if (activeTab === 'automation') {
-        renderAutomationOverview(state);
-    }
-    renderActiveWorkbenchPanel(activeTab, state, blocks);
-
-    const injected = state.injection.enabled && renderInjectionContent(state) ? '注入开启' : '注入为空或关闭';
-    $('#bakemono-memory-status-line').text(statusText || `${injected}。上次扫描：${state.lastScanAt ? new Date(state.lastScanAt).toLocaleString() : '尚未扫描'}。`);
-    renderWorkbenchHeaderContext(activeTab, state);
-    syncPromptHintButtons();
-    operationFeedback.captureFromStatus(statusText);
-}
-
-function syncPromptHintButtons() {
-    document.querySelectorAll('.bakemono-memory-card-panel > h4 + .bakemono-memory-prompt-hint').forEach(hint => {
-        const title = hint.previousElementSibling;
-        if (title?.matches('h4')) {
-            title.append(hint);
-        }
-    });
-}
+workbenchRenderer = createWorkbenchRenderer({
+    documentRef: document,
+    globalRef: globalThis,
+    query: $,
+    getState: ensureState,
+    isWorkbenchOpen,
+    getActiveTab: getActiveWorkbenchTab,
+    areaPresetScopes,
+    renderPresetControlPair,
+    renderAreaPresetControl,
+    renderWorkflowGuide,
+    renderMemoryDatabaseSummary,
+    renderPromptInspector: () => promptInspector.render(),
+    renderHubPanels: renderWorkbenchHubPanels,
+    renderSummaryGenerationPanel,
+    renderPreviewSections,
+    renderMemoryRecordList,
+    renderTimeline,
+    renderDrafts,
+    renderHistory,
+    renderTaskQueue,
+    renderTurnSummaryPanel,
+    renderInjectionOverview,
+    renderPromptOverview,
+    renderAutomationOverview,
+    renderVectorMemoryPanel,
+    renderScanOverview,
+    renderScanPreview,
+    renderCustomModelOptions,
+    renderAppearanceSettings,
+    renderAutoHideRecentPanel,
+    renderMaintenanceOverview,
+    renderHelp: () => helpGuide.render(),
+    getStoryBlocks,
+    getBlocksByType,
+    blockTypes,
+    dedupeByHash,
+    summaryToBlock,
+    memoryStrategies,
+    workflowModes,
+    getStageSourceMode,
+    getMemoryStrategyLabel,
+    getWorkflowModeLabel,
+    getStageSourceModeLabel,
+    getInjectionMemoryParts,
+    getWorkflowStatusText,
+    defaultInjectionTemplate,
+    renderInjectionContent,
+    defaultStoryGenerationPrompt,
+    defaultMissingSummaryPrompt,
+    defaultStageGenerationPrompt,
+    defaultEpicGenerationPrompt,
+    defaultScanRules,
+    defaultClassificationRules,
+    defaultPreviewLayouts,
+    defaultAutomation,
+    defaultGenerationTargets,
+    buildMemoryRecords,
+    renderHeaderContext: renderWorkbenchHeaderContext,
+    captureFeedback: status => operationFeedback.captureFromStatus(status),
+});
 
 function getKindLabel(kind) {
     if (kind === blockTypes.STORY) {

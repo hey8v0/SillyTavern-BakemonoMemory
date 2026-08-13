@@ -36,6 +36,7 @@ const maintenanceUiSource = fs.readFileSync(new URL('../src/features/maintenance
 const summaryTimelineUiSource = fs.readFileSync(new URL('../src/features/summary-timeline-ui.js', import.meta.url), 'utf8');
 const presetControlsUiSource = fs.readFileSync(new URL('../src/features/preset-controls-ui.js', import.meta.url), 'utf8');
 const workbenchHeaderUiSource = fs.readFileSync(new URL('../src/features/workbench-header-ui.js', import.meta.url), 'utf8');
+const workbenchRendererSource = fs.readFileSync(new URL('../src/features/workbench-renderer.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -276,19 +277,20 @@ test('vector indexing, settings, actions, and page rendering are assembled as se
 });
 
 test('renderAll only scans heavy block collections and syncs forms for the active page', () => {
-    assert.match(source, /function buildWorkbenchBlockBundle\(/);
-    assert.match(source, /const blocks = activeTab === 'preview' \|\| activeTab === 'data-hub'/);
-    assert.match(source, /function syncActiveWorkbenchFormFields\(activeTab, state/);
-    assert.match(source, /if \(activeTab === 'settings'\)/);
-    assert.match(source, /else if \(activeTab === 'injection'\)/);
-    assert.match(source, /else if \(activeTab === 'prompts'\)/);
-    assert.match(source, /else if \(activeTab === 'scan'\)/);
-    assert.match(source, /else if \(activeTab === 'automation'\)/);
-    assert.match(source, /else if \(activeTab === 'preview'\)/);
-    assert.match(source, /else if \(activeTab === 'generation'\)/);
-    assert.match(source, /else if \(tabName === 'vector'\) \{\s*renderVectorMemoryPanel\(state\)/s);
-    assert.match(source, /function renderWorkbenchOverviewMemory\(state\) \{\s*state\.memoryRecords = buildMemoryRecords\(state\);\s*renderWorkflowGuide\(state\)/s);
-    assert.match(source, /renderActiveWorkbenchPanel\(activeTab, state, blocks\)/);
+    assert.match(source, /const workbenchRenderer = createWorkbenchRenderer|workbenchRenderer = createWorkbenchRenderer/);
+    assert.match(workbenchRendererSource, /function buildBlockBundle\(/);
+    assert.match(workbenchRendererSource, /const blocks = activeTab === 'preview' \|\| activeTab === 'data-hub'/);
+    assert.match(workbenchRendererSource, /function syncActiveFormFields\(activeTab, state/);
+    assert.match(workbenchRendererSource, /if \(activeTab === 'settings'\)/);
+    assert.match(workbenchRendererSource, /else if \(activeTab === 'injection'\)/);
+    assert.match(workbenchRendererSource, /else if \(activeTab === 'prompts'\)/);
+    assert.match(workbenchRendererSource, /else if \(activeTab === 'scan'\)/);
+    assert.match(workbenchRendererSource, /else if \(activeTab === 'automation'\)/);
+    assert.match(workbenchRendererSource, /else if \(activeTab === 'preview'\)/);
+    assert.match(workbenchRendererSource, /else if \(activeTab === 'generation'\)/);
+    assert.match(workbenchRendererSource, /else if \(tabName === 'vector'\) renderVectorMemoryPanel\(state\)/);
+    assert.match(workbenchRendererSource, /function renderOverviewMemory\(state\) \{\s*state\.memoryRecords = buildMemoryRecords\(state\);\s*renderWorkflowGuide\(state\)/s);
+    assert.match(workbenchRendererSource, /renderActivePanel\(activeTab, state, blocks\)/);
 });
 
 test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
@@ -528,9 +530,9 @@ test('hot paths use scoped or coalesced rendering', () => {
 
 test('closed workbench and background queues avoid heavy DOM rendering', () => {
     const ensureSource = extractFunctionFrom(chatStateServiceSource, 'ensureState');
-    const renderAllSource = extractFunction('renderAll');
-    const scopedRenderSource = extractFunction('renderWorkbenchScope');
-    const queueProgressSource = extractFunction('renderTaskQueueProgress');
+    const renderAllSource = extractFunctionFrom(workbenchRendererSource, 'renderAll');
+    const scopedRenderSource = extractFunctionFrom(workbenchRendererSource, 'renderScope');
+    const queueProgressSource = extractFunctionFrom(workbenchRendererSource, 'renderTaskQueueProgress');
 
     assert.doesNotMatch(ensureSource, /memoryRecords\s*=\s*buildMemoryRecords/);
     assert.match(renderAllSource, /if \(!isWorkbenchOpen\(\)\)/);
@@ -538,13 +540,13 @@ test('closed workbench and background queues avoid heavy DOM rendering', () => {
         renderAllSource.indexOf('if (!isWorkbenchOpen())') < renderAllSource.indexOf('buildMemoryRecords'),
         'renderAll should return before deriving records when the workbench is closed',
     );
-    assert.match(renderAllSource, /renderActiveWorkbenchPanel\(/);
+    assert.match(renderAllSource, /renderActivePanel\(/);
     assert.match(scopedRenderSource, /if \(!isWorkbenchOpen\(\)\)/);
-    assert.match(queueProgressSource, /renderWorkbenchScope\(workbenchRenderScopes\.DRAFTS/);
+    assert.match(queueProgressSource, /renderScope\(workbenchRenderScopes\.DRAFTS/);
 });
 
 test('vector, draft, and table actions use page-scoped rendering', () => {
-    const scopedRenderSource = extractFunction('renderWorkbenchScope');
+    const scopedRenderSource = extractFunctionFrom(workbenchRendererSource, 'renderScope');
     assert.doesNotMatch(scopedRenderSource, /renderAll\(/);
     assert.match(scopedRenderSource, /scope === workbenchRenderScopes\.VECTOR/);
     assert.match(scopedRenderSource, /renderVectorMemoryPanel\(state\)/);
@@ -585,8 +587,8 @@ test('vector, draft, and table actions use page-scoped rendering', () => {
 });
 
 test('all business mutations use scoped rendering and reserve renderAll for lifecycle entry points', () => {
-    const scopedRenderSource = extractFunction('renderWorkbenchScope');
-    const summarySurfaceSource = extractFunction('renderWorkbenchSummarySurface');
+    const scopedRenderSource = extractFunctionFrom(workbenchRendererSource, 'renderScope');
+    const summarySurfaceSource = extractFunctionFrom(workbenchRendererSource, 'renderSummarySurface');
     const actionScopeSource = extractFunction('getWorkbenchActionRenderScope');
 
     for (const scope of [
