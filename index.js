@@ -54,6 +54,7 @@ import { createScanController } from './src/features/scan-controller.js';
 import { createSummaryPreviewRenderer } from './src/features/summary-preview-renderer.js';
 import { createSummaryGenerationController } from './src/features/summary-generation-controller.js';
 import { createSummaryBackfillController } from './src/features/summary-backfill-controller.js';
+import { createConfigurationService } from './src/features/configuration-service.js';
 import { createGlobalSettingsService } from './src/core/global-settings-service.js';
 import { createChatStateService } from './src/core/chat-state-service.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
@@ -965,167 +966,6 @@ function setBusy(value) {
     isBusy = value;
     $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-stage-batch"], [data-bakemono-action="generate-epic"], [data-bakemono-action="generate-epic-batch"], [data-bakemono-action="backfill"], [data-bakemono-action="batch-summary"], [data-bakemono-action="commit-missing-all"], [data-bakemono-action="remove-missing-all"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-test"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-auto-tx-action], [data-bakemono-table-draft-action]').prop('disabled', value);
 }
-
-const operationFeedback = createOperationFeedback({
-    escapeHtml,
-    setBusy,
-    renderScope: (...args) => renderWorkbenchScope(...args),
-    getDefaultRenderScope: () => workbenchRenderScopes.SUMMARY,
-    logError: (...args) => console.error(...args),
-});
-const { runGeneration, runVisible: runVisibleOperation } = operationFeedback;
-const helpPopover = createHelpPopover();
-const helpGuide = createHelpGuide({ escapeHtml });
-const summaryMemoryModel = createSummaryMemoryModel({
-    blockTypes,
-    memoryStrategies,
-    memoryRecordStatuses,
-    dedupeByHash,
-    getSummarySortKey,
-    getSummaryLevel,
-    getFiniteMessageIds,
-    unique,
-    getBlockTitle,
-    formatSourceRange,
-    getBlockSortKey,
-    getKindLabel,
-    getDefaultDraftTitle,
-    getSourceStart,
-});
-const {
-    buildMemoryRecords,
-    getActiveCoveredStageHashes,
-    getActiveEpicMemoryBlocks,
-    getCoveredStageHashesFromEpic,
-    getEpicMemoryBlocks,
-    getStageMemoryBlocks,
-    summaryToBlock,
-} = summaryMemoryModel;
-const summarySelectors = createSummarySelectors({
-    getState: ensureState,
-    getBlocksByType,
-    blockTypes,
-    stageSourceModes,
-    workflowModes,
-    defaultAutomation,
-    dedupeByHash,
-    summaryToBlock,
-    getSortedTargetBlocks,
-});
-const {
-    getAutoStageTargets,
-    getStageSourceMode,
-    getStoryBlocks,
-    getStoryMaterialBlocks,
-    getUnsummarizedMultiSummaryBlocks,
-    getUnsummarizedStageBlocks,
-    getUnsummarizedStoryBlocks,
-    isBackfillSummary,
-    isRawSourceBlock,
-} = summarySelectors;
-const summaryGenerationController = createSummaryGenerationController({
-    getIsBusy: () => isBusy,
-    scanBlocks: options => scanBakemonoBlocks(options),
-    getState: ensureState,
-    getUnsummarizedStoryBlocks,
-    getAutoStageTargets,
-    getUnsummarizedStageBlocks,
-    getUnsummarizedMultiSummaryBlocks,
-    getStoryMaterialBlocks,
-    readGenerationTargetSettings: (...args) => summaryTargetController.readGenerationTargetSettings(...args),
-    promptGenerationTargetSelection: (...args) => summaryTargetController.promptGenerationTargetSelection(...args),
-    selectGenerationTargets,
-    partitionGenerationTargets,
-    confirmGenerationTargets: (...args) => summaryTargetController.confirmGenerationTargets(...args),
-    getTargetSelectionLabel: (...args) => summaryTargetController.getTargetSelectionLabel(...args),
-    getStageSourceMode,
-    renderGenerationPrompt,
-    defaultStoryGenerationPrompt,
-    getSourceMessageIdsFromBlocks,
-    enqueueSummaryTask: (...args) => summaryTaskQueue.enqueueSummaryTask(...args),
-    processTaskQueue: (...args) => summaryTaskQueue.processTaskQueue(...args),
-    blockTypes,
-    defaultGenerationTargets,
-    getSourceStart,
-    getSourceEnd,
-    formatSourceRange,
-    getNextMultiSummaryLevel,
-    getMultiSummaryLabel,
-    unique,
-    renderWorkbenchScope,
-    workbenchRenderScopes,
-    toastr,
-    confirmDanger,
-    confirm: message => window.confirm(message),
-});
-const {
-    buildEpicSystemPrompt,
-    buildStageSystemPrompt,
-    buildStoryUserPrompt,
-    generateEpicBatchTasks,
-    generateEpicDraft,
-    generateStageBatchTasks,
-    generateStageDraft,
-} = summaryGenerationController;
-const summaryBackfillController = createSummaryBackfillController({
-    query: $,
-    getIsBusy: () => isBusy,
-    getState: ensureState,
-    getContext,
-    getFallbackChat: () => chat,
-    parseList,
-    stripConfiguredTags,
-    extractConfiguredTagBlocks,
-    stripPostProcessNoise,
-    unique,
-    getHash,
-    getMessageVariantKey,
-    getFiniteMessageIds,
-    formatSourceRange,
-    getSourceStart,
-    getSourceEnd,
-    blockTypes,
-    defaultAutomation,
-    defaultMissingSummaryPrompt,
-    buildStoryUserPrompt,
-    buildStageSystemPrompt,
-    buildTurnReferenceSystemPrompt: (...args) => turnProcessingController.buildTurnReferenceSystemPrompt(...args),
-    createDraft: (...args) => summaryDraftService.createDraft(...args),
-    enqueueSummaryTask: (...args) => summaryTaskQueue.enqueueSummaryTask(...args),
-    parseMessageRangeInput: (...args) => archiveController.parseMessageRangeInput(...args),
-    saveState,
-    renderWorkbenchScope,
-    workbenchRenderScopes,
-    toastr,
-    confirmDanger,
-    confirm: message => window.confirm(message),
-});
-const {
-    createMissingSummaryDraftFromBatchItem,
-    generateBackfillQueue,
-    generateBatchSummaryQueue,
-    generateMissingSummaryQueue,
-    messageHasConfiguredSummary,
-} = summaryBackfillController;
-const workbenchNavigation = createWorkbenchNavigation({
-    getPanelTitle: tabName => getWorkbenchPanelTitle(tabName),
-    renderHeaderContext: tabName => renderWorkbenchHeaderContext(tabName),
-    renderAll: (...args) => renderAll(...args),
-    scanBlocks: options => scanBakemonoBlocks(options),
-    closeHelp: () => helpPopover.close(),
-    clearFeedback: () => operationFeedback.clear(),
-});
-const {
-    close: closeWorkbench,
-    getActiveTab: getActiveWorkbenchTab,
-    isOpen: isWorkbenchOpen,
-    open: openWorkbench,
-    setMenuOpen: setWorkbenchMenuOpen,
-    stabilizeMobilePreviewScroll,
-    stabilizeMobileScroll: stabilizeMobileWorkbenchScroll,
-    switchTab: switchWorkbenchTab,
-    syncMobileCollapsibles,
-} = workbenchNavigation;
 
 function getMemoryStrategyLabelLegacy(strategy = ensureState().memoryStrategy) {
     return strategy === memoryStrategies.GENERIC ? '通用全文补课模式' : '摘要块手账模式';
@@ -2237,6 +2077,17 @@ const workbenchRenderScopes = Object.freeze({
     SETTINGS: 'settings',
 });
 
+const operationFeedback = createOperationFeedback({
+    escapeHtml,
+    setBusy,
+    renderScope: (...args) => renderWorkbenchScope(...args),
+    getDefaultRenderScope: () => workbenchRenderScopes.SUMMARY,
+    logError: (...args) => console.error(...args),
+});
+const { runGeneration, runVisible: runVisibleOperation } = operationFeedback;
+const helpPopover = createHelpPopover();
+const helpGuide = createHelpGuide({ escapeHtml });
+
 const globalSettingsService = createGlobalSettingsService({
     extensionSettings: extension_settings,
     storageKey: STORAGE_KEY,
@@ -2429,6 +2280,157 @@ const {
     parsePreviewMeta,
 } = summaryPreviewRenderer;
 
+const summaryMemoryModel = createSummaryMemoryModel({
+    blockTypes,
+    memoryStrategies,
+    memoryRecordStatuses,
+    dedupeByHash,
+    getSummarySortKey,
+    getSummaryLevel,
+    getFiniteMessageIds,
+    unique,
+    getBlockTitle,
+    formatSourceRange,
+    getBlockSortKey,
+    getKindLabel,
+    getDefaultDraftTitle: (...args) => summaryDraftService.getDefaultDraftTitle(...args),
+    getSourceStart,
+});
+const {
+    buildMemoryRecords,
+    getActiveCoveredStageHashes,
+    getActiveEpicMemoryBlocks,
+    getCoveredStageHashesFromEpic,
+    getEpicMemoryBlocks,
+    getStageMemoryBlocks,
+    summaryToBlock,
+} = summaryMemoryModel;
+const summarySelectors = createSummarySelectors({
+    getState: ensureState,
+    getBlocksByType,
+    blockTypes,
+    stageSourceModes,
+    workflowModes,
+    defaultAutomation,
+    dedupeByHash,
+    summaryToBlock,
+    getSortedTargetBlocks,
+});
+const {
+    getAutoStageTargets,
+    getStageSourceMode,
+    getStoryBlocks,
+    getStoryMaterialBlocks,
+    getUnsummarizedMultiSummaryBlocks,
+    getUnsummarizedStageBlocks,
+    getUnsummarizedStoryBlocks,
+    isBackfillSummary,
+    isRawSourceBlock,
+} = summarySelectors;
+const summaryGenerationController = createSummaryGenerationController({
+    getIsBusy: () => isBusy,
+    scanBlocks: options => scanBakemonoBlocks(options),
+    getState: ensureState,
+    getUnsummarizedStoryBlocks,
+    getAutoStageTargets,
+    getUnsummarizedStageBlocks,
+    getUnsummarizedMultiSummaryBlocks,
+    getStoryMaterialBlocks,
+    readGenerationTargetSettings: (...args) => summaryTargetController.readGenerationTargetSettings(...args),
+    promptGenerationTargetSelection: (...args) => summaryTargetController.promptGenerationTargetSelection(...args),
+    selectGenerationTargets,
+    partitionGenerationTargets,
+    confirmGenerationTargets: (...args) => summaryTargetController.confirmGenerationTargets(...args),
+    getTargetSelectionLabel: (...args) => summaryTargetController.getTargetSelectionLabel(...args),
+    getStageSourceMode,
+    renderGenerationPrompt,
+    defaultStoryGenerationPrompt,
+    getSourceMessageIdsFromBlocks,
+    enqueueSummaryTask: (...args) => summaryTaskQueue.enqueueSummaryTask(...args),
+    processTaskQueue: (...args) => summaryTaskQueue.processTaskQueue(...args),
+    blockTypes,
+    defaultGenerationTargets,
+    getSourceStart,
+    getSourceEnd,
+    formatSourceRange,
+    getNextMultiSummaryLevel,
+    getMultiSummaryLabel,
+    unique,
+    renderWorkbenchScope,
+    workbenchRenderScopes,
+    toastr,
+    confirmDanger,
+    confirm: message => window.confirm(message),
+});
+const {
+    buildEpicSystemPrompt,
+    buildStageSystemPrompt,
+    buildStoryUserPrompt,
+    generateEpicBatchTasks,
+    generateEpicDraft,
+    generateStageBatchTasks,
+    generateStageDraft,
+} = summaryGenerationController;
+const summaryBackfillController = createSummaryBackfillController({
+    query: $,
+    getIsBusy: () => isBusy,
+    getState: ensureState,
+    getContext,
+    getFallbackChat: () => chat,
+    parseList,
+    stripConfiguredTags,
+    extractConfiguredTagBlocks,
+    stripPostProcessNoise,
+    unique,
+    getHash,
+    getMessageVariantKey,
+    getFiniteMessageIds,
+    formatSourceRange,
+    getSourceStart,
+    getSourceEnd,
+    blockTypes,
+    defaultAutomation,
+    defaultMissingSummaryPrompt,
+    buildStoryUserPrompt,
+    buildStageSystemPrompt,
+    buildTurnReferenceSystemPrompt: (...args) => turnProcessingController.buildTurnReferenceSystemPrompt(...args),
+    createDraft: (...args) => summaryDraftService.createDraft(...args),
+    enqueueSummaryTask: (...args) => summaryTaskQueue.enqueueSummaryTask(...args),
+    parseMessageRangeInput: (...args) => archiveController.parseMessageRangeInput(...args),
+    saveState,
+    renderWorkbenchScope,
+    workbenchRenderScopes,
+    toastr,
+    confirmDanger,
+    confirm: message => window.confirm(message),
+});
+const {
+    createMissingSummaryDraftFromBatchItem,
+    generateBackfillQueue,
+    generateBatchSummaryQueue,
+    generateMissingSummaryQueue,
+    messageHasConfiguredSummary,
+} = summaryBackfillController;
+const workbenchNavigation = createWorkbenchNavigation({
+    getPanelTitle: tabName => getWorkbenchPanelTitle(tabName),
+    renderHeaderContext: tabName => renderWorkbenchHeaderContext(tabName),
+    renderAll: (...args) => renderAll(...args),
+    scanBlocks: options => scanBakemonoBlocks(options),
+    closeHelp: () => helpPopover.close(),
+    clearFeedback: () => operationFeedback.clear(),
+});
+const {
+    close: closeWorkbench,
+    getActiveTab: getActiveWorkbenchTab,
+    isOpen: isWorkbenchOpen,
+    open: openWorkbench,
+    setMenuOpen: setWorkbenchMenuOpen,
+    stabilizeMobilePreviewScroll,
+    stabilizeMobileScroll: stabilizeMobileWorkbenchScroll,
+    switchTab: switchWorkbenchTab,
+    syncMobileCollapsibles,
+} = workbenchNavigation;
+
 const themeController = createThemeController({
     query: $,
     documentRef: document,
@@ -2618,12 +2620,69 @@ const vectorSettingsModel = createVectorSettingsModel({
     query: $,
     defaultVectorMemory,
     getState: ensureState,
-    persistSharedConfigurationFromState,
+    persistSharedConfigurationFromState: (...args) => configurationService.persistSharedConfigurationFromState(...args),
 });
 const {
     persistVectorMemoryFieldsFromUi,
     readVectorMemoryFieldsFromUi,
 } = vectorSettingsModel;
+
+const configurationService = createConfigurationService({
+    query: $,
+    getState: ensureState,
+    defaultScanRules,
+    defaultClassificationRules,
+    defaultPreviewLayouts,
+    defaultAutomation,
+    defaultStoryGenerationPrompt,
+    defaultMissingSummaryPrompt,
+    defaultStageGenerationPrompt,
+    defaultEpicGenerationPrompt,
+    defaultTurnSummaryPrompt,
+    defaultTableEditPrompt,
+    defaultInlineSummaryPrompt,
+    defaultInlineTablePrompt,
+    defaultInjectionTemplate,
+    defaultGenerationTargets,
+    defaultVectorMemory,
+    defaultState,
+    turnProcessingModes,
+    tableSchemaScopes,
+    extensionPromptRoles: extension_prompt_roles,
+    memoryStrategies,
+    workflowModes,
+    stageSourceModes,
+    makePresetId,
+    getStageSourceMode,
+    setTableSchemaScope,
+    readVectorMemoryFieldsFromUi,
+    createSharedInlineGenerationConfig,
+    createSharedVectorConfig,
+    getTableSchemasForPreset,
+    getActiveGlobalConfig,
+    setActiveGlobalConfig,
+    markActiveConfigApplied,
+    saveState,
+    ensureGlobalSettings,
+    extensionSettings: extension_settings,
+    storageKey: STORAGE_KEY,
+    getContext,
+    shouldBootstrapSharedConfig,
+});
+const {
+    bootstrapSharedConfigurationFromCurrentChat,
+    getConfigPayloadFromState,
+    getCurrentPromptPresetPayload,
+    normalizeImportedPreset,
+    persistSharedConfigurationFromState,
+    readAutomationFieldsFromUi,
+    readConfigFieldsFromUi,
+    readCustomApiFieldsFromUi,
+    readInjectionFieldsFromUi,
+    readPromptFieldsFromUi,
+    readRuleFieldsFromUi,
+    readTurnSummaryFieldsFromUi,
+} = configurationService;
 
 const vectorMemoryService = createVectorMemoryService({
     defaultVectorMemory,
@@ -4168,277 +4227,6 @@ function renderCustomModelOptions(models = []) {
 }
 
 
-
-function readRuleFieldsFromUi(state = ensureState()) {
-    if (!$('#bakemono-memory-scan-mode').length) {
-        return state;
-    }
-    state.scanRules = {
-        mode: String($('#bakemono-memory-scan-mode').val() || defaultScanRules.mode),
-        includeTags: String($('#bakemono-memory-include-tags').val() || ''),
-        excludeTags: String($('#bakemono-memory-exclude-tags').val() || ''),
-        fullTextMinLength: Math.max(0, Number($('#bakemono-memory-full-min-length').val() || defaultScanRules.fullTextMinLength)),
-        includeHidden: $('#bakemono-memory-include-hidden').prop('checked'),
-    };
-    state.classificationRules = {
-        story: String($('#bakemono-memory-class-story').val() || defaultClassificationRules.story),
-        stage: String($('#bakemono-memory-class-stage').val() || defaultClassificationRules.stage),
-        epic: String($('#bakemono-memory-class-epic').val() || defaultClassificationRules.epic),
-    };
-    state.previewLayouts = {
-        story: String($('#bakemono-memory-layout-story').val() || defaultPreviewLayouts.story),
-        stage: String($('#bakemono-memory-layout-stage').val() || defaultPreviewLayouts.stage),
-        epic: String($('#bakemono-memory-layout-epic').val() || defaultPreviewLayouts.epic),
-    };
-    return state;
-}
-
-function readAutomationFieldsFromUi(state = ensureState()) {
-    if (!$('#bakemono-memory-auto-mode').length) {
-        return state;
-    }
-    readCustomApiFieldsFromUi(state);
-    state.automation = {
-        ...state.automation,
-        enabled: $('#bakemono-memory-auto-enabled').prop('checked'),
-        mode: String($('#bakemono-memory-auto-mode').val() || defaultAutomation.mode),
-        triggerType: String($('#bakemono-memory-auto-trigger').val() || defaultAutomation.triggerType),
-        floorInterval: Math.max(1, Number($('#bakemono-memory-auto-floor-interval').val() || defaultAutomation.floorInterval)),
-        charInterval: Math.max(100, Number($('#bakemono-memory-auto-char-interval').val() || defaultAutomation.charInterval)),
-        backfillBatchSize: $('#bakemono-memory-backfill-batch-size').length
-            ? Math.max(1, Number($('#bakemono-memory-backfill-batch-size').val() || state.automation.backfillBatchSize || defaultAutomation.backfillBatchSize))
-            : Math.max(1, Number(state.automation.backfillBatchSize || defaultAutomation.backfillBatchSize)),
-        autoHidePreserveRecent: Math.max(0, Number($('#bakemono-memory-auto-hide-preserve-recent').val() || defaultAutomation.autoHidePreserveRecent)),
-    };
-    return state;
-}
-
-function readCustomApiFieldsFromUi(state = ensureState()) {
-    if (!$('#bakemono-memory-api-provider').length) {
-        return state;
-    }
-    state.automation = state.automation && typeof state.automation === 'object'
-        ? state.automation
-        : structuredClone(defaultAutomation);
-    const currentModels = Array.isArray(state.automation.customApi?.models)
-        ? state.automation.customApi.models
-        : [];
-    state.automation.apiProvider = String($('#bakemono-memory-api-provider').val() || defaultAutomation.apiProvider);
-    state.automation.customApi = {
-        ...structuredClone(defaultAutomation.customApi),
-        ...(state.automation.customApi || {}),
-        baseUrl: String($('#bakemono-memory-custom-base-url').val() || '').trim(),
-        apiKey: String($('#bakemono-memory-custom-api-key').val() || '').trim(),
-        model: String($('#bakemono-memory-custom-model').val() || '').trim(),
-        temperature: Number($('#bakemono-memory-custom-temperature').val() || defaultAutomation.customApi.temperature),
-        maxTokens: Number($('#bakemono-memory-custom-max-tokens').val() || defaultAutomation.customApi.maxTokens),
-        stream: String($('#bakemono-memory-custom-stream').val() || 'false') === 'true',
-        models: currentModels,
-    };
-    return state;
-}
-
-function readPromptFieldsFromUi(state = ensureState()) {
-    if (!$('#bakemono-memory-stage-prompt').length) {
-        return state;
-    }
-    state.generationPrompts.story = String($('#bakemono-memory-story-prompt').val() || defaultStoryGenerationPrompt);
-    state.generationPrompts.missing = String($('#bakemono-memory-missing-prompt').val() || defaultMissingSummaryPrompt);
-    state.generationPrompts.stage = String($('#bakemono-memory-stage-prompt').val() || defaultStageGenerationPrompt);
-    state.generationPrompts.epic = String($('#bakemono-memory-epic-prompt').val() || defaultEpicGenerationPrompt);
-    return state;
-}
-
-function readTurnSummaryFieldsFromUi(state = ensureState()) {
-    if (!$('#bakemono-memory-turn-enabled').length) {
-        return state;
-    }
-    state.turnSummary = {
-        ...state.turnSummary,
-        enabled: $('#bakemono-memory-turn-enabled').prop('checked'),
-        auto: $('#bakemono-memory-turn-auto').prop('checked'),
-        processingMode: String($('#bakemono-memory-turn-processing-mode').val() || turnProcessingModes.BOTH),
-        saveMode: $('#bakemono-memory-turn-auto-save').prop('checked') ? 'commit' : 'draft',
-        includeUserMessage: $('#bakemono-memory-turn-include-user').prop('checked'),
-        includeCharacterContext: $('#bakemono-memory-turn-include-character').prop('checked'),
-        includeWorldInfo: $('#bakemono-memory-turn-include-world-info').prop('checked'),
-        worldInfoMaxContext: Math.max(1024, Number($('#bakemono-memory-turn-world-max-context').val() || defaultState.turnSummary.worldInfoMaxContext)),
-        referenceContext: String($('#bakemono-memory-turn-reference').val() || ''),
-        prompt: String($('#bakemono-memory-turn-prompt').val() || defaultTurnSummaryPrompt),
-        tablePrompt: String($('#bakemono-memory-table-prompt').val() || defaultTableEditPrompt),
-    };
-    state.tableDatabase = {
-        ...state.tableDatabase,
-        enabled: $('#bakemono-memory-table-enabled').prop('checked'),
-        injectMemory: $('#bakemono-memory-table-inject-memory').length ? $('#bakemono-memory-table-inject-memory').prop('checked') : state.tableDatabase.injectMemory !== false,
-        autoApply: $('#bakemono-memory-table-auto-apply').prop('checked'),
-        schemaScope: String($('#bakemono-memory-table-schema-scope').val() || state.tableDatabase.schemaScope || tableSchemaScopes.CHAT),
-    };
-    state.inlineGeneration = {
-        ...state.inlineGeneration,
-        summaryEnabled: $('#bakemono-memory-inline-summary-enabled').prop('checked'),
-        tableEnabled: $('#bakemono-memory-inline-table-enabled').prop('checked'),
-        hideTableEdit: $('#bakemono-memory-inline-hide-table').prop('checked'),
-        summaryPrompt: String($('#bakemono-memory-inline-summary-prompt').val() || defaultInlineSummaryPrompt),
-        tablePrompt: String($('#bakemono-memory-inline-table-prompt').val() || defaultInlineTablePrompt),
-    };
-    setTableSchemaScope(state.tableDatabase.schemaScope, state);
-    return state;
-}
-
-function readInjectionFieldsFromUi(state = ensureState()) {
-    if (!$('#bakemono-memory-injection-template').length) {
-        return state;
-    }
-    state.injection = {
-        ...state.injection,
-        enabled: $('#bakemono-memory-injection-enabled').prop('checked'),
-        depth: Math.max(0, Number($('#bakemono-memory-depth').val() || defaultState.injection.depth)),
-        role: Number($('#bakemono-memory-role').val() || extension_prompt_roles.SYSTEM),
-        template: String($('#bakemono-memory-injection-template').val() || defaultInjectionTemplate),
-    };
-    return state;
-}
-
-
-
-function readConfigFieldsFromUi(state = ensureState()) {
-    readRuleFieldsFromUi(state);
-    readAutomationFieldsFromUi(state);
-    readPromptFieldsFromUi(state);
-    readTurnSummaryFieldsFromUi(state);
-    readInjectionFieldsFromUi(state);
-    readVectorMemoryFieldsFromUi(state);
-    return state;
-}
-
-function getConfigPayloadFromState(state = ensureState(), name = '', options = {}) {
-    const now = new Date().toISOString();
-    return {
-        id: options.id || makePresetId(name),
-        name: name || '未命名预设',
-        story: String(state.generationPrompts.story || defaultStoryGenerationPrompt),
-        missing: String(state.generationPrompts.missing || defaultMissingSummaryPrompt),
-        stage: String(state.generationPrompts.stage || defaultStageGenerationPrompt),
-        epic: String(state.generationPrompts.epic || defaultEpicGenerationPrompt),
-        scanRules: structuredClone(state.scanRules),
-        classificationRules: structuredClone(state.classificationRules),
-        previewLayouts: structuredClone(state.previewLayouts),
-        memoryStrategy: state.memoryStrategy || memoryStrategies.BAKEMONO,
-        workflowMode: state.workflowMode || workflowModes.BAKEMONO,
-        stageSourceMode: getStageSourceMode(state),
-        outputMode: state.outputMode || 'bakemono',
-        generationTargets: structuredClone(state.generationTargets || defaultGenerationTargets),
-        injection: {
-            enabled: !!state.injection.enabled,
-            depth: Math.max(0, Number(state.injection.depth ?? defaultState.injection.depth)),
-            role: Number(state.injection.role ?? extension_prompt_roles.SYSTEM),
-            template: String(state.injection.template || defaultInjectionTemplate),
-        },
-        automation: {
-            ...structuredClone(state.automation),
-            lastSignature: '',
-            lastAutoAt: null,
-        },
-        turnSummary: {
-            enabled: !!state.turnSummary.enabled,
-            auto: !!state.turnSummary.auto,
-            processingMode: state.turnSummary.processingMode || turnProcessingModes.BOTH,
-            saveMode: state.turnSummary.saveMode === 'commit' ? 'commit' : 'draft',
-            includeUserMessage: state.turnSummary.includeUserMessage !== false,
-            includeCharacterContext: state.turnSummary.includeCharacterContext !== false,
-            includeWorldInfo: !!state.turnSummary.includeWorldInfo,
-            worldInfoMaxContext: Math.max(1024, Number(state.turnSummary.worldInfoMaxContext || defaultState.turnSummary.worldInfoMaxContext)),
-            referenceContext: String(state.turnSummary.referenceContext || ''),
-            prompt: String(state.turnSummary.prompt || defaultTurnSummaryPrompt),
-            tablePrompt: String(state.turnSummary.tablePrompt || defaultTableEditPrompt),
-        },
-        inlineGeneration: createSharedInlineGenerationConfig(state.inlineGeneration || defaultState.inlineGeneration),
-        vectorMemory: createSharedVectorConfig(state.vectorMemory || defaultVectorMemory),
-        tableDatabase: {
-            enabled: !!state.tableDatabase.enabled,
-            injectMemory: state.tableDatabase.injectMemory !== false,
-            autoApply: !!state.tableDatabase.autoApply,
-            schemaScope: state.tableDatabase.schemaScope || tableSchemaScopes.CHAT,
-            tables: getTableSchemasForPreset(state),
-        },
-        createdAt: options.createdAt || now,
-        updatedAt: now,
-    };
-}
-
-function getCurrentPromptPresetPayload(name = '') {
-    const state = readConfigFieldsFromUi(ensureState());
-    return getConfigPayloadFromState(state, name);
-}
-
-const sharedGlobalConfigId = 'bakemono-shared-settings';
-
-function persistSharedConfigurationFromState(state = ensureState(), options = {}) {
-    const current = getActiveGlobalConfig();
-    const currentShared = current?.id === sharedGlobalConfigId ? current : null;
-    const payload = getConfigPayloadFromState(
-        state,
-        options.name || currentShared?.name || '所有角色卡设置',
-        {
-            id: sharedGlobalConfigId,
-            createdAt: currentShared?.createdAt,
-        },
-    );
-    const config = setActiveGlobalConfig(payload);
-    markActiveConfigApplied(state, config);
-    if (options.skipChatSave !== true) {
-        saveState();
-    }
-    return config;
-}
-
-function bootstrapSharedConfigurationFromCurrentChat(state = ensureState()) {
-    ensureGlobalSettings();
-    const settings = extension_settings[STORAGE_KEY];
-    const hasActiveChat = !!String(getContext()?.chatId || '').trim();
-    if (!shouldBootstrapSharedConfig(settings, hasActiveChat)) {
-        return false;
-    }
-    persistSharedConfigurationFromState(state, { skipChatSave: true });
-    return true;
-}
-
-function normalizeImportedPreset(value) {
-    const parsed = JSON.parse(value);
-    const preset = Array.isArray(parsed) ? parsed[0] : parsed;
-    if (!preset || typeof preset !== 'object') {
-        throw new Error('导入内容不是有效的预设对象。');
-    }
-    if (!preset.stage || !preset.epic) {
-        throw new Error('预设需要包含 stage 和 epic 两段提示词。');
-    }
-    const name = String(preset.name || '导入预设');
-    return {
-        id: makePresetId(name),
-        name,
-        story: String(preset.story || defaultStoryGenerationPrompt),
-        missing: String(preset.missing || defaultMissingSummaryPrompt),
-        stage: String(preset.stage),
-        epic: String(preset.epic),
-        scanRules: preset.scanRules && typeof preset.scanRules === 'object' ? preset.scanRules : null,
-        classificationRules: preset.classificationRules && typeof preset.classificationRules === 'object' ? preset.classificationRules : null,
-        previewLayouts: preset.previewLayouts && typeof preset.previewLayouts === 'object' ? preset.previewLayouts : null,
-        memoryStrategy: Object.values(memoryStrategies).includes(preset.memoryStrategy) ? preset.memoryStrategy : memoryStrategies.BAKEMONO,
-        workflowMode: Object.values(workflowModes).includes(preset.workflowMode) ? preset.workflowMode : workflowModes.BAKEMONO,
-        stageSourceMode: Object.values(stageSourceModes).includes(preset.stageSourceMode) ? preset.stageSourceMode : stageSourceModes.SUMMARIES,
-        outputMode: ['bakemono', 'plain', 'custom'].includes(preset.outputMode) ? preset.outputMode : 'bakemono',
-        generationTargets: preset.generationTargets && typeof preset.generationTargets === 'object' ? preset.generationTargets : null,
-        injection: preset.injection && typeof preset.injection === 'object' ? preset.injection : null,
-        automation: preset.automation && typeof preset.automation === 'object' ? preset.automation : null,
-        turnSummary: preset.turnSummary && typeof preset.turnSummary === 'object' ? preset.turnSummary : null,
-        inlineGeneration: preset.inlineGeneration && typeof preset.inlineGeneration === 'object' ? preset.inlineGeneration : null,
-        vectorMemory: preset.vectorMemory && typeof preset.vectorMemory === 'object' ? preset.vectorMemory : null,
-        tableDatabase: preset.tableDatabase && typeof preset.tableDatabase === 'object' ? preset.tableDatabase : null,
-        createdAt: preset.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-    };
-}
 
 function applyPromptPresetToState(preset, options = {}) {
     const state = options.state || ensureState();

@@ -22,6 +22,7 @@ const summaryDraftServiceSource = fs.readFileSync(new URL('../src/features/summa
 const scanControllerSource = fs.readFileSync(new URL('../src/features/scan-controller.js', import.meta.url), 'utf8');
 const summaryGenerationControllerSource = fs.readFileSync(new URL('../src/features/summary-generation-controller.js', import.meta.url), 'utf8');
 const summaryBackfillControllerSource = fs.readFileSync(new URL('../src/features/summary-backfill-controller.js', import.meta.url), 'utf8');
+const configurationServiceSource = fs.readFileSync(new URL('../src/features/configuration-service.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -710,8 +711,8 @@ test('active global config follows existing chats without removing the tavern mo
 });
 
 test('saved settings become shared defaults while vector runtime remains chat-local', () => {
-    assert.match(source, /function persistSharedConfigurationFromState\(/);
-    assert.match(source, /vectorMemory:\s*createSharedVectorConfig\(state\.vectorMemory/);
+    assert.match(configurationServiceSource, /function persistSharedConfigurationFromState\(/);
+    assert.match(configurationServiceSource, /vectorMemory:\s*createSharedVectorConfig\(state\.vectorMemory/);
     assert.match(source, /mergeSharedVectorConfig\(state\.vectorMemory, preset\.vectorMemory, defaultVectorMemory\)/);
     assert.match(source, /syncGlobalActiveConfigToState\(initialState, \{ force: true \}\)/);
     assert.match(source, /syncConfig:\s*state => \{/);
@@ -722,8 +723,8 @@ test('saved settings become shared defaults while vector runtime remains chat-lo
 });
 
 test('first shared-settings upgrade preserves the current chat before forced synchronization', () => {
-    assert.match(source, /function bootstrapSharedConfigurationFromCurrentChat\(/);
-    assert.match(source, /shouldBootstrapSharedConfig\(settings, hasActiveChat\)/);
+    assert.match(configurationServiceSource, /function bootstrapSharedConfigurationFromCurrentChat\(/);
+    assert.match(configurationServiceSource, /shouldBootstrapSharedConfig\(settings, hasActiveChat\)/);
     assert.match(source, /settings\.sharedConfigVersion = sharedConfigVersion/);
     assert.match(source, /const initialState = ensureState\(\);[\s\S]*?bootstrapSharedConfigurationFromCurrentChat\(initialState\);[\s\S]*?syncGlobalActiveConfigToState\(initialState, \{ force: true \}\)/);
     assert.match(source, /syncConfig:\s*state => \{[\s\S]*?bootstrapSharedConfigurationFromCurrentChat\(state\);[\s\S]*?return syncGlobalActiveConfigToState\(state, \{ force: true \}\);[\s\S]*?\}/);
