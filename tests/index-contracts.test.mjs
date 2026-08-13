@@ -52,6 +52,7 @@ const tableMemoryModelSource = fs.readFileSync(new URL('../src/features/table-me
 const tableWorkflowControllerSource = fs.readFileSync(new URL('../src/features/table-workflow-controller.js', import.meta.url), 'utf8');
 const tableWorkbenchUiSource = fs.readFileSync(new URL('../src/features/table-workbench-ui.js', import.meta.url), 'utf8');
 const tableEditorEventsSource = fs.readFileSync(new URL('../src/features/table-editor-events.js', import.meta.url), 'utf8');
+const tableManagementEventsSource = fs.readFileSync(new URL('../src/features/table-management-events.js', import.meta.url), 'utf8');
 const vectorMemoryServiceSource = fs.readFileSync(new URL('../src/features/vector-memory-service.js', import.meta.url), 'utf8');
 const vectorSettingsModelSource = fs.readFileSync(new URL('../src/features/vector-settings-model.js', import.meta.url), 'utf8');
 const vectorWorkbenchUiSource = fs.readFileSync(new URL('../src/features/vector-workbench-ui.js', import.meta.url), 'utf8');
@@ -257,7 +258,14 @@ test('table profiles, scoped storage, and rollback transactions share one table 
     assert.match(tableEditorEventsSource, /bakemonoTableDraftAction/);
     assert.match(tableEditorEventsSource, /bakemonoTableAction/);
     assert.match(tableEditorEventsSource, /pushTableUndoSnapshot/);
+    assert.match(tableManagementEventsSource, /function bindProfileEvents\(/);
+    assert.match(tableManagementEventsSource, /function bindPromptEvents\(/);
+    assert.match(tableManagementEventsSource, /function bindTransferEvents\(/);
+    assert.match(tableManagementEventsSource, /bakemono-memory-table-schema-scope/);
+    assert.match(tableManagementEventsSource, /bakemono-memory-table-preset-select/);
+    assert.match(tableManagementEventsSource, /bakemono-memory-clear-table-db/);
     assert.doesNotMatch(source, /bakemonoTableDraftAction|bakemonoTableAction|bakemonoTableFlags/);
+    assert.doesNotMatch(source, /bakemono-memory-table-schema-scope|bakemono-memory-table-preset-select|bakemono-memory-clear-table-db/);
     assert.doesNotMatch(source, /function applyTableOperations\(|async function processLatestTableEdit\(|function renderTableList\(/);
 });
 
