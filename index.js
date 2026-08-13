@@ -56,6 +56,7 @@ import { createSummaryGenerationController } from './src/features/summary-genera
 import { createSummaryBackfillController } from './src/features/summary-backfill-controller.js';
 import { createConfigurationService } from './src/features/configuration-service.js';
 import { createConfigurationController } from './src/features/configuration-controller.js';
+import { createMemoryRecordsUi } from './src/features/memory-records-ui.js';
 import { createGlobalSettingsService } from './src/core/global-settings-service.js';
 import { createChatStateService } from './src/core/chat-state-service.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
@@ -926,10 +927,6 @@ const historyState = {
 const timelineState = {
     page: 0,
 };
-const memoryRecordPageSize = 18;
-const memoryRecordState = {
-    page: 0,
-};
 const tableUiState = {
     openTableIndex: '',
     focusCell: null,
@@ -1502,193 +1499,6 @@ function getWorkflowStatusText(state = ensureState(), stats = getInjectionMemory
     return uncoveredStory
         ? `已有摘要模式：普通摘要不会重复注入。当前有 ${uncoveredStory} 个摘要可用于生成阶段总结。`
         : '已有摘要模式：适合配合正文摘要正则使用，普通摘要不重复占用 token。';
-}
-
-function getMemoryRecordStatusLabel(status) {
-    return {
-        [memoryRecordStatuses.SOURCE]: '可总结',
-        [memoryRecordStatuses.COVERED]: '已覆盖',
-        [memoryRecordStatuses.SAVED]: '已保存',
-        [memoryRecordStatuses.INJECTED]: '注入中',
-        [memoryRecordStatuses.ARCHIVED]: '已归档',
-        [memoryRecordStatuses.DRAFT]: '草稿',
-    }[status] || '未知';
-}
-
-function getMemoryDatabaseStats(state = ensureState()) {
-    const records = state.memoryRecords || [];
-    const byStatus = Object.fromEntries(Object.values(memoryRecordStatuses).map(status => [status, 0]));
-    const byKind = {
-        [blockTypes.STORY]: 0,
-        [blockTypes.STAGE]: 0,
-        [blockTypes.EPIC]: 0,
-    };
-    for (const record of records) {
-        if (byStatus[record.status] !== undefined) {
-            byStatus[record.status] += 1;
-        }
-        if (byKind[record.kind] !== undefined) {
-            byKind[record.kind] += 1;
-        }
-    }
-    return {
-        total: records.length,
-        byStatus,
-        byKind,
-        active: byStatus[memoryRecordStatuses.SOURCE] + byStatus[memoryRecordStatuses.SAVED] + byStatus[memoryRecordStatuses.INJECTED],
-        queued: state.taskQueue.filter(task => task.status === 'queued').length,
-        running: state.taskQueue.filter(task => task.status === 'running').length,
-        failed: state.taskQueue.filter(task => task.status === 'failed').length,
-    };
-}
-
-function renderMemoryDatabaseSummary(state = ensureState()) {
-    const stats = getMemoryDatabaseStats(state);
-    $('#bakemono-memory-count-records').text(stats.total);
-    $('#bakemono-memory-database-total').text(stats.total);
-    $('#bakemono-memory-database-active').text(stats.active);
-    $('#bakemono-memory-database-injected').text(stats.byStatus[memoryRecordStatuses.INJECTED] || 0);
-    $('#bakemono-memory-database-drafts').text(stats.byStatus[memoryRecordStatuses.DRAFT] || 0);
-    $('#bakemono-memory-database-queue').text(`${stats.running}/${stats.queued}/${stats.failed}`);
-    $('#bakemono-memory-record-stat-total').text(stats.total);
-    $('#bakemono-memory-record-stat-injected').text(stats.byStatus[memoryRecordStatuses.INJECTED] || 0);
-    $('#bakemono-memory-record-stat-archived').text(stats.byStatus[memoryRecordStatuses.ARCHIVED] || 0);
-
-    const description = [
-        `剧情摘要 ${stats.byKind[blockTypes.STORY] || 0}`,
-        `阶段总结 ${stats.byKind[blockTypes.STAGE] || 0}`,
-        `多次总结 ${stats.byKind[blockTypes.EPIC] || 0}`,
-        `已覆盖 ${stats.byStatus[memoryRecordStatuses.COVERED] || 0}`,
-        `已归档 ${stats.byStatus[memoryRecordStatuses.ARCHIVED] || 0}`,
-    ].join(' · ');
-    $('#bakemono-memory-database-description').text(description);
-}
-
-function getFilteredMemoryRecords(state = ensureState()) {
-    const query = normalizeSearchText($('#bakemono-memory-record-filter').val() || '');
-    const kind = String($('#bakemono-memory-record-kind').val() || 'all');
-    const status = String($('#bakemono-memory-record-status').val() || 'all');
-    const records = state.memoryRecords || [];
-    return records.filter(record => {
-        if (kind !== 'all' && record.kind !== kind) {
-            return false;
-        }
-        if (status !== 'all' && record.status !== status) {
-            return false;
-        }
-        if (!query) {
-            return true;
-        }
-        const text = normalizeSearchText([
-            record.title,
-            record.sourceRange,
-            record.source,
-            getKindLabel(record.kind),
-            getMemoryRecordStatusLabel(record.status),
-            record.hash,
-        ].join('\n'));
-        return text.includes(query);
-    });
-}
-
-function renderMemoryRecordList() {
-    const container = document.querySelector('#bakemono-memory-record-list');
-    if (!container) {
-        return;
-    }
-
-    const state = ensureState();
-    const records = getFilteredMemoryRecords(state).sort((a, b) => {
-        const kindPriority = { [blockTypes.EPIC]: 0, [blockTypes.STAGE]: 1, [blockTypes.STORY]: 2 };
-        return (kindPriority[a.kind] ?? 9) - (kindPriority[b.kind] ?? 9)
-            || Number(a.sortKey ?? Number.MAX_SAFE_INTEGER) - Number(b.sortKey ?? Number.MAX_SAFE_INTEGER)
-            || String(a.updatedAt || '').localeCompare(String(b.updatedAt || ''));
-    });
-    container.innerHTML = '';
-    const activeStatus = String($('#bakemono-memory-record-status').val() || 'all');
-    document.querySelectorAll('[data-bakemono-record-status]').forEach(button => {
-        button.classList.toggle('is-active', button.dataset.bakemonoRecordStatus === activeStatus);
-    });
-    $('#bakemono-memory-record-result-count').text(`${records.length} 条`);
-
-    if (!records.length) {
-        const empty = document.createElement('div');
-        empty.className = 'bakemono-memory-empty';
-        empty.textContent = '暂无匹配的记忆记录。';
-        container.append(empty);
-        return;
-    }
-
-    const pageCount = Math.max(1, Math.ceil(records.length / memoryRecordPageSize));
-    memoryRecordState.page = Math.min(Math.max(0, memoryRecordState.page || 0), pageCount - 1);
-    const start = memoryRecordState.page * memoryRecordPageSize;
-    const visibleRecords = records.slice(start, start + memoryRecordPageSize);
-
-    const pager = createMemoryRecordPager(start, records.length, pageCount);
-
-    const fragment = document.createDocumentFragment();
-    visibleRecords.forEach((record, visibleIndex) => {
-        const row = document.createElement('article');
-        row.className = `bakemono-memory-record-item is-${record.status || 'source'}`;
-
-        const marker = document.createElement('span');
-        marker.className = `bakemono-memory-record-index is-${record.kind || 'story'}`;
-        marker.textContent = record.kind === blockTypes.EPIC ? 'E' : record.kind === blockTypes.STAGE ? 'S' : '#';
-        marker.title = `${getKindLabel(record.kind)} · 第 ${start + visibleIndex + 1} 条`;
-
-        const main = document.createElement('div');
-        main.className = 'bakemono-memory-record-main';
-        const title = document.createElement('strong');
-        title.textContent = record.title || '未命名记忆';
-        const meta = document.createElement('span');
-        meta.textContent = [
-            getKindLabel(record.kind),
-            record.sourceRange || '来源未知',
-            record.source || '',
-            record.contentLength ? `${record.contentLength} 字` : '',
-        ].filter(Boolean).join(' · ');
-        main.append(title, meta);
-
-        const chips = document.createElement('div');
-        chips.className = 'bakemono-memory-record-chips';
-        const statusChip = document.createElement('span');
-        statusChip.className = `bakemono-memory-record-chip is-${record.status || 'source'}`;
-        statusChip.textContent = getMemoryRecordStatusLabel(record.status);
-        chips.append(statusChip);
-        const coverCount = (record.sourceHashes || []).length + (record.sourceStageHashes || []).length;
-        if (coverCount) {
-            const sourceChip = document.createElement('span');
-            sourceChip.className = 'bakemono-memory-record-chip';
-            sourceChip.textContent = `覆盖 ${coverCount}`;
-            chips.append(sourceChip);
-        }
-
-        row.append(marker, main, chips);
-        fragment.append(row);
-    });
-    container.append(fragment, pager);
-}
-
-function createMemoryRecordPager(start, total, pageCount) {
-    const controls = document.createElement('div');
-    controls.className = 'bakemono-memory-preview-pager bakemono-memory-record-pager';
-    const prev = document.createElement('button');
-    prev.type = 'button';
-    prev.className = 'menu_button bakemono-preview-page-button';
-    prev.dataset.bakemonoRecordPage = 'prev';
-    prev.disabled = memoryRecordState.page <= 0;
-    prev.innerHTML = '<i class="fa-solid fa-chevron-left"></i><span>上一页</span>';
-    const info = document.createElement('span');
-    info.className = 'bakemono-memory-preview-page-info';
-    info.textContent = `${total ? start + 1 : 0}-${Math.min(start + memoryRecordPageSize, total)} / ${total}`;
-    const next = document.createElement('button');
-    next.type = 'button';
-    next.className = 'menu_button bakemono-preview-page-button';
-    next.dataset.bakemonoRecordPage = 'next';
-    next.disabled = memoryRecordState.page >= pageCount - 1;
-    next.innerHTML = '<span>下一页</span><i class="fa-solid fa-chevron-right"></i>';
-    controls.append(prev, info, next);
-    return controls;
 }
 
 function renderTurnSummaryPanel(state = ensureState()) {
@@ -2751,6 +2561,22 @@ const {
     saveCurrentConfigPreset,
     usePromptPresetAsGlobalDefault,
 } = configurationController;
+
+const memoryRecordsUi = createMemoryRecordsUi({
+    query: $,
+    documentRef: document,
+    getState: ensureState,
+    memoryRecordStatuses,
+    blockTypes,
+    normalizeSearchText,
+    getKindLabel,
+    pageSize: 18,
+});
+const {
+    pageState: memoryRecordState,
+    renderMemoryDatabaseSummary,
+    renderMemoryRecordList,
+} = memoryRecordsUi;
 
 const vectorMemoryService = createVectorMemoryService({
     defaultVectorMemory,
