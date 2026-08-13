@@ -393,6 +393,12 @@ test('archive and timeline pages keep the demo hierarchy without dropping contro
     assert.match(source, /className = 'bakemono-memory-timeline-copy'/);
     assert.match(source, /if \(kind === 'epic'\) \{\s*details\.open = true;/);
     assert.doesNotMatch(source, /if \(kind !== 'story'\) \{\s*details\.open = true;/);
+    assert.match(archiveControllerSource, /function bindEvents\(/);
+    assert.match(archiveControllerSource, /bakemonoAutoArchiveToggle/);
+    assert.match(archiveControllerSource, /bakemonoAutoArchiveCount/);
+    assert.match(workflowOverviewModelSource, /function bindEvents\(/);
+    assert.match(workflowOverviewModelSource, /bakemonoWorkflow/);
+    assert.doesNotMatch(source, /bakemonoAutoArchiveToggle|bakemonoAutoArchiveCount|bakemonoWorkflow/);
 });
 
 test('review desk keeps drafts first while preserving task and history operations', () => {

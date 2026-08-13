@@ -15,6 +15,7 @@ export function createWorkflowOverviewModel({
     saveState,
     renderSettings,
     logWarning,
+    query,
 }) {
     function getMemoryStrategyLabel(strategy = getState().memoryStrategy) {
         return strategy === memoryStrategies.GENERIC ? '补课摘要会临时注入' : '普通摘要不重复注入';
@@ -195,6 +196,12 @@ export function createWorkflowOverviewModel({
         renderSettings(`已切换到：${getWorkflowModeLabel(state.workflowMode)}。扫描、自动总结和提示词配置已保留。`);
     }
 
+    function bindEvents(rootSelector = '#bakemono-workbench-root') {
+        query(rootSelector).off('click.bakemonoWorkflow').on('click.bakemonoWorkflow', '[data-bakemono-workflow-preset]', function () {
+            applyWorkflowPreset(this.dataset.bakemonoWorkflowPreset);
+        });
+    }
+
     function getOverviewHealth(floorStats, state = getState()) {
         if (!state.injection?.enabled) {
             return { badge: '注入关闭', title: '长期记忆暂未注入', copy: '已保存内容仍保留在档案中，不会发送给模型。', tone: 'paused' };
@@ -231,6 +238,7 @@ export function createWorkflowOverviewModel({
 
     return {
         applyWorkflowPreset,
+        bindEvents,
         getCurrentFloorMemoryIndex,
         getMemoryOrchestrationPlan,
         getMemoryStrategyLabel,

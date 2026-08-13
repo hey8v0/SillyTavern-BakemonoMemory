@@ -17,6 +17,7 @@ export function createArchiveController({
     defaultState,
     memoryStrategies,
     confirm,
+    logError,
 } = {}) {
     let autoHideRecentTimer = null;
 
@@ -516,7 +517,35 @@ export function createArchiveController({
         toastr.success(text);
     }
 
+    function bindEvents(rootSelector = '#bakemono-workbench-root') {
+        const root = query(rootSelector);
+        root.off('change.bakemonoAutoArchiveToggle').on('change.bakemonoAutoArchiveToggle', '#bakemono-memory-auto-hide-enabled', async () => {
+            try {
+                await applyAutoHideRecentSettings();
+            } catch (error) {
+                logError('[BakemonoMemory] auto archive toggle failed', error);
+                toastr.error(error?.message || String(error), '剧情剪辑台');
+            }
+        });
+        root.off('change.bakemonoAutoArchiveCount').on('change.bakemonoAutoArchiveCount', '#bakemono-memory-preserve-recent-input', async () => {
+            const state = ensureState();
+            readAutoHideRecentFieldsFromUi(state);
+            saveState();
+            if (!state.autoHideRecent.enabled) {
+                renderAutoHideRecentPanel(state);
+                return;
+            }
+            try {
+                await applyAutoHideRecentBalance({ silent: false });
+            } catch (error) {
+                logError('[BakemonoMemory] auto archive count failed', error);
+                toastr.error(error?.message || String(error), '剧情剪辑台');
+            }
+        });
+    }
+
     return {
+        bindEvents,
         applyAutoHideRecentBalance,
         applyAutoHideRecentSettings,
         getActualHiddenMessageIds,
