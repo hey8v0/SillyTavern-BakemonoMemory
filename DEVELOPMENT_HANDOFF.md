@@ -1,5 +1,11 @@
 # 剧情剪辑台开发交接文档
 
+## 2026-08-13 / v1.3.5 / 最终模块化：自动化配置事件（本地）
+
+- 新建 `src/features/automation-configuration-events.js`，接管自动总结设置保存、触发条件切换、自定义生成 API 模型拉取、密钥显隐和阶段/多次总结目标范围回填。
+- 模型请求仍由 `generation-client` 执行，目标配置仍由 `summary-target-controller` 解析；新模块只负责 DOM 事件并通过惰性适配器调用，避免装配顺序形成循环依赖。
+- `index.js` 从约 3,195 行降到约 3,174 行。入口与新模块语法检查及 `git diff --check` 通过；未运行完整测试、未打开浏览器、未推送远端。
+
 ## 2026-08-13 / v1.3.5 / 最终模块化：内容配置事件（本地）
 
 - 新建 `src/features/content-configuration-events.js`，接管注入正文/模板、生成提示词恢复与保存、工作方式/记忆策略/阶段材料/输出风格的事件绑定；实时注入预览仍复用既有 `injection-service`，配置保存仍复用 `configuration-service`。

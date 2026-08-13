@@ -54,6 +54,7 @@ const tableWorkbenchUiSource = fs.readFileSync(new URL('../src/features/table-wo
 const tableEditorEventsSource = fs.readFileSync(new URL('../src/features/table-editor-events.js', import.meta.url), 'utf8');
 const tableManagementEventsSource = fs.readFileSync(new URL('../src/features/table-management-events.js', import.meta.url), 'utf8');
 const contentConfigurationEventsSource = fs.readFileSync(new URL('../src/features/content-configuration-events.js', import.meta.url), 'utf8');
+const automationConfigurationEventsSource = fs.readFileSync(new URL('../src/features/automation-configuration-events.js', import.meta.url), 'utf8');
 const vectorMemoryServiceSource = fs.readFileSync(new URL('../src/features/vector-memory-service.js', import.meta.url), 'utf8');
 const vectorSettingsModelSource = fs.readFileSync(new URL('../src/features/vector-settings-model.js', import.meta.url), 'utf8');
 const vectorWorkbenchUiSource = fs.readFileSync(new URL('../src/features/vector-workbench-ui.js', import.meta.url), 'utf8');
@@ -871,6 +872,14 @@ test('injection defaults mark their end and start at the front of chat history',
     assert.match(contentConfigurationEventsSource, /bakemono-memory-reset-stage-prompt/);
     assert.match(contentConfigurationEventsSource, /bakemono-memory-workflow-mode/);
     assert.doesNotMatch(source, /bakemono-memory-apply-injection|bakemono-memory-reset-stage-prompt|bakemono-memory-workflow-mode/);
+});
+
+test('automation and generation API controls share one event boundary', () => {
+    assert.match(automationConfigurationEventsSource, /bakemono-memory-apply-automation/);
+    assert.match(automationConfigurationEventsSource, /readAutomationFieldsFromUi\(state\)/);
+    assert.match(automationConfigurationEventsSource, /fetchCustomApiModels\(\)/);
+    assert.match(automationConfigurationEventsSource, /bakemono-memory-stage-target-mode/);
+    assert.doesNotMatch(source, /bakemono-memory-apply-automation|bakemono-memory-fetch-models|bakemono-memory-stage-target-mode/);
 });
 
 test('appearance settings ship protected warm-paper day and night presets', () => {

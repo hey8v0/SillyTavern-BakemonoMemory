@@ -39,6 +39,7 @@ import { createTableWorkbenchUi } from './src/features/table-workbench-ui.js';
 import { createTableEditorEvents } from './src/features/table-editor-events.js';
 import { createTableManagementEvents } from './src/features/table-management-events.js';
 import { createContentConfigurationEvents } from './src/features/content-configuration-events.js';
+import { createAutomationConfigurationEvents } from './src/features/automation-configuration-events.js';
 import { createVectorMemoryService } from './src/features/vector-memory-service.js';
 import { createVectorSettingsModel } from './src/features/vector-settings-model.js';
 import { createVectorWorkbenchUi } from './src/features/vector-workbench-ui.js';
@@ -976,6 +977,7 @@ function renderActivePresetControls(...args) {
 let presetEventsController = null;
 let tableManagementEvents = null;
 let contentConfigurationEvents = null;
+let automationConfigurationEvents = null;
 function renderInlinePromptPresetControls(...args) {
     return presetEventsController?.renderInlinePromptPresetControls(...args);
 }
@@ -1982,6 +1984,20 @@ contentConfigurationEvents = createContentConfigurationEvents({
     renderInjectionContent,
 });
 
+automationConfigurationEvents = createAutomationConfigurationEvents({
+    query: $,
+    documentRef: document,
+    getState: ensureState,
+    readAutomationFieldsFromUi,
+    readGenerationTargetSettings: (...args) => summaryTargetController.readGenerationTargetSettings(...args),
+    persistSharedConfigurationFromState,
+    renderWorkbenchScope,
+    workbenchRenderScopes,
+    toastr,
+    defaultAutomation,
+    fetchCustomApiModels: (...args) => generationClient.fetchCustomApiModels(...args),
+});
+
 const promptInspector = createPromptInspector({
     getChat: () => chat,
     getItemizedPrompts: () => itemizedPrompts,
@@ -2677,44 +2693,7 @@ function bindSettingsEvents() {
     tableEditorEvents.bind();
     tableManagementEvents.bind();
     contentConfigurationEvents.bind();
-    $('#bakemono-memory-apply-automation').off('click').on('click', () => {
-        const state = ensureState();
-        readAutomationFieldsFromUi(state);
-        readGenerationTargetSettings();
-        persistSharedConfigurationFromState(state);
-        renderWorkbenchScope(workbenchRenderScopes.AUTOMATION, '自动总结与生成 API 已同步到所有角色卡。');
-        toastr.success('自动总结与生成 API 已全局保存。');
-    });
-    $('#bakemono-memory-auto-trigger').off('change.bakemonoAutomationUi').on('change.bakemonoAutomationUi', function () {
-        const triggerType = String(this.value || defaultAutomation.triggerType);
-        document.querySelectorAll('[data-bakemono-auto-rule]').forEach(row => {
-            row.hidden = row.dataset.bakemonoAutoRule !== triggerType;
-        });
-    });
-    $('#bakemono-memory-fetch-models').off('click').on('click', async () => {
-        await fetchCustomApiModels();
-    });
-    $('#bakemono-memory-toggle-api-key').off('click').on('click', function () {
-        const input = document.querySelector('#bakemono-memory-custom-api-key');
-        if (!input) {
-            return;
-        }
-        const shouldShow = input.type === 'password';
-        input.type = shouldShow ? 'text' : 'password';
-        this.title = shouldShow ? '隐藏接口密钥' : '显示接口密钥';
-        this.setAttribute('aria-label', this.title);
-        this.querySelector('i')?.classList.toggle('fa-eye', !shouldShow);
-        this.querySelector('i')?.classList.toggle('fa-eye-slash', shouldShow);
-        const label = this.querySelector('span');
-        if (label) {
-            label.textContent = shouldShow ? '隐藏' : '显示';
-        }
-    });
-    $('#bakemono-memory-stage-target-mode, #bakemono-memory-stage-target-count, #bakemono-memory-stage-target-range, #bakemono-memory-epic-target-mode, #bakemono-memory-epic-target-count, #bakemono-memory-epic-target-range')
-        .off('change input')
-        .on('change input', () => {
-            readGenerationTargetSettings();
-        });
+    automationConfigurationEvents.bind();
     $('#bakemono-memory-preview-filter').off('input').on('input', () => {
         resetSummaryBrowserPages();
         renderPreviewSections();
