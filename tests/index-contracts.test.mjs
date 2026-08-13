@@ -368,7 +368,11 @@ test('summary page keeps generation, review, and filtering in the demo hierarchy
     assert.match(summaryBrowserUiSource, /function changePage\(/);
     assert.match(summaryBrowserEventsSource, /bakemonoPreviewType/);
     assert.match(summaryBrowserEventsSource, /bakemonoSummaryAction/);
-    assert.doesNotMatch(source, /bakemonoPreviewType|bakemonoSummaryAction/);
+    assert.match(summaryBrowserEventsSource, /bakemono-memory-preview-filter/);
+    assert.match(summaryBrowserEventsSource, /bakemono-memory-record-filter/);
+    assert.match(summaryBrowserEventsSource, /bakemonoRecordQuickFilter/);
+    assert.doesNotMatch(source, /bakemonoPreviewType|bakemonoSummaryAction|bakemonoRecordQuickFilter/);
+    assert.doesNotMatch(source, /bakemono-memory-preview-filter|bakemono-memory-record-filter/);
     assert.match(source, /createWorkbenchPageOverviews\(\{/);
     assert.match(workbenchPageOverviewsSource, /function renderPromptOverview\(/);
     assert.match(workbenchPageOverviewsSource, /function renderInjectionOverview\(/);

@@ -2335,10 +2335,12 @@ const summaryBrowserEvents = createSummaryBrowserEvents({
     setSummaryBrowserActiveType,
     changeSummaryBrowserPage,
     renderPreviewSections,
+    resetSummaryBrowserPages,
     stabilizeMobilePreviewScroll,
     changeTimelinePage,
     renderTimeline,
     memoryRecordState,
+    memoryRecordStatuses,
     renderMemoryRecordList,
     saveEditedSummary,
     deleteSavedSummary,
@@ -2694,39 +2696,6 @@ function bindSettingsEvents() {
     tableManagementEvents.bind();
     contentConfigurationEvents.bind();
     automationConfigurationEvents.bind();
-    $('#bakemono-memory-preview-filter').off('input').on('input', () => {
-        resetSummaryBrowserPages();
-        renderPreviewSections();
-    });
-    $('#bakemono-memory-preview-order').off('change').on('change', () => {
-        resetSummaryBrowserPages();
-        renderPreviewSections();
-    });
-    $('#bakemono-memory-clear-preview-filter').off('click').on('click', () => {
-        $('#bakemono-memory-preview-filter').val('');
-        resetSummaryBrowserPages();
-        renderPreviewSections();
-    });
-    $('#bakemono-memory-record-filter, #bakemono-memory-record-kind, #bakemono-memory-record-status').off('input change').on('input change', () => {
-        memoryRecordState.page = 0;
-        renderMemoryRecordList();
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoRecordQuickFilter').on('click.bakemonoRecordQuickFilter', '[data-bakemono-record-status]', function () {
-        const status = String(this.dataset.bakemonoRecordStatus || 'all');
-        if (!['all', ...Object.values(memoryRecordStatuses)].includes(status)) {
-            return;
-        }
-        $('#bakemono-memory-record-status').val(status);
-        memoryRecordState.page = 0;
-        renderMemoryRecordList();
-    });
-    $('#bakemono-memory-clear-record-filter').off('click').on('click', () => {
-        $('#bakemono-memory-record-filter').val('');
-        $('#bakemono-memory-record-kind').val('all');
-        $('#bakemono-memory-record-status').val('all');
-        memoryRecordState.page = 0;
-        renderMemoryRecordList();
-    });
     $('#bakemono-memory-preset-select').off('change').on('change', function () {
         const previousId = getSelectedPromptPresetId();
         const selectedId = String(this.value || defaultPromptPreset.id);

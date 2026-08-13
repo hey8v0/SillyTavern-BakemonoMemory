@@ -4,16 +4,42 @@ export function createSummaryBrowserEvents({
     setSummaryBrowserActiveType,
     changeSummaryBrowserPage,
     renderPreviewSections,
+    resetSummaryBrowserPages,
     stabilizeMobilePreviewScroll,
     changeTimelinePage,
     renderTimeline,
     memoryRecordState,
+    memoryRecordStatuses,
     renderMemoryRecordList,
     saveEditedSummary,
     deleteSavedSummary,
 } = {}) {
     function bind(rootSelector = '#bakemono-workbench-root') {
         const root = query(rootSelector);
+        query('#bakemono-memory-preview-filter').off('input').on('input', () => {
+            resetSummaryBrowserPages();
+            renderPreviewSections();
+        });
+        query('#bakemono-memory-preview-order').off('change').on('change', () => {
+            resetSummaryBrowserPages();
+            renderPreviewSections();
+        });
+        query('#bakemono-memory-clear-preview-filter').off('click').on('click', () => {
+            query('#bakemono-memory-preview-filter').val('');
+            resetSummaryBrowserPages();
+            renderPreviewSections();
+        });
+        query('#bakemono-memory-record-filter, #bakemono-memory-record-kind, #bakemono-memory-record-status').off('input change').on('input change', () => {
+            memoryRecordState.page = 0;
+            renderMemoryRecordList();
+        });
+        query('#bakemono-memory-clear-record-filter').off('click').on('click', () => {
+            query('#bakemono-memory-record-filter').val('');
+            query('#bakemono-memory-record-kind').val('all');
+            query('#bakemono-memory-record-status').val('all');
+            memoryRecordState.page = 0;
+            renderMemoryRecordList();
+        });
         root.off('click.bakemonoPreviewType').on('click.bakemonoPreviewType', '[data-bakemono-preview-type]', function () {
             setSummaryBrowserActiveType(this.dataset.bakemonoPreviewType || 'story');
             renderPreviewSections();
@@ -31,6 +57,13 @@ export function createSummaryBrowserEvents({
         });
         root.off('click.bakemonoRecordPage').on('click.bakemonoRecordPage', '[data-bakemono-record-page]', function () {
             memoryRecordState.page = Math.max(0, (memoryRecordState.page || 0) + (this.dataset.bakemonoRecordPage === 'next' ? 1 : -1));
+            renderMemoryRecordList();
+        });
+        root.off('click.bakemonoRecordQuickFilter').on('click.bakemonoRecordQuickFilter', '[data-bakemono-record-status]', function () {
+            const status = String(this.dataset.bakemonoRecordStatus || 'all');
+            if (!['all', ...Object.values(memoryRecordStatuses)].includes(status)) return;
+            query('#bakemono-memory-record-status').val(status);
+            memoryRecordState.page = 0;
             renderMemoryRecordList();
         });
         root.off('click.bakemonoNotebook').on('click.bakemonoNotebook', '.bk-tab-label', function () {
