@@ -12,6 +12,7 @@ const globalSettingsServiceSource = fs.readFileSync(new URL('../src/core/global-
 const promptMigrationsSource = fs.readFileSync(new URL('../src/core/prompt-migrations.js', import.meta.url), 'utf8');
 const stateShapeSource = fs.readFileSync(new URL('../src/core/state-shape.js', import.meta.url), 'utf8');
 const workflowModeSource = fs.readFileSync(new URL('../src/core/workflow-mode.js', import.meta.url), 'utf8');
+const defaultsSource = fs.readFileSync(new URL('../src/config/defaults.js', import.meta.url), 'utf8');
 const hybridRetrievalSource = fs.readFileSync(new URL('../src/vector/hybrid-retrieval.js', import.meta.url), 'utf8');
 const promptInspectorSource = fs.readFileSync(new URL('../src/features/prompt-inspector.js', import.meta.url), 'utf8');
 const archiveControllerSource = fs.readFileSync(new URL('../src/features/archive-controller.js', import.meta.url), 'utf8');
@@ -440,12 +441,12 @@ test('automatic memory and tables keep the demo status-first hierarchy', () => {
 
 function extractTemplate(name) {
     const marker = `const ${name} = \``;
-    const start = source.indexOf(marker);
+    const start = defaultsSource.indexOf(marker);
     assert.notEqual(start, -1, `${name} should exist`);
     const contentStart = start + marker.length;
-    const end = source.indexOf('`;', contentStart);
+    const end = defaultsSource.indexOf('`;', contentStart);
     assert.notEqual(end, -1, `${name} should be a template literal`);
-    return source.slice(contentStart, end);
+    return defaultsSource.slice(contentStart, end);
 }
 
 function extractFunctionFrom(targetSource, name) {
@@ -885,8 +886,8 @@ test('frequent prompt and floor-archive tools live directly in the settings cent
 });
 
 test('injection defaults mark their end and start at the front of chat history', () => {
-    assert.match(source, /\{\{memory\}\}\r?\n【剧情剪辑台：长期剧情记忆结束】`;/);
-    assert.match(source, /injection:\s*\{\s*enabled:\s*true,\s*depth:\s*999,/);
+    assert.match(defaultsSource, /\{\{memory\}\}\r?\n【剧情剪辑台：长期剧情记忆结束】`;/);
+    assert.match(defaultsSource, /injection:\s*\{\s*enabled:\s*true,\s*depth:\s*999,/);
     assert.match(source, /migrateBuiltInInjectionDefaults\(state\.injection, legacyInjectionTemplate, defaultInjectionTemplate\)/);
     assert.match(contentConfigurationEventsSource, /function bindInjectionEvents\(/);
     assert.match(contentConfigurationEventsSource, /function bindPromptEvents\(/);
