@@ -81,5 +81,12 @@ export function createSummaryGenerationUi({ documentRef, query, getState }) {
         }
     }
 
-    return { getMode, render, setMode };
+    function bindEvents(rootSelector = '#bakemono-workbench-root') {
+        query(rootSelector).off('click.bakemonoSummaryMode').on('click.bakemonoSummaryMode', '[data-bakemono-summary-mode]', function () {
+            setMode(this.dataset.bakemonoSummaryMode || 'stage');
+            render();
+        });
+    }
+
+    return { bindEvents, getMode, render, setMode };
 }

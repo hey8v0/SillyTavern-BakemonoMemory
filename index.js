@@ -1989,9 +1989,9 @@ const summaryGenerationUi = createSummaryGenerationUi({
     getState: ensureState,
 });
 const {
+    bindEvents: bindSummaryGenerationEvents,
     getMode: getSummaryGenerationMode,
     render: renderSummaryGenerationPanel,
-    setMode: setSummaryGenerationMode,
 } = summaryGenerationUi;
 
 const turnSummaryUi = createTurnSummaryUi({
@@ -2061,6 +2061,7 @@ const {
 const workbenchPageOverviews = createWorkbenchPageOverviews({
     documentRef: document,
     windowRef: window,
+    navigatorRef: navigator,
     query: $,
     getState: ensureState,
     blockTypes,
@@ -2073,15 +2074,14 @@ const workbenchPageOverviews = createWorkbenchPageOverviews({
     defaultEpicGenerationPrompt,
     getInjectionMemoryParts,
     renderInjectionContent,
+    toastr,
 });
 const {
-    getPromptPreviewType,
-    getPromptPreviewValue,
+    bindPromptEvents,
     renderInjectionOverview,
     renderPromptOverview,
     renderScanOverview,
     renderScanPreview,
-    setPromptPreviewType,
 } = workbenchPageOverviews;
 
 const generationClient = createGenerationClient({
@@ -2201,7 +2201,7 @@ const maintenanceUi = createMaintenanceUi({
     notifySuccess: message => toastr.success(message),
 });
 const {
-    exportTransactions: exportMaintenanceTransactions,
+    bindEvents: bindMaintenanceEvents,
     renderAutoSummaryTransactions,
     renderOverview: renderMaintenanceOverview,
 } = maintenanceUi;
@@ -2582,32 +2582,9 @@ function bindSettingsEvents() {
     });
     reviewQueueEvents.bind();
     summaryBrowserEvents.bind();
-    $('#bakemono-workbench-root').off('click.bakemonoSummaryMode').on('click.bakemonoSummaryMode', '[data-bakemono-summary-mode]', function () {
-        const nextMode = this.dataset.bakemonoSummaryMode || 'stage';
-        if (!['stage', 'epic', 'batch'].includes(nextMode)) {
-            return;
-        }
-        setSummaryGenerationMode(nextMode);
-        renderSummaryGenerationPanel();
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoPromptPreview').on('click.bakemonoPromptPreview', '[data-bakemono-prompt-preview]', function () {
-        const nextType = this.dataset.bakemonoPromptPreview || 'stage';
-        if (!['story', 'missing', 'stage', 'epic'].includes(nextType)) {
-            return;
-        }
-        setPromptPreviewType(nextType);
-        renderPromptOverview();
-    });
-    $('#bakemono-workbench-root').off('input.bakemonoPromptPreview').on('input.bakemonoPromptPreview', '#bakemono-memory-story-prompt, #bakemono-memory-missing-prompt, #bakemono-memory-stage-prompt, #bakemono-memory-epic-prompt', () => {
-        renderPromptOverview();
-    });
-    $('#bakemono-memory-copy-prompt-preview').off('click').on('click', async () => {
-        await navigator.clipboard.writeText(getPromptPreviewValue(getPromptPreviewType()));
-        toastr.success('当前提示词已复制。');
-    });
-    $('#bakemono-memory-export-maintenance').off('click').on('click', () => {
-        exportMaintenanceTransactions();
-    });
+    bindSummaryGenerationEvents();
+    bindPromptEvents();
+    bindMaintenanceEvents();
     $('#bakemono-workbench-root').off('click.bakemonoTableDraftAction').on('click.bakemonoTableDraftAction', '[data-bakemono-table-draft-action]', function (event) {
         event.preventDefault();
         event.stopPropagation();

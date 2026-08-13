@@ -345,6 +345,7 @@ test('summary page keeps generation, review, and filtering in the demo hierarchy
     assert.match(settingsSource, /class="bakemono-memory-section-head bakemono-memory-summary-list-head"/);
     assert.match(settingsSource, /class="bakemono-memory-console-disclosure bakemono-memory-preview-filter-disclosure"/);
     assert.match(summaryGenerationUiSource, /function render\(state = getState\(\), blocks = null\)/);
+    assert.match(summaryGenerationUiSource, /function bindEvents\(rootSelector/);
     assert.match(source, /renderSummaryGenerationPanel\(state, blocks\)/);
     assert.match(turnSummaryUiSource, /function render\(state = getState\(\)\)/);
     assert.match(source, /createSummaryBrowserUi\(\{/);
@@ -357,6 +358,7 @@ test('summary page keeps generation, review, and filtering in the demo hierarchy
     assert.match(workbenchPageOverviewsSource, /function renderPromptOverview\(/);
     assert.match(workbenchPageOverviewsSource, /function renderInjectionOverview\(/);
     assert.match(workbenchPageOverviewsSource, /function renderScanPreview\(/);
+    assert.match(workbenchPageOverviewsSource, /function bindPromptEvents\(rootSelector/);
     assert.match(styleSource, /Summary demo precision pass/);
 });
 
@@ -718,6 +720,8 @@ test('maintenance history and transaction export live outside the entry module',
     assert.match(maintenanceUiSource, /function renderOverview\(/);
     assert.match(maintenanceUiSource, /function renderAutoSummaryTransactions\(/);
     assert.match(maintenanceUiSource, /function exportTransactions\(/);
+    assert.match(maintenanceUiSource, /function bindEvents\(\)/);
+    assert.doesNotMatch(source, /bakemonoSummaryMode|bakemonoPromptPreview|bakemono-memory-export-maintenance/);
 });
 
 test('every config-bearing tab refreshes its own preset selectors', () => {

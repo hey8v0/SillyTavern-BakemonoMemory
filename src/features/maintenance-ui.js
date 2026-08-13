@@ -163,5 +163,9 @@ export function createMaintenanceUi({
         notifySuccess('事务记录已导出。');
     }
 
-    return { exportTransactions, renderAutoSummaryTransactions, renderOverview };
+    function bindEvents() {
+        query('#bakemono-memory-export-maintenance').off('click').on('click', () => exportTransactions());
+    }
+
+    return { bindEvents, exportTransactions, renderAutoSummaryTransactions, renderOverview };
 }

@@ -1,6 +1,7 @@
 export function createWorkbenchPageOverviews({
     documentRef,
     windowRef,
+    navigatorRef,
     query,
     getState,
     blockTypes,
@@ -13,6 +14,7 @@ export function createWorkbenchPageOverviews({
     defaultEpicGenerationPrompt,
     getInjectionMemoryParts,
     renderInjectionContent,
+    toastr,
     mobileScanPreviewRenderLimit = 60,
     desktopScanPreviewRenderLimit = 120,
 }) {
@@ -153,7 +155,25 @@ export function createWorkbenchPageOverviews({
         container.append(fragment);
     }
 
+    function bindPromptEvents(rootSelector = '#bakemono-workbench-root') {
+        const root = query(rootSelector);
+        root.off('click.bakemonoPromptPreview').on('click.bakemonoPromptPreview', '[data-bakemono-prompt-preview]', function () {
+            setPromptPreviewType(this.dataset.bakemonoPromptPreview || 'stage');
+            renderPromptOverview();
+        });
+        root.off('input.bakemonoPromptPreview').on(
+            'input.bakemonoPromptPreview',
+            '#bakemono-memory-story-prompt, #bakemono-memory-missing-prompt, #bakemono-memory-stage-prompt, #bakemono-memory-epic-prompt',
+            () => renderPromptOverview(),
+        );
+        query('#bakemono-memory-copy-prompt-preview').off('click').on('click', async () => {
+            await navigatorRef.clipboard.writeText(getPromptPreviewValue(getPromptPreviewType()));
+            toastr.success('当前提示词已复制。');
+        });
+    }
+
     return {
+        bindPromptEvents,
         getPromptPreviewType,
         getPromptPreviewValue,
         renderInjectionOverview,
