@@ -29,6 +29,7 @@ const overviewWorkbenchUiSource = fs.readFileSync(new URL('../src/features/overv
 const summaryGenerationUiSource = fs.readFileSync(new URL('../src/features/summary-generation-ui.js', import.meta.url), 'utf8');
 const turnSummaryUiSource = fs.readFileSync(new URL('../src/features/turn-summary-ui.js', import.meta.url), 'utf8');
 const hubAutomationUiSource = fs.readFileSync(new URL('../src/features/hub-automation-ui.js', import.meta.url), 'utf8');
+const summaryBrowserUiSource = fs.readFileSync(new URL('../src/features/summary-browser-ui.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -331,6 +332,9 @@ test('summary page keeps generation, review, and filtering in the demo hierarchy
     assert.match(summaryGenerationUiSource, /function render\(state = getState\(\), blocks = null\)/);
     assert.match(source, /renderSummaryGenerationPanel\(state, blocks\)/);
     assert.match(turnSummaryUiSource, /function render\(state = getState\(\)\)/);
+    assert.match(source, /createSummaryBrowserUi\(\{/);
+    assert.match(summaryBrowserUiSource, /function renderSections\(/);
+    assert.match(summaryBrowserUiSource, /function changePage\(/);
     assert.match(styleSource, /Summary demo precision pass/);
 });
 

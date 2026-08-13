@@ -63,6 +63,7 @@ import { createOverviewWorkbenchUi } from './src/features/overview-workbench-ui.
 import { createSummaryGenerationUi } from './src/features/summary-generation-ui.js';
 import { createTurnSummaryUi } from './src/features/turn-summary-ui.js';
 import { createHubAutomationUi } from './src/features/hub-automation-ui.js';
+import { createSummaryBrowserUi } from './src/features/summary-browser-ui.js';
 import { createGlobalSettingsService } from './src/core/global-settings-service.js';
 import { createChatStateService } from './src/core/chat-state-service.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
@@ -906,17 +907,8 @@ let scheduledRenderHandle = null;
 let scheduledRenderStatus = '';
 const mobileScanPreviewRenderLimit = 60;
 const desktopScanPreviewRenderLimit = 120;
-const previewPageSize = 8;
 const historyPageSize = 10;
 const timelinePageSize = 25;
-const previewState = {
-    activeType: 'story',
-    pages: {
-        story: 0,
-        stage: 0,
-        epic: 0,
-    },
-};
 let promptPreviewType = 'stage';
 let reviewPanelView = 'drafts';
 const historyState = {
@@ -2163,6 +2155,30 @@ const {
     renderHubPanels: renderWorkbenchHubPanels,
 } = hubAutomationUi;
 
+const summaryBrowserUi = createSummaryBrowserUi({
+    documentRef: document,
+    query: $,
+    getState: ensureState,
+    getStoryBlocks,
+    getBlocksByType,
+    blockTypes,
+    dedupeByHash,
+    summaryToBlock,
+    normalizeSearchText,
+    getPreviewSummaryText,
+    parsePreviewMeta,
+    stripHtml,
+    getBlockSortKey,
+    createNotebook: createBakemonoNotebook,
+});
+const {
+    changePage: changeSummaryBrowserPage,
+    getActiveType: getSummaryBrowserActiveType,
+    renderSections: renderPreviewSections,
+    resetPages: resetSummaryBrowserPages,
+    setActiveType: setSummaryBrowserActiveType,
+} = summaryBrowserUi;
+
 const generationClient = createGenerationClient({
     query: $,
     ensureState,
@@ -2626,51 +2642,6 @@ function syncPromptHintButtons() {
         if (title?.matches('h4')) {
             title.append(hint);
         }
-    });
-}
-
-function renderPreviewSections(storyBlocks = getStoryBlocks(), stageBlocks = null, epicBlocks = null) {
-    const state = ensureState();
-    const dedupedStageBlocks = stageBlocks || dedupeByHash([
-        ...getBlocksByType(blockTypes.STAGE),
-        ...state.stageSummaries.map(summaryToBlock),
-    ]);
-    const dedupedEpicBlocks = epicBlocks || dedupeByHash([
-        ...getBlocksByType(blockTypes.EPIC),
-        ...state.epicSummaries.map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
-    ]);
-
-    syncPreviewTypeUi();
-    renderList('#bakemono-memory-preview-story', preparePreviewBlocks(storyBlocks), 'story');
-    renderList('#bakemono-memory-preview-stage', preparePreviewBlocks(dedupedStageBlocks), 'stage');
-    renderList('#bakemono-memory-preview-epic', preparePreviewBlocks(dedupedEpicBlocks), 'epic');
-}
-
-function preparePreviewBlocks(blocks) {
-    const query = normalizeSearchText($('#bakemono-memory-preview-filter').val() || '');
-    const order = String($('#bakemono-memory-preview-order').val() || 'desc');
-    const filtered = query
-        ? blocks.filter(block => normalizeSearchText(`${getPreviewSummaryText(block)}\n${block.title}\n${parsePreviewMeta(block).meta}\n${parsePreviewMeta(block).submeta}\n${stripHtml(block.content)}`).includes(query))
-        : [...blocks];
-    filtered.sort((a, b) => (getBlockSortKey(a) - getBlockSortKey(b)) || (a.blockIndex - b.blockIndex));
-    if (order === 'desc') {
-        filtered.reverse();
-    }
-    return filtered;
-}
-
-function syncPreviewTypeUi() {
-    const validTypes = new Set(['story', 'stage', 'epic']);
-    if (!validTypes.has(previewState.activeType)) {
-        previewState.activeType = 'story';
-    }
-    document.querySelectorAll('.bakemono-preview-type-button').forEach(button => {
-        button.classList.toggle('is-active', button.dataset.bakemonoPreviewType === previewState.activeType);
-    });
-    const grid = document.querySelector('.bakemono-memory-preview-grid');
-    grid?.setAttribute('data-bakemono-active-preview', previewState.activeType);
-    document.querySelectorAll('.bakemono-memory-preview-column').forEach(column => {
-        column.classList.toggle('is-active', column.dataset.bakemonoPreviewColumn === previewState.activeType);
     });
 }
 
@@ -3629,61 +3600,6 @@ function dedupeByHash(blocks) {
     return [...new Map(blocks.map(block => [block.hash, block])).values()];
 }
 
-function renderList(selector, blocks, type = 'story') {
-    const container = document.querySelector(selector);
-    if (!container) {
-        return;
-    }
-
-    container.innerHTML = '';
-    if (!blocks.length) {
-        const empty = document.createElement('div');
-        empty.className = 'bakemono-memory-empty';
-        empty.textContent = '暂无内容';
-        container.append(empty);
-        return;
-    }
-
-    const pageCount = Math.max(1, Math.ceil(blocks.length / previewPageSize));
-    previewState.pages[type] = Math.min(Math.max(0, previewState.pages[type] || 0), pageCount - 1);
-    const page = previewState.pages[type];
-    const start = page * previewPageSize;
-    const visibleBlocks = blocks.slice(start, start + previewPageSize);
-
-    const controls = document.createElement('div');
-    controls.className = 'bakemono-memory-preview-pager';
-
-    const prev = document.createElement('button');
-    prev.type = 'button';
-    prev.className = 'menu_button bakemono-preview-page-button';
-    prev.dataset.bakemonoPreviewPage = 'prev';
-    prev.dataset.bakemonoPreviewType = type;
-    prev.disabled = page <= 0;
-    prev.innerHTML = '<i class="fa-solid fa-chevron-left"></i><span>上一组</span>';
-
-    const info = document.createElement('span');
-    info.className = 'bakemono-memory-preview-page-info';
-    info.textContent = `${start + 1}-${Math.min(start + previewPageSize, blocks.length)} / ${blocks.length}`;
-
-    const next = document.createElement('button');
-    next.type = 'button';
-    next.className = 'menu_button bakemono-preview-page-button';
-    next.dataset.bakemonoPreviewPage = 'next';
-    next.dataset.bakemonoPreviewType = type;
-    next.disabled = page >= pageCount - 1;
-    next.innerHTML = '<span>下一组</span><i class="fa-solid fa-chevron-right"></i>';
-
-    controls.append(prev, info, next);
-    container.append(controls);
-
-    const fragment = document.createDocumentFragment();
-    visibleBlocks.forEach((block, index) => {
-        fragment.append(createBakemonoNotebook(block, start + index));
-    });
-
-    container.append(fragment);
-}
-
 function getWorkbenchPanelTitle(tabName) {
     const titles = {
         overview: '剪辑台',
@@ -4248,7 +4164,7 @@ function bindSettingsEvents() {
         }
     });
     $('#bakemono-workbench-root').off('click.bakemonoPreviewType').on('click.bakemonoPreviewType', '[data-bakemono-preview-type]', function () {
-        previewState.activeType = this.dataset.bakemonoPreviewType || 'story';
+        setSummaryBrowserActiveType(this.dataset.bakemonoPreviewType || 'story');
         renderPreviewSections();
     });
     $('#bakemono-workbench-root').off('click.bakemonoSummaryMode').on('click.bakemonoSummaryMode', '[data-bakemono-summary-mode]', function () {
@@ -4278,10 +4194,9 @@ function bindSettingsEvents() {
         exportMaintenanceTransactions();
     });
     $('#bakemono-workbench-root').off('click.bakemonoPreviewPage').on('click.bakemonoPreviewPage', '[data-bakemono-preview-page]', function () {
-        const type = this.dataset.bakemonoPreviewType || previewState.activeType;
+        const type = this.dataset.bakemonoPreviewType || getSummaryBrowserActiveType();
         const direction = this.dataset.bakemonoPreviewPage === 'next' ? 1 : -1;
-        previewState.pages[type] = Math.max(0, (previewState.pages[type] || 0) + direction);
-        previewState.activeType = type;
+        changeSummaryBrowserPage(type, direction);
         renderPreviewSections();
         stabilizeMobilePreviewScroll();
     });
@@ -4933,16 +4848,16 @@ function bindSettingsEvents() {
             readGenerationTargetSettings();
         });
     $('#bakemono-memory-preview-filter').off('input').on('input', () => {
-        previewState.pages = { story: 0, stage: 0, epic: 0 };
+        resetSummaryBrowserPages();
         renderPreviewSections();
     });
     $('#bakemono-memory-preview-order').off('change').on('change', () => {
-        previewState.pages = { story: 0, stage: 0, epic: 0 };
+        resetSummaryBrowserPages();
         renderPreviewSections();
     });
     $('#bakemono-memory-clear-preview-filter').off('click').on('click', () => {
         $('#bakemono-memory-preview-filter').val('');
-        previewState.pages = { story: 0, stage: 0, epic: 0 };
+        resetSummaryBrowserPages();
         renderPreviewSections();
     });
     $('#bakemono-memory-record-filter, #bakemono-memory-record-kind, #bakemono-memory-record-status').off('input change').on('input change', () => {
