@@ -79,6 +79,7 @@ import { createHelpPopover } from './src/ui/help-popover.js';
 import { createOperationFeedback } from './src/ui/operation-feedback.js';
 import { installWorkbenchParentNavigation, organizeWorkbenchOwnedSections } from './src/ui/workbench-layout.js';
 import { createWorkbenchNavigation } from './src/ui/workbench-navigation.js';
+import { createWorkbenchShellEvents } from './src/ui/workbench-shell-events.js';
 
 const EXT_ID = 'BakemonoMemory';
 const STORAGE_KEY = 'bakemonoMemory';
@@ -2473,6 +2474,31 @@ const workbenchActionController = createWorkbenchActionController({
 });
 const { getRenderScope: getWorkbenchActionRenderScope, run: runWorkbenchAction } = workbenchActionController;
 
+const workbenchShellEvents = createWorkbenchShellEvents({
+    query: $,
+    documentRef: document,
+    windowRef: window,
+    extensionSettings: extension_settings,
+    storageKey: STORAGE_KEY,
+    saveSettingsDebounced,
+    renderExtensionEntrySettings,
+    syncTopNavButton,
+    syncMobileCollapsibles,
+    openWorkbench,
+    closeWorkbench,
+    setWorkbenchMenuOpen,
+    switchWorkbenchTab,
+    stabilizeMobileWorkbenchScroll,
+    operationFeedback,
+    bindThemeEvents,
+    promptInspector,
+    helpGuide,
+    helpPopover,
+    runWorkbenchAction,
+    getWorkbenchActionRenderScope,
+    renderWorkbenchScope,
+});
+
 function getKindLabel(kind) {
     if (kind === blockTypes.STORY) {
         return '剧情摘要';
@@ -2488,68 +2514,7 @@ function dedupeByHash(blocks) {
 }
 
 function bindSettingsEvents() {
-    window.removeEventListener('resize', syncMobileCollapsibles);
-    window.addEventListener('resize', syncMobileCollapsibles);
-    const rootElement = document.getElementById('bakemono-workbench-root');
-    operationFeedback.bindCapture(rootElement);
-    $('#bakemono-memory-extension-open').off('click').on('click', () => openWorkbench());
-    $('#bakemono-memory-show-top-nav').off('change').on('change', function () {
-        const settings = extension_settings[STORAGE_KEY];
-        settings.ui = settings.ui || {};
-        settings.ui.showTopNavButton = !!this.checked;
-        saveSettingsDebounced();
-        renderExtensionEntrySettings();
-        syncTopNavButton();
-    });
-    $('#bakemono-memory-close, [data-bakemono-close]').off('click').on('click', () => closeWorkbench());
-    $('#bakemono-memory-menu-toggle').off('click').on('click', () => {
-        const root = document.getElementById('bakemono-workbench-root');
-        setWorkbenchMenuOpen(!root?.classList.contains('is-menu-open'));
-    });
-    $('.bakemono-workbench-tab').off('click').on('click', function (event) {
-        event?.preventDefault?.();
-        event?.stopPropagation?.();
-        switchWorkbenchTab(this.dataset.bakemonoTab);
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoHubTab').on('click.bakemonoHubTab', '.menu_button[data-bakemono-tab]', function () {
-        switchWorkbenchTab(this.dataset.bakemonoTab);
-    });
-    bindThemeEvents(rootElement);
-    $('#bakemono-workbench-root').off('click.bakemonoNav').on('click.bakemonoNav', '[data-bakemono-nav]', function () {
-        switchWorkbenchTab(this.dataset.bakemonoNav);
-    });
-    promptInspector.bindEvents(document.getElementById('bakemono-workbench-root'));
-    helpGuide.bind(rootElement);
-    helpPopover.bind(rootElement);
-    $('#bakemono-workbench-root').off('click.bakemonoMobileFold').on('click.bakemonoMobileFold', '.bakemono-mobile-collapsible > h4', function () {
-        if (!(window.matchMedia?.('(max-width: 900px)').matches ?? false)) {
-            return;
-        }
-        const panel = this.closest('.bakemono-mobile-collapsible');
-        if (!panel) {
-            return;
-        }
-        const expand = panel.classList.contains('is-mobile-collapsed');
-        panel.classList.toggle('is-mobile-collapsed', !expand);
-        panel.classList.toggle('is-mobile-expanded', expand);
-        helpPopover.close();
-        stabilizeMobileWorkbenchScroll(document.getElementById('bakemono-workbench-root')?.dataset.activeTab || '');
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoPromptEditorScroll').on('click.bakemonoPromptEditorScroll', '.bakemono-memory-prompt-editor-item > summary', function () {
-        stabilizeMobileWorkbenchScroll('prompts');
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoAction').on('click.bakemonoAction', '[data-bakemono-action]', async function () {
-        try {
-            await runWorkbenchAction(this.dataset.bakemonoAction);
-        } catch (error) {
-            console.error('[BakemonoMemory] action failed', error);
-            const failure = `操作失败：${error?.message || error}`;
-            operationFeedback.set('error', failure, 2600);
-            renderWorkbenchScope(getWorkbenchActionRenderScope(this.dataset.bakemonoAction), failure);
-        } finally {
-            operationFeedback.resetCapture();
-        }
-    });
+    workbenchShellEvents.bind();
     $('#bakemono-workbench-root').off('change.bakemonoAutoArchiveToggle').on('change.bakemonoAutoArchiveToggle', '#bakemono-memory-auto-hide-enabled', async function () {
         try {
             await applyAutoHideRecentSettings();

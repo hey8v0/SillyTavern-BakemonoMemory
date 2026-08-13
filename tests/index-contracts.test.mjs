@@ -60,6 +60,7 @@ const helpPopoverSource = fs.readFileSync(new URL('../src/ui/help-popover.js', i
 const operationFeedbackSource = fs.readFileSync(new URL('../src/ui/operation-feedback.js', import.meta.url), 'utf8');
 const workbenchLayoutSource = fs.readFileSync(new URL('../src/ui/workbench-layout.js', import.meta.url), 'utf8');
 const workbenchNavigationSource = fs.readFileSync(new URL('../src/ui/workbench-navigation.js', import.meta.url), 'utf8');
+const workbenchShellEventsSource = fs.readFileSync(new URL('../src/ui/workbench-shell-events.js', import.meta.url), 'utf8');
 const summaryLevelsSource = fs.readFileSync(new URL('../src/summary/levels.js', import.meta.url), 'utf8');
 
 test('workbench markup and stylesheet remain structurally balanced', () => {
@@ -178,7 +179,8 @@ test('previous prompt inspector stays read-only, manually searchable, navigable,
     assert.match(workbenchLayoutSource, /'prompt-inspector': \{ target: 'overview', label: '返回剪辑台' \}/);
     assert.match(source, /import \{ createPromptInspector \} from '\.\/src\/features\/prompt-inspector\.js';/);
     assert.match(source, /const promptInspector = createPromptInspector\(\{/);
-    assert.match(source, /promptInspector\.bindEvents\(document\.getElementById\('bakemono-workbench-root'\)\)/);
+    assert.match(source, /const workbenchShellEvents = createWorkbenchShellEvents\(\{/);
+    assert.match(workbenchShellEventsSource, /promptInspector\.bindEvents\(rootElement\)/);
     assert.match(promptInspectorSource, /export function createPromptInspector\(/);
     assert.match(promptInspectorSource, /function applySearch\(/);
     assert.match(promptInspectorSource, /function collectSearchResults\(/);
@@ -204,7 +206,7 @@ test('previous prompt inspector stays read-only, manually searchable, navigable,
 test('help guide owns its content, reader state, and delegated events outside the entry file', () => {
     assert.match(source, /import \{ createHelpGuide \} from '\.\/src\/features\/help-guide\.js';/);
     assert.match(source, /const helpGuide = createHelpGuide\(\{ escapeHtml \}\)/);
-    assert.match(source, /helpGuide\.bind\(rootElement\)/);
+    assert.match(workbenchShellEventsSource, /helpGuide\.bind\(rootElement\)/);
     assert.match(helpGuideContentSource, /export const helpGuideCategories =/);
     assert.match(helpGuideContentSource, /export const helpGuideArticles =/);
     assert.match(helpGuideSource, /function renderArticle\(/);
