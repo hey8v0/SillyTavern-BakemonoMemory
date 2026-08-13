@@ -175,12 +175,6 @@ const extensionFolderPath = (() => {
 })();
 
 let isBusy = false;
-const tableUiState = {
-    openTableIndex: '',
-    focusCell: null,
-    openSection: '',
-    focusField: null,
-};
 function escapeHtml(value) {
     const div = document.createElement('div');
     div.textContent = String(value ?? '');
