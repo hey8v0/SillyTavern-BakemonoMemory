@@ -60,6 +60,8 @@ import { createMemoryRecordsUi } from './src/features/memory-records-ui.js';
 import { createOverviewTokenManifest } from './src/features/overview-token-manifest.js';
 import { createWorkflowOverviewModel } from './src/features/workflow-overview-model.js';
 import { createOverviewWorkbenchUi } from './src/features/overview-workbench-ui.js';
+import { createSummaryGenerationUi } from './src/features/summary-generation-ui.js';
+import { createTurnSummaryUi } from './src/features/turn-summary-ui.js';
 import { createGlobalSettingsService } from './src/core/global-settings-service.js';
 import { createChatStateService } from './src/core/chat-state-service.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
@@ -914,13 +916,7 @@ const previewState = {
         epic: 0,
     },
 };
-let summaryGenerationMode = 'stage';
 let promptPreviewType = 'stage';
-let summaryGenerationSnapshot = {
-    story: [],
-    stage: [],
-    epic: [],
-};
 let reviewPanelView = 'drafts';
 const historyState = {
     page: 0,
@@ -964,170 +960,6 @@ function saveGlobalSettings() {
 function setBusy(value) {
     isBusy = value;
     $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-stage-batch"], [data-bakemono-action="generate-epic"], [data-bakemono-action="generate-epic-batch"], [data-bakemono-action="backfill"], [data-bakemono-action="batch-summary"], [data-bakemono-action="commit-missing-all"], [data-bakemono-action="remove-missing-all"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-test"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-auto-tx-action], [data-bakemono-table-draft-action]').prop('disabled', value);
-}
-
-function renderSummaryGenerationPanel(state = ensureState(), blocks = null) {
-    if (blocks) {
-        summaryGenerationSnapshot = {
-            story: Array.isArray(blocks.story) ? blocks.story : [],
-            stage: Array.isArray(blocks.stage) ? blocks.stage : [],
-            epic: Array.isArray(blocks.epic) ? blocks.epic : [],
-        };
-    }
-
-    const validModes = new Set(['stage', 'epic', 'batch']);
-    if (!validModes.has(summaryGenerationMode)) {
-        summaryGenerationMode = 'stage';
-    }
-
-    const storyBlocks = summaryGenerationSnapshot.story;
-    const stageBlocks = summaryGenerationSnapshot.stage;
-    const epicBlocks = summaryGenerationSnapshot.epic;
-    const coveredHashes = new Set(state.coveredBlockHashes || []);
-    const coveredStoryCount = storyBlocks.filter(block => block?.hash && coveredHashes.has(block.hash)).length;
-    const uncoveredStoryCount = Math.max(0, storyBlocks.length - coveredStoryCount);
-    const upperLevelMaterialCount = stageBlocks.length + epicBlocks.length;
-
-    const modes = {
-        stage: {
-            action: 'generate-stage',
-            icon: 'fa-wand-magic-sparkles',
-            title: '整理下一段长期记忆',
-            button: '生成阶段总结',
-            code: `${uncoveredStoryCount} 条待整理`,
-            description: `${storyBlocks.length} 条剧情摘要，其中 ${coveredStoryCount} 条已经收入阶段记忆。生成结果会先进入待确认。`,
-            progress: storyBlocks.length ? Math.round((coveredStoryCount / storyBlocks.length) * 100) : 0,
-        },
-        epic: {
-            action: 'generate-epic',
-            icon: 'fa-layer-group',
-            title: '把多个阶段连成时间线',
-            button: '生成多次总结',
-            code: `${upperLevelMaterialCount} 条材料`,
-            description: `${stageBlocks.length} 条阶段总结与 ${epicBlocks.length} 条上层总结可继续压缩，适合整理一卷或一条长期剧情线。`,
-            progress: upperLevelMaterialCount ? Math.min(100, Math.round((epicBlocks.length / upperLevelMaterialCount) * 100)) : 0,
-        },
-        batch: {
-            action: 'batch-summary',
-            icon: 'fa-list-check',
-            title: '把旧聊天分批整理',
-            button: '打开批量生成',
-            code: `${storyBlocks.length} 条已识别`,
-            description: '按楼层范围补写缺失摘要或整理旧正文；任务会分批运行，并统一进入待确认。',
-            progress: 0,
-        },
-    };
-    const current = modes[summaryGenerationMode];
-
-    document.querySelectorAll('[data-bakemono-summary-mode]').forEach(button => {
-        button.classList.toggle('is-active', button.dataset.bakemonoSummaryMode === summaryGenerationMode);
-    });
-    $('#bakemono-memory-summary-generation-title').text(current.title);
-    $('#bakemono-memory-summary-generation-code').text(current.code);
-    $('#bakemono-memory-summary-generation-description').text(current.description);
-    $('#bakemono-memory-summary-generation-progress').css('width', `${current.progress}%`);
-    const primary = document.getElementById('bakemono-memory-summary-primary-action');
-    if (primary) {
-        primary.hidden = summaryGenerationMode === 'batch';
-        primary.dataset.bakemonoAction = current.action;
-        const icon = primary.querySelector('i');
-        if (icon) {
-            icon.className = `fa-solid ${current.icon}`;
-        }
-        const label = primary.querySelector('span');
-        if (label) {
-            label.textContent = current.button;
-        }
-    }
-    const batchPanel = document.querySelector('[data-bakemono-owned-section="batch"]');
-    if (batchPanel) {
-        batchPanel.hidden = summaryGenerationMode !== 'batch';
-        if (summaryGenerationMode === 'batch') {
-            batchPanel.open = true;
-        }
-    }
-}
-
-function renderTurnSummaryPanel(state = ensureState()) {
-    $('#bakemono-memory-turn-enabled').prop('checked', !!state.turnSummary.enabled);
-    $('#bakemono-memory-turn-auto').prop('checked', !!state.turnSummary.auto);
-    $('#bakemono-memory-turn-processing-mode').val(state.turnSummary.processingMode || turnProcessingModes.BOTH);
-    $('#bakemono-memory-turn-auto-save').prop('checked', state.turnSummary.saveMode === 'commit');
-    $('#bakemono-memory-turn-include-user').prop('checked', state.turnSummary.includeUserMessage !== false);
-    $('#bakemono-memory-turn-include-character').prop('checked', state.turnSummary.includeCharacterContext !== false);
-    $('#bakemono-memory-turn-include-world-info').prop('checked', !!state.turnSummary.includeWorldInfo);
-    $('#bakemono-memory-turn-world-max-context').val(state.turnSummary.worldInfoMaxContext ?? defaultState.turnSummary.worldInfoMaxContext);
-    $('#bakemono-memory-turn-reference').val(state.turnSummary.referenceContext || '');
-    $('#bakemono-memory-table-enabled').prop('checked', !!state.tableDatabase.enabled);
-    $('#bakemono-memory-table-inject-memory').prop('checked', state.tableDatabase.injectMemory !== false);
-    $('#bakemono-memory-table-auto-apply').prop('checked', !!state.tableDatabase.autoApply);
-    $('#bakemono-memory-table-schema-scope').val(state.tableDatabase.schemaScope || tableSchemaScopes.CHAT);
-    const tables = state.tableDatabase.tables || [];
-    const tableDrafts = state.tableDatabase.editDrafts || [];
-    const tableRowCount = tables.reduce((total, table) => total + (Array.isArray(table.rows) ? table.rows.length : 0), 0);
-    const tableDraftOperationCount = tableDrafts.reduce((total, draft) => total + (Array.isArray(draft.operations) ? draft.operations.length : 0), 0);
-    $('#bakemono-memory-table-schema-status').text(`${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)} · ${tables.length} 张表 · ${getCurrentCharacterSchemaLabel()}`);
-    $('#bakemono-memory-table-overview-count').text(tables.length);
-    $('#bakemono-memory-table-overview-row-count').text(tableRowCount);
-    $('#bakemono-memory-table-overview-draft-count').text(tableDraftOperationCount);
-    $('#bakemono-memory-table-draft-label').text(`${tableDraftOperationCount} 处`);
-    renderTableProfileControls(state);
-    $('#bakemono-memory-turn-prompt').val(state.turnSummary.prompt || defaultTurnSummaryPrompt);
-    $('#bakemono-memory-table-prompt').val(state.turnSummary.tablePrompt || defaultTableEditPrompt);
-    $('#bakemono-memory-inline-summary-enabled').prop('checked', !!state.inlineGeneration.summaryEnabled);
-    $('#bakemono-memory-inline-table-enabled').prop('checked', !!state.inlineGeneration.tableEnabled);
-    $('#bakemono-memory-inline-hide-table').prop('checked', state.inlineGeneration.hideTableEdit !== false);
-    $('#bakemono-memory-inline-summary-prompt').val(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt);
-    $('#bakemono-memory-inline-table-prompt').val(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt);
-    renderInlinePromptPresetControls('summary', '#bakemono-memory-inline-summary-preset-select', '#bakemono-memory-inline-summary-preset-name');
-    renderInlinePromptPresetControls('table', '#bakemono-memory-inline-table-preset-select', '#bakemono-memory-inline-table-preset-name');
-    const lastId = state.turnSummary.lastProcessedMessageId;
-    const hasProcessedTurn = lastId !== null && lastId !== undefined;
-    const turnEnabled = !!state.turnSummary.enabled;
-    const turnAuto = !!state.turnSummary.auto;
-    const tableEnabled = !!state.tableDatabase.enabled;
-    const runtimeLabel = !turnEnabled
-        ? '自动记忆未开启'
-        : turnAuto
-            ? '自动记忆运行中'
-            : '自动记忆已启用';
-    const runtimeTitle = hasProcessedTurn ? `第 ${lastId} 楼已处理` : '等待第一轮正文';
-    const summaryDestination = state.turnSummary.saveMode === 'commit' ? '已直接写入长期记忆' : '摘要会先进入待确认';
-    const tableDestination = tableEnabled
-        ? tableDraftOperationCount
-            ? `表格还有 ${tableDraftOperationCount} 处差异等待确认`
-            : '表格没有待处理差异'
-        : '本轮未启用表格更新';
-    $('#bakemono-memory-turn-runtime-label').text(runtimeLabel);
-    $('#bakemono-memory-turn-runtime-title').text(runtimeTitle);
-    $('#bakemono-memory-turn-status').text(hasProcessedTurn
-        ? `${summaryDestination}；${tableDestination}。`
-        : turnEnabled
-            ? '下一次正文结束后会按当前设置生成摘要。'
-            : '开启后，每轮剧情会先生成草稿，再由你确认是否保存。');
-    $('.bakemono-memory-turn-status-hero').toggleClass('is-running', turnEnabled && turnAuto);
-
-    const setFlowStep = (selector, status) => {
-        const element = document.querySelector(selector);
-        if (!element) {
-            return;
-        }
-        element.classList.toggle('is-done', status === 'done');
-        element.classList.toggle('is-current', status === 'current');
-        element.classList.toggle('is-waiting', status === 'waiting');
-    };
-    setFlowStep('#bakemono-memory-turn-flow-read', hasProcessedTurn ? 'done' : turnEnabled ? 'current' : 'waiting');
-    setFlowStep('#bakemono-memory-turn-flow-summary', hasProcessedTurn && state.turnSummary.processingMode !== turnProcessingModes.TABLE ? 'done' : 'waiting');
-    setFlowStep('#bakemono-memory-turn-flow-table', tableDraftOperationCount ? 'current' : hasProcessedTurn && tableEnabled ? 'done' : 'waiting');
-    $('#bakemono-memory-turn-flow-status').text(tableDraftOperationCount
-        ? `待确认 ${tableDraftOperationCount} 处`
-        : hasProcessedTurn
-            ? '本轮已完成'
-            : turnEnabled
-                ? '等待下一轮'
-                : '尚未开启');
-    renderTableList(state);
-    renderTableEditDrafts(state);
 }
 
 function renderInlinePromptPresetControls(type, selectSelector, nameSelector) {
@@ -2375,6 +2207,37 @@ const overviewWorkbenchUi = createOverviewWorkbenchUi({
     renderTokenManifest: state => renderOverviewTokenManifest(state),
 });
 const { renderOverviewConfigManifest, renderWorkflowGuide } = overviewWorkbenchUi;
+
+const summaryGenerationUi = createSummaryGenerationUi({
+    documentRef: document,
+    query: $,
+    getState: ensureState,
+});
+const {
+    getMode: getSummaryGenerationMode,
+    render: renderSummaryGenerationPanel,
+    setMode: setSummaryGenerationMode,
+} = summaryGenerationUi;
+
+const turnSummaryUi = createTurnSummaryUi({
+    documentRef: document,
+    query: $,
+    getState: ensureState,
+    defaultState,
+    turnProcessingModes,
+    tableSchemaScopes,
+    getTableSchemaScopeLabel,
+    getCurrentCharacterSchemaLabel,
+    renderTableProfileControls,
+    defaultTurnSummaryPrompt,
+    defaultTableEditPrompt,
+    defaultInlineSummaryPrompt,
+    defaultInlineTablePrompt,
+    renderInlinePromptPresetControls,
+    renderTableList,
+    renderTableEditDrafts,
+});
+const { render: renderTurnSummaryPanel } = turnSummaryUi;
 
 const generationClient = createGenerationClient({
     query: $,
@@ -4469,7 +4332,7 @@ function bindSettingsEvents() {
         if (!['stage', 'epic', 'batch'].includes(nextMode)) {
             return;
         }
-        summaryGenerationMode = nextMode;
+        setSummaryGenerationMode(nextMode);
         renderSummaryGenerationPanel();
     });
     $('#bakemono-workbench-root').off('click.bakemonoPromptPreview').on('click.bakemonoPromptPreview', '[data-bakemono-prompt-preview]', function () {
@@ -5475,7 +5338,7 @@ async function initWorkbench() {
 
     document.getElementById('bakemono-workbench-root')?.remove();
     $('body').append(await response.text());
-    organizeWorkbenchOwnedSections(summaryGenerationMode);
+    organizeWorkbenchOwnedSections(getSummaryGenerationMode());
     installWorkbenchParentNavigation();
     applyAppearanceTheme();
     await addExtensionSettingsBlock();

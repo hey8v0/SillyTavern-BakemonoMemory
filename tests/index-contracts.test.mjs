@@ -26,6 +26,8 @@ const configurationServiceSource = fs.readFileSync(new URL('../src/features/conf
 const configurationControllerSource = fs.readFileSync(new URL('../src/features/configuration-controller.js', import.meta.url), 'utf8');
 const workflowOverviewModelSource = fs.readFileSync(new URL('../src/features/workflow-overview-model.js', import.meta.url), 'utf8');
 const overviewWorkbenchUiSource = fs.readFileSync(new URL('../src/features/overview-workbench-ui.js', import.meta.url), 'utf8');
+const summaryGenerationUiSource = fs.readFileSync(new URL('../src/features/summary-generation-ui.js', import.meta.url), 'utf8');
+const turnSummaryUiSource = fs.readFileSync(new URL('../src/features/turn-summary-ui.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -120,7 +122,7 @@ test('settings center owns global preferences while feature settings stay with t
     assert.match(settingsSource, /data-bakemono-owned-section="archive"/);
     assert.match(settingsSource, /data-bakemono-owned-section="generation"/);
     assert.match(settingsSource, /data-bakemono-owned-section="config"/);
-    assert.match(source, /organizeWorkbenchOwnedSections\(summaryGenerationMode\)/);
+    assert.match(source, /organizeWorkbenchOwnedSections\(getSummaryGenerationMode\(\)\)/);
     assert.match(workbenchLayoutSource, /export function organizeWorkbenchOwnedSections\(/);
     assert.match(workbenchLayoutSource, /\['database', 'bakemono-memory-data-status-slot'\]/);
     assert.match(workbenchLayoutSource, /\['batch', 'bakemono-memory-batch-summary-slot'\]/);
@@ -322,8 +324,9 @@ test('summary page keeps generation, review, and filtering in the demo hierarchy
     assert.match(settingsSource, /id="bakemono-memory-summary-primary-action"[^>]*data-bakemono-action="generate-stage"/);
     assert.match(settingsSource, /class="bakemono-memory-section-head bakemono-memory-summary-list-head"/);
     assert.match(settingsSource, /class="bakemono-memory-console-disclosure bakemono-memory-preview-filter-disclosure"/);
-    assert.match(source, /function renderSummaryGenerationPanel\(/);
+    assert.match(summaryGenerationUiSource, /function render\(state = getState\(\), blocks = null\)/);
     assert.match(source, /renderSummaryGenerationPanel\(state, blocks\)/);
+    assert.match(turnSummaryUiSource, /function render\(state = getState\(\)\)/);
     assert.match(styleSource, /Summary demo precision pass/);
 });
 
