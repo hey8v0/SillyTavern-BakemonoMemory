@@ -49,6 +49,9 @@ import { createMemoryOrchestrator } from './src/features/memory-orchestrator.js'
 import { createTurnProcessingController } from './src/features/turn-processing-controller.js';
 import { createGenerationClient } from './src/features/generation-client.js';
 import { createSummaryDraftService } from './src/features/summary-draft-service.js';
+import { createContentBlockService } from './src/features/content-block-service.js';
+import { createScanController } from './src/features/scan-controller.js';
+import { createSummaryPreviewRenderer } from './src/features/summary-preview-renderer.js';
 import { createGlobalSettingsService } from './src/core/global-settings-service.js';
 import { createChatStateService } from './src/core/chat-state-service.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
@@ -955,484 +958,6 @@ function saveState() {
 function saveGlobalSettings() {
     persistGlobalSettings(saveSettingsDebounced);
 }
-
-function extractConfiguredSegments(text, rules = ensureState().scanRules) {
-    if (!text) {
-        return [];
-    }
-
-    const includeTags = parseList(rules.includeTags);
-    const excludeTags = parseList(rules.excludeTags);
-    const stripped = stripConfiguredTags(text, excludeTags);
-    const mode = rules.mode === 'full' ? 'full' : 'tag';
-
-    if (mode === 'tag') {
-        return extractConfiguredTagBlocks(stripped, includeTags.length ? includeTags : ['bakemono'])
-            .map(segment => ({ ...segment, mode }));
-    }
-
-    if (includeTags.length) {
-        const tagSegments = extractConfiguredTagBlocks(stripped, includeTags);
-        if (tagSegments.length) {
-            return tagSegments.map(segment => ({ ...segment, mode }));
-        }
-    }
-
-    const minLength = Math.max(0, Number(rules.fullTextMinLength || 0));
-    const content = stripped.trim();
-    return content.length >= minLength ? [{ content, matchedTag: '全文', mode }] : [];
-}
-
-function extractBakemonoBlocks(text) {
-    if (!text) {
-        return [];
-    }
-
-    const matches = String(text).match(/<bakemono\b[^>]*>[\s\S]*?<\/bakemono>/gi);
-    return matches ? matches.map(block => block.trim()).filter(Boolean) : [];
-}
-
-function classifyBlock(block) {
-    const state = ensureState();
-    const text = stripHtml(block);
-    if (matchesAnyKeyword(text, parseList(state.classificationRules.epic))) {
-        return blockTypes.EPIC;
-    }
-    if (matchesAnyKeyword(text, parseList(state.classificationRules.stage))) {
-        return blockTypes.STAGE;
-    }
-    return blockTypes.STORY;
-}
-
-function getBlockTitle(block, fallback) {
-    const summaryMatch = block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i);
-    if (summaryMatch?.[1]) {
-        return stripHtml(summaryMatch[1]).trim() || fallback;
-    }
-
-    const titleMatch = block.match(/【([^】]+)】/);
-    if (titleMatch?.[1]) {
-        return titleMatch[1].trim();
-    }
-
-    return fallback;
-}
-
-function stripHtml(value) {
-    const template = document.createElement('template');
-    template.innerHTML = value;
-    return template.content.textContent || '';
-}
-
-function toPlainPreview(value, maxLength = 420) {
-    const text = stripHtml(value).replace(/\n{3,}/g, '\n\n').trim();
-    return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
-}
-
-function getBlockPlainText(block) {
-    return stripHtml(String(block || '')
-        .replace(/<\/?(bakemono|details)[^>]*>/gi, '')
-        .replace(/<summary[^>]*>[\s\S]*?<\/summary>/i, ''))
-        .replace(/\r\n/g, '\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-}
-
-
-function getBracketMetaLine(text) {
-    return text.split('\n').map(line => line.trim()).find(line => /^【[\s\S]+】$/.test(line)) || '';
-}
-
-function parsePreviewMeta(block) {
-    const summary = getBlockTitle(block.content, block.title);
-    const text = getBlockPlainText(block.content);
-    const metaLine = getBracketMetaLine(text);
-    const fallbackTitle = summary.replace(/[📋【】]/g, '').trim() || block.title;
-    const meta = {
-        sticker: summary || (block.type === blockTypes.EPIC ? getMultiSummaryLabel(block) : block.type === blockTypes.STAGE ? '阶段总结' : '剧情摘要手账'),
-        label: block.messageId === Number.MAX_SAFE_INTEGER ? '生成内容' : `第 ${block.messageId} 楼`,
-        title: fallbackTitle,
-        meta: metaLine || summary,
-        submeta: '',
-    };
-
-    if (block.type === blockTypes.STORY) {
-        const storyMatch = metaLine.match(/第\s*([^章：:]+)\s*章\s*[：:]\s*([^』★]+).*?★\s*([^★]+)\s*★\s*([^☆]+)\s*☆/);
-        if (storyMatch) {
-            meta.label = `第 ${storyMatch[1].trim()} 章`;
-            meta.title = storyMatch[2].trim();
-            meta.meta = storyMatch[3].trim();
-            meta.submeta = storyMatch[4].trim();
-        } else {
-            const looseChapter = text.match(/第\s*([0-9一二三四五六七八九十百千]+)\s*章\s*[：:]\s*([^\n★】]+)/);
-            if (looseChapter) {
-                meta.label = `第 ${looseChapter[1].trim()} 章`;
-                meta.title = looseChapter[2].trim();
-            }
-        }
-    } else if (block.type === blockTypes.STAGE) {
-        const stageMatch = metaLine.match(/『([^』]+)』.*?跨度[：:]\s*([^★]+).*?(当前时间点|时间跨度)[：:]\s*([^☆]+)\s*☆/);
-        if (stageMatch) {
-            meta.label = stageMatch[2].trim();
-            meta.title = stageMatch[1].trim();
-            meta.meta = `${stageMatch[3].trim()}：${stageMatch[4].trim()}`;
-        }
-    } else if (block.type === blockTypes.EPIC) {
-        const epicMatch = metaLine.match(/『([^』]+)』.*?总跨度[：:]\s*([^★]+).*?(当前时间点|时间跨度)[：:]\s*([^☆]+)\s*☆/);
-        if (epicMatch) {
-            meta.label = epicMatch[2].trim();
-            meta.title = epicMatch[1].trim();
-            meta.meta = `${epicMatch[3].trim()}：${epicMatch[4].trim()}`;
-        }
-    }
-
-    return meta;
-}
-
-function getPreferredSummaryTitle(block) {
-    const genericTitles = new Set(['剧情摘要', '📋 剧情摘要', '剧集终了·点击回看', '多次总结·长期总览', '纪元回溯·史诗简史']);
-    const manualTitle = String(block?.metadata?.userTitle || '').trim();
-    if (manualTitle) {
-        return manualTitle;
-    }
-    const title = String(block?.title || '').replace(/[【】]/g, '').trim();
-    if (block?.isGeneratedSummary && title && !genericTitles.has(title)) {
-        return title;
-    }
-    return '';
-}
-
-function getPreviewSummaryText(block) {
-    const prefix = block.type === blockTypes.EPIC ? '多次' : block.type === blockTypes.STAGE ? '阶段' : '摘要';
-    const preferredTitle = getPreferredSummaryTitle(block);
-    if (preferredTitle) {
-        return preferredTitle.startsWith(`${prefix} ·`) ? preferredTitle : `${prefix} · ${preferredTitle}`;
-    }
-    const meta = parsePreviewMeta(block);
-    const pieces = [meta.label, meta.title].filter(Boolean);
-    return `${prefix} · ${pieces.join(' · ') || meta.sticker || block.title}`;
-}
-
-function getPreviewTabs(type) {
-    const state = ensureState();
-    const layoutKey = type === blockTypes.EPIC ? 'epic' : type === blockTypes.STAGE ? 'stage' : 'story';
-    return parsePreviewLayout(state.previewLayouts[layoutKey] || defaultPreviewLayouts[layoutKey]);
-}
-
-function parsePreviewLayout(value) {
-    return String(value || '')
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map(line => {
-            const [label = '片段', section = label, style = 'normal'] = line.split('|').map(part => part.trim());
-            const modifier = style === 'bubble' ? 'bk-bubble' : style === 'tag' ? 'bk-tag-line' : '';
-            return [label, section, modifier];
-        });
-}
-
-function extractSectionText(text, label) {
-    const labels = String(label || '').split(/[，,]/).map(item => item.trim()).filter(Boolean);
-    const target = labels.find(item => text.includes(`【${item}】`) || text.includes(item));
-    if (!target) {
-        return '';
-    }
-
-    const marker = text.includes(`【${target}】`) ? `【${target}】` : target;
-    const index = text.indexOf(marker);
-    if (index < 0) {
-        return '';
-    }
-
-    const lineEnd = text.indexOf('\n', index);
-    const start = lineEnd >= 0 ? lineEnd + 1 : index + marker.length;
-    const next = text.slice(start).search(/\n\s*➤\s*/);
-    const end = next >= 0 ? start + next : text.length;
-    return text.slice(start, end).replace(/<\/?[^>]+>/g, '').trim();
-}
-
-function createTextNodeElement(tagName, className, text) {
-    const element = document.createElement(tagName);
-    if (className) {
-        element.className = className;
-    }
-    element.textContent = text;
-    return element;
-}
-
-function createBakemonoNotebook(block, index) {
-    const text = getBlockPlainText(block.content);
-    const meta = parsePreviewMeta(block);
-    const tabs = getPreviewTabs(block.type).map(([label, section, modifier]) => ({
-        label,
-        modifier,
-        content: extractSectionText(text, section),
-    }));
-    const hasSectionContent = tabs.some(tab => tab.content);
-    if (!hasSectionContent) {
-        return createFallbackPreview(block);
-    }
-
-    const outer = document.createElement('details');
-    outer.className = 'bk-notebook-outer bakemono-memory-notebook';
-
-    const summary = document.createElement('summary');
-    summary.textContent = getPreviewSummaryText(block);
-
-    const container = document.createElement('div');
-    container.className = 'bk-notebook-container';
-
-    const header = document.createElement('div');
-    header.className = 'nh-wrap';
-    header.append(
-        createTextNodeElement('div', 'nh-chap-label', meta.label),
-        createTextNodeElement('div', 'nh-title', meta.title),
-        createTextNodeElement('div', 'nh-divider', ''),
-        createTextNodeElement('div', 'nh-meta', [meta.meta, meta.submeta].filter(Boolean).join('\n')),
-    );
-
-    const layout = document.createElement('div');
-    layout.className = 'bk-tabs-layout';
-
-    const nav = document.createElement('nav');
-    nav.className = 'bk-tabs-nav';
-    nav.setAttribute('aria-label', '摘要分段');
-
-    const content = document.createElement('div');
-    content.className = 'bk-tabs-content-wrapper';
-
-    tabs.forEach((tab, tabIndex) => {
-        const panelId = `bk-panel-${block.hash}-${index}-${tabIndex}`;
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = `bk-tab-label${tabIndex === 0 ? ' is-active' : ''}`;
-        button.dataset.bakemonoPanel = panelId;
-        button.textContent = tab.label;
-
-        const panel = document.createElement('div');
-        panel.className = `bk-tab-panel${tabIndex === 0 ? ' is-active' : ''}`;
-        panel.dataset.bakemonoPanel = panelId;
-
-        const innerClass = ['bk-inner-text', tab.modifier].filter(Boolean).join(' ');
-        panel.append(createTextNodeElement('div', innerClass, tab.content || '本段暂无内容。'));
-
-        nav.append(button);
-        content.append(panel);
-    });
-
-    layout.append(nav, content);
-    container.append(header, layout, createSavedSummaryControls(block));
-    outer.append(summary, container);
-    return outer;
-}
-
-function createFallbackPreview(block) {
-    const details = document.createElement('details');
-    details.className = 'bakemono-memory-card';
-
-    const summary = document.createElement('summary');
-    summary.textContent = getPreviewSummaryText(block);
-
-    const body = document.createElement('div');
-    body.className = 'bakemono-memory-card-body';
-    body.textContent = stripHtml(block.content).trim();
-
-    details.append(summary, body, createSavedSummaryControls(block));
-    return details;
-}
-
-function createSavedSummaryControls(block) {
-    const saved = findSavedSummaryByHash(block.hash);
-    if (!saved) {
-        return document.createDocumentFragment();
-    }
-    const wrapper = document.createElement('div');
-    wrapper.className = 'bakemono-memory-summary-tools';
-    wrapper.dataset.summaryHash = block.hash;
-    wrapper.innerHTML = `
-        <div class="bakemono-memory-inline-actions">
-            <button class="menu_button" data-bakemono-summary-action="edit"><i class="fa-solid fa-pen"></i><span>编辑摘要</span></button>
-            <button class="menu_button" data-bakemono-summary-action="more"><i class="fa-solid fa-ellipsis"></i><span>更多</span></button>
-        </div>
-        <div class="bakemono-memory-summary-editor" hidden>
-            <label class="bakemono-memory-field"><span>标题</span><input class="text_pole bakemono-summary-title" type="text"></label>
-            <label class="bakemono-memory-editor"><span>正文</span><textarea class="text_pole textarea_compact bakemono-summary-content" rows="8" spellcheck="false"></textarea></label>
-            <div class="bakemono-memory-inline-actions">
-                <button class="menu_button" data-bakemono-summary-action="save"><i class="fa-solid fa-check"></i><span>保存修改</span></button>
-                <button class="menu_button" data-bakemono-summary-action="cancel"><i class="fa-solid fa-xmark"></i><span>取消</span></button>
-            </div>
-        </div>
-        <details class="bakemono-memory-danger-zone">
-            <summary>危险操作</summary>
-            <button class="menu_button danger_button" data-bakemono-summary-action="delete"><i class="fa-solid fa-trash"></i><span>删除摘要</span></button>
-        </details>
-    `;
-    wrapper.querySelector('.bakemono-summary-title').value = saved.summary.title || '';
-    wrapper.querySelector('.bakemono-summary-content').value = saved.summary.content || '';
-    wrapper.querySelector('.bakemono-memory-danger-zone').hidden = true;
-    return wrapper;
-}
-
-function getMessageVariantKey(message) {
-    if (!message || typeof message !== 'object') {
-        return '';
-    }
-    if (message.swipe_id !== undefined) {
-        return `swipe:${message.swipe_id}`;
-    }
-    if (message.swipeId !== undefined) {
-        return `swipe:${message.swipeId}`;
-    }
-    if (Array.isArray(message.swipes) && message.mes) {
-        const index = message.swipes.indexOf(message.mes);
-        if (index >= 0) {
-            return `swipe:${index}`;
-        }
-    }
-    return '';
-}
-
-function getSegmentSourceKind(segment) {
-    if (segment?.mode !== 'full') {
-        return 'tag';
-    }
-    const includeTags = parseList(ensureState().scanRules.includeTags).map(tag => tag.toLowerCase());
-    const matchedTag = String(segment.matchedTag || '').toLowerCase();
-    return includeTags.includes(matchedTag) ? 'tag' : 'raw';
-}
-
-function shouldPersistScannedBlock(block, state = ensureState()) {
-    if (block.sourceKind !== 'raw') {
-        return true;
-    }
-    return state.workflowMode !== workflowModes.GENERIC
-        || [stageSourceModes.RAW, stageSourceModes.MIXED, stageSourceModes.AUTO].includes(state.stageSourceMode);
-}
-
-function scanBakemonoBlocks({ persist = true, render = persist } = {}) {
-    const state = ensureState();
-    const scanned = [];
-    const scannedForBlocks = [];
-    const preview = [];
-    const previousBlocks = state.blocks;
-    const previousBlockByContent = new Map(previousBlocks.map(block => [block.content, block]));
-    const context = getContext();
-    const sourceChat = context.chat || chat || [];
-    const rules = state.scanRules;
-    const includeHidden = rules.includeHidden !== false;
-
-    sourceChat.forEach((message, messageId) => {
-        if (!message?.mes || (message.is_system && !includeHidden)) {
-            return;
-        }
-        extractConfiguredSegments(message?.mes, rules).forEach((segment, blockIndex) => {
-            const content = segment.content;
-            const sourceKind = getSegmentSourceKind(segment);
-            const variantKey = getMessageVariantKey(message);
-            const hash = getHash(`${segment.mode}|${segment.matchedTag}|${sourceKind}|${messageId}|${variantKey}|${blockIndex}|${content}`);
-            const type = classifyBlock(content);
-            const block = {
-                hash,
-                type,
-                messageId,
-                blockIndex,
-                title: getBlockTitle(content, `#${messageId}.${blockIndex + 1}`),
-                content,
-                matchedTag: segment.matchedTag,
-                scanMode: segment.mode,
-                sourceKind,
-                sourceIdentity: `${messageId}:${variantKey}:${segment.mode}:${segment.matchedTag}:${blockIndex}`,
-                isHidden: !!message?.is_system,
-            };
-            scanned.push(block);
-            if (shouldPersistScannedBlock(block, state)) {
-                scannedForBlocks.push(block);
-            }
-            preview.push({
-                hash,
-                type,
-                messageId,
-                blockIndex,
-                matchedTag: segment.matchedTag,
-                scanMode: segment.mode,
-                sourceKind,
-                title: block.title,
-                isHidden: !!message?.is_system,
-                preview: toPlainPreview(content, 180),
-            });
-        });
-    });
-
-    state.blocks = mergeBlocks(state.blocks, scannedForBlocks, state, { replaceScanned: true });
-    for (const block of scannedForBlocks) {
-        const previous = previousBlockByContent.get(block.content);
-        if (previous?.hash && state.coveredBlockHashes.includes(previous.hash)) {
-            state.coveredBlockHashes = unique([...state.coveredBlockHashes, block.hash]);
-        }
-        if (previous?.hash && state.coveredStageHashes.includes(previous.hash)) {
-            state.coveredStageHashes = unique([...state.coveredStageHashes, block.hash]);
-        }
-    }
-    state.scanPreview = preview.slice(-maxStoredScanPreviewItems);
-    state.lastScanMatchCount = scanned.length;
-    state.lastScanAt = new Date().toISOString();
-
-    if (persist) {
-        saveState();
-    }
-
-    syncInjection();
-    if (render) {
-        renderWorkbenchScope(workbenchRenderScopes.SCAN, `扫描完成：找到 ${scanned.length} 个可总结片段。`);
-    }
-    return state.blocks;
-}
-
-function isPersistentMemoryBlock(block, state = ensureState()) {
-    const summaryHashes = new Set([
-        ...state.storySummaries,
-        ...state.stageSummaries,
-        ...state.epicSummaries,
-    ].map(summary => summary.hash));
-    return !!block?.isGeneratedSummary
-        || summaryHashes.has(block?.hash)
-        || (Number(block?.messageId) >= Number.MAX_SAFE_INTEGER && ((block?.sourceHashes || []).length || (block?.sourceStageHashes || []).length));
-}
-
-function mergeBlocks(existing, scanned, state = ensureState(), options = {}) {
-    const scannedByHash = new Map(scanned.map(block => [block.hash, block]));
-    const scannedByLegacyContent = new Map(scanned.map(block => [block.content, block]));
-    const merged = [];
-    const seen = new Set();
-
-    for (const block of existing) {
-        const fresh = scannedByHash.get(block.hash) || (!block.matchedTag ? scannedByLegacyContent.get(block.content) : null);
-        if (fresh) {
-            merged.push({ ...block, ...fresh });
-            seen.add(block.hash);
-            seen.add(fresh.hash);
-        } else if (!options.replaceScanned || isPersistentMemoryBlock(block, state)) {
-            merged.push(block);
-            seen.add(block.hash);
-        }
-    }
-
-    for (const block of scanned) {
-        if (!seen.has(block.hash)) {
-            merged.push(block);
-        }
-    }
-
-    return merged.sort((a, b) => (getBlockSortKey(a) - getBlockSortKey(b)) || (a.blockIndex - b.blockIndex));
-}
-
-function getBlocksByType(type) {
-    return ensureState().blocks.filter(block => block.type === type);
-}
-
-
-
-
 
 async function generateStageDraft(options = {}) {
     if (isBusy) {
@@ -3460,6 +2985,71 @@ const chatStateService = createChatStateService({
     getInjectionMemoryParts: (...args) => getInjectionMemoryParts(...args),
 });
 const { ensureState, maxStoredScanPreviewItems, sanitizeCurrentChatState } = chatStateService;
+
+const contentBlockService = createContentBlockService({
+    documentRef: document,
+    getState: ensureState,
+    parseList,
+    stripConfiguredTags,
+    extractConfiguredTagBlocks,
+    matchesAnyKeyword,
+    blockTypes,
+    workflowModes,
+    stageSourceModes,
+    getBlockSortKey,
+});
+const {
+    classifyBlock,
+    extractConfiguredSegments,
+    getBlockPlainText,
+    getBlocksByType,
+    getBlockTitle,
+    getMessageVariantKey,
+    getSegmentSourceKind,
+    mergeBlocks,
+    shouldPersistScannedBlock,
+    stripHtml,
+    toPlainPreview,
+} = contentBlockService;
+
+const scanController = createScanController({
+    getState: ensureState,
+    getContext,
+    getFallbackChat: () => chat,
+    extractConfiguredSegments,
+    getSegmentSourceKind,
+    getMessageVariantKey,
+    getHash,
+    classifyBlock,
+    getBlockTitle,
+    shouldPersistScannedBlock,
+    toPlainPreview,
+    mergeBlocks,
+    unique,
+    maxStoredScanPreviewItems,
+    saveState,
+    syncInjection: (...args) => syncInjection(...args),
+    renderWorkbenchScope,
+    workbenchRenderScopes,
+});
+const { scanBakemonoBlocks } = scanController;
+
+const summaryPreviewRenderer = createSummaryPreviewRenderer({
+    documentRef: document,
+    getState: ensureState,
+    blockTypes,
+    defaultPreviewLayouts,
+    getMultiSummaryLabel,
+    getBlockTitle,
+    getBlockPlainText,
+    stripHtml,
+    findSavedSummaryByHash: (...args) => findSavedSummaryByHash(...args),
+});
+const {
+    createBakemonoNotebook,
+    getPreviewSummaryText,
+    parsePreviewMeta,
+} = summaryPreviewRenderer;
 
 const themeController = createThemeController({
     query: $,

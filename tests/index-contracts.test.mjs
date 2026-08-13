@@ -19,6 +19,7 @@ const memoryOrchestratorSource = fs.readFileSync(new URL('../src/features/memory
 const turnProcessingControllerSource = fs.readFileSync(new URL('../src/features/turn-processing-controller.js', import.meta.url), 'utf8');
 const generationClientSource = fs.readFileSync(new URL('../src/features/generation-client.js', import.meta.url), 'utf8');
 const summaryDraftServiceSource = fs.readFileSync(new URL('../src/features/summary-draft-service.js', import.meta.url), 'utf8');
+const scanControllerSource = fs.readFileSync(new URL('../src/features/scan-controller.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -584,7 +585,8 @@ test('all business mutations use scoped rendering and reserve renderAll for life
         'renderAreaPresetChange',
         'bindSettingsEvents',
     ]) {
-        assert.doesNotMatch(extractFunction(name), /\brenderAll\(/, `${name} should not refresh the whole workbench`);
+        const targetSource = name === 'scanBakemonoBlocks' ? scanControllerSource : source;
+        assert.doesNotMatch(extractFunctionFrom(targetSource, name), /\brenderAll\(/, `${name} should not refresh the whole workbench`);
     }
     assert.doesNotMatch(extractFunctionFrom(archiveControllerSource, 'hideCoveredMessages'), /\brenderAll\(/);
     assert.doesNotMatch(extractFunctionFrom(archiveControllerSource, 'restoreHiddenMessages'), /\brenderAll\(/);
@@ -596,7 +598,7 @@ test('all business mutations use scoped rendering and reserve renderAll for life
 });
 
 test('large-chat scans avoid quadratic lookup and duplicate opening renders', () => {
-    const scanSource = extractFunction('scanBakemonoBlocks');
+    const scanSource = extractFunctionFrom(scanControllerSource, 'scanBakemonoBlocks');
     const openSource = extractFunctionFrom(workbenchNavigationSource, 'open');
 
     assert.match(scanSource, /previousBlockByContent\s*=\s*new Map/);
