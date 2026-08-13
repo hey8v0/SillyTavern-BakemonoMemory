@@ -30,6 +30,7 @@ const summaryGenerationUiSource = fs.readFileSync(new URL('../src/features/summa
 const turnSummaryUiSource = fs.readFileSync(new URL('../src/features/turn-summary-ui.js', import.meta.url), 'utf8');
 const hubAutomationUiSource = fs.readFileSync(new URL('../src/features/hub-automation-ui.js', import.meta.url), 'utf8');
 const summaryBrowserUiSource = fs.readFileSync(new URL('../src/features/summary-browser-ui.js', import.meta.url), 'utf8');
+const summaryBrowserEventsSource = fs.readFileSync(new URL('../src/features/summary-browser-events.js', import.meta.url), 'utf8');
 const workbenchPageOverviewsSource = fs.readFileSync(new URL('../src/features/workbench-page-overviews.js', import.meta.url), 'utf8');
 const reviewQueueUiSource = fs.readFileSync(new URL('../src/features/review-queue-ui.js', import.meta.url), 'utf8');
 const reviewQueueEventsSource = fs.readFileSync(new URL('../src/features/review-queue-events.js', import.meta.url), 'utf8');
@@ -349,6 +350,9 @@ test('summary page keeps generation, review, and filtering in the demo hierarchy
     assert.match(source, /createSummaryBrowserUi\(\{/);
     assert.match(summaryBrowserUiSource, /function renderSections\(/);
     assert.match(summaryBrowserUiSource, /function changePage\(/);
+    assert.match(summaryBrowserEventsSource, /bakemonoPreviewType/);
+    assert.match(summaryBrowserEventsSource, /bakemonoSummaryAction/);
+    assert.doesNotMatch(source, /bakemonoPreviewType|bakemonoSummaryAction/);
     assert.match(source, /createWorkbenchPageOverviews\(\{/);
     assert.match(workbenchPageOverviewsSource, /function renderPromptOverview\(/);
     assert.match(workbenchPageOverviewsSource, /function renderInjectionOverview\(/);

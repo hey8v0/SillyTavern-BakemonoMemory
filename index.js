@@ -64,6 +64,7 @@ import { createSummaryGenerationUi } from './src/features/summary-generation-ui.
 import { createTurnSummaryUi } from './src/features/turn-summary-ui.js';
 import { createHubAutomationUi } from './src/features/hub-automation-ui.js';
 import { createSummaryBrowserUi } from './src/features/summary-browser-ui.js';
+import { createSummaryBrowserEvents } from './src/features/summary-browser-events.js';
 import { createWorkbenchPageOverviews } from './src/features/workbench-page-overviews.js';
 import { createReviewQueueUi } from './src/features/review-queue-ui.js';
 import { createReviewQueueEvents } from './src/features/review-queue-events.js';
@@ -2223,6 +2224,21 @@ const {
     render: renderTimeline,
 } = summaryTimelineUi;
 
+const summaryBrowserEvents = createSummaryBrowserEvents({
+    query: $,
+    getSummaryBrowserActiveType,
+    setSummaryBrowserActiveType,
+    changeSummaryBrowserPage,
+    renderPreviewSections,
+    stabilizeMobilePreviewScroll,
+    changeTimelinePage,
+    renderTimeline,
+    memoryRecordState,
+    renderMemoryRecordList,
+    saveEditedSummary,
+    deleteSavedSummary,
+});
+
 const turnProcessingController = createTurnProcessingController({
     getContext,
     getChat: () => chat,
@@ -2565,10 +2581,7 @@ function bindSettingsEvents() {
         applyWorkflowPreset(this.dataset.bakemonoWorkflowPreset);
     });
     reviewQueueEvents.bind();
-    $('#bakemono-workbench-root').off('click.bakemonoPreviewType').on('click.bakemonoPreviewType', '[data-bakemono-preview-type]', function () {
-        setSummaryBrowserActiveType(this.dataset.bakemonoPreviewType || 'story');
-        renderPreviewSections();
-    });
+    summaryBrowserEvents.bind();
     $('#bakemono-workbench-root').off('click.bakemonoSummaryMode').on('click.bakemonoSummaryMode', '[data-bakemono-summary-mode]', function () {
         const nextMode = this.dataset.bakemonoSummaryMode || 'stage';
         if (!['stage', 'epic', 'batch'].includes(nextMode)) {
@@ -2594,60 +2607,6 @@ function bindSettingsEvents() {
     });
     $('#bakemono-memory-export-maintenance').off('click').on('click', () => {
         exportMaintenanceTransactions();
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoPreviewPage').on('click.bakemonoPreviewPage', '[data-bakemono-preview-page]', function () {
-        const type = this.dataset.bakemonoPreviewType || getSummaryBrowserActiveType();
-        const direction = this.dataset.bakemonoPreviewPage === 'next' ? 1 : -1;
-        changeSummaryBrowserPage(type, direction);
-        renderPreviewSections();
-        stabilizeMobilePreviewScroll();
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoPreviewNotebookScroll').on('click.bakemonoPreviewNotebookScroll', '.bakemono-memory-notebook > summary, .bakemono-memory-card > summary', () => {
-        stabilizeMobilePreviewScroll();
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoTimelinePage').on('click.bakemonoTimelinePage', '[data-bakemono-timeline-page]', function () {
-        const direction = this.dataset.bakemonoTimelinePage === 'next' ? 1 : -1;
-        changeTimelinePage(direction);
-        renderTimeline();
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoRecordPage').on('click.bakemonoRecordPage', '[data-bakemono-record-page]', function () {
-        const direction = this.dataset.bakemonoRecordPage === 'next' ? 1 : -1;
-        memoryRecordState.page = Math.max(0, (memoryRecordState.page || 0) + direction);
-        renderMemoryRecordList();
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoNotebook').on('click.bakemonoNotebook', '.bk-tab-label', function () {
-        const layout = this.closest('.bk-tabs-layout');
-        if (!layout) {
-            return;
-        }
-        const panelId = this.dataset.bakemonoPanel;
-        layout.querySelectorAll('.bk-tab-label').forEach(tab => tab.classList.toggle('is-active', tab === this));
-        layout.querySelectorAll('.bk-tab-panel').forEach(panel => panel.classList.toggle('is-active', panel.dataset.bakemonoPanel === panelId));
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoSummaryAction').on('click.bakemonoSummaryAction', '[data-bakemono-summary-action]', function () {
-        const tools = this.closest('.bakemono-memory-summary-tools');
-        const hash = tools?.dataset.summaryHash;
-        if (!tools || !hash) {
-            return;
-        }
-        const action = this.dataset.bakemonoSummaryAction;
-        const editor = tools.querySelector('.bakemono-memory-summary-editor');
-        const danger = tools.querySelector('.bakemono-memory-danger-zone');
-        if (action === 'edit') {
-            editor.hidden = false;
-        } else if (action === 'more') {
-            danger.hidden = !danger.hidden;
-        } else if (action === 'cancel') {
-            editor.hidden = true;
-        } else if (action === 'save') {
-            saveEditedSummary(
-                hash,
-                tools.querySelector('.bakemono-summary-title')?.value || '',
-                tools.querySelector('.bakemono-summary-content')?.value || '',
-            );
-        } else if (action === 'delete') {
-            deleteSavedSummary(hash);
-        }
     });
     $('#bakemono-workbench-root').off('click.bakemonoTableDraftAction').on('click.bakemonoTableDraftAction', '[data-bakemono-table-draft-action]', function (event) {
         event.preventDefault();
