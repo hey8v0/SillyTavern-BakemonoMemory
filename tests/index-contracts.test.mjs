@@ -34,6 +34,7 @@ const workbenchPageOverviewsSource = fs.readFileSync(new URL('../src/features/wo
 const reviewQueueUiSource = fs.readFileSync(new URL('../src/features/review-queue-ui.js', import.meta.url), 'utf8');
 const maintenanceUiSource = fs.readFileSync(new URL('../src/features/maintenance-ui.js', import.meta.url), 'utf8');
 const summaryTimelineUiSource = fs.readFileSync(new URL('../src/features/summary-timeline-ui.js', import.meta.url), 'utf8');
+const presetControlsUiSource = fs.readFileSync(new URL('../src/features/preset-controls-ui.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -716,6 +717,9 @@ test('every config-bearing tab refreshes its own preset selectors', () => {
     ]) {
         assert.ok(presetSource.includes(required), `missing active-tab preset render: ${required}`);
     }
+    assert.match(source, /createPresetControlsUi\(\{/);
+    assert.match(presetControlsUiSource, /function renderPresetControlPair\(/);
+    assert.match(presetControlsUiSource, /function renderAreaPresetControl\(/);
 });
 
 test('custom themes stay token-only, global, and importable as JSON', () => {

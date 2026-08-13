@@ -68,6 +68,7 @@ import { createWorkbenchPageOverviews } from './src/features/workbench-page-over
 import { createReviewQueueUi } from './src/features/review-queue-ui.js';
 import { createMaintenanceUi } from './src/features/maintenance-ui.js';
 import { createSummaryTimelineUi } from './src/features/summary-timeline-ui.js';
+import { createPresetControlsUi } from './src/features/preset-controls-ui.js';
 import { createGlobalSettingsService } from './src/core/global-settings-service.js';
 import { createChatStateService } from './src/core/chat-state-service.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
@@ -1241,6 +1242,24 @@ const {
     setSelectedTablePromptPresetId,
     syncGlobalActiveConfigToState,
 } = presetRegistry;
+
+const presetControlsUi = createPresetControlsUi({
+    documentRef: document,
+    query: $,
+    areaPresetScopes,
+    getSelectedPromptPresetId,
+    getPromptPresets,
+    getActiveGlobalConfig,
+    getSelectedAreaPresetId,
+    getAreaPresets,
+    unique,
+});
+const {
+    renderAll: renderPromptPresetControls,
+    renderAreaPresetControl,
+    renderCustomModelOptions,
+    renderPresetControlPair,
+} = presetControlsUi;
 
 const chatStateService = createChatStateService({
     defaultState,
@@ -2728,81 +2747,6 @@ function getKindLabel(kind) {
     }
     return '阶段总结';
 }
-
-function renderPromptPresetControls() {
-    renderPresetControlPair('#bakemono-memory-preset-select', '#bakemono-memory-preset-name');
-    renderAreaPresetControl(areaPresetScopes.SCAN, '#bakemono-memory-scan-preset-select', '#bakemono-memory-scan-preset-name');
-    renderAreaPresetControl(areaPresetScopes.AUTOMATION, '#bakemono-memory-automation-preset-select', '#bakemono-memory-automation-preset-name');
-    renderAreaPresetControl(areaPresetScopes.API, '#bakemono-memory-api-preset-select', '#bakemono-memory-api-preset-name');
-    renderAreaPresetControl(areaPresetScopes.PROMPTS, '#bakemono-memory-prompts-preset-select', '#bakemono-memory-prompts-preset-name');
-    renderAreaPresetControl(areaPresetScopes.TURN, '#bakemono-memory-turn-preset-select', '#bakemono-memory-turn-preset-name');
-    renderAreaPresetControl(areaPresetScopes.INJECTION, '#bakemono-memory-injection-preset-select', '#bakemono-memory-injection-preset-name');
-    renderAreaPresetControl(areaPresetScopes.VECTOR, '#bakemono-memory-vector-preset-select', '#bakemono-memory-vector-preset-name');
-}
-
-function renderPresetControlPair(selectSelector, nameSelector) {
-    const select = document.querySelector(selectSelector);
-    if (!select) {
-        return;
-    }
-
-    const selectedId = getSelectedPromptPresetId();
-    const presets = getPromptPresets();
-    select.innerHTML = '';
-    for (const preset of presets) {
-        const option = document.createElement('option');
-        option.value = preset.id;
-        option.textContent = preset.name || '未命名预设';
-        select.append(option);
-    }
-    select.value = presets.some(preset => preset.id === selectedId) ? selectedId : (presets[0]?.id || '');
-
-    const selected = presets.find(preset => preset.id === select.value);
-    $(nameSelector).val(selected?.name || '');
-    const active = getActiveGlobalConfig();
-    $('#bakemono-memory-active-config-status').text(
-        `当前共用设置：${active?.name || '未设置'}。所有角色卡在打开或切换时自动同步；剧情摘要、草稿、表格行和向量索引仍按聊天单独保存。`,
-    );
-}
-
-function renderAreaPresetControl(scope, selectSelector, nameSelector) {
-    const select = document.querySelector(selectSelector);
-    if (!select) {
-        return;
-    }
-
-    const selectedId = getSelectedAreaPresetId(scope);
-    select.innerHTML = '';
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = '选择已保存配置';
-    select.append(placeholder);
-    for (const preset of getAreaPresets(scope)) {
-        const option = document.createElement('option');
-        option.value = preset.id;
-        option.textContent = preset.name || '未命名配置';
-        select.append(option);
-    }
-    select.value = selectedId;
-
-    const selected = getAreaPresets(scope).find(preset => preset.id === select.value);
-    $(nameSelector).val(selected?.name || '');
-}
-
-function renderCustomModelOptions(models = []) {
-    const list = document.querySelector('#bakemono-memory-custom-model-options');
-    if (!list) {
-        return;
-    }
-    list.innerHTML = '';
-    for (const model of unique(models.map(item => String(item || '').trim()).filter(Boolean)).sort()) {
-        const option = document.createElement('option');
-        option.value = model;
-        list.append(option);
-    }
-}
-
-
 
 function bindAreaPresetControls(scope, ids) {
     $(ids.select).off('change').on('change', function () {
