@@ -17,6 +17,14 @@ export function createScanController({
     syncInjection,
     renderWorkbenchScope,
     workbenchRenderScopes,
+    query,
+    readRuleFieldsFromUi,
+    persistSharedConfigurationFromState,
+    toastr,
+    confirmDanger,
+    defaultScanRules,
+    defaultClassificationRules,
+    defaultPreviewLayouts,
 }) {
     function scanBakemonoBlocks({ persist = true, render = persist } = {}) {
         const state = getState();
@@ -97,5 +105,30 @@ export function createScanController({
         return state.blocks;
     }
 
-    return { scanBakemonoBlocks };
+    function bindEvents() {
+        query('#bakemono-memory-apply-rules').off('click').on('click', () => {
+            const state = getState();
+            readRuleFieldsFromUi(state);
+            scanBakemonoBlocks({ persist: false });
+            persistSharedConfigurationFromState(state);
+            renderWorkbenchScope(workbenchRenderScopes.SCAN, '扫描规则已应用、刷新预览并同步到所有角色卡。');
+            toastr.success('扫描规则已全局保存。');
+        });
+        query('#bakemono-memory-reset-rules').off('click').on('click', () => {
+            const confirmed = confirmDanger(
+                '恢复默认扫描与预览规则？',
+                ['当前扫描标签、排除标签、分类关键词和手账分段规则会被默认值覆盖。'],
+            );
+            if (!confirmed) return;
+            const state = getState();
+            state.scanRules = structuredClone(defaultScanRules);
+            state.classificationRules = structuredClone(defaultClassificationRules);
+            state.previewLayouts = structuredClone(defaultPreviewLayouts);
+            scanBakemonoBlocks({ persist: false });
+            persistSharedConfigurationFromState(state);
+            renderWorkbenchScope(workbenchRenderScopes.SCAN, '扫描规则已恢复默认。');
+        });
+    }
+
+    return { bindEvents, scanBakemonoBlocks };
 }

@@ -579,6 +579,14 @@ test('closed workbench and background queues avoid heavy DOM rendering', () => {
     assert.match(queueProgressSource, /renderScope\(workbenchRenderScopes\.DRAFTS/);
 });
 
+test('scan rules and scanning share one controller boundary', () => {
+    assert.match(scanControllerSource, /function scanBakemonoBlocks\(/);
+    assert.match(scanControllerSource, /function bindEvents\(/);
+    assert.match(scanControllerSource, /bakemono-memory-apply-rules/);
+    assert.match(scanControllerSource, /bakemono-memory-reset-rules/);
+    assert.doesNotMatch(source, /bakemono-memory-apply-rules|bakemono-memory-reset-rules/);
+});
+
 test('vector, draft, and table actions use page-scoped rendering', () => {
     const scopedRenderSource = extractFunctionFrom(workbenchRendererSource, 'renderScope');
     assert.doesNotMatch(scopedRenderSource, /renderAll\(/);
