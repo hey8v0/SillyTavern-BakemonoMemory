@@ -391,7 +391,7 @@ const chatStateService = createChatStateService({
     defaultVectorMemory,
     migrateVectorQueryRewritePrompt,
     unique,
-    getActiveCoveredStageHashes,
+    getActiveCoveredStageHashes: (...args) => getActiveCoveredStageHashes(...args),
     getInjectionMemoryParts: (...args) => getInjectionMemoryParts(...args),
 });
 const { ensureState, maxStoredScanPreviewItems, sanitizeCurrentChatState } = chatStateService;
@@ -676,7 +676,7 @@ const tableStateService = createTableStateService({
     saveGlobalSettings,
     findMatchingTable,
     mergeTableSchemaWithRows,
-    updateInjectionFromSummaries,
+    updateInjectionFromSummaries: (...args) => updateInjectionFromSummaries(...args),
     saveState,
     getFiniteMessageIds,
     toastr,
@@ -736,7 +736,7 @@ const tableMemoryModel = createTableMemoryModel({
     pushTableUndoSnapshot,
     normalizeTableText,
     saveCurrentTableProfileRows,
-    updateInjectionFromSummaries,
+    updateInjectionFromSummaries: (...args) => updateInjectionFromSummaries(...args),
 });
 const {
     applyTableOperations,
@@ -754,13 +754,13 @@ const {
 
 const tableWorkflowController = createTableWorkflowController({
     getState: ensureState,
-    findLatestAssistantTurn,
+    findLatestAssistantTurn: (...args) => findLatestAssistantTurn(...args),
     toastr,
-    buildLatestTurnBlocks,
+    buildLatestTurnBlocks: (...args) => buildLatestTurnBlocks(...args),
     runGeneration,
-    callGenerationModel,
+    callGenerationModel: (...args) => callGenerationModel(...args),
     buildTableEditPrompt,
-    buildTurnReferenceSystemPrompt,
+    buildTurnReferenceSystemPrompt: (...args) => buildTurnReferenceSystemPrompt(...args),
     createTableEditDraft,
     saveState,
     renderWorkbenchScope,
@@ -794,7 +794,7 @@ const tableWorkbenchUi = createTableWorkbenchUi({
     normalizeImportedTablesFromJson,
     confirmDanger,
     syncCurrentTableSchemas,
-    updateInjectionFromSummaries,
+    updateInjectionFromSummaries: (...args) => updateInjectionFromSummaries(...args),
     parseList,
     getHash,
     getNextTableIndex,
@@ -1019,7 +1019,7 @@ const vectorMemoryService = createVectorMemoryService({
     createLocalEmbedding,
     getCustomEmbeddingsUrl,
     readVectorMemoryFieldsFromUi,
-    syncInjection,
+    syncInjection: (...args) => syncInjection(...args),
     renderWorkbenchScope,
     workbenchRenderScopes,
     toastr,
@@ -1072,7 +1072,7 @@ const vectorActionsController = createVectorActionsController({
     getVectorSourceSignature,
     markVectorIndexDirty,
     retrieveVectorMemoryHits,
-    syncInjection,
+    syncInjection: (...args) => syncInjection(...args),
     renderWorkbenchScope,
     workbenchRenderScopes,
     saveState,
@@ -1934,7 +1934,9 @@ const workbenchShellEvents = createWorkbenchShellEvents({
     renderWorkbenchScope,
 });
 
-const getKindLabel = kind => getSummaryKindLabel(kind, blockTypes);
+function getKindLabel(kind) {
+    return getSummaryKindLabel(kind, blockTypes);
+}
 
 function bindSettingsEvents() {
     workbenchShellEvents.bind();

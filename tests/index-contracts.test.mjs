@@ -919,3 +919,15 @@ test('table-memory injection toggle persists immediately before page refresh', (
     assert.match(tableManagementEventsSource, /query\('#bakemono-memory-table-inject-memory'\)\.off\('change\.bakemonoTableInjection'\)/);
     assert.match(tableManagementEventsSource, /state\.tableDatabase\.injectMemory = !!this\.checked;[\s\S]*?persistSharedConfigurationFromState\(state\);/);
 });
+
+test('entry assembly keeps forward dependencies lazy until their modules exist', () => {
+    assert.match(source, /getActiveCoveredStageHashes:\s*\(\.\.\.args\) => getActiveCoveredStageHashes\(\.\.\.args\)/);
+    assert.equal((source.match(/updateInjectionFromSummaries:\s*\(\.\.\.args\) => updateInjectionFromSummaries\(\.\.\.args\)/g) || []).length, 3);
+    assert.match(source, /findLatestAssistantTurn:\s*\(\.\.\.args\) => findLatestAssistantTurn\(\.\.\.args\)/);
+    assert.match(source, /buildLatestTurnBlocks:\s*\(\.\.\.args\) => buildLatestTurnBlocks\(\.\.\.args\)/);
+    assert.match(source, /callGenerationModel:\s*\(\.\.\.args\) => callGenerationModel\(\.\.\.args\)/);
+    assert.match(source, /buildTurnReferenceSystemPrompt:\s*\(\.\.\.args\) => buildTurnReferenceSystemPrompt\(\.\.\.args\)/);
+    assert.equal((source.match(/syncInjection:\s*\(\.\.\.args\) => syncInjection\(\.\.\.args\)/g) || []).length, 3);
+    assert.match(source, /function getKindLabel\(kind\)/);
+    assert.doesNotMatch(source, /const getKindLabel\s*=/);
+});
