@@ -32,6 +32,7 @@ const hubAutomationUiSource = fs.readFileSync(new URL('../src/features/hub-autom
 const summaryBrowserUiSource = fs.readFileSync(new URL('../src/features/summary-browser-ui.js', import.meta.url), 'utf8');
 const workbenchPageOverviewsSource = fs.readFileSync(new URL('../src/features/workbench-page-overviews.js', import.meta.url), 'utf8');
 const reviewQueueUiSource = fs.readFileSync(new URL('../src/features/review-queue-ui.js', import.meta.url), 'utf8');
+const reviewQueueEventsSource = fs.readFileSync(new URL('../src/features/review-queue-events.js', import.meta.url), 'utf8');
 const maintenanceUiSource = fs.readFileSync(new URL('../src/features/maintenance-ui.js', import.meta.url), 'utf8');
 const summaryTimelineUiSource = fs.readFileSync(new URL('../src/features/summary-timeline-ui.js', import.meta.url), 'utf8');
 const presetControlsUiSource = fs.readFileSync(new URL('../src/features/preset-controls-ui.js', import.meta.url), 'utf8');
@@ -382,6 +383,10 @@ test('review desk keeps drafts first while preserving task and history operation
     assert.match(reviewQueueUiSource, /function renderDrafts\(/);
     assert.match(reviewQueueUiSource, /function renderHistory\(/);
     assert.match(reviewQueueUiSource, /function renderTaskQueue\(/);
+    assert.match(reviewQueueEventsSource, /bakemonoDraftAction/);
+    assert.match(reviewQueueEventsSource, /bakemonoTaskAction/);
+    assert.match(reviewQueueEventsSource, /bakemonoAutoTransaction/);
+    assert.doesNotMatch(source, /bakemonoDraftAction|bakemonoTaskAction|bakemonoAutoTransaction/);
     assert.match(source, /data-bakemono-draft-editor-toggle/);
     assert.match(source, /bakemono-memory-draft-editor-disclosure/);
     assert.match(source, /data-bakemono-draft-action="commit"/);

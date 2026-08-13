@@ -66,6 +66,7 @@ import { createHubAutomationUi } from './src/features/hub-automation-ui.js';
 import { createSummaryBrowserUi } from './src/features/summary-browser-ui.js';
 import { createWorkbenchPageOverviews } from './src/features/workbench-page-overviews.js';
 import { createReviewQueueUi } from './src/features/review-queue-ui.js';
+import { createReviewQueueEvents } from './src/features/review-queue-events.js';
 import { createMaintenanceUi } from './src/features/maintenance-ui.js';
 import { createSummaryTimelineUi } from './src/features/summary-timeline-ui.js';
 import { createPresetControlsUi } from './src/features/preset-controls-ui.js';
@@ -2374,6 +2375,28 @@ const {
     retryQueueTask,
 } = summaryTaskQueue;
 
+const reviewQueueEvents = createReviewQueueEvents({
+    query: $,
+    globalRef: globalThis,
+    getIsBusy: () => isBusy,
+    toastr,
+    getState: ensureState,
+    saveState,
+    setReviewPanelView,
+    renderReviewPanelTabs,
+    stabilizeMobileWorkbenchScroll,
+    renderWorkbenchScope,
+    workbenchRenderScopes,
+    commitDraft,
+    regenerateDraft,
+    discardDraft,
+    retryQueueTask,
+    removeQueueTask,
+    rollbackAutoSummaryTransaction,
+    changeHistoryPage,
+    renderHistory,
+});
+
 workbenchRenderer = createWorkbenchRenderer({
     documentRef: document,
     globalRef: globalThis,
@@ -2541,82 +2564,7 @@ function bindSettingsEvents() {
     $('#bakemono-workbench-root').off('click.bakemonoWorkflow').on('click.bakemonoWorkflow', '[data-bakemono-workflow-preset]', function () {
         applyWorkflowPreset(this.dataset.bakemonoWorkflowPreset);
     });
-    $('#bakemono-workbench-root').off('click.bakemonoReviewView').on('click.bakemonoReviewView', '[data-bakemono-review-view]', function () {
-        const nextView = String(this.dataset.bakemonoReviewView || 'drafts');
-        if (!['drafts', 'tasks', 'history'].includes(nextView)) {
-            return;
-        }
-        setReviewPanelView(nextView);
-        renderReviewPanelTabs();
-        stabilizeMobileWorkbenchScroll('drafts');
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoDraftEditorToggle').on('click.bakemonoDraftEditorToggle', '[data-bakemono-draft-editor-toggle]', function () {
-        const card = this.closest('.bakemono-memory-draft-card');
-        const details = card?.querySelector('.bakemono-memory-draft-editor-disclosure');
-        if (!details) {
-            return;
-        }
-        details.open = true;
-        globalThis.requestAnimationFrame?.(() => details.querySelector('.bakemono-memory-draft-editor')?.focus());
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoDraftAction').on('click.bakemonoDraftAction', '[data-bakemono-draft-action]', async function () {
-        if (isBusy) {
-            toastr.info('已有总结任务正在进行，请稍等。');
-            return;
-        }
-        const card = this.closest('.bakemono-memory-draft-card');
-        const draftId = card?.dataset.draftId;
-        if (!draftId) {
-            return;
-        }
-        const action = this.dataset.bakemonoDraftAction;
-        const draft = ensureState().drafts.find(item => item.id === draftId);
-        if (draft) {
-            draft.title = String(card.querySelector('.bakemono-memory-draft-title')?.value || draft.title || '').trim();
-        }
-        if (action === 'commit') {
-            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '正在保存草稿...');
-            await commitDraft(draftId, card.querySelector('.bakemono-memory-draft-editor')?.value || '');
-        } else if (action === 'regenerate') {
-            this.disabled = true;
-            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '正在重新总结草稿，请稍等...');
-            await regenerateDraft(draftId);
-        } else if (action === 'discard') {
-            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '正在丢弃草稿...');
-            discardDraft(draftId);
-        }
-    });
-    $('#bakemono-workbench-root').off('input.bakemonoDraftTitle').on('input.bakemonoDraftTitle', '.bakemono-memory-draft-title', function () {
-        const draftId = this.closest('.bakemono-memory-draft-card')?.dataset.draftId;
-        const draft = ensureState().drafts.find(item => item.id === draftId);
-        if (!draft) {
-            return;
-        }
-        draft.title = String(this.value || '').trim();
-        saveState();
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoTaskAction').on('click.bakemonoTaskAction', '[data-bakemono-task-action]', function () {
-        const row = this.closest('.bakemono-memory-task-item');
-        const taskId = row?.dataset.taskId;
-        if (!taskId) {
-            return;
-        }
-        if (this.dataset.bakemonoTaskAction === 'retry') {
-            retryQueueTask(taskId);
-        } else if (this.dataset.bakemonoTaskAction === 'remove') {
-            removeQueueTask(taskId);
-        }
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoAutoTransaction').on('click.bakemonoAutoTransaction', '[data-bakemono-auto-tx-action]', async function () {
-        const row = this.closest('.bakemono-memory-auto-tx-item');
-        const transactionId = row?.dataset.transactionId;
-        if (!transactionId) {
-            return;
-        }
-        if (this.dataset.bakemonoAutoTxAction === 'rollback') {
-            await rollbackAutoSummaryTransaction(transactionId);
-        }
-    });
+    reviewQueueEvents.bind();
     $('#bakemono-workbench-root').off('click.bakemonoPreviewType').on('click.bakemonoPreviewType', '[data-bakemono-preview-type]', function () {
         setSummaryBrowserActiveType(this.dataset.bakemonoPreviewType || 'story');
         renderPreviewSections();
@@ -2656,11 +2604,6 @@ function bindSettingsEvents() {
     });
     $('#bakemono-workbench-root').off('click.bakemonoPreviewNotebookScroll').on('click.bakemonoPreviewNotebookScroll', '.bakemono-memory-notebook > summary, .bakemono-memory-card > summary', () => {
         stabilizeMobilePreviewScroll();
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoHistoryPage').on('click.bakemonoHistoryPage', '[data-bakemono-history-page]', function () {
-        const direction = this.dataset.bakemonoHistoryPage === 'next' ? 1 : -1;
-        changeHistoryPage(direction);
-        renderHistory();
     });
     $('#bakemono-workbench-root').off('click.bakemonoTimelinePage').on('click.bakemonoTimelinePage', '[data-bakemono-timeline-page]', function () {
         const direction = this.dataset.bakemonoTimelinePage === 'next' ? 1 : -1;
