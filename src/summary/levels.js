@@ -17,3 +17,9 @@ export function getMultiSummaryLabel(levelOrItem = 2) {
     if (level === 3) return '长期总览';
     return `长期总览 L${level}`;
 }
+
+export function getSummaryKindLabel(kind, blockTypes) {
+    if (kind === blockTypes.STORY) return '剧情摘要';
+    if (kind === blockTypes.EPIC) return '多次总结';
+    return '阶段总结';
+}
