@@ -35,6 +35,7 @@ const reviewQueueUiSource = fs.readFileSync(new URL('../src/features/review-queu
 const maintenanceUiSource = fs.readFileSync(new URL('../src/features/maintenance-ui.js', import.meta.url), 'utf8');
 const summaryTimelineUiSource = fs.readFileSync(new URL('../src/features/summary-timeline-ui.js', import.meta.url), 'utf8');
 const presetControlsUiSource = fs.readFileSync(new URL('../src/features/preset-controls-ui.js', import.meta.url), 'utf8');
+const workbenchHeaderUiSource = fs.readFileSync(new URL('../src/features/workbench-header-ui.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -82,10 +83,11 @@ test('workbench menu branding reuses the clapperboard entry icon', () => {
 test('mobile header keeps one compact static injection state', () => {
     assert.match(settingsSource, /id="bakemono-memory-injection-badge"[^>]*role="status"[^>]*aria-live="polite"/);
     assert.doesNotMatch(settingsSource, /bakemono-workbench-context-trigger|bakemono-workbench-context-popover|bakemono-workbench-context-caret/);
-    assert.match(source, /function getWorkbenchPanelShortKicker\(/);
-    assert.match(source, /short: '注入开'/);
-    assert.match(source, /short: '注入空'/);
-    assert.match(source, /short: '注入关'/);
+    assert.match(source, /createWorkbenchHeaderUi\(\{/);
+    assert.match(workbenchHeaderUiSource, /function getPanelShortKicker\(/);
+    assert.match(workbenchHeaderUiSource, /short: '注入开'/);
+    assert.match(workbenchHeaderUiSource, /short: '注入空'/);
+    assert.match(workbenchHeaderUiSource, /short: '注入关'/);
     assert.doesNotMatch(source, /function setWorkbenchContextOpen\(/);
     assert.match(styleSource, /grid-template-rows:\s*70px minmax\(0, 1fr\)/);
     assert.match(styleSource, /\.bakemono-workbench-header\s*\{[^}]*min-height:\s*70px;/s);
