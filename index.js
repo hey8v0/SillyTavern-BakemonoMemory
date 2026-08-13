@@ -66,6 +66,8 @@ import { createHubAutomationUi } from './src/features/hub-automation-ui.js';
 import { createSummaryBrowserUi } from './src/features/summary-browser-ui.js';
 import { createWorkbenchPageOverviews } from './src/features/workbench-page-overviews.js';
 import { createReviewQueueUi } from './src/features/review-queue-ui.js';
+import { createMaintenanceUi } from './src/features/maintenance-ui.js';
+import { createSummaryTimelineUi } from './src/features/summary-timeline-ui.js';
 import { createGlobalSettingsService } from './src/core/global-settings-service.js';
 import { createChatStateService } from './src/core/chat-state-service.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
@@ -907,10 +909,6 @@ const defaultState = {
 let isBusy = false;
 let scheduledRenderHandle = null;
 let scheduledRenderStatus = '';
-const timelinePageSize = 25;
-const timelineState = {
-    page: 0,
-};
 const tableUiState = {
     openTableIndex: '',
     focusCell: null,
@@ -2301,6 +2299,44 @@ const {
     setActiveView: setReviewPanelView,
 } = reviewQueueUi;
 
+const maintenanceUi = createMaintenanceUi({
+    documentRef: document,
+    query: $,
+    getState: ensureState,
+    getActualHiddenMessageIds,
+    getFiniteMessageIds,
+    formatSourceRange,
+    getKindLabel,
+    unique,
+    escapeHtml,
+    BlobCtor: Blob,
+    urlApi: URL,
+    notifySuccess: message => toastr.success(message),
+});
+const {
+    exportTransactions: exportMaintenanceTransactions,
+    renderAutoSummaryTransactions,
+    renderOverview: renderMaintenanceOverview,
+} = maintenanceUi;
+
+const summaryTimelineUi = createSummaryTimelineUi({
+    documentRef: document,
+    getState: ensureState,
+    getStoryBlocks,
+    getBlocksByType,
+    blockTypes,
+    dedupeByHash,
+    summaryToBlock,
+    unique,
+    getMultiSummaryLabel,
+    getKindLabel,
+    getBlockTitle,
+});
+const {
+    changePage: changeTimelinePage,
+    render: renderTimeline,
+} = summaryTimelineUi;
+
 const turnProcessingController = createTurnProcessingController({
     getContext,
     getChat: () => chat,
@@ -2681,350 +2717,6 @@ function syncPromptHintButtons() {
             title.append(hint);
         }
     });
-}
-
-function renderAutoSummaryTransactions(container, state = ensureState(), options = {}) {
-    const transactions = (state.autoSummaryTransactions || [])
-        .filter(transaction => transaction.status !== 'rolled_back')
-        .slice(0, 8);
-    if (!transactions.length) {
-        return;
-    }
-
-    const panel = document.createElement('div');
-    panel.className = 'bakemono-memory-auto-tx-list';
-    if (options.showTitle !== false) {
-        const title = document.createElement('div');
-        title.className = 'bakemono-memory-auto-tx-title';
-        title.innerHTML = '<i class="fa-solid fa-shield-halved"></i><strong>自动总结回滚</strong><span>只处理自动保存并自动隐藏的总结</span>';
-        panel.append(title);
-    }
-
-    for (const transaction of transactions) {
-        const item = document.createElement('div');
-        item.className = `bakemono-memory-auto-tx-item is-${transaction.status || 'active'}`;
-        item.dataset.transactionId = transaction.id;
-        const sourceRange = formatSourceRange(transaction.sourceMessageIds || []);
-        const hiddenCount = getFiniteMessageIds(transaction.hiddenMessageIds || []).length;
-        const invalidIds = getFiniteMessageIds(transaction.invalidatedMessageIds || []);
-        item.innerHTML = `
-            <div class="bakemono-memory-auto-tx-main">
-                <strong>${escapeHtml(transaction.summaryTitle || getKindLabel(transaction.kind) || '自动总结')}</strong>
-                <span>${transaction.status === 'needs_review' ? '来源楼层已变更' : '已记录'} · ${sourceRange || '未知范围'} · 可恢复 ${hiddenCount} 楼</span>
-                ${invalidIds.length ? `<em>变更楼层：${invalidIds.map(id => `#${id}`).join('、')}</em>` : ''}
-            </div>
-            <div class="bakemono-memory-task-actions">
-                <button class="menu_button danger" data-bakemono-auto-tx-action="rollback">
-                    <i class="fa-solid fa-rotate-left"></i>
-                    <span>回滚</span>
-                </button>
-            </div>
-        `;
-        panel.append(item);
-    }
-    container.append(panel);
-}
-
-function getMaintenanceRecordTimestamp(item = {}) {
-    const value = item.createdAt || item.appliedAt || item.rolledBackAt || item.undoneAt || '';
-    const timestamp = value ? new Date(value).getTime() : 0;
-    return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-function renderMaintenanceOverview(state = ensureState()) {
-    const latest = state.history?.[0] || null;
-    const autoTransactions = (state.autoSummaryTransactions || []).filter(item => item.status !== 'rolled_back');
-    const latestAuto = latest
-        ? autoTransactions.find(item => item.summaryHash === latest.summaryHash)
-        : null;
-    const sourceIds = unique(getFiniteMessageIds([
-        ...(latest?.summary?.sourceMessageIds || []),
-        ...(latest?.draft?.sourceMessageIds || []),
-    ]));
-    const coveredCount = (latest?.coveredBlockHashes || []).length + (latest?.coveredStageHashes || []).length;
-    const hiddenCount = latestAuto ? getFiniteMessageIds(latestAuto.hiddenMessageIds || []).length : 0;
-    const latestTitle = latest?.summary?.title || latest?.draft?.title || (latest ? getKindLabel(latest.kind) : '暂无可撤回记录');
-    const impact = [];
-    if (latest) {
-        impact.push(`${getKindLabel(latest.kind) || '总结'} 1 条`);
-        if (sourceIds.length) impact.push(`来源 ${sourceIds.length} 楼`);
-        if (coveredCount) impact.push(`覆盖标记 ${coveredCount} 个`);
-        if (hiddenCount) impact.push(`可恢复 ${hiddenCount} 楼`);
-    }
-    $('#bakemono-memory-maintenance-latest-title').text(latestTitle);
-    $('#bakemono-memory-maintenance-latest-impact').text(latest
-        ? `影响：${impact.join('、')}。撤回前仍会再次确认。`
-        : '保存阶段总结或多次总结后，这里会先列出影响范围。');
-    $('#bakemono-memory-maintenance-undo')
-        .prop('disabled', !latest)
-        .attr('title', latest ? `撤回「${latestTitle}」` : '暂无可撤回记录');
-
-    $('#bakemono-memory-maintenance-hidden-count').text(getActualHiddenMessageIds().length.toLocaleString());
-    $('#bakemono-memory-maintenance-task-count').text((state.taskQueue || []).length.toLocaleString());
-    $('#bakemono-memory-maintenance-snapshot-count').text((state.tableDatabase?.undoStack || []).length.toLocaleString());
-    $('#bakemono-memory-maintenance-auto-count').text(`${autoTransactions.length.toLocaleString()} 条`);
-
-    const autoContainer = document.querySelector('#bakemono-memory-maintenance-auto-transactions');
-    if (autoContainer) {
-        autoContainer.innerHTML = '';
-        renderAutoSummaryTransactions(autoContainer, state, { showTitle: false });
-        if (!autoContainer.childElementCount) {
-            const empty = document.createElement('div');
-            empty.className = 'bakemono-memory-maintenance-empty';
-            empty.innerHTML = '<i class="fa-solid fa-shield-heart"></i><span><strong>暂无待处理事务</strong><small>自动保存并隐藏楼层后，可回滚记录会出现在这里。</small></span>';
-            autoContainer.append(empty);
-        }
-    }
-
-    const recordContainer = document.querySelector('#bakemono-memory-maintenance-records');
-    if (!recordContainer) {
-        return;
-    }
-    recordContainer.innerHTML = '';
-    const summaryRecords = (state.history || []).map(item => ({
-        type: 'summary',
-        title: item.summary?.title || item.draft?.title || getKindLabel(item.kind) || '总结保存',
-        meta: `${getKindLabel(item.kind) || '总结'} · 已保存到长期记忆`,
-        createdAt: item.createdAt,
-        icon: 'fa-solid fa-floppy-disk',
-    }));
-    const tableRecords = (state.tableDatabase?.history || []).map(item => ({
-        type: 'table',
-        title: item.title || item.label || '表格记忆已更新',
-        meta: '表格事务 · 已保留撤回快照',
-        createdAt: item.appliedAt || item.createdAt,
-        icon: 'fa-solid fa-table',
-    }));
-    const rollbackRecords = (state.tableDatabase?.rollbackHistory || []).map(item => ({
-        type: 'rollback',
-        title: item.reason || '表格事务已回滚',
-        meta: `${(item.rollbackSnapshotIds || []).length} 个快照 · ${(item.sourceMessageIds || []).length} 个来源楼层`,
-        createdAt: item.createdAt || item.rolledBackAt,
-        icon: 'fa-solid fa-rotate-left',
-    }));
-    const records = [...summaryRecords, ...tableRecords, ...rollbackRecords]
-        .sort((a, b) => getMaintenanceRecordTimestamp(b) - getMaintenanceRecordTimestamp(a))
-        .slice(0, 10);
-    if (!records.length) {
-        const empty = document.createElement('div');
-        empty.className = 'bakemono-memory-maintenance-empty is-quiet';
-        empty.innerHTML = '<i class="fa-solid fa-receipt"></i><span><strong>还没有操作记录</strong><small>保存总结、应用表格或回滚事务后会留下足迹。</small></span>';
-        recordContainer.append(empty);
-        return;
-    }
-    const fragment = document.createDocumentFragment();
-    records.forEach(record => {
-        const row = document.createElement('article');
-        row.className = `bakemono-memory-maintenance-record is-${record.type}`;
-        const time = record.createdAt ? new Date(record.createdAt).toLocaleString() : '时间未记录';
-        row.innerHTML = `
-            <span class="bakemono-memory-maintenance-record-icon"><i class="${record.icon}"></i></span>
-            <span class="bakemono-memory-maintenance-record-copy">
-                <strong>${escapeHtml(record.title)}</strong>
-                <small>${escapeHtml(record.meta)}</small>
-            </span>
-            <time>${escapeHtml(time)}</time>
-        `;
-        fragment.append(row);
-    });
-    recordContainer.append(fragment);
-}
-
-function exportMaintenanceTransactions() {
-    const state = ensureState();
-    const payload = {
-        exportedAt: new Date().toISOString(),
-        summaryHistory: state.history || [],
-        autoSummaryTransactions: state.autoSummaryTransactions || [],
-        tableUndoStack: state.tableDatabase?.undoStack || [],
-        tableRollbackHistory: state.tableDatabase?.rollbackHistory || [],
-        hiddenMessageIds: getActualHiddenMessageIds(),
-        taskQueue: state.taskQueue || [],
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `bakemono-transactions-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    toastr.success('事务记录已导出。');
-}
-
-function renderTimeline() {
-    const container = document.querySelector('#bakemono-memory-timeline');
-    if (!container) {
-        return;
-    }
-
-    const state = ensureState();
-    const storyBlocks = getStoryBlocks();
-    const stageBlocks = dedupeByHash([
-        ...getBlocksByType(blockTypes.STAGE),
-        ...state.stageSummaries.map(summaryToBlock),
-    ]);
-    const epicBlocks = dedupeByHash([
-        ...getBlocksByType(blockTypes.EPIC),
-        ...state.epicSummaries.map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
-    ]);
-    const byHash = new Map([...storyBlocks, ...stageBlocks, ...epicBlocks].map(block => [block.hash, block]));
-    $('#bakemono-memory-timeline-story-count').text(storyBlocks.length);
-    $('#bakemono-memory-timeline-stage-count').text(stageBlocks.length);
-    $('#bakemono-memory-timeline-epic-count').text(epicBlocks.length);
-
-    container.innerHTML = '';
-    if (!storyBlocks.length && !stageBlocks.length && !epicBlocks.length) {
-        const empty = document.createElement('div');
-        empty.className = 'bakemono-memory-empty';
-        empty.textContent = '暂无摘要树。扫描或保存草稿后会显示覆盖关系。';
-        container.append(empty);
-        return;
-    }
-
-    const makeStoryNode = story => createTimelineNode(story, 'story');
-    const makeStageNode = stage => createTimelineNode(
-        stage,
-        'stage',
-        (stage.sourceHashes || []).map(hash => byHash.get(hash)).filter(Boolean).map(makeStoryNode),
-    );
-    const makeEpicNode = epic => {
-        const sourceHashes = unique([...(epic.sourceStageHashes || []), ...(epic.sourceHashes || [])]);
-        const children = sourceHashes
-            .map(hash => {
-                const block = byHash.get(hash);
-                if (!block) {
-                    return null;
-                }
-                if (block.type === blockTypes.EPIC || block.kind === blockTypes.EPIC) {
-                    return makeEpicNode(block);
-                }
-                if (block.type === blockTypes.STAGE || block.kind === blockTypes.STAGE) {
-                    return makeStageNode(block);
-                }
-                return makeStoryNode(block);
-            })
-            .filter(Boolean);
-        return createTimelineNode(epic, 'epic', children);
-    };
-
-    const rootFactories = [];
-    const epicCoveredStage = new Set(state.epicSummaries.flatMap(summary => [
-        ...(summary.sourceStageHashes || []),
-        ...(summary.sourceHashes || []),
-    ]));
-    for (const epic of state.epicSummaries.filter(summary => !epicCoveredStage.has(summary.hash))) {
-        rootFactories.push(() => makeEpicNode({ ...summaryToBlock(epic), type: blockTypes.EPIC }));
-    }
-
-    for (const stage of state.stageSummaries.filter(summary => !epicCoveredStage.has(summary.hash))) {
-        rootFactories.push(() => makeStageNode(stage));
-    }
-
-    const coveredStory = new Set([
-        ...state.stageSummaries.flatMap(summary => summary.sourceHashes || []),
-        ...state.epicSummaries.flatMap(summary => (summary.sourceHashes || []).filter(hash => byHash.get(hash)?.type === blockTypes.STORY)),
-    ]);
-    for (const story of storyBlocks.filter(block => !coveredStory.has(block.hash))) {
-        rootFactories.push(() => createTimelineNode(story, 'story'));
-    }
-
-    const pageCount = Math.max(1, Math.ceil(rootFactories.length / timelinePageSize));
-    timelineState.page = Math.min(Math.max(0, timelineState.page || 0), pageCount - 1);
-    const start = timelineState.page * timelinePageSize;
-    const visibleRoots = rootFactories.slice(start, start + timelinePageSize).map(createRoot => createRoot());
-    const pager = createTimelinePager(start, rootFactories.length, pageCount);
-    container.append(pager.cloneNode(true), ...visibleRoots, pager);
-}
-
-function createTimelinePager(start, total, pageCount) {
-    const controls = document.createElement('div');
-    controls.className = 'bakemono-memory-preview-pager bakemono-memory-timeline-pager';
-    const prev = document.createElement('button');
-    prev.type = 'button';
-    prev.className = 'menu_button bakemono-preview-page-button';
-    prev.dataset.bakemonoTimelinePage = 'prev';
-    prev.disabled = timelineState.page <= 0;
-    prev.innerHTML = '<i class="fa-solid fa-chevron-left"></i><span>上一页</span>';
-    const info = document.createElement('span');
-    info.className = 'bakemono-memory-preview-page-info';
-    info.textContent = `${total ? start + 1 : 0}-${Math.min(start + timelinePageSize, total)} / ${total}`;
-    const next = document.createElement('button');
-    next.type = 'button';
-    next.className = 'menu_button bakemono-preview-page-button';
-    next.dataset.bakemonoTimelinePage = 'next';
-    next.disabled = timelineState.page >= pageCount - 1;
-    next.innerHTML = '<span>下一页</span><i class="fa-solid fa-chevron-right"></i>';
-    controls.append(prev, info, next);
-    return controls;
-}
-
-function createTimelineNode(item, kind, children = []) {
-    const details = document.createElement('details');
-    details.className = `bakemono-memory-timeline-node is-${kind}`;
-    if (kind === 'epic') {
-        details.open = true;
-    }
-
-    const summary = document.createElement('summary');
-    const marker = document.createElement('span');
-    marker.className = 'bakemono-memory-timeline-dot';
-    marker.setAttribute('aria-hidden', 'true');
-    const copy = document.createElement('span');
-    copy.className = 'bakemono-memory-timeline-copy';
-    const kindLabel = document.createElement('small');
-    const label = document.createElement('strong');
-    const kindText = kind === blockTypes.EPIC || kind === 'epic' ? getMultiSummaryLabel(item) : getKindLabel(kind);
-    kindLabel.textContent = kindText;
-    label.textContent = item.title || getBlockTitle(item.content, '未命名');
-    const meta = document.createElement('span');
-    meta.className = 'bakemono-memory-timeline-meta';
-    const sourceCount = Array.isArray(item.sourceHashes) ? item.sourceHashes.length : 0;
-    meta.textContent = getTimelineMetaText(item, sourceCount);
-    copy.append(kindLabel, label, meta);
-    const toggle = document.createElement('i');
-    toggle.className = 'fa-solid fa-chevron-right bakemono-memory-timeline-toggle';
-    toggle.setAttribute('aria-hidden', 'true');
-    summary.append(marker, copy, toggle);
-    details.append(summary);
-
-    if (children.length) {
-        const childWrap = document.createElement('div');
-        childWrap.className = 'bakemono-memory-timeline-children';
-        children.forEach(child => childWrap.append(child));
-        details.append(childWrap);
-    }
-    return details;
-}
-
-function getTimelineMetaText(item, sourceCount = 0) {
-    if (sourceCount) {
-        const sourceRange = formatMessageIdRange(item.sourceMessageIds || []);
-        return sourceRange ? `覆盖 ${sourceCount} 个片段 · 来源${sourceRange}` : `覆盖 ${sourceCount} 个片段`;
-    }
-    if (item.sourceMessageIds?.length) {
-        return `来源${formatMessageIdRange(item.sourceMessageIds)}`;
-    }
-    if (isVirtualMessageId(item.messageId)) {
-        return item.createdAt ? `记忆摘要 · ${new Date(item.createdAt).toLocaleString()}` : '记忆摘要';
-    }
-    return `楼层 ${item.messageId}`;
-}
-
-function isVirtualMessageId(messageId) {
-    return !Number.isFinite(messageId) || messageId >= Number.MAX_SAFE_INTEGER;
-}
-
-function formatMessageIdRange(messageIds = []) {
-    const ids = unique(messageIds.filter(id => Number.isFinite(id) && !isVirtualMessageId(id)).map(Number)).sort((a, b) => a - b);
-    if (!ids.length) {
-        return '';
-    }
-    if (ids.length === 1) {
-        return `楼层 ${ids[0]}`;
-    }
-    return `楼层 ${ids[0]}-${ids.at(-1)}`;
 }
 
 function getKindLabel(kind) {
@@ -3822,7 +3514,7 @@ function bindSettingsEvents() {
     });
     $('#bakemono-workbench-root').off('click.bakemonoTimelinePage').on('click.bakemonoTimelinePage', '[data-bakemono-timeline-page]', function () {
         const direction = this.dataset.bakemonoTimelinePage === 'next' ? 1 : -1;
-        timelineState.page = Math.max(0, (timelineState.page || 0) + direction);
+        changeTimelinePage(direction);
         renderTimeline();
     });
     $('#bakemono-workbench-root').off('click.bakemonoRecordPage').on('click.bakemonoRecordPage', '[data-bakemono-record-page]', function () {

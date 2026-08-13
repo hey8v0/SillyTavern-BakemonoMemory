@@ -32,6 +32,8 @@ const hubAutomationUiSource = fs.readFileSync(new URL('../src/features/hub-autom
 const summaryBrowserUiSource = fs.readFileSync(new URL('../src/features/summary-browser-ui.js', import.meta.url), 'utf8');
 const workbenchPageOverviewsSource = fs.readFileSync(new URL('../src/features/workbench-page-overviews.js', import.meta.url), 'utf8');
 const reviewQueueUiSource = fs.readFileSync(new URL('../src/features/review-queue-ui.js', import.meta.url), 'utf8');
+const maintenanceUiSource = fs.readFileSync(new URL('../src/features/maintenance-ui.js', import.meta.url), 'utf8');
+const summaryTimelineUiSource = fs.readFileSync(new URL('../src/features/summary-timeline-ui.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -686,10 +688,18 @@ test('persistence reads the current chat at save time and keeps tavern debounced
 });
 
 test('timeline pagination creates DOM only for the visible page', () => {
-    const timelineSource = extractFunction('renderTimeline');
+    const timelineSource = extractFunctionFrom(summaryTimelineUiSource, 'render');
+    assert.match(source, /createSummaryTimelineUi\(\{/);
     assert.match(timelineSource, /const rootFactories = \[\]/);
-    assert.match(timelineSource, /rootFactories\.slice\(start, start \+ timelinePageSize\)\.map/);
+    assert.match(timelineSource, /rootFactories\.slice\(start, start \+ pageSize\)\.map/);
     assert.doesNotMatch(timelineSource, /roots\.push\(make(?:Epic|Stage)Node/);
+});
+
+test('maintenance history and transaction export live outside the entry module', () => {
+    assert.match(source, /createMaintenanceUi\(\{/);
+    assert.match(maintenanceUiSource, /function renderOverview\(/);
+    assert.match(maintenanceUiSource, /function renderAutoSummaryTransactions\(/);
+    assert.match(maintenanceUiSource, /function exportTransactions\(/);
 });
 
 test('every config-bearing tab refreshes its own preset selectors', () => {
