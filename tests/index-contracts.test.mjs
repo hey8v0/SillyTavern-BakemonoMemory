@@ -38,6 +38,7 @@ const presetControlsUiSource = fs.readFileSync(new URL('../src/features/preset-c
 const workbenchHeaderUiSource = fs.readFileSync(new URL('../src/features/workbench-header-ui.js', import.meta.url), 'utf8');
 const workbenchRendererSource = fs.readFileSync(new URL('../src/features/workbench-renderer.js', import.meta.url), 'utf8');
 const workbenchActionControllerSource = fs.readFileSync(new URL('../src/features/workbench-action-controller.js', import.meta.url), 'utf8');
+const presetEventsControllerSource = fs.readFileSync(new URL('../src/features/preset-events-controller.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -709,7 +710,7 @@ test('maintenance history and transaction export live outside the entry module',
 });
 
 test('every config-bearing tab refreshes its own preset selectors', () => {
-    const presetSource = extractFunction('renderActivePresetControls');
+    const presetSource = extractFunctionFrom(workbenchRendererSource, 'renderActivePresetControls');
     for (const required of [
         "renderPresetControlPair('#bakemono-memory-preset-select', '#bakemono-memory-preset-name')",
         "renderAreaPresetControl(areaPresetScopes.SCAN, '#bakemono-memory-scan-preset-select', '#bakemono-memory-scan-preset-name')",
@@ -725,6 +726,9 @@ test('every config-bearing tab refreshes its own preset selectors', () => {
     assert.match(source, /createPresetControlsUi\(\{/);
     assert.match(presetControlsUiSource, /function renderPresetControlPair\(/);
     assert.match(presetControlsUiSource, /function renderAreaPresetControl\(/);
+    assert.match(presetEventsControllerSource, /function bindAreaPresetControls\(/);
+    assert.match(presetEventsControllerSource, /function bindInlinePromptPresetControls\(/);
+    assert.doesNotMatch(source, /function bindAreaPresetControls\(|function bindInlinePromptPresetControls\(/);
 });
 
 test('custom themes stay token-only, global, and importable as JSON', () => {
