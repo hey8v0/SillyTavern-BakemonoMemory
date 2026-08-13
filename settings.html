@@ -117,7 +117,7 @@
                 <div class="bakemono-memory-context-share">
                   <span id="bakemono-memory-overview-token-scope">等待上一轮</span>
                   <em id="bakemono-memory-overview-token-percent">—%</em>
-                  <button type="button" class="bakemono-memory-help-trigger" aria-label="查看 Token 比例说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">比例读取酒馆“提示词查看器”保存的上一轮完整 Prompt Token，包含角色卡、User 人设、世界书、聊天正文与其他扩展。发送前这些内容尚未完成触发和裁剪，所以首页不做伪实时估算；还没有生成过回复时显示为空。</span></button>
+                  <button type="button" class="bakemono-memory-help-trigger" aria-label="查看 Token 比例说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">比例读取酒馆保存的上一轮已发送 Prompt 快照。清单按最终请求中的消息逐条统计，不触发生成，也不会消耗 API 次数；还没有生成过回复时显示为空。</span></button>
                 </div>
               </div>
               <dl class="bakemono-memory-token-breakdown">
@@ -156,7 +156,7 @@
 
       <section class="bakemono-workbench-panel bakemono-memory-prompt-inspector-panel" data-bakemono-panel="prompt-inspector">
         <header class="bakemono-memory-page-intro bakemono-memory-prompt-inspector-intro">
-          <span class="bakemono-memory-next-kicker">上一轮实测</span>
+          <span class="bakemono-memory-next-kicker">上一轮已发送</span>
           <div class="bakemono-memory-prompt-inspector-heading">
             <h3>提示词清单</h3>
             <small id="bakemono-memory-prompt-inspector-count">等待记录</small>
@@ -166,7 +166,7 @@
         <article class="bakemono-memory-prompt-inspector-ticket" aria-live="polite">
           <span class="bakemono-memory-prompt-inspector-mark" aria-hidden="true"><i class="fa-solid fa-receipt"></i></span>
           <div>
-            <small>完整 Prompt</small>
+            <small>最终消息合计</small>
             <strong id="bakemono-memory-prompt-inspector-total">— Token</strong>
             <dl class="bakemono-memory-prompt-inspector-meta">
               <div><dt>模型</dt><dd id="bakemono-memory-prompt-inspector-model">等待记录</dd></div>
@@ -175,6 +175,12 @@
             </dl>
           </div>
         </article>
+
+        <div class="bakemono-memory-prompt-inspector-views" role="tablist" aria-label="提示词清单视图">
+          <button type="button" role="tab" aria-selected="true" aria-controls="bakemono-memory-prompt-inspector-list" class="is-active" data-bakemono-prompt-view="full">完整</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="bakemono-memory-prompt-inspector-list" data-bakemono-prompt-view="sources">按来源</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="bakemono-memory-prompt-inspector-list" data-bakemono-prompt-view="messages">按消息</button>
+        </div>
 
         <form id="bakemono-memory-prompt-inspector-search-form" class="bakemono-memory-prompt-inspector-search" role="search">
           <div class="bakemono-memory-prompt-inspector-search-field">
@@ -192,8 +198,8 @@
           </div>
         </form>
 
-        <div class="bakemono-memory-prompt-inspector-divider" aria-hidden="true"><span>内容条目</span><i></i></div>
-        <div id="bakemono-memory-prompt-inspector-list" class="bakemono-memory-prompt-inspector-list"></div>
+        <div class="bakemono-memory-prompt-inspector-divider" aria-hidden="true"><span id="bakemono-memory-prompt-inspector-view-label">完整 Prompt</span><i></i></div>
+        <div id="bakemono-memory-prompt-inspector-list" class="bakemono-memory-prompt-inspector-list" role="tabpanel"></div>
         <div id="bakemono-memory-prompt-inspector-search-empty" class="bakemono-memory-prompt-inspector-empty" hidden>
           <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
           <strong>没有找到匹配内容</strong>

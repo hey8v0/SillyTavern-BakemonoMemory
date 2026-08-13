@@ -1,11 +1,207 @@
 const maxSearchResults = 2000;
 const maxRenderedMatches = 240;
 
+function getPromptRoleMeta(role) {
+    const normalizedRole = String(role || '').trim().toLowerCase();
+    const roles = {
+        system: { label: '系统消息', description: 'Role: system', icon: 'fa-terminal' },
+        developer: { label: '开发者消息', description: 'Role: developer', icon: 'fa-code' },
+        user: { label: '用户消息', description: 'Role: user', icon: 'fa-user' },
+        assistant: { label: '助手消息', description: 'Role: assistant', icon: 'fa-robot' },
+        tool: { label: '工具结果', description: 'Role: tool', icon: 'fa-screwdriver-wrench' },
+        function: { label: '函数结果', description: 'Role: function', icon: 'fa-gears' },
+    };
+    return roles[normalizedRole] || { label: '其他消息', description: 'Role: other', icon: 'fa-message' };
+}
+
+function collectPromptMessages(value, messages = [], seen = new WeakSet()) {
+    if (!value || typeof value !== 'object' || seen.has(value)) return messages;
+    seen.add(value);
+    if (Array.isArray(value)) {
+        value.forEach(item => collectPromptMessages(item, messages, seen));
+        return messages;
+    }
+    if (typeof value.role === 'string' && (Object.prototype.hasOwnProperty.call(value, 'content') || Array.isArray(value.tool_calls))) {
+        messages.push(value);
+        return messages;
+    }
+    Object.values(value).forEach(item => collectPromptMessages(item, messages, seen));
+    return messages;
+}
+
+function formatPromptMessageContent(message) {
+    const content = message?.content;
+    let text = '';
+    if (typeof content === 'string') {
+        text = content;
+    } else if (Array.isArray(content)) {
+        text = content.map(part => {
+            if (typeof part === 'string') return part;
+            if (typeof part?.text === 'string') return part.text;
+            if (typeof part?.content === 'string') return part.content;
+            if (part?.type === 'image_url' || part?.image_url) {
+                const detail = String(part?.image_url?.detail || '').trim();
+                return detail ? `[图片内容 · ${detail}]` : '[图片内容]';
+            }
+            if (part?.type === 'video_url' || part?.video_url) return '[视频内容]';
+            return '';
+        }).filter(Boolean).join('\n');
+    } else if (content && typeof content === 'object') {
+        if (typeof content.text === 'string') text = content.text;
+        else if (typeof content.content === 'string') text = content.content;
+        else {
+            try {
+                text = JSON.stringify(content, null, 2);
+            } catch {
+                text = '';
+            }
+        }
+    }
+    if (Array.isArray(message?.tool_calls) && message.tool_calls.length) {
+        const toolCalls = JSON.stringify(message.tool_calls, null, 2);
+        text = [text, `【工具调用】\n${toolCalls}`].filter(Boolean).join('\n\n');
+    }
+    return text || '（空消息）';
+}
+
+export async function countNativePromptMessageTokens(message, {
+    countTokens,
+    countImageTokens = async () => 0,
+    countVideoTokens = async () => 0,
+} = {}) {
+    const content = message?.content;
+    if (!content) {
+        if (message?.role === 'assistant' && Array.isArray(message?.tool_calls) && message.tool_calls.length) {
+            return Math.max(0, Number(await countTokens?.(JSON.stringify(message.tool_calls))) || 0);
+        }
+        return 0;
+    }
+    if (typeof content === 'string') return Math.max(0, Number(await countTokens?.(content)) || 0);
+    if (!Array.isArray(content)) return 0;
+    const partCounts = await Promise.all(content.map(async part => {
+        if (part?.type === 'text') return Math.max(0, Number(await countTokens?.(String(part.text || ''))) || 0);
+        if (part?.type === 'image_url') {
+            return Math.max(0, Number(await countImageTokens?.(part.image_url?.url, part.image_url?.detail)) || 0);
+        }
+        if (part?.type === 'video_url') {
+            return Math.max(0, Number(await countVideoTokens?.(part.video_url?.url)) || 0);
+        }
+        return 0;
+    }));
+    return partCounts.reduce((sum, count) => sum + count, 0);
+}
+
+export async function countNativePromptTokens(rawPrompt, {
+    countTokens,
+    countImageTokens = async () => 0,
+    countVideoTokens = async () => 0,
+} = {}) {
+    if (typeof rawPrompt === 'string') return Math.max(0, Number(await countTokens?.(rawPrompt)) || 0);
+    const messages = collectPromptMessages(rawPrompt);
+    const counts = await Promise.all(messages.map(message => countNativePromptMessageTokens(message, {
+        countTokens,
+        countImageTokens,
+        countVideoTokens,
+    })));
+    return counts.reduce((sum, count) => sum + count, 0);
+}
+
+export async function buildFinalPromptEntries(rawPrompt, {
+    countTokens,
+    countImageTokens = async () => 0,
+    countVideoTokens = async () => 0,
+} = {}) {
+    if (typeof rawPrompt === 'string') {
+        const content = rawPrompt || '（空 Prompt）';
+        return [{
+            key: 'message-1',
+            label: '完整文本 Prompt',
+            description: 'Text completion · 上一轮最终请求',
+            icon: 'fa-file-lines',
+            tokens: Math.max(0, Number(await countTokens?.(rawPrompt)) || 0),
+            getContent: () => content,
+        }];
+    }
+    const messages = collectPromptMessages(rawPrompt);
+    return await Promise.all(messages.map(async (message, index) => {
+        const role = getPromptRoleMeta(message?.role);
+        const position = index + 1;
+        const content = formatPromptMessageContent(message);
+        return {
+            key: `message-${position}`,
+            label: `${String(position).padStart(2, '0')} · ${role.label}`,
+            description: `${role.description} · 上一轮最终请求`,
+            icon: role.icon,
+            tokens: await countNativePromptMessageTokens(message, { countTokens, countImageTokens, countVideoTokens }),
+            getContent: () => content,
+        };
+    }));
+}
+
+function formatPromptSnapshot(rawPrompt) {
+    if (typeof rawPrompt === 'string') return rawPrompt || '（空 Prompt）';
+    const messages = collectPromptMessages(rawPrompt);
+    if (!messages.length) {
+        try {
+            return JSON.stringify(rawPrompt, null, 2) || '（空 Prompt）';
+        } catch {
+            return '（空 Prompt）';
+        }
+    }
+    return messages.map((message, index) => {
+        const role = String(message?.role || 'other').toUpperCase();
+        return `【${String(index + 1).padStart(2, '0')} · ${role}】\n${formatPromptMessageContent(message)}`;
+    }).join('\n\n');
+}
+
+function joinPromptSourceSections(sections) {
+    return sections
+        .filter(([, value]) => String(value || '').trim())
+        .map(([title, value]) => `【${title}】\n${String(value).trim()}`)
+        .join('\n\n');
+}
+
+export async function buildPromptSourceEntries(entry, {
+    countTokens,
+} = {}) {
+    const source = entry || {};
+    const roleCard = joinPromptSourceSections([
+        ['角色描述', source.charDescription],
+        ['角色性格', source.charPersonality],
+        ['场景设定', source.scenarioText],
+    ]);
+    const extensionContent = String(source.allAnchors || '').trim() || joinPromptSourceSections([
+        ['记忆扩展', source.summarizeString],
+        ['作者注释', source.authorsNoteString],
+        ['Smart Context', source.smartContextString],
+        ['聊天向量', source.chatVectorsString],
+        ['资料库向量', source.dataBankVectorsString],
+        ['场景前锚点', source.beforeScenarioAnchor],
+        ['场景后锚点', source.afterScenarioAnchor],
+    ]);
+    const candidates = [
+        { key: 'source-character', label: '角色卡', description: '角色描述、性格与场景设定', icon: 'fa-address-card', content: roleCard },
+        { key: 'source-persona', label: 'User 人设', description: '上一轮使用的用户身份与人设', icon: 'fa-user', content: String(source.userPersona || '') },
+        { key: 'source-world-info', label: '世界书', description: '上一轮实际触发并进入组装的世界信息', icon: 'fa-earth-asia', content: String(source.worldInfoString || '') },
+        { key: 'source-examples', label: '示例对话', description: '角色卡中的示例消息', icon: 'fa-comments', content: String(source.examplesString || '') },
+        { key: 'source-chat', label: '聊天记录', description: '上一轮进入上下文的聊天消息', icon: 'fa-message', content: String(source.mesSendString || '') },
+        { key: 'source-extensions', label: '扩展注入', description: '记忆、作者注释、向量与其他扩展内容', icon: 'fa-puzzle-piece', content: extensionContent },
+        { key: 'source-bias', label: 'Prompt Bias', description: '上一轮追加的偏置提示', icon: 'fa-thumbtack', content: String(source.promptBias || '') },
+    ].filter(item => item.content.trim());
+    return await Promise.all(candidates.map(async item => ({
+        ...item,
+        tokens: Math.max(0, Number(await countTokens?.(item.content)) || 0),
+        getContent: () => item.content,
+    })));
+}
+
 export function createPromptInspector({
     getChat,
     getItemizedPrompts,
     getItemizedParams,
     countTokens,
+    countImageTokens,
+    countVideoTokens,
     getActiveTab,
     notifySuccess = () => {},
     notifyError = () => {},
@@ -13,6 +209,8 @@ export function createPromptInspector({
 } = {}) {
     let renderRevision = 0;
     let openEntryKey = '';
+    let activeView = 'full';
+    let currentUsage = null;
     let searchQuery = '';
     let searchResults = [];
     let searchResultIndex = -1;
@@ -59,12 +257,15 @@ export function createPromptInspector({
         const usagePromise = (async () => {
             try {
                 const params = await getItemizedParams?.(getItemizedPrompts?.(), snapshot.index, snapshot.messageId);
-                const total = Number(params?.finalPromptTokens || params?.totalTokensInPrompt || 0);
+                const rawPrompt = snapshot.entry?.rawPrompt ?? snapshot.entry?.finalPrompt ?? '';
+                const nativeTotal = await countNativePromptTokens(rawPrompt, { countTokens, countImageTokens, countVideoTokens });
+                const total = nativeTotal || Number(params?.finalPromptTokens || params?.totalTokensInPrompt || 0);
                 if (!Number.isFinite(total) || total <= 0) return null;
                 return {
                     total,
                     messageId: snapshot.messageId,
-                    promptText: flattenPromptSnapshot(snapshot.entry?.rawPrompt),
+                    promptText: flattenPromptSnapshot(rawPrompt),
+                    rawPrompt,
                     entry: snapshot.entry,
                     index: snapshot.index,
                     params,
@@ -78,136 +279,38 @@ export function createPromptInspector({
         return usagePromise;
     }
 
-    function formatMessageContent(value) {
-        if (typeof value === 'string') return value;
-        if (!value) return '';
-        if (Array.isArray(value)) {
-            return value.map(item => {
-                if (typeof item === 'string') return item;
-                if (typeof item?.text === 'string') return item.text;
-                if (typeof item?.content === 'string') return item.content;
-                if (item?.image_url || item?.type === 'image') return '[图片内容]';
-                return '';
-            }).filter(Boolean).join('\n');
-        }
-        if (typeof value === 'object') {
-            if (typeof value.text === 'string') return value.text;
-            if (typeof value.content === 'string') return value.content;
-        }
-        return '';
-    }
-
-    function collectMessages(value, messages = [], seen = new WeakSet()) {
-        if (!value || typeof value !== 'object' || seen.has(value)) return messages;
-        seen.add(value);
-        if (Array.isArray(value)) {
-            value.forEach(item => collectMessages(item, messages, seen));
-            return messages;
-        }
-        if (typeof value.role === 'string' && Object.prototype.hasOwnProperty.call(value, 'content')) {
-            const content = formatMessageContent(value.content).trim();
-            if (content) messages.push({ role: value.role.toLowerCase(), content });
-            return messages;
-        }
-        Object.values(value).forEach(item => collectMessages(item, messages, seen));
-        return messages;
-    }
-
-    function formatSnapshot(value) {
-        if (typeof value === 'string') return value;
-        const messages = collectMessages(value);
-        if (messages.length) return messages.map(message => `【${message.role.toUpperCase()}】\n${message.content}`).join('\n\n');
-        try {
-            return JSON.stringify(value, null, 2) || '';
-        } catch {
-            return flattenPromptSnapshot(value);
-        }
-    }
-
-    function joinSections(sections) {
-        return sections
-            .filter(([, value]) => String(value || '').trim())
-            .map(([title, value]) => `【${title}】\n${String(value).trim()}`)
-            .join('\n\n');
-    }
-
-    function stripEmbeddedSources(content, values) {
-        let result = String(content || '');
-        const sources = values
-            .map(value => String(value || '').trim())
-            .filter(value => value.length >= 2)
-            .sort((left, right) => right.length - left.length);
-        sources.forEach(source => {
-            result = result.split(source).join('');
+    async function buildMessageEntries(usage) {
+        return await buildFinalPromptEntries(usage?.rawPrompt, {
+            countTokens,
+            countImageTokens,
+            countVideoTokens,
         });
-        return result.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
     }
 
-    async function resolveTokens(nativeTokens, getContent) {
-        const nativeCount = Number(nativeTokens);
-        if (Number.isFinite(nativeCount) && nativeCount > 0) return nativeCount;
-        return await countTokens?.(getContent()) || 0;
+    async function buildEntries(usage, view = activeView) {
+        const messageEntries = await buildMessageEntries(usage);
+        if (view === 'messages') return messageEntries;
+        if (view === 'sources') return await buildPromptSourceEntries(usage?.entry, { countTokens });
+        const total = messageEntries.reduce((sum, item) => sum + Number(item.tokens || 0), 0) || usage?.total || 0;
+        const content = formatPromptSnapshot(usage?.rawPrompt);
+        return [{
+            key: 'full-prompt',
+            label: '完整 Prompt',
+            description: `${messageEntries.length.toLocaleString()} 条最终消息 · 上一轮已发送`,
+            icon: 'fa-file-lines',
+            tokens: total,
+            getContent: () => content,
+        }];
     }
 
-    async function buildEntries(usage) {
-        const entry = usage?.entry || {};
-        const params = usage?.params || {};
-        const promptMessages = collectMessages(entry.rawPrompt);
-        const systemMessages = promptMessages
-            .filter(message => ['system', 'developer'].includes(message.role))
-            .map(message => `【${message.role.toUpperCase()}】\n${message.content}`)
-            .join('\n\n');
-        const systemContent = systemMessages || String(entry.instruction || '').trim();
-        const roleCardContent = joinSections([
-            ['角色描述', entry.charDescription],
-            ['角色性格', entry.charPersonality],
-            ['场景设定', entry.scenarioText],
-        ]);
-        const baseSystemContent = stripEmbeddedSources(systemContent, [
-            entry.worldInfoString,
-            entry.userPersona,
-            entry.charDescription,
-            entry.charPersonality,
-            entry.scenarioText,
-            entry.examplesString,
-            entry.allAnchors,
-            entry.summarizeString,
-            entry.authorsNoteString,
-            entry.smartContextString,
-            entry.chatVectorsString,
-            entry.dataBankVectorsString,
-            entry.beforeScenarioAnchor,
-            entry.afterScenarioAnchor,
-            entry.promptBias,
-        ]);
-        const fullPromptSource = entry.rawPrompt ?? entry.finalPrompt ?? '';
-        const candidates = [
-            { key: 'full', label: '完整 Prompt', description: '酒馆上一轮实际发送的完整上下文', icon: 'fa-file-lines', nativeTokens: usage.total, hasContent: !!usage.total, getContent: () => formatSnapshot(fullPromptSource) },
-            { key: 'system', label: '基础系统与预设', description: '已扣除下方单列内容的系统消息', icon: 'fa-terminal', nativeTokens: params.this_main_api === 'openai' ? 0 : params.instructionTokens, hasContent: !!baseSystemContent, getContent: () => baseSystemContent },
-            { key: 'character', label: '角色卡', description: '角色描述、性格与场景设定', icon: 'fa-address-card', nativeTokens: Number(params.charDescriptionTokens || 0) + Number(params.charPersonalityTokens || 0) + Number(params.scenarioTextTokens || 0), hasContent: !!roleCardContent, getContent: () => roleCardContent },
-            { key: 'persona', label: 'User 人设', description: '当前用户身份与人设说明', icon: 'fa-user', nativeTokens: params.userPersonaStringTokens, hasContent: !!String(entry.userPersona || '').trim(), getContent: () => String(entry.userPersona || '') },
-            { key: 'world-info', label: '世界书', description: '上一轮实际触发的世界信息', icon: 'fa-earth-asia', nativeTokens: params.worldInfoStringTokens, hasContent: !!String(entry.worldInfoString || '').trim(), getContent: () => String(entry.worldInfoString || '') },
-            { key: 'examples', label: '示例对话', description: `${params.examplesCount || entry.examplesCount || 0} 组示例消息`, icon: 'fa-comments', nativeTokens: params.examplesStringTokens, hasContent: !!String(entry.examplesString || '').trim(), getContent: () => String(entry.examplesString || '') },
-            { key: 'chat', label: '聊天记录', description: `${params.messagesCount || entry.messagesCount || 0} 条进入上下文的消息`, icon: 'fa-message', nativeTokens: params.ActualChatHistoryTokens, hasContent: !!String(entry.mesSendString || '').trim(), getContent: () => String(entry.mesSendString || '') },
-            { key: 'extensions', label: '扩展注入', description: '作者注释、记忆与其他扩展内容', icon: 'fa-puzzle-piece', nativeTokens: params.allAnchorsTokens, hasContent: !!String(entry.allAnchors || '').trim(), getContent: () => String(entry.allAnchors || '') },
-            { key: 'bias', label: 'Prompt Bias', description: '上一轮追加的偏置提示', icon: 'fa-thumbtack', nativeTokens: params.promptBiasTokens || params.oaiBiasTokens, hasContent: !!String(entry.promptBias || '').trim(), getContent: () => String(entry.promptBias || '') },
-        ].filter(item => item.hasContent);
-
-        const resolved = await Promise.all(candidates.map(async item => ({
-            ...item,
-            tokens: await resolveTokens(item.nativeTokens, item.getContent),
-        })));
-        const systemItem = resolved.find(item => item.key === 'system');
-        if (systemItem && systemItem.tokens > usage.total) {
-            const overlappingSourceTokens = resolved
-                .filter(item => ['character', 'persona', 'world-info', 'examples', 'extensions', 'bias'].includes(item.key))
-                .reduce((sum, item) => sum + item.tokens, 0);
-            systemItem.tokens = Math.max(0, systemItem.tokens - overlappingSourceTokens);
-        }
-        resolved.forEach(item => {
-            if (item.key !== 'full') item.tokens = Math.min(item.tokens, usage.total);
+    function updateViewControls() {
+        document.querySelectorAll('[data-bakemono-prompt-view]').forEach(button => {
+            const selected = button.dataset.bakemonoPromptView === activeView;
+            button.classList.toggle('is-active', selected);
+            button.setAttribute('aria-selected', String(selected));
         });
-        return resolved;
+        const labels = { full: '完整 Prompt', sources: '来源拆分', messages: '最终消息顺序' };
+        setText('bakemono-memory-prompt-inspector-view-label', labels[activeView] || '内容条目');
     }
 
     function setEmptyState(empty) {
@@ -433,18 +536,22 @@ export function createPromptInspector({
         const usage = await getLastCompletePromptUsage();
         if (revision !== renderRevision || getActiveTab?.() !== 'prompt-inspector') return;
         if (!usage) {
+            currentUsage = null;
             setText('bakemono-memory-prompt-inspector-count', '暂无记录');
             setText('bakemono-memory-prompt-inspector-model', '等待生成回复');
             setEmptyState(true);
             return;
         }
-        const resolvedEntries = await buildEntries(usage);
+        currentUsage = usage;
+        const messageEntries = await buildMessageEntries(usage);
+        const resolvedEntries = await buildEntries(usage, activeView);
         if (revision !== renderRevision || getActiveTab?.() !== 'prompt-inspector') return;
         resolvedEntries.forEach(item => entries.set(item.key, item));
         const model = String(usage.params?.modelUsed || '').trim();
         const preset = String(usage.params?.presetName || '').trim();
         setText('bakemono-memory-prompt-inspector-count', `${resolvedEntries.length.toLocaleString()} 个条目`);
-        setText('bakemono-memory-prompt-inspector-total', `${usage.total.toLocaleString()} Token`);
+        const displayedTotal = messageEntries.reduce((sum, item) => sum + Number(item.tokens || 0), 0) || usage.total;
+        setText('bakemono-memory-prompt-inspector-total', `${displayedTotal.toLocaleString()} Token`);
         setText('bakemono-memory-prompt-inspector-model', model || '未记录');
         setText('bakemono-memory-prompt-inspector-preset', preset && preset !== '(Unknown)' ? preset : '未记录');
         setText('bakemono-memory-prompt-inspector-floor', `第 ${usage.messageId.toLocaleString()} 楼`);
@@ -467,9 +574,20 @@ export function createPromptInspector({
             fragment.append(article);
         });
         list.append(fragment);
+        updateViewControls();
         setEmptyState(!resolvedEntries.length);
         setSearchEnabled(!!resolvedEntries.length);
         applySearch(searchQuery, { focusFirst: false });
+    }
+
+    async function switchView(view) {
+        if (!['full', 'sources', 'messages'].includes(view) || activeView === view) return;
+        activeView = view;
+        searchQuery = '';
+        const input = document.getElementById('bakemono-memory-prompt-inspector-query');
+        if (input) input.value = '';
+        updateViewControls();
+        if (currentUsage) await render();
     }
 
     function toggleEntry(entryKey, trigger) {
@@ -508,6 +626,8 @@ export function createPromptInspector({
     }
 
     function handleClick(event) {
+        const viewTrigger = event.target.closest('[data-bakemono-prompt-view]');
+        if (viewTrigger && boundRoot?.contains(viewTrigger)) return void switchView(String(viewTrigger.dataset.bakemonoPromptView || ''));
         const entryTrigger = event.target.closest('[data-bakemono-prompt-entry]');
         if (entryTrigger && boundRoot?.contains(entryTrigger)) return toggleEntry(String(entryTrigger.dataset.bakemonoPromptEntry || ''), entryTrigger);
         const copyTrigger = event.target.closest('[data-bakemono-prompt-copy]');

@@ -12018,10 +12018,45 @@ details[open] > summary > .bakemono-memory-help-trigger {
   overflow-wrap: anywhere;
 }
 
+.bakemono-memory-prompt-inspector-views {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  margin-top: 13px;
+  padding: 3px;
+  border: 1px solid var(--bk-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bk-line) 38%, transparent);
+}
+
+.bakemono-memory-prompt-inspector-views > button {
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--bk-ink-soft);
+  font-size: 10px;
+  font-weight: 720;
+  box-shadow: none;
+}
+
+.bakemono-memory-prompt-inspector-views > button.is-active {
+  background: var(--bk-paper-raised);
+  color: var(--bk-accent);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--bk-shadow) 20%, transparent);
+}
+
+.bakemono-memory-prompt-inspector-views > button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bk-accent) 58%, transparent);
+  outline-offset: -2px;
+}
+
 .bakemono-memory-prompt-inspector-search {
   display: grid;
   gap: 6px;
-  margin-top: 13px;
+  margin-top: 8px;
   padding: 6px;
   border: 1px solid var(--bk-line);
   border-radius: 15px;

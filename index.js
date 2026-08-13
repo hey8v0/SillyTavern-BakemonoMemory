@@ -2,6 +2,7 @@ import { chat, chat_metadata, extension_prompt_roles, extension_prompt_types, ev
 import { extension_settings, getContext, saveMetadataDebounced } from '../../../extensions.js';
 import { hideChatMessageRange } from '../../../chats.js';
 import { getTokenCountAsync } from '../../../tokenizers.js';
+import { getImageSizeFromDataURL } from '../../../utils.js';
 import { runChatSwitchFlow } from './src/core/chat-switch.js';
 import { createSharedInlineGenerationConfig, createSharedVectorConfig, markActiveConfigApplied, mergeSharedInlineGenerationConfig, mergeSharedVectorConfig, readActiveConfig, sharedConfigVersion, shouldBootstrapSharedConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
 import { persistChatState, persistGlobalSettings } from './src/core/persistence.js';
@@ -1291,6 +1292,25 @@ const promptInspector = createPromptInspector({
     getItemizedPrompts: () => itemizedPrompts,
     getItemizedParams: (...args) => itemizedParams(...args),
     countTokens: value => overviewTokenManifest.getOverviewTokenCount(value),
+    countImageTokens: async (url, detail) => {
+        const baseCost = 85;
+        if (!url || detail === 'low') return baseCost;
+        try {
+            const size = await getImageSizeFromDataURL(url);
+            if (detail === 'auto' && size.width <= 512 && size.height <= 512) return baseCost;
+            const fitScale = 2048 / Math.min(size.width, size.height);
+            const fittedWidth = Math.max(1, Math.round(size.width * fitScale));
+            const fittedHeight = Math.max(1, Math.round(size.height * fitScale));
+            const detailScale = 768 / Math.min(fittedWidth, fittedHeight);
+            const finalWidth = Math.max(1, Math.round(fittedWidth * detailScale));
+            const finalHeight = Math.max(1, Math.round(fittedHeight * detailScale));
+            return (Math.ceil(finalWidth / 512) * Math.ceil(finalHeight / 512) * 170) + baseCost;
+        } catch (error) {
+            console.warn('[BakemonoMemory] failed to count image prompt tokens', error);
+            return baseCost;
+        }
+    },
+    countVideoTokens: async () => 1000,
     getActiveTab: () => getActiveWorkbenchTab(),
     notifySuccess: message => toastr.success(message),
     notifyError: message => toastr.error(message),

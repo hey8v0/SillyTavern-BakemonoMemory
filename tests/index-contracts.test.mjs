@@ -181,6 +181,9 @@ test('previous prompt inspector stays read-only, manually searchable, navigable,
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-search-next"/);
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-search-status"[^>]*aria-live="polite"/);
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-search-empty"/);
+    assert.match(settingsSource, /data-bakemono-prompt-view="full"/);
+    assert.match(settingsSource, /data-bakemono-prompt-view="sources"/);
+    assert.match(settingsSource, /data-bakemono-prompt-view="messages"/);
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-model"/);
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-preset"/);
     assert.match(settingsSource, /id="bakemono-memory-prompt-inspector-floor"/);
@@ -196,7 +199,10 @@ test('previous prompt inspector stays read-only, manually searchable, navigable,
     assert.match(promptInspectorSource, /function navigateSearch\(/);
     assert.match(promptInspectorSource, /function clearSearch\(/);
     assert.match(promptInspectorSource, /function renderHighlightedContent\(/);
-    assert.match(promptInspectorSource, /label: '基础系统与预设'/);
+    assert.match(promptInspectorSource, /export async function buildFinalPromptEntries\(/);
+    assert.match(promptInspectorSource, /export async function buildPromptSourceEntries\(/);
+    assert.match(promptInspectorSource, /label: `\$\{String\(position\)\.padStart\(2, '0'\)\} · \$\{role\.label\}`/);
+    assert.doesNotMatch(promptInspectorSource, /基础系统与预设/);
     assert.match(promptInspectorSource, /getActiveTab\?\.\(\) !== 'prompt-inspector'/);
     assert.match(promptInspectorSource, /if \(content\) content\.textContent = ''/);
     assert.match(promptInspectorSource, /const maxSearchResults = 2000/);

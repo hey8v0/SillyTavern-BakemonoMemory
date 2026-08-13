@@ -42,7 +42,7 @@ export function createWorkbenchHeaderUi({
         const vectorCount = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records.length : 0;
         const contexts = {
             overview: `剧情剪辑 · 第 ${currentFloor.toLocaleString()} 楼`,
-            'prompt-inspector': '上一轮实测 · 提示词清单',
+            'prompt-inspector': '上一轮已发送 · 提示词清单',
             'data-hub': '后台工作 · 4 个工具',
             'settings-hub': '偏好与规则 · 当前聊天',
             settings: `工作方式 · ${getMemoryStrategyLabel(state.memoryStrategy)}`,
@@ -74,7 +74,7 @@ export function createWorkbenchHeaderUi({
         const vectorCount = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records.length : 0;
         const contexts = {
             overview: `剧情剪辑 · ${currentFloor.toLocaleString()}楼`,
-            'prompt-inspector': '上一轮实测',
+            'prompt-inspector': '上一轮已发送',
             'data-hub': '后台工作 · 4个工具',
             'settings-hub': '偏好与规则',
             settings: '工作方式',
