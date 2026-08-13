@@ -21,6 +21,7 @@ const generationClientSource = fs.readFileSync(new URL('../src/features/generati
 const summaryDraftServiceSource = fs.readFileSync(new URL('../src/features/summary-draft-service.js', import.meta.url), 'utf8');
 const scanControllerSource = fs.readFileSync(new URL('../src/features/scan-controller.js', import.meta.url), 'utf8');
 const summaryGenerationControllerSource = fs.readFileSync(new URL('../src/features/summary-generation-controller.js', import.meta.url), 'utf8');
+const summaryBackfillControllerSource = fs.readFileSync(new URL('../src/features/summary-backfill-controller.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -590,6 +591,8 @@ test('all business mutations use scoped rendering and reserve renderAll for life
             ? scanControllerSource
             : ['generateStageBatchTasks', 'generateEpicBatchTasks'].includes(name)
                 ? summaryGenerationControllerSource
+                : name === 'generateMissingSummaryQueue'
+                    ? summaryBackfillControllerSource
                 : source;
         assert.doesNotMatch(extractFunctionFrom(targetSource, name), /\brenderAll\(/, `${name} should not refresh the whole workbench`);
     }
