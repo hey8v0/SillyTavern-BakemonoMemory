@@ -28,6 +28,7 @@ const workflowOverviewModelSource = fs.readFileSync(new URL('../src/features/wor
 const overviewWorkbenchUiSource = fs.readFileSync(new URL('../src/features/overview-workbench-ui.js', import.meta.url), 'utf8');
 const summaryGenerationUiSource = fs.readFileSync(new URL('../src/features/summary-generation-ui.js', import.meta.url), 'utf8');
 const turnSummaryUiSource = fs.readFileSync(new URL('../src/features/turn-summary-ui.js', import.meta.url), 'utf8');
+const hubAutomationUiSource = fs.readFileSync(new URL('../src/features/hub-automation-ui.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -103,6 +104,9 @@ test('overview dashboard keeps the mobile hierarchy compact and read-only', () =
     assert.match(workflowOverviewModelSource, /function getCurrentFloorMemoryIndex\(/);
     assert.match(workflowOverviewModelSource, /function getOverviewHealth\(/);
     assert.match(overviewWorkbenchUiSource, /function renderWorkflowGuide\(/);
+    assert.match(source, /createHubAutomationUi\(\{/);
+    assert.match(hubAutomationUiSource, /function renderHubPanels\(/);
+    assert.match(hubAutomationUiSource, /function renderAutomationOverview\(/);
     assert.doesNotMatch(settingsSource, /<nav class="bakemono-mobile-actions"/);
     assert.match(styleSource, /\.bakemono-memory-control-deck \[hidden\]\s*\{[^}]*display:\s*none !important;/s);
     assert.match(styleSource, /\.bakemono-workbench-tabs\s*\{[^}]*scrollbar-width:\s*none;/s);
