@@ -37,6 +37,7 @@ const summaryTimelineUiSource = fs.readFileSync(new URL('../src/features/summary
 const presetControlsUiSource = fs.readFileSync(new URL('../src/features/preset-controls-ui.js', import.meta.url), 'utf8');
 const workbenchHeaderUiSource = fs.readFileSync(new URL('../src/features/workbench-header-ui.js', import.meta.url), 'utf8');
 const workbenchRendererSource = fs.readFileSync(new URL('../src/features/workbench-renderer.js', import.meta.url), 'utf8');
+const workbenchActionControllerSource = fs.readFileSync(new URL('../src/features/workbench-action-controller.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -589,7 +590,7 @@ test('vector, draft, and table actions use page-scoped rendering', () => {
 test('all business mutations use scoped rendering and reserve renderAll for lifecycle entry points', () => {
     const scopedRenderSource = extractFunctionFrom(workbenchRendererSource, 'renderScope');
     const summarySurfaceSource = extractFunctionFrom(workbenchRendererSource, 'renderSummarySurface');
-    const actionScopeSource = extractFunction('getWorkbenchActionRenderScope');
+    const actionScopeSource = extractFunctionFrom(workbenchActionControllerSource, 'getRenderScope');
 
     for (const scope of [
         'SUMMARY',
@@ -797,7 +798,7 @@ test('chat changes keep their side effects in one ordered coordinator', () => {
 test('vector model fetch preserves unsaved fields and reports failures accurately', () => {
     const operationSource = extractFunctionFrom(operationFeedbackSource, 'runVisible');
     const persistSource = extractFunctionFrom(vectorSettingsModelSource, 'persistVectorMemoryFieldsFromUi');
-    const actionSource = extractFunction('runWorkbenchAction');
+    const actionSource = extractFunctionFrom(workbenchActionControllerSource, 'run');
     const embeddingSource = extractFunctionFrom(vectorActionsControllerSource, 'fetchVectorEmbeddingModels');
     const querySource = extractFunctionFrom(vectorActionsControllerSource, 'fetchVectorQueryModels');
 
