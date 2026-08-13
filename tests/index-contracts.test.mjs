@@ -17,6 +17,7 @@ const promptInspectorSource = fs.readFileSync(new URL('../src/features/prompt-in
 const archiveControllerSource = fs.readFileSync(new URL('../src/features/archive-controller.js', import.meta.url), 'utf8');
 const memoryOrchestratorSource = fs.readFileSync(new URL('../src/features/memory-orchestrator.js', import.meta.url), 'utf8');
 const turnProcessingControllerSource = fs.readFileSync(new URL('../src/features/turn-processing-controller.js', import.meta.url), 'utf8');
+const generationClientSource = fs.readFileSync(new URL('../src/features/generation-client.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -693,7 +694,7 @@ test('active global config follows existing chats without removing the tavern mo
     assert.match(presetRegistrySource, /function syncGlobalActiveConfigToState\(/);
     assert.match(source, /syncGlobalActiveConfigToState\(initialState, \{ force: true \}\)/);
     assert.match(source, /syncConfig:\s*state => \{/);
-    assert.match(source, /if \(state\.automation\.apiProvider !== 'custom'\) \{\s*return await generateRaw/s);
+    assert.match(generationClientSource, /if \(state\.automation\.apiProvider !== 'custom'\) \{\s*return await generateRaw/s);
     assert.match(configSyncSource, /state\.activeConfigSignature = getActiveConfigSignature/);
 });
 
