@@ -53,6 +53,7 @@ const tableWorkflowControllerSource = fs.readFileSync(new URL('../src/features/t
 const tableWorkbenchUiSource = fs.readFileSync(new URL('../src/features/table-workbench-ui.js', import.meta.url), 'utf8');
 const tableEditorEventsSource = fs.readFileSync(new URL('../src/features/table-editor-events.js', import.meta.url), 'utf8');
 const tableManagementEventsSource = fs.readFileSync(new URL('../src/features/table-management-events.js', import.meta.url), 'utf8');
+const contentConfigurationEventsSource = fs.readFileSync(new URL('../src/features/content-configuration-events.js', import.meta.url), 'utf8');
 const vectorMemoryServiceSource = fs.readFileSync(new URL('../src/features/vector-memory-service.js', import.meta.url), 'utf8');
 const vectorSettingsModelSource = fs.readFileSync(new URL('../src/features/vector-settings-model.js', import.meta.url), 'utf8');
 const vectorWorkbenchUiSource = fs.readFileSync(new URL('../src/features/vector-workbench-ui.js', import.meta.url), 'utf8');
@@ -863,6 +864,13 @@ test('injection defaults mark their end and start at the front of chat history',
     assert.match(source, /\{\{memory\}\}\r?\n【剧情剪辑台：长期剧情记忆结束】`;/);
     assert.match(source, /injection:\s*\{\s*enabled:\s*true,\s*depth:\s*999,/);
     assert.match(source, /migrateBuiltInInjectionDefaults\(state\.injection, legacyInjectionTemplate, defaultInjectionTemplate\)/);
+    assert.match(contentConfigurationEventsSource, /function bindInjectionEvents\(/);
+    assert.match(contentConfigurationEventsSource, /function bindPromptEvents\(/);
+    assert.match(contentConfigurationEventsSource, /function bindWorkflowEvents\(/);
+    assert.match(contentConfigurationEventsSource, /bakemono-memory-apply-injection/);
+    assert.match(contentConfigurationEventsSource, /bakemono-memory-reset-stage-prompt/);
+    assert.match(contentConfigurationEventsSource, /bakemono-memory-workflow-mode/);
+    assert.doesNotMatch(source, /bakemono-memory-apply-injection|bakemono-memory-reset-stage-prompt|bakemono-memory-workflow-mode/);
 });
 
 test('appearance settings ship protected warm-paper day and night presets', () => {
@@ -874,6 +882,6 @@ test('appearance settings ship protected warm-paper day and night presets', () =
 });
 
 test('table-memory injection toggle persists immediately before page refresh', () => {
-    assert.match(source, /\$\('#bakemono-memory-table-inject-memory'\)\.off\('change\.bakemonoTableInjection'\)/);
-    assert.match(source, /state\.tableDatabase\.injectMemory = !!this\.checked;[\s\S]*?persistSharedConfigurationFromState\(state\);/);
+    assert.match(tableManagementEventsSource, /query\('#bakemono-memory-table-inject-memory'\)\.off\('change\.bakemonoTableInjection'\)/);
+    assert.match(tableManagementEventsSource, /state\.tableDatabase\.injectMemory = !!this\.checked;[\s\S]*?persistSharedConfigurationFromState\(state\);/);
 });

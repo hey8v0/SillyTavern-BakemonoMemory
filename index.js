@@ -38,6 +38,7 @@ import { createTableWorkflowController } from './src/features/table-workflow-con
 import { createTableWorkbenchUi } from './src/features/table-workbench-ui.js';
 import { createTableEditorEvents } from './src/features/table-editor-events.js';
 import { createTableManagementEvents } from './src/features/table-management-events.js';
+import { createContentConfigurationEvents } from './src/features/content-configuration-events.js';
 import { createVectorMemoryService } from './src/features/vector-memory-service.js';
 import { createVectorSettingsModel } from './src/features/vector-settings-model.js';
 import { createVectorWorkbenchUi } from './src/features/vector-workbench-ui.js';
@@ -974,6 +975,7 @@ function renderActivePresetControls(...args) {
 
 let presetEventsController = null;
 let tableManagementEvents = null;
+let contentConfigurationEvents = null;
 function renderInlinePromptPresetControls(...args) {
     return presetEventsController?.renderInlinePromptPresetControls(...args);
 }
@@ -1952,6 +1954,34 @@ tableManagementEvents = createTableManagementEvents({
     getScopedTableSchemas,
 });
 
+contentConfigurationEvents = createContentConfigurationEvents({
+    query: $,
+    navigatorRef: navigator,
+    getState: ensureState,
+    defaultInjectionTemplate,
+    normalizeInjectionMemoryBody,
+    syncInjection,
+    persistSharedConfigurationFromState,
+    renderWorkbenchScope,
+    workbenchRenderScopes,
+    toastr,
+    confirmDanger,
+    saveState,
+    readPromptFieldsFromUi,
+    defaultStageGenerationPrompt,
+    defaultEpicGenerationPrompt,
+    defaultStoryGenerationPrompt,
+    defaultMissingSummaryPrompt,
+    memoryStrategies,
+    updateInjectionFromSummaries,
+    workflowModes,
+    stageSourceModes,
+    scanBlocks: options => scanBakemonoBlocks(options),
+    defaultState,
+    extensionPromptRoles: extension_prompt_roles,
+    renderInjectionContent,
+});
+
 const promptInspector = createPromptInspector({
     getChat: () => chat,
     getItemizedPrompts: () => itemizedPrompts,
@@ -2646,108 +2676,7 @@ function bindSettingsEvents() {
     bindMaintenanceEvents();
     tableEditorEvents.bind();
     tableManagementEvents.bind();
-    $('#bakemono-memory-apply-injection').off('click').on('click', () => {
-        const state = ensureState();
-        state.injection.template = String($('#bakemono-memory-injection-template').val() || defaultInjectionTemplate);
-        state.generatedMemory = normalizeInjectionMemoryBody($('#bakemono-memory-source-content').val() || '', state.injection.template, defaultInjectionTemplate);
-        syncInjection();
-        persistSharedConfigurationFromState(state);
-        renderWorkbenchScope(workbenchRenderScopes.INJECTION, '注入内容已应用，注入设置已同步到所有角色卡。');
-        toastr.success('注入内容已应用，设置已全局保存。');
-    });
-    $('#bakemono-memory-copy-injection').off('click').on('click', async () => {
-        syncInjection();
-        const content = String($('#bakemono-memory-injection-content').val() || '');
-        await navigator.clipboard.writeText(content);
-        toastr.success('注入内容已复制。');
-    });
-    $('#bakemono-memory-reset-template').off('click').on('click', () => {
-        const confirmed = confirmDanger(
-            '恢复默认注入模板？',
-            ['当前注入模板会被默认模板覆盖，记忆正文会保留。'],
-        );
-        if (!confirmed) {
-            return;
-        }
-        const state = ensureState();
-        state.injection.template = defaultInjectionTemplate;
-        syncInjection();
-        persistSharedConfigurationFromState(state);
-        renderWorkbenchScope(workbenchRenderScopes.INJECTION, '注入模板已恢复默认。');
-    });
-    $('#bakemono-memory-clear-injection').off('click').on('click', () => {
-        const confirmed = confirmDanger(
-            '清空记忆正文？',
-            ['这会清空手动编辑的记忆正文；已保存摘要仍在，但当前自定义正文会消失。'],
-        );
-        if (!confirmed) {
-            return;
-        }
-        const state = ensureState();
-        state.generatedMemory = '';
-        syncInjection();
-        saveState();
-        renderWorkbenchScope(workbenchRenderScopes.INJECTION, '注入内容已清空。');
-    });
-    $('#bakemono-memory-apply-prompts').off('click').on('click', () => {
-        const state = ensureState();
-        readPromptFieldsFromUi(state);
-        persistSharedConfigurationFromState(state);
-        renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '生成提示词已应用，并同步到所有角色卡。');
-        toastr.success('生成提示词已全局保存。');
-    });
-    $('#bakemono-memory-reset-stage-prompt').off('click').on('click', () => {
-        const confirmed = confirmDanger(
-            '恢复默认阶段总结提示词？',
-            ['当前阶段总结提示词会被默认摘要手账模板覆盖。'],
-        );
-        if (!confirmed) {
-            return;
-        }
-        const state = ensureState();
-        state.generationPrompts.stage = defaultStageGenerationPrompt;
-        persistSharedConfigurationFromState(state);
-        renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '阶段总结提示词已恢复默认。');
-    });
-    $('#bakemono-memory-reset-epic-prompt').off('click').on('click', () => {
-        const confirmed = confirmDanger(
-            '恢复默认多次总结提示词？',
-            ['当前多次总结提示词会被默认摘要手账模板覆盖。'],
-        );
-        if (!confirmed) {
-            return;
-        }
-        const state = ensureState();
-        state.generationPrompts.epic = defaultEpicGenerationPrompt;
-        persistSharedConfigurationFromState(state);
-        renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '多次总结提示词已恢复默认。');
-    });
-    $('#bakemono-memory-reset-story-prompt').off('click').on('click', () => {
-        const confirmed = confirmDanger(
-            '恢复默认旧正文补课提示词？',
-            ['当前旧正文补课提示词会被默认摘要手账模板覆盖。'],
-        );
-        if (!confirmed) {
-            return;
-        }
-        const state = ensureState();
-        state.generationPrompts.story = defaultStoryGenerationPrompt;
-        persistSharedConfigurationFromState(state);
-        renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '旧正文摘要提示词已恢复默认。');
-    });
-    $('#bakemono-memory-reset-missing-prompt').off('click').on('click', () => {
-        const confirmed = confirmDanger(
-            '恢复默认补写缺失摘要提示词？',
-            ['当前补写缺失摘要提示词会被默认摘要手账模板覆盖。'],
-        );
-        if (!confirmed) {
-            return;
-        }
-        const state = ensureState();
-        state.generationPrompts.missing = defaultMissingSummaryPrompt;
-        persistSharedConfigurationFromState(state);
-        renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '补写缺失摘要提示词已恢复默认。');
-    });
+    contentConfigurationEvents.bind();
     $('#bakemono-memory-apply-automation').off('click').on('click', () => {
         const state = ensureState();
         readAutomationFieldsFromUi(state);
@@ -3034,76 +2963,6 @@ function bindSettingsEvents() {
         scanBakemonoBlocks({ persist: false });
         persistSharedConfigurationFromState(state);
         renderWorkbenchScope(workbenchRenderScopes.SCAN, '扫描规则已恢复默认。');
-    });
-    $('#bakemono-memory-injection-enabled').off('change').on('change', function () {
-        const state = ensureState();
-        state.injection.enabled = !!this.checked;
-        syncInjection();
-        persistSharedConfigurationFromState(state);
-        renderWorkbenchScope(workbenchRenderScopes.INJECTION);
-    });
-    $('#bakemono-memory-memory-strategy').off('change').on('change', function () {
-        const state = ensureState();
-        state.memoryStrategy = Object.values(memoryStrategies).includes(this.value) ? this.value : memoryStrategies.BAKEMONO;
-        updateInjectionFromSummaries();
-        persistSharedConfigurationFromState(state);
-        renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '记忆策略已切换。');
-    });
-    $('#bakemono-memory-workflow-mode').off('change').on('change', function () {
-        const state = ensureState();
-        state.workflowMode = Object.values(workflowModes).includes(this.value) ? this.value : workflowModes.BAKEMONO;
-        if (state.workflowMode === workflowModes.GENERIC) {
-            state.memoryStrategy = memoryStrategies.GENERIC;
-            state.stageSourceMode = stageSourceModes.BACKFILL;
-            state.outputMode = 'plain';
-        } else if (state.workflowMode === workflowModes.BAKEMONO) {
-            state.memoryStrategy = memoryStrategies.BAKEMONO;
-            state.stageSourceMode = stageSourceModes.SUMMARIES;
-            state.outputMode = 'bakemono';
-        }
-        scanBakemonoBlocks({ persist: false });
-        updateInjectionFromSummaries();
-        persistSharedConfigurationFromState(state);
-        renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '工作流模式已切换，已有扫描和自动总结配置已保留。');
-    });
-    $('#bakemono-memory-stage-source-mode').off('change').on('change', function () {
-        const state = ensureState();
-        state.stageSourceMode = Object.values(stageSourceModes).includes(this.value) ? this.value : stageSourceModes.SUMMARIES;
-        scanBakemonoBlocks({ persist: false });
-        persistSharedConfigurationFromState(state);
-        renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '阶段总结材料已切换。');
-    });
-    $('#bakemono-memory-output-mode').off('change').on('change', function () {
-        const state = ensureState();
-        state.outputMode = ['bakemono', 'plain', 'custom'].includes(this.value) ? this.value : 'bakemono';
-        persistSharedConfigurationFromState(state);
-        renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '输出风格已切换。');
-    });
-    $('#bakemono-memory-depth').off('input').on('input', function () {
-        const state = ensureState();
-        state.injection.depth = Math.max(0, Number(this.value || defaultState.injection.depth));
-        syncInjection();
-        persistSharedConfigurationFromState(state);
-    });
-    $('#bakemono-memory-role').off('change').on('change', function () {
-        const state = ensureState();
-        state.injection.role = Number(this.value || extension_prompt_roles.SYSTEM);
-        syncInjection();
-        persistSharedConfigurationFromState(state);
-    });
-    $('#bakemono-memory-source-content, #bakemono-memory-injection-template').off('input').on('input', () => {
-        const state = ensureState();
-        const previewState = {
-            ...state,
-            generatedMemory: String($('#bakemono-memory-source-content').val() || ''),
-            injection: {
-                ...state.injection,
-                template: String($('#bakemono-memory-injection-template').val() || ''),
-            },
-        };
-        const content = renderInjectionContent(previewState);
-        $('#bakemono-memory-injection-content').val(content);
-        $('#bakemono-memory-injection-char-count').text(`约 ${content.length.toLocaleString()} 字符`);
     });
 }
 
