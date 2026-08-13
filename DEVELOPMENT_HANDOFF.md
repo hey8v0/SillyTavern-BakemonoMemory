@@ -1,5 +1,12 @@
 # 剧情剪辑台开发交接文档
 
+## 2026-08-13 / v1.4.0 / 最终模块化发布
+
+- `index.js` 已从模块化前约 13,000 多行收缩至 2,058 行，只保留启动、SillyTavern 生命周期适配、模块装配和少量惰性桥接；运行实现分布在 `src` 下 87 个职责模块中。
+- 最终发布检查：14 个测试文件共 95/95 通过；`index.js` 与 `src` 共 88 个 JavaScript 文件语法检查通过；`git diff --check` 通过。
+- 测试契约已同步改为检查职责所属模块，不再错误要求搬迁后的实现仍位于入口文件。
+- `manifest.json` 升级为 `1.4.0`，主页改为剧情剪辑台实际 GitHub 仓库；本版不改变聊天记忆、配置、表格或向量数据格式。
+
 ## 2026-08-13 / v1.3.5 / 最终模块化：默认配置定义（本地）
 
 - 新建 `src/config/defaults.js`，逐字迁移默认摘要/表格/注入/向量提示词、扫描分类与预览规则、内置配置预设、自动化/向量默认值和完整聊天状态形状；通过工厂显式注入工作方式枚举、酒馆角色枚举与生成目标默认值。
@@ -301,7 +308,10 @@ $dst='E:\SillyTavern\public\scripts\extensions\third-party\SillyTavern-BakemonoM
 foreach ($name in @('manifest.json','index.js','settings.html','style.css','DEVELOPMENT_HANDOFF.md')) {
   Copy-Item -LiteralPath (Join-Path $src $name) -Destination (Join-Path $dst $name) -Force
 }
+Copy-Item -LiteralPath (Join-Path $src 'src') -Destination $dst -Recurse -Force
 ```
+
+模块化版本必须同步完整 `src` 目录；只复制 `index.js` 会导致酒馆加载时报模块缺失。
 
 检查安装目录 JS：
 

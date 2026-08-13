@@ -68,6 +68,7 @@ const operationFeedbackSource = fs.readFileSync(new URL('../src/ui/operation-fee
 const workbenchLayoutSource = fs.readFileSync(new URL('../src/ui/workbench-layout.js', import.meta.url), 'utf8');
 const workbenchNavigationSource = fs.readFileSync(new URL('../src/ui/workbench-navigation.js', import.meta.url), 'utf8');
 const workbenchShellEventsSource = fs.readFileSync(new URL('../src/ui/workbench-shell-events.js', import.meta.url), 'utf8');
+const sillyTavernEntrySource = fs.readFileSync(new URL('../src/ui/sillytavern-entry.js', import.meta.url), 'utf8');
 const summaryLevelsSource = fs.readFileSync(new URL('../src/summary/levels.js', import.meta.url), 'utf8');
 
 test('workbench markup and stylesheet remain structurally balanced', () => {
@@ -88,7 +89,7 @@ test('workbench menu branding reuses the clapperboard entry icon', () => {
         /class="bakemono-workbench-menu-mark"[^>]*aria-hidden="true"[^>]*>\s*<i class="fa-solid fa-clapperboard"><\/i>\s*<\/div>/,
     );
     assert.doesNotMatch(settingsSource, /class="bakemono-workbench-menu-mark"[^>]*>\s*剪\s*<\/div>/);
-    assert.match(source, /icon\.classList\.add\('fa-solid', 'fa-clapperboard', 'extensionsMenuExtensionButton'\)/);
+    assert.match(sillyTavernEntrySource, /icon\.classList\.add\('fa-solid', 'fa-clapperboard', 'extensionsMenuExtensionButton'\)/);
 });
 
 test('mobile header keeps one compact static injection state', () => {
@@ -278,7 +279,7 @@ test('vector recall uses independent semantic and lexical candidates with explai
     assert.match(vectorMemoryServiceSource, /lexicalScore:\s*Number/);
     assert.match(vectorMemoryServiceSource, /matchedTerms:\s*Array\.isArray/);
     assert.match(settingsSource, /混合召回 v2：语义 \+ 稀有词 \+ 关键词/);
-    assert.match(source, /title:\s*`混合初筛/);
+    assert.match(vectorWorkbenchUiSource, /title:\s*`混合初筛/);
     assert.match(hybridRetrievalSource, /export function selectHybridCandidates\(/);
     assert.match(hybridRetrievalSource, /vectorRanked/);
     assert.match(hybridRetrievalSource, /lexicalRanked/);
@@ -362,7 +363,7 @@ test('summary page keeps generation, review, and filtering in the demo hierarchy
     assert.match(settingsSource, /class="bakemono-memory-console-disclosure bakemono-memory-preview-filter-disclosure"/);
     assert.match(summaryGenerationUiSource, /function render\(state = getState\(\), blocks = null\)/);
     assert.match(summaryGenerationUiSource, /function bindEvents\(rootSelector/);
-    assert.match(source, /renderSummaryGenerationPanel\(state, blocks\)/);
+    assert.match(workbenchRendererSource, /renderSummaryGenerationPanel\(state, blocks\)/);
     assert.match(turnSummaryUiSource, /function render\(state = getState\(\)\)/);
     assert.match(source, /createSummaryBrowserUi\(\{/);
     assert.match(summaryBrowserUiSource, /function renderSections\(/);
@@ -391,9 +392,9 @@ test('archive and timeline pages keep the demo hierarchy without dropping contro
     assert.match(settingsSource, /id="bakemono-memory-record-status"/);
     assert.match(settingsSource, /class="bakemono-memory-timeline-overview"/);
     assert.match(settingsSource, /id="bakemono-memory-timeline-epic-count"/);
-    assert.match(source, /className = 'bakemono-memory-timeline-copy'/);
-    assert.match(source, /if \(kind === 'epic'\) \{\s*details\.open = true;/);
-    assert.doesNotMatch(source, /if \(kind !== 'story'\) \{\s*details\.open = true;/);
+    assert.match(summaryTimelineUiSource, /className = 'bakemono-memory-timeline-copy'/);
+    assert.match(summaryTimelineUiSource, /if \(kind === 'epic'\) (?:\{\s*)?details\.open = true;/);
+    assert.doesNotMatch(summaryTimelineUiSource, /if \(kind !== 'story'\) \{\s*details\.open = true;/);
     assert.match(archiveControllerSource, /function bindEvents\(/);
     assert.match(archiveControllerSource, /bakemonoAutoArchiveToggle/);
     assert.match(archiveControllerSource, /bakemonoAutoArchiveCount/);
@@ -419,11 +420,11 @@ test('review desk keeps drafts first while preserving task and history operation
     assert.match(reviewQueueEventsSource, /bakemonoTaskAction/);
     assert.match(reviewQueueEventsSource, /bakemonoAutoTransaction/);
     assert.doesNotMatch(source, /bakemonoDraftAction|bakemonoTaskAction|bakemonoAutoTransaction/);
-    assert.match(source, /data-bakemono-draft-editor-toggle/);
-    assert.match(source, /bakemono-memory-draft-editor-disclosure/);
-    assert.match(source, /data-bakemono-draft-action="commit"/);
-    assert.match(source, /data-bakemono-draft-action="regenerate"/);
-    assert.match(source, /data-bakemono-draft-action="discard"/);
+    assert.match(reviewQueueUiSource, /data-bakemono-draft-editor-toggle/);
+    assert.match(reviewQueueUiSource, /bakemono-memory-draft-editor-disclosure/);
+    assert.match(reviewQueueUiSource, /data-bakemono-draft-action="commit"/);
+    assert.match(reviewQueueUiSource, /data-bakemono-draft-action="regenerate"/);
+    assert.match(reviewQueueUiSource, /data-bakemono-draft-action="discard"/);
 });
 
 test('automatic memory and tables keep the demo status-first hierarchy', () => {
@@ -434,9 +435,9 @@ test('automatic memory and tables keep the demo status-first hierarchy', () => {
     assert.match(settingsSource, /class="bakemono-memory-table-diff-head/);
     assert.match(settingsSource, /id="bakemono-memory-table-draft-list"/);
     assert.match(settingsSource, /class="[^"]*bakemono-memory-table-maintenance/);
-    assert.match(source, /bakemono-memory-turn-runtime-label/);
-    assert.match(source, /bakemono-memory-table-overview-draft-count/);
-    assert.match(source, /className = 'bakemono-memory-table-diff-list'/);
+    assert.match(turnSummaryUiSource, /bakemono-memory-turn-runtime-label/);
+    assert.match(turnSummaryUiSource, /bakemono-memory-table-overview-draft-count/);
+    assert.match(tableWorkbenchUiSource, /className = 'bakemono-memory-table-diff-list'/);
 });
 
 function extractTemplate(name) {
@@ -503,7 +504,7 @@ test('stage and multi-summary defaults use the requested event timeline format',
     assert.match(stage, /经过：用流水账形式清晰记录该事件的起因、经过、结果，保留所有重要动作\/话语\/冲突。/);
     assert.match(stage, /➤ 🎭 【角色进化录】/);
     assert.match(stage, /➤ 🏆 【金句名人堂】（从整篇剧情中挑选出最具代表性、最能定义本卷灵魂的台词）/);
-    assert.match(stage, /1\. > “台词1”——【角色名】\r?\n……/);
+    assert.match(stage, /1\. > “台词1”——【角色名】\r?\n\s*……/);
 
     assert.match(epic, /➤ 📜 【时间线总览】/);
     assert.match(epic, /- \[事件名称\] \(涵盖的章节跨度 \| 发生时间 \| 发生地点 \| 在场角色\)/);
@@ -826,7 +827,7 @@ test('active global config follows existing chats without removing the tavern mo
 test('saved settings become shared defaults while vector runtime remains chat-local', () => {
     assert.match(configurationServiceSource, /function persistSharedConfigurationFromState\(/);
     assert.match(configurationServiceSource, /vectorMemory:\s*createSharedVectorConfig\(state\.vectorMemory/);
-    assert.match(source, /mergeSharedVectorConfig\(state\.vectorMemory, preset\.vectorMemory, defaultVectorMemory\)/);
+    assert.match(configurationControllerSource, /mergeSharedVectorConfig\(state\.vectorMemory, preset\.vectorMemory, defaultVectorMemory\)/);
     assert.match(source, /syncGlobalActiveConfigToState\(initialState, \{ force: true \}\)/);
     assert.match(source, /syncConfig:\s*state => \{/);
     const vectorPersist = extractFunctionFrom(vectorSettingsModelSource, 'persistVectorMemoryFieldsFromUi');
@@ -838,7 +839,7 @@ test('saved settings become shared defaults while vector runtime remains chat-lo
 test('first shared-settings upgrade preserves the current chat before forced synchronization', () => {
     assert.match(configurationServiceSource, /function bootstrapSharedConfigurationFromCurrentChat\(/);
     assert.match(configurationServiceSource, /shouldBootstrapSharedConfig\(settings, hasActiveChat\)/);
-    assert.match(source, /settings\.sharedConfigVersion = sharedConfigVersion/);
+    assert.match(presetRegistrySource, /settings\.sharedConfigVersion = sharedConfigVersion/);
     assert.match(source, /const initialState = ensureState\(\);[\s\S]*?bootstrapSharedConfigurationFromCurrentChat\(initialState\);[\s\S]*?syncGlobalActiveConfigToState\(initialState, \{ force: true \}\)/);
     assert.match(source, /syncConfig:\s*state => \{[\s\S]*?bootstrapSharedConfigurationFromCurrentChat\(state\);[\s\S]*?return syncGlobalActiveConfigToState\(state, \{ force: true \}\);[\s\S]*?\}/);
 });
@@ -878,17 +879,17 @@ test('frequent prompt and floor-archive tools live directly in the settings cent
     assert.match(settingsSource, /data-bakemono-nav="archive"[^>]*>[\s\S]*?<strong>楼层收纳<\/strong>/);
     assert.match(settingsSource, /data-bakemono-panel="archive"/);
     assert.match(settingsSource, /id="bakemono-memory-floor-archive-slot"/);
-    assert.match(source, /archive: \{ target: 'settings-hub', label: '返回设置中心' \}/);
-    assert.match(source, /prompts: \{ target: 'settings-hub', label: '返回设置中心' \}/);
-    assert.match(source, /\['config', 'generation', 'archive'\]\.includes\(sectionName\)/);
+    assert.match(workbenchLayoutSource, /archive: \{ target: 'settings-hub', label: '返回设置中心' \}/);
+    assert.match(workbenchLayoutSource, /prompts: \{ target: 'settings-hub', label: '返回设置中心' \}/);
+    assert.match(workbenchLayoutSource, /\['config', 'generation', 'archive'\]\.includes\(sectionName\)/);
     assert.match(settingsSource, /data-bakemono-nav="maintenance">\s*<span>09<\/span>/);
     assert.doesNotMatch(settingsSource, /data-bakemono-panel="generation"[\s\S]*?data-bakemono-nav="prompts"/);
 });
 
 test('injection defaults mark their end and start at the front of chat history', () => {
-    assert.match(defaultsSource, /\{\{memory\}\}\r?\n【剧情剪辑台：长期剧情记忆结束】`;/);
+    assert.match(defaultsSource, /\{\{memory\}\}\r?\n\s*【剧情剪辑台：长期剧情记忆结束】`;/);
     assert.match(defaultsSource, /injection:\s*\{\s*enabled:\s*true,\s*depth:\s*999,/);
-    assert.match(source, /migrateBuiltInInjectionDefaults\(state\.injection, legacyInjectionTemplate, defaultInjectionTemplate\)/);
+    assert.match(chatStateServiceSource, /migrateBuiltInInjectionDefaults\(state\.injection, legacyInjectionTemplate, defaultInjectionTemplate\)/);
     assert.match(contentConfigurationEventsSource, /function bindInjectionEvents\(/);
     assert.match(contentConfigurationEventsSource, /function bindPromptEvents\(/);
     assert.match(contentConfigurationEventsSource, /function bindWorkflowEvents\(/);
@@ -907,11 +908,11 @@ test('automation and generation API controls share one event boundary', () => {
 });
 
 test('appearance settings ship protected warm-paper day and night presets', () => {
-    assert.match(source, /id: 'bakemono-warm-paper-day'/);
-    assert.match(source, /id: 'bakemono-warm-paper-night'/);
-    assert.match(source, /name: '暖纸日间'/);
-    assert.match(source, /name: '暖纸夜间'/);
-    assert.match(source, /builtInCustomThemePresetIds\.has/);
+    assert.match(themeSchemaSource, /id: 'bakemono-warm-paper-day'/);
+    assert.match(themeSchemaSource, /id: 'bakemono-warm-paper-night'/);
+    assert.match(themeSchemaSource, /name: '暖纸日间'/);
+    assert.match(themeSchemaSource, /name: '暖纸夜间'/);
+    assert.match(themeControllerSource, /builtInCustomThemePresetIds\.has/);
 });
 
 test('table-memory injection toggle persists immediately before page refresh', () => {
