@@ -58,6 +58,8 @@ import { createConfigurationService } from './src/features/configuration-service
 import { createConfigurationController } from './src/features/configuration-controller.js';
 import { createMemoryRecordsUi } from './src/features/memory-records-ui.js';
 import { createOverviewTokenManifest } from './src/features/overview-token-manifest.js';
+import { createWorkflowOverviewModel } from './src/features/workflow-overview-model.js';
+import { createOverviewWorkbenchUi } from './src/features/overview-workbench-ui.js';
 import { createGlobalSettingsService } from './src/core/global-settings-service.js';
 import { createChatStateService } from './src/core/chat-state-service.js';
 import { createHelpPopover } from './src/ui/help-popover.js';
@@ -964,340 +966,6 @@ function setBusy(value) {
     $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-stage-batch"], [data-bakemono-action="generate-epic"], [data-bakemono-action="generate-epic-batch"], [data-bakemono-action="backfill"], [data-bakemono-action="batch-summary"], [data-bakemono-action="commit-missing-all"], [data-bakemono-action="remove-missing-all"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-test"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-auto-tx-action], [data-bakemono-table-draft-action]').prop('disabled', value);
 }
 
-function getMemoryStrategyLabelLegacy(strategy = ensureState().memoryStrategy) {
-    return strategy === memoryStrategies.GENERIC ? '通用全文补课模式' : '摘要块手账模式';
-}
-
-function getWorkflowModeLabelLegacy(mode = ensureState().workflowMode) {
-    if (mode === workflowModes.GENERIC) {
-        return '通用插件补课';
-    }
-    if (mode === workflowModes.MIXED) {
-        return '混合工作流';
-    }
-    return '摘要块手账';
-}
-
-function getStageSourceModeLabelLegacy(mode = getStageSourceMode()) {
-    const labels = {
-        [stageSourceModes.SUMMARIES]: '摘要总结模式',
-        [stageSourceModes.BACKFILL]: '插件补课摘要',
-        [stageSourceModes.RAW]: '普通正文总结',
-        [stageSourceModes.MIXED]: '混合材料',
-        [stageSourceModes.AUTO]: '自动选择',
-    };
-    return labels[mode] || labels[stageSourceModes.SUMMARIES];
-}
-
-function getMemoryStrategyLabel(strategy = ensureState().memoryStrategy) {
-    return strategy === memoryStrategies.GENERIC ? '补课摘要会临时注入' : '普通摘要不重复注入';
-}
-
-function getWorkflowModeLabel(mode = ensureState().workflowMode) {
-    if (mode === workflowModes.GENERIC) {
-        return '补课旧聊天';
-    }
-    if (mode === workflowModes.MIXED) {
-        return '高级自定义';
-    }
-    return '已有摘要';
-}
-
-function getStageSourceModeLabel(mode = getStageSourceMode()) {
-    const labels = {
-        [stageSourceModes.SUMMARIES]: '读取已有摘要',
-        [stageSourceModes.BACKFILL]: '读取补课摘要',
-        [stageSourceModes.RAW]: '直接读取正文',
-        [stageSourceModes.MIXED]: '摘要和正文都读',
-        [stageSourceModes.AUTO]: '自动选择',
-    };
-    return labels[mode] || labels[stageSourceModes.SUMMARIES];
-}
-
-function getWorkflowInfo(state = ensureState()) {
-    const mode = state.workflowMode || workflowModes.BAKEMONO;
-    if (mode === workflowModes.GENERIC) {
-        return {
-            title: '补齐遗漏的旧剧情',
-            actions: ['scan', 'backfill', 'generate-stage', 'generate-epic', 'undo'],
-        };
-    }
-    if (mode === workflowModes.MIXED) {
-        return {
-            title: '按你的方式剪辑剧情',
-            actions: ['scan', 'backfill', 'generate-stage', 'generate-epic', 'hide', 'restore', 'undo'],
-        };
-    }
-    return {
-        title: '整理本幕的新剧情',
-        actions: ['scan', 'generate-stage', 'generate-epic', 'hide', 'restore', 'undo'],
-    };
-}
-
-function getLegacyOverviewRecommendation(state = ensureState()) {
-    const storySummaries = Array.isArray(state.storySummaries) ? state.storySummaries : [];
-    const stageSummaries = Array.isArray(state.stageSummaries) ? state.stageSummaries : [];
-    const drafts = Array.isArray(state.drafts) ? state.drafts : [];
-    const taskQueue = Array.isArray(state.taskQueue) ? state.taskQueue : [];
-    const coveredStoryHashes = new Set(state.coveredBlockHashes || []);
-    const coveredStageHashes = new Set(state.coveredStageHashes || []);
-    const coveredStoryCount = storySummaries.filter(summary => summary?.hash && coveredStoryHashes.has(summary.hash)).length;
-    const uncoveredStoryCount = Math.max(0, storySummaries.length - coveredStoryCount);
-    const uncoveredStageCount = stageSummaries.filter(summary => summary?.hash && !coveredStageHashes.has(summary.hash)).length;
-    const activeTaskCount = taskQueue.filter(task => ['queued', 'running'].includes(task?.status)).length;
-    const progress = storySummaries.length
-        ? Math.max(0, Math.min(100, Math.round((coveredStoryCount / storySummaries.length) * 100)))
-        : 0;
-
-    if (drafts.length) {
-        return {
-            stateLabel: '等待确认',
-            statusLabel: `${drafts.length.toLocaleString()} 条待办`,
-            title: '先确认刚生成的内容',
-            copy: '生成结果还没有写入长期记忆，确认后再继续整理。',
-            kind: 'nav',
-            target: 'drafts',
-            buttonLabel: '查看待确认',
-            icon: 'fa-inbox',
-            progress,
-        };
-    }
-
-    if (activeTaskCount) {
-        return {
-            stateLabel: '正在处理',
-            statusLabel: `${activeTaskCount.toLocaleString()} 个任务`,
-            title: '查看正在处理的任务',
-            copy: '任务会在后台继续运行，可以到待确认页查看进度。',
-            kind: 'nav',
-            target: 'drafts',
-            buttonLabel: '查看任务进度',
-            icon: 'fa-list-check',
-            progress,
-        };
-    }
-
-    if ((state.workflowMode || workflowModes.BAKEMONO) === workflowModes.GENERIC) {
-        const currentFloor = Math.max(0, (Array.isArray(chat) ? chat.length : 1) - 1);
-        return {
-            stateLabel: '旧聊天补课',
-            statusLabel: `${currentFloor.toLocaleString()} 楼`,
-            title: '给旧聊天补上记忆',
-            copy: '先选择要整理的楼层范围，再让剪辑台分批处理。',
-            kind: 'nav',
-            target: 'settings',
-            buttonLabel: '设置补课范围',
-            icon: 'fa-box-archive',
-            progress,
-        };
-    }
-
-    if (!storySummaries.length) {
-        return {
-            stateLabel: '新聊天',
-            statusLabel: '准备开始',
-            title: '建立第一段剧情记忆',
-            copy: '还没有找到剧情摘要，先扫描一次当前聊天。',
-            kind: 'action',
-            target: 'scan',
-            buttonLabel: '扫描当前聊天',
-            icon: 'fa-magnifying-glass',
-            progress: 0,
-        };
-    }
-
-    if (uncoveredStoryCount) {
-        return {
-            stateLabel: '已有摘要',
-            statusLabel: `${uncoveredStoryCount.toLocaleString()} 条待整理`,
-            title: '整理下一段长期记忆',
-            copy: `${uncoveredStoryCount.toLocaleString()} 条剧情摘要还没有进入阶段记忆。`,
-            kind: 'action',
-            target: 'generate-stage',
-            buttonLabel: '生成阶段总结',
-            icon: 'fa-wand-magic-sparkles',
-            progress,
-        };
-    }
-
-    if (uncoveredStageCount >= 2) {
-        return {
-            stateLabel: '阶段已整理',
-            statusLabel: `${uncoveredStageCount.toLocaleString()} 段可汇总`,
-            title: '把阶段记忆串成时间线',
-            copy: '已有多段阶段记忆，可以继续生成一份多次总结。',
-            kind: 'action',
-            target: 'generate-epic',
-            buttonLabel: '生成多次总结',
-            icon: 'fa-layer-group',
-            progress: 100,
-        };
-    }
-
-    return {
-        stateLabel: '进度正常',
-        statusLabel: '已经同步',
-        title: '继续整理这段剧情',
-        copy: '已识别的摘要都已收入长期记忆，可以扫描最新楼层。',
-        kind: 'action',
-        target: 'scan',
-        buttonLabel: '扫描最新剧情',
-        icon: 'fa-magnifying-glass',
-        progress: 100,
-    };
-}
-
-function getCurrentFloorMemoryIndex(state = ensureState()) {
-    const context = getContext();
-    return buildFloorMemoryIndex({
-        messages: context?.chat || chat || [],
-        state,
-    });
-}
-
-function getMemoryOrchestrationPlan(state = ensureState(), index = getCurrentFloorMemoryIndex(state)) {
-    return createMemoryOrchestrationPlan(index, state, { busy: isBusy || summaryTaskQueue.isRunning() });
-}
-
-function getOverviewRecommendation(state = ensureState(), index = getCurrentFloorMemoryIndex(state)) {
-    try {
-        return getMemoryOrchestrationPlan(state, index).recommendation;
-    } catch (error) {
-        console.warn('[BakemonoMemory] floor memory planning failed, using summary fallback', error);
-        return getLegacyOverviewRecommendation(state);
-    }
-}
-
-function applyWorkflowPreset(mode) {
-    const state = ensureState();
-    if (mode === workflowModes.MIXED) {
-        state.workflowMode = workflowModes.MIXED;
-        state.stageSourceMode = stageSourceModes.AUTO;
-        state.outputMode = 'custom';
-    } else if (mode === workflowModes.GENERIC) {
-        state.workflowMode = workflowModes.GENERIC;
-        state.memoryStrategy = memoryStrategies.GENERIC;
-        state.stageSourceMode = stageSourceModes.BACKFILL;
-        state.outputMode = 'plain';
-    } else {
-        state.workflowMode = workflowModes.BAKEMONO;
-        state.memoryStrategy = memoryStrategies.BAKEMONO;
-        state.stageSourceMode = stageSourceModes.SUMMARIES;
-        state.outputMode = 'bakemono';
-    }
-
-    scanBakemonoBlocks({ persist: false });
-    updateInjectionFromSummaries();
-    saveState();
-    renderWorkbenchScope(workbenchRenderScopes.SETTINGS, `已切换到：${getWorkflowModeLabel(state.workflowMode)}。扫描、自动总结和提示词配置已保留。`);
-}
-
-function getOverviewHealth(floorStats, state = ensureState()) {
-    if (!state.injection?.enabled) {
-        return {
-            badge: '注入关闭',
-            title: '长期记忆暂未注入',
-            copy: '已保存内容仍保留在档案中，不会发送给模型。',
-            tone: 'paused',
-        };
-    }
-    if (floorStats.pendingDraftCount) {
-        return {
-            badge: `${floorStats.pendingDraftCount.toLocaleString()} 条待确认`,
-            title: '有内容等待确认',
-            copy: '草稿尚未写入长期记忆，现有已确认内容仍正常注入。',
-            tone: 'attention',
-        };
-    }
-    if (floorStats.activeTaskCount || isBusy || summaryTaskQueue.isRunning()) {
-        return {
-            badge: '正在处理',
-            title: '记忆正在整理',
-            copy: '后台任务完成后，这里的覆盖状态会自动更新。',
-            tone: 'working',
-        };
-    }
-    if (!floorStats.total) {
-        return {
-            badge: '等待正文',
-            title: '等待聊天内容',
-            copy: '当前聊天还没有可整理的助手正文。',
-            tone: 'idle',
-        };
-    }
-    if (!floorStats.summarized) {
-        return {
-            badge: '等待记忆',
-            title: '尚未建立剧情记忆',
-            copy: `${floorStats.missing.toLocaleString()} 楼正文还没有识别为可用记忆。`,
-            tone: 'attention',
-        };
-    }
-    if (floorStats.missing) {
-        return {
-            badge: '运行正常',
-            title: '记忆链路运行正常',
-            copy: `最近 ${floorStats.missing.toLocaleString()} 楼尚未整理；已有内容仍正常注入。`,
-            tone: 'healthy',
-        };
-    }
-    return {
-        badge: '已同步',
-        title: '现有记忆已经同步',
-        copy: '当前可识别楼层均已有记忆记录。',
-        tone: 'healthy',
-    };
-}
-
-function renderOverviewConfigManifest(state = ensureState()) {
-    const activeConfig = getActiveGlobalConfig();
-    const scanMode = state.scanRules?.mode || defaultScanRules.mode;
-    const apiProvider = state.automation?.apiProvider || defaultAutomation.apiProvider;
-    const backgroundFeatures = [];
-    if (state.turnSummary?.auto) backgroundFeatures.push('自动记忆');
-    if (state.automation?.enabled) backgroundFeatures.push('自动总结');
-    if (state.autoHideRecent?.enabled) backgroundFeatures.push('楼层收纳');
-    const vectorProvider = state.vectorMemory?.embeddingProvider === 'custom-openai' ? '外部语义检索' : '本地轻量检索';
-
-    $('#bakemono-memory-overview-config-scope').text(activeConfig ? '全部聊天' : '当前聊天');
-    $('#bakemono-memory-overview-config-name').text(activeConfig?.name || '当前聊天配置');
-    $('#bakemono-memory-overview-config-workflow').text(getWorkflowModeLabel(state.workflowMode));
-    $('#bakemono-memory-overview-config-scan').text(scanMode === 'full' ? '全文管线' : '标签块模式');
-    $('#bakemono-memory-overview-config-model').text(apiProvider === 'custom'
-        ? (String(state.automation?.customApi?.model || '').trim() || '自定义接口')
-        : '酒馆主模型');
-    $('#bakemono-memory-overview-config-auto').text(backgroundFeatures.length ? backgroundFeatures.join(' · ') : '全部关闭');
-    $('#bakemono-memory-overview-config-injection').text(state.injection?.enabled
-        ? `开启 · 深度 ${Number(state.injection?.depth ?? defaultState.injection.depth).toLocaleString()}`
-        : '关闭');
-    $('#bakemono-memory-overview-config-vector').text(state.vectorMemory?.enabled ? vectorProvider : '未开启');
-}
-
-function renderWorkflowGuide(state = ensureState()) {
-    const floorIndex = getCurrentFloorMemoryIndex(state);
-    const floorStats = floorIndex.aggregates;
-    const health = getOverviewHealth(floorStats, state);
-    const coverageProgress = floorStats.total
-        ? Math.max(0, Math.min(100, Math.round((floorStats.summarized / floorStats.total) * 100)))
-        : 0;
-    const stageCount = Array.isArray(state.stageSummaries) ? state.stageSummaries.length : 0;
-    const epicCount = Array.isArray(state.epicSummaries) ? state.epicSummaries.length : 0;
-
-    $('#bakemono-memory-overview-status-label').text(health.badge);
-    $('#bakemono-memory-workflow-title').text(health.title);
-    $('#bakemono-memory-overview-next-copy').text(health.copy);
-    $('#bakemono-memory-index-ready-floor').text(floorStats.summarized.toLocaleString());
-    $('#bakemono-memory-index-pending-count').text(floorStats.missing.toLocaleString());
-    $('#bakemono-memory-count-drafts').text(floorStats.pendingDraftCount.toLocaleString());
-    $('#bakemono-memory-scene-code').text(`SC. ${String(stageCount).padStart(2, '0')} / TK. ${String(epicCount).padStart(2, '0')}`);
-    $('#bakemono-memory-scene-progress-fill').css('width', `${coverageProgress}%`);
-    $('.bakemono-memory-health-board').attr('data-health-tone', health.tone);
-    renderOverviewConfigManifest(state);
-    if (getActiveWorkbenchTab() === 'overview') {
-        void renderOverviewTokenManifest(state);
-    }
-}
-
 function renderSummaryGenerationPanel(state = ensureState(), blocks = null) {
     if (blocks) {
         summaryGenerationSnapshot = {
@@ -1378,18 +1046,6 @@ function renderSummaryGenerationPanel(state = ensureState(), blocks = null) {
             batchPanel.open = true;
         }
     }
-}
-
-function getWorkflowStatusText(state = ensureState(), stats = getInjectionMemoryParts(state).stats, uncoveredStory = 0) {
-    if (state.workflowMode === workflowModes.GENERIC) {
-        return `补课模式：未被阶段总结覆盖的补课摘要会临时注入。当前注入普通摘要 ${stats.story} 个，待压缩摘要 ${uncoveredStory} 个。`;
-    }
-    if (state.workflowMode === workflowModes.MIXED) {
-        return '高级模式：请先确认扫描预览和阶段材料来源，再生成总结。';
-    }
-    return uncoveredStory
-        ? `已有摘要模式：普通摘要不会重复注入。当前有 ${uncoveredStory} 个摘要可用于生成阶段总结。`
-        : '已有摘要模式：适合配合正文摘要正则使用，普通摘要不重复占用 token。';
 }
 
 function renderTurnSummaryPanel(state = ensureState()) {
@@ -2674,6 +2330,51 @@ const overviewTokenManifest = createOverviewTokenManifest({
     logWarning: (...args) => console.warn(...args),
 });
 const { renderOverviewTokenManifest } = overviewTokenManifest;
+
+const workflowOverviewModel = createWorkflowOverviewModel({
+    getState: ensureState,
+    getChat: () => chat,
+    getContext,
+    buildFloorMemoryIndex,
+    createMemoryOrchestrationPlan,
+    memoryStrategies,
+    workflowModes,
+    stageSourceModes,
+    getStageSourceMode,
+    getIsBusy: () => isBusy,
+    isTaskQueueRunning: () => summaryTaskQueue.isRunning(),
+    scanBlocks: options => scanBakemonoBlocks(options),
+    updateInjection: () => updateInjectionFromSummaries(),
+    saveState,
+    renderSettings: status => renderWorkbenchScope(workbenchRenderScopes.SETTINGS, status),
+    logWarning: (...args) => console.warn(...args),
+});
+const {
+    applyWorkflowPreset,
+    getCurrentFloorMemoryIndex,
+    getMemoryOrchestrationPlan,
+    getMemoryStrategyLabel,
+    getOverviewHealth,
+    getOverviewRecommendation,
+    getStageSourceModeLabel,
+    getWorkflowModeLabel,
+    getWorkflowStatusText,
+} = workflowOverviewModel;
+
+const overviewWorkbenchUi = createOverviewWorkbenchUi({
+    query: $,
+    getState: ensureState,
+    getActiveGlobalConfig,
+    defaultAutomation,
+    defaultScanRules,
+    defaultState,
+    getWorkflowModeLabel,
+    getCurrentFloorMemoryIndex,
+    getOverviewHealth,
+    getActiveTab: () => getActiveWorkbenchTab(),
+    renderTokenManifest: state => renderOverviewTokenManifest(state),
+});
+const { renderOverviewConfigManifest, renderWorkflowGuide } = overviewWorkbenchUi;
 
 const generationClient = createGenerationClient({
     query: $,

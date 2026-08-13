@@ -24,6 +24,8 @@ const summaryGenerationControllerSource = fs.readFileSync(new URL('../src/featur
 const summaryBackfillControllerSource = fs.readFileSync(new URL('../src/features/summary-backfill-controller.js', import.meta.url), 'utf8');
 const configurationServiceSource = fs.readFileSync(new URL('../src/features/configuration-service.js', import.meta.url), 'utf8');
 const configurationControllerSource = fs.readFileSync(new URL('../src/features/configuration-controller.js', import.meta.url), 'utf8');
+const workflowOverviewModelSource = fs.readFileSync(new URL('../src/features/workflow-overview-model.js', import.meta.url), 'utf8');
+const overviewWorkbenchUiSource = fs.readFileSync(new URL('../src/features/overview-workbench-ui.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -94,6 +96,11 @@ test('overview dashboard keeps the mobile hierarchy compact and read-only', () =
     assert.match(settingsSource, /data-bakemono-nav="settings"/);
     assert.match(settingsSource, /data-bakemono-panel="settings"/);
     assert.match(settingsSource, /<option value="backfill">旧正文补课<\/option>/);
+    assert.match(source, /createWorkflowOverviewModel\(\{/);
+    assert.match(source, /createOverviewWorkbenchUi\(\{/);
+    assert.match(workflowOverviewModelSource, /function getCurrentFloorMemoryIndex\(/);
+    assert.match(workflowOverviewModelSource, /function getOverviewHealth\(/);
+    assert.match(overviewWorkbenchUiSource, /function renderWorkflowGuide\(/);
     assert.doesNotMatch(settingsSource, /<nav class="bakemono-mobile-actions"/);
     assert.match(styleSource, /\.bakemono-memory-control-deck \[hidden\]\s*\{[^}]*display:\s*none !important;/s);
     assert.match(styleSource, /\.bakemono-workbench-tabs\s*\{[^}]*scrollbar-width:\s*none;/s);
@@ -595,6 +602,8 @@ test('all business mutations use scoped rendering and reserve renderAll for life
                 ? summaryGenerationControllerSource
                 : name === 'generateMissingSummaryQueue'
                     ? summaryBackfillControllerSource
+                : name === 'applyWorkflowPreset'
+                    ? workflowOverviewModelSource
                 : ['applyPromptPresetToState', 'renderAreaPresetChange'].includes(name)
                     ? configurationControllerSource
                 : source;
