@@ -1355,6 +1355,7 @@ const {
 const themeController = createThemeController({
     query: $,
     documentRef: document,
+    navigatorRef: navigator,
     BlobCtor: Blob,
     urlApi: URL,
     extensionSettings: extension_settings,
@@ -1373,20 +1374,11 @@ const themeController = createThemeController({
 });
 const {
     applyAppearanceTheme,
-    deleteSelectedCustomThemePreset,
-    downloadCustomThemeJson,
-    downloadCustomThemeLibraryJson,
+    bindEvents: bindThemeEvents,
     getAppearanceSettings,
     getSelectedCustomThemePreset,
-    importCustomThemeJson,
     parseCustomThemeJson,
-    previewCustomThemeFromUi,
-    readCustomThemeFromUi,
     renderAppearanceSettings,
-    saveCustomTheme,
-    saveCustomThemePreset,
-    selectCustomThemePreset,
-    setCustomThemeJson,
 } = themeController;
 
 const tableStateService = createTableStateService({
@@ -2522,48 +2514,7 @@ function bindSettingsEvents() {
     $('#bakemono-workbench-root').off('click.bakemonoHubTab').on('click.bakemonoHubTab', '.menu_button[data-bakemono-tab]', function () {
         switchWorkbenchTab(this.dataset.bakemonoTab);
     });
-    $('#bakemono-workbench-root').off('click.bakemonoThemeMode').on('click.bakemonoThemeMode', '[data-bakemono-theme-mode]', function () {
-        themeController.setThemeMode(this.dataset.bakemonoThemeMode);
-    });
-    $('#bakemono-memory-theme-preset-select').off('change').on('change', function () {
-        selectCustomThemePreset(String(this.value || ''));
-    });
-    $('#bakemono-workbench-root').off('click.bakemonoThemeSection').on('click.bakemonoThemeSection', '[data-bakemono-theme-section]', function () {
-        themeController.setEditorSection(this.dataset.bakemonoThemeSection);
-    });
-    $('#bakemono-workbench-root').off('input.bakemonoThemePreview').on('input.bakemonoThemePreview', '[data-bakemono-theme-color], [data-bakemono-theme-effect], #bakemono-memory-theme-name, #bakemono-memory-theme-appearance', previewCustomThemeFromUi);
-    $('#bakemono-memory-theme-apply-preset').off('click').on('click', () => saveCustomTheme(readCustomThemeFromUi(), '主题配置已应用。'));
-    $('#bakemono-memory-theme-save').off('click').on('click', () => saveCustomThemePreset());
-    $('#bakemono-memory-theme-save-as').off('click').on('click', () => saveCustomThemePreset({ saveAs: true }));
-    $('#bakemono-memory-theme-delete').off('click').on('click', deleteSelectedCustomThemePreset);
-    $('#bakemono-memory-theme-reset').off('click').on('click', themeController.resetDraft);
-    $('#bakemono-memory-theme-copy-json').off('click').on('click', async () => {
-        const theme = readCustomThemeFromUi();
-        setCustomThemeJson(theme);
-        await navigator.clipboard.writeText(JSON.stringify(theme, null, 2));
-        toastr.success('主题 JSON 已复制。');
-    });
-    $('#bakemono-memory-theme-download-json').off('click').on('click', downloadCustomThemeJson);
-    $('#bakemono-memory-theme-download-library').off('click').on('click', downloadCustomThemeLibraryJson);
-    $('#bakemono-memory-theme-import-json').off('click').on('click', () => {
-        try {
-            importCustomThemeJson($('#bakemono-memory-theme-json').val());
-        } catch (error) {
-            toastr.error(error?.message || String(error), '主题导入失败');
-        }
-    });
-    $('#bakemono-memory-theme-choose-file').off('click').on('click', () => $('#bakemono-memory-theme-file').trigger('click'));
-    $('#bakemono-memory-theme-file').off('change').on('change', async function () {
-        const file = this.files?.[0];
-        if (!file) return;
-        try {
-            importCustomThemeJson(await file.text(), `已导入主题：${file.name}`);
-        } catch (error) {
-            toastr.error(error?.message || String(error), '主题文件导入失败');
-        } finally {
-            this.value = '';
-        }
-    });
+    bindThemeEvents(rootElement);
     $('#bakemono-workbench-root').off('click.bakemonoNav').on('click.bakemonoNav', '[data-bakemono-nav]', function () {
         switchWorkbenchTab(this.dataset.bakemonoNav);
     });

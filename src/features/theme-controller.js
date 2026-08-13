@@ -1,6 +1,7 @@
 export function createThemeController({
     query,
     documentRef,
+    navigatorRef,
     BlobCtor,
     urlApi,
     extensionSettings,
@@ -321,8 +322,60 @@ export function createThemeController({
         toastr.info('已载入主题模板，保存后才会覆盖当前配置。');
     }
 
+    function bindEvents(rootElement) {
+        if (!rootElement) return;
+        const root = query(rootElement);
+        root.off('click.bakemonoThemeMode').on('click.bakemonoThemeMode', '[data-bakemono-theme-mode]', function () {
+            setThemeMode(this.dataset.bakemonoThemeMode);
+        });
+        query('#bakemono-memory-theme-preset-select').off('change').on('change', function () {
+            selectCustomThemePreset(String(this.value || ''));
+        });
+        root.off('click.bakemonoThemeSection').on('click.bakemonoThemeSection', '[data-bakemono-theme-section]', function () {
+            setEditorSection(this.dataset.bakemonoThemeSection);
+        });
+        root.off('input.bakemonoThemePreview').on(
+            'input.bakemonoThemePreview',
+            '[data-bakemono-theme-color], [data-bakemono-theme-effect], #bakemono-memory-theme-name, #bakemono-memory-theme-appearance',
+            previewCustomThemeFromUi,
+        );
+        query('#bakemono-memory-theme-apply-preset').off('click').on('click', () => saveCustomTheme(readCustomThemeFromUi(), '主题配置已应用。'));
+        query('#bakemono-memory-theme-save').off('click').on('click', () => saveCustomThemePreset());
+        query('#bakemono-memory-theme-save-as').off('click').on('click', () => saveCustomThemePreset({ saveAs: true }));
+        query('#bakemono-memory-theme-delete').off('click').on('click', deleteSelectedCustomThemePreset);
+        query('#bakemono-memory-theme-reset').off('click').on('click', resetDraft);
+        query('#bakemono-memory-theme-copy-json').off('click').on('click', async () => {
+            const theme = readCustomThemeFromUi();
+            setCustomThemeJson(theme);
+            await navigatorRef.clipboard.writeText(JSON.stringify(theme, null, 2));
+            toastr.success('主题 JSON 已复制。');
+        });
+        query('#bakemono-memory-theme-download-json').off('click').on('click', downloadCustomThemeJson);
+        query('#bakemono-memory-theme-download-library').off('click').on('click', downloadCustomThemeLibraryJson);
+        query('#bakemono-memory-theme-import-json').off('click').on('click', () => {
+            try {
+                importCustomThemeJson(query('#bakemono-memory-theme-json').val());
+            } catch (error) {
+                toastr.error(error?.message || String(error), '主题导入失败');
+            }
+        });
+        query('#bakemono-memory-theme-choose-file').off('click').on('click', () => query('#bakemono-memory-theme-file').trigger('click'));
+        query('#bakemono-memory-theme-file').off('change').on('change', async function () {
+            const file = this.files?.[0];
+            if (!file) return;
+            try {
+                importCustomThemeJson(await file.text(), `已导入主题：${file.name}`);
+            } catch (error) {
+                toastr.error(error?.message || String(error), '主题文件导入失败');
+            } finally {
+                this.value = '';
+            }
+        });
+    }
+
     return {
         applyAppearanceTheme,
+        bindEvents,
         deleteSelectedCustomThemePreset,
         downloadCustomThemeJson,
         downloadCustomThemeLibraryJson,

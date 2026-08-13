@@ -747,6 +747,9 @@ test('custom themes stay token-only, global, and importable as JSON', () => {
     assert.match(themeControllerSource, /function downloadCustomThemeJson\(/);
     assert.match(themeControllerSource, /function downloadCustomThemeLibraryJson\(/);
     assert.match(themeControllerSource, /function importCustomThemeJson\(/);
+    assert.match(themeControllerSource, /function bindEvents\(rootElement\)/);
+    assert.match(source, /bindEvents: bindThemeEvents/);
+    assert.doesNotMatch(source, /bakemonoThemePreview|bakemono-memory-theme-copy-json/);
     assert.match(source, /createThemeController\(\{/);
     assert.match(globalSettingsServiceSource, /settings\.ui\.customTheme = sanitizeCustomTheme/);
     assert.match(globalSettingsServiceSource, /settings\.ui\.themePresets = Array\.isArray\(settings\.ui\.themePresets\)[\s\S]*?settings\.ui\.themePresets\.map/);
