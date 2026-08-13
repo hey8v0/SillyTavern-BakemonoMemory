@@ -18,6 +18,7 @@ const archiveControllerSource = fs.readFileSync(new URL('../src/features/archive
 const memoryOrchestratorSource = fs.readFileSync(new URL('../src/features/memory-orchestrator.js', import.meta.url), 'utf8');
 const turnProcessingControllerSource = fs.readFileSync(new URL('../src/features/turn-processing-controller.js', import.meta.url), 'utf8');
 const generationClientSource = fs.readFileSync(new URL('../src/features/generation-client.js', import.meta.url), 'utf8');
+const summaryDraftServiceSource = fs.readFileSync(new URL('../src/features/summary-draft-service.js', import.meta.url), 'utf8');
 const helpGuideContentSource = fs.readFileSync(new URL('../src/features/help-guide-content.js', import.meta.url), 'utf8');
 const helpGuideSource = fs.readFileSync(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
 const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summary-memory-model.js', import.meta.url), 'utf8');
@@ -520,7 +521,7 @@ test('vector, draft, and table actions use page-scoped rendering', () => {
         ['regenerateDraft', 'DRAFTS'],
         ['undoLastCommit', 'DRAFTS'],
     ]) {
-        const functionSource = extractFunction(name);
+        const functionSource = extractFunctionFrom(summaryDraftServiceSource, name);
         assert.match(functionSource, new RegExp(`renderWorkbenchScope\\(workbenchRenderScopes\\.${scope}`), `${name} should use ${scope} scoped rendering`);
         assert.doesNotMatch(functionSource, /renderAll\(/, `${name} should not refresh the whole workbench`);
     }
@@ -578,9 +579,6 @@ test('all business mutations use scoped rendering and reserve renderAll for life
         'generateStageBatchTasks',
         'generateEpicBatchTasks',
         'generateMissingSummaryQueue',
-        'rollbackAutoSummaryTransaction',
-        'saveEditedSummary',
-        'deleteSavedSummary',
         'applyWorkflowPreset',
         'applyPromptPresetToState',
         'renderAreaPresetChange',
@@ -591,6 +589,9 @@ test('all business mutations use scoped rendering and reserve renderAll for life
     assert.doesNotMatch(extractFunctionFrom(archiveControllerSource, 'hideCoveredMessages'), /\brenderAll\(/);
     assert.doesNotMatch(extractFunctionFrom(archiveControllerSource, 'restoreHiddenMessages'), /\brenderAll\(/);
     assert.doesNotMatch(extractFunctionFrom(memoryOrchestratorSource, 'maybeRunAutoSummary'), /\brenderAll\(/);
+    for (const name of ['rollbackAutoSummaryTransaction', 'saveEditedSummary', 'deleteSavedSummary']) {
+        assert.doesNotMatch(extractFunctionFrom(summaryDraftServiceSource, name), /\brenderAll\(/);
+    }
     assert.doesNotMatch(extractFunctionFrom(operationFeedbackSource, 'runGeneration'), /\brenderAll\(/);
 });
 
