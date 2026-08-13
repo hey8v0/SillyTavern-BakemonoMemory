@@ -762,7 +762,12 @@ test('every config-bearing tab refreshes its own preset selectors', () => {
     assert.match(presetControlsUiSource, /function renderAreaPresetControl\(/);
     assert.match(presetEventsControllerSource, /function bindAreaPresetControls\(/);
     assert.match(presetEventsControllerSource, /function bindInlinePromptPresetControls\(/);
+    assert.match(presetEventsControllerSource, /function bindGlobalPresetControls\(/);
+    assert.match(presetEventsControllerSource, /bakemono-memory-preset-select/);
+    assert.match(presetEventsControllerSource, /saveCurrentConfigPreset/);
+    assert.match(presetEventsControllerSource, /normalizeImportedPreset/);
     assert.doesNotMatch(source, /function bindAreaPresetControls\(|function bindInlinePromptPresetControls\(/);
+    assert.doesNotMatch(source, /bakemono-memory-preset-select|bakemono-memory-save-preset|bakemono-memory-import-preset/);
 });
 
 test('custom themes stay token-only, global, and importable as JSON', () => {

@@ -1915,10 +1915,25 @@ presetEventsController = createPresetEventsController({
     makeInlinePromptPreset,
     renderWorkbenchScope,
     workbenchRenderScopes,
+    navigatorRef: navigator,
+    defaultPromptPreset,
+    getSelectedPromptPresetId,
+    setSelectedPromptPresetId,
+    getPromptPresets,
+    usePromptPresetAsGlobalDefault,
+    isBuiltInPresetId,
+    saveCurrentConfigPreset,
+    setActiveGlobalConfig,
+    markActiveConfigApplied,
+    saveState,
+    getActiveGlobalConfig,
+    applyGlobalActiveConfigToState,
+    getCurrentPromptPresetPayload,
+    normalizeImportedPreset,
+    areaPresetScopes,
 });
 const {
-    bindAreaPresetControls,
-    bindInlinePromptPresetControls,
+    bind: bindPresetEvents,
 } = presetEventsController;
 
 tableManagementEvents = createTableManagementEvents({
@@ -2696,198 +2711,7 @@ function bindSettingsEvents() {
     tableManagementEvents.bind();
     contentConfigurationEvents.bind();
     automationConfigurationEvents.bind();
-    $('#bakemono-memory-preset-select').off('change').on('change', function () {
-        const previousId = getSelectedPromptPresetId();
-        const selectedId = String(this.value || defaultPromptPreset.id);
-        setSelectedPromptPresetId(selectedId);
-        renderPromptPresetControls();
-        const preset = getPromptPresets().find(item => item.id === selectedId);
-        if (!preset) {
-            return;
-        }
-        const confirmed = confirmDanger(
-            `使用配置「${preset.name || '未命名配置'}」？`,
-            ['会覆盖工作流、扫描、自动、提示词、注入和向量等设置，并同步到所有角色卡。', '摘要、草稿、表格行与向量索引不会跨聊天复制。'],
-        );
-        if (!confirmed) {
-            setSelectedPromptPresetId(previousId);
-            renderPromptPresetControls();
-            return;
-        }
-        usePromptPresetAsGlobalDefault(preset);
-    });
-    $('#bakemono-memory-load-preset').off('click').on('click', () => {
-        const preset = getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
-        if (!preset) {
-            toastr.warning('没有找到选中的预设。');
-            return;
-        }
-        const confirmed = confirmDanger(
-            `使用并设为全局默认「${preset.name || '未命名预设'}」？`,
-            ['会覆盖当前设置，并让所有角色卡在打开或切换时自动使用这套配置。'],
-        );
-        if (!confirmed) {
-            return;
-        }
-        usePromptPresetAsGlobalDefault(preset);
-    });
-    $('#bakemono-memory-save-preset').off('click').on('click', () => {
-        const name = String($('#bakemono-memory-preset-name').val() || '').trim();
-        if (!name) {
-            toastr.warning('请先填写预设名称。');
-            return;
-        }
-        const selectedId = getSelectedPromptPresetId();
-        const selected = getPromptPresets().find(preset => preset.id === selectedId);
-        const preset = isBuiltInPresetId(selectedId) || !selected
-            ? saveCurrentConfigPreset(name, { skipRender: true })
-            : saveCurrentConfigPreset(name, { replaceId: selectedId, skipRender: true });
-        const config = setActiveGlobalConfig(preset);
-        markActiveConfigApplied(ensureState(), config);
-        saveState();
-        renderWorkbenchScope(workbenchRenderScopes.CONFIG, isBuiltInPresetId(selectedId) || !selected ? `已另存并设为全局默认：${preset.name}` : `已覆盖并设为全局默认：${preset.name}`);
-    });
-    $('#bakemono-memory-save-as-preset').off('click').on('click', () => {
-        const name = String($('#bakemono-memory-preset-name').val() || '').trim();
-        if (!name) {
-            toastr.warning('请先填写预设名称。');
-            return;
-        }
-        const preset = saveCurrentConfigPreset(name, { skipRender: true });
-        const config = setActiveGlobalConfig(preset);
-        markActiveConfigApplied(ensureState(), config);
-        saveState();
-        renderWorkbenchScope(workbenchRenderScopes.CONFIG, `已另存并设为全局默认：${preset.name}`);
-    });
-    $('#bakemono-memory-delete-preset').off('click').on('click', () => {
-        const selectedId = getSelectedPromptPresetId();
-        if (isBuiltInPresetId(selectedId)) {
-            toastr.warning('默认预设不能删除。');
-            return;
-        }
-        const selected = getPromptPresets().find(preset => preset.id === selectedId);
-        const confirmed = confirmDanger(
-            `删除预设「${selected?.name || '未命名预设'}」？`,
-            ['删除后不会影响已保存摘要，但这个预设无法从列表里恢复。'],
-        );
-        if (!confirmed) {
-            return;
-        }
-        extension_settings[STORAGE_KEY].promptPresets = getPromptPresets().filter(preset => preset.id !== selectedId);
-        if (getActiveGlobalConfig()?.id === selectedId) {
-            const fallback = extension_settings[STORAGE_KEY].promptPresets.find(preset => preset.id === defaultPromptPreset.id)
-                || extension_settings[STORAGE_KEY].promptPresets[0]
-                || structuredClone(defaultPromptPreset);
-            const config = setActiveGlobalConfig(fallback);
-            applyGlobalActiveConfigToState(ensureState());
-            markActiveConfigApplied(ensureState(), config);
-            saveState();
-        }
-        setSelectedPromptPresetId(defaultPromptPreset.id);
-        saveGlobalSettings();
-        renderWorkbenchScope(workbenchRenderScopes.CONFIG, '预设已删除。');
-    });
-    $('#bakemono-memory-export-preset').off('click').on('click', () => {
-        const selected = getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
-        const preset = getCurrentPromptPresetPayload($('#bakemono-memory-preset-name').val() || selected?.name || '当前工作流');
-        $('#bakemono-memory-preset-json').val(JSON.stringify(preset, null, 2));
-        toastr.success('预设数据已写入导出框。');
-    });
-    $('#bakemono-memory-copy-preset').off('click').on('click', async () => {
-        let value = String($('#bakemono-memory-preset-json').val() || '');
-        if (!value) {
-            const selected = getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
-            const preset = getCurrentPromptPresetPayload($('#bakemono-memory-preset-name').val() || selected?.name || '当前工作流');
-            value = JSON.stringify(preset, null, 2);
-            $('#bakemono-memory-preset-json').val(value);
-        }
-        await navigator.clipboard.writeText(value);
-        toastr.success('预设数据已复制。');
-    });
-    $('#bakemono-memory-import-preset').off('click').on('click', () => {
-        try {
-            const preset = normalizeImportedPreset(String($('#bakemono-memory-preset-json').val() || ''));
-            getPromptPresets().push(preset);
-            setSelectedPromptPresetId(preset.id);
-            saveGlobalSettings();
-            renderWorkbenchScope(workbenchRenderScopes.CONFIG, `已导入预设：${preset.name}`);
-            toastr.success('提示词预设已导入。');
-        } catch (error) {
-            toastr.error(error?.message || String(error), '导入失败');
-        }
-    });
-    bindAreaPresetControls(areaPresetScopes.SCAN, {
-        select: '#bakemono-memory-scan-preset-select',
-        name: '#bakemono-memory-scan-preset-name',
-        load: '#bakemono-memory-load-scan-preset',
-        save: '#bakemono-memory-save-scan-preset',
-        update: '#bakemono-memory-update-scan-preset',
-        delete: '#bakemono-memory-delete-scan-preset',
-    });
-    bindAreaPresetControls(areaPresetScopes.AUTOMATION, {
-        select: '#bakemono-memory-automation-preset-select',
-        name: '#bakemono-memory-automation-preset-name',
-        load: '#bakemono-memory-load-automation-preset',
-        save: '#bakemono-memory-save-automation-preset',
-        update: '#bakemono-memory-update-automation-preset',
-        delete: '#bakemono-memory-delete-automation-preset',
-    });
-    bindAreaPresetControls(areaPresetScopes.API, {
-        select: '#bakemono-memory-api-preset-select',
-        name: '#bakemono-memory-api-preset-name',
-        load: '#bakemono-memory-load-api-preset',
-        save: '#bakemono-memory-save-api-preset',
-        update: '#bakemono-memory-update-api-preset',
-        delete: '#bakemono-memory-delete-api-preset',
-    });
-    bindAreaPresetControls(areaPresetScopes.PROMPTS, {
-        select: '#bakemono-memory-prompts-preset-select',
-        name: '#bakemono-memory-prompts-preset-name',
-        load: '#bakemono-memory-load-prompts-preset',
-        save: '#bakemono-memory-save-prompts-preset',
-        update: '#bakemono-memory-update-prompts-preset',
-        delete: '#bakemono-memory-delete-prompts-preset',
-    });
-    bindAreaPresetControls(areaPresetScopes.TURN, {
-        select: '#bakemono-memory-turn-preset-select',
-        name: '#bakemono-memory-turn-preset-name',
-        load: '#bakemono-memory-load-turn-preset',
-        save: '#bakemono-memory-save-turn-preset',
-        update: '#bakemono-memory-update-turn-preset',
-        delete: '#bakemono-memory-delete-turn-preset',
-    });
-    bindAreaPresetControls(areaPresetScopes.INJECTION, {
-        select: '#bakemono-memory-injection-preset-select',
-        name: '#bakemono-memory-injection-preset-name',
-        load: '#bakemono-memory-load-injection-preset',
-        save: '#bakemono-memory-save-injection-preset',
-        update: '#bakemono-memory-update-injection-preset',
-        delete: '#bakemono-memory-delete-injection-preset',
-    });
-    bindAreaPresetControls(areaPresetScopes.VECTOR, {
-        select: '#bakemono-memory-vector-preset-select',
-        name: '#bakemono-memory-vector-preset-name',
-        load: '#bakemono-memory-load-vector-preset',
-        save: '#bakemono-memory-save-vector-preset',
-        update: '#bakemono-memory-update-vector-preset',
-        delete: '#bakemono-memory-delete-vector-preset',
-    });
-    bindInlinePromptPresetControls('summary', {
-        select: '#bakemono-memory-inline-summary-preset-select',
-        name: '#bakemono-memory-inline-summary-preset-name',
-        load: '#bakemono-memory-load-inline-summary-preset',
-        save: '#bakemono-memory-save-inline-summary-preset',
-        update: '#bakemono-memory-update-inline-summary-preset',
-        delete: '#bakemono-memory-delete-inline-summary-preset',
-    });
-    bindInlinePromptPresetControls('table', {
-        select: '#bakemono-memory-inline-table-preset-select',
-        name: '#bakemono-memory-inline-table-preset-name',
-        load: '#bakemono-memory-load-inline-table-preset',
-        save: '#bakemono-memory-save-inline-table-preset',
-        update: '#bakemono-memory-update-inline-table-preset',
-        delete: '#bakemono-memory-delete-inline-table-preset',
-    });
+    bindPresetEvents();
     $('#bakemono-memory-apply-rules').off('click').on('click', () => {
         const state = ensureState();
         readRuleFieldsFromUi(state);
