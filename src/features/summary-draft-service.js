@@ -36,6 +36,62 @@ export function createSummaryDraftService({
     extractConfiguredSegments,
     confirm,
 } = {}) {
+    const durableSummaryStateKeys = [
+        'blocks',
+        'storySummaries',
+        'stageSummaries',
+        'epicSummaries',
+        'drafts',
+        'history',
+        'coveredBlockHashes',
+        'coveredStageHashes',
+        'generatedMemory',
+        'injection',
+        'autoSummaryTransactions',
+    ];
+
+    function cloneSerializable(value) {
+        if (value === undefined) return undefined;
+        if (typeof structuredClone === 'function') return structuredClone(value);
+        return JSON.parse(JSON.stringify(value));
+    }
+
+    function captureSummaryState(state = ensureState()) {
+        return Object.fromEntries(durableSummaryStateKeys.map(key => [key, cloneSerializable(state[key])]));
+    }
+
+    function restoreSummaryState(snapshot, state = ensureState()) {
+        for (const key of durableSummaryStateKeys) {
+            if (Object.hasOwn(snapshot, key)) state[key] = cloneSerializable(snapshot[key]);
+        }
+        saveState();
+    }
+
+    function captureMessage(message) {
+        return {
+            mes: message?.mes,
+            swipes: cloneSerializable(message?.swipes),
+        };
+    }
+
+    function restoreMessage(message, snapshot) {
+        if (!message || !snapshot) return;
+        message.mes = snapshot.mes;
+        if (snapshot.swipes === undefined) delete message.swipes;
+        else message.swipes = cloneSerializable(snapshot.swipes);
+    }
+
+    async function persistSummaryStateDurably() {
+        saveState();
+        await saveChatConditional();
+    }
+
+    function showDurableSaveFailure(error) {
+        const reason = error?.message || String(error || '未知错误');
+        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `保存失败，已恢复保存前状态：${reason}`);
+        toastr.error(`没有写入酒馆存档，已恢复原状态：${reason}`, '剧情剪辑台');
+    }
+
     function createDraft({ kind, content, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], prompt = '', trigger = 'manual', metadata = {} }) {
         const state = ensureState();
         const createdAt = new Date().toISOString();
@@ -98,7 +154,7 @@ export function createSummaryDraftService({
         return '';
     }
     
-    function commitMissingSummaryDraft(draftIndex, editedContent = null, options = {}) {
+    async function commitMissingSummaryDraft(draftIndex, editedContent = null, options = {}) {
         const state = ensureState();
         const draft = state.drafts[draftIndex];
         const conflict = getMissingSummaryDraftConflict(draft, state);
@@ -109,36 +165,45 @@ export function createSummaryDraftService({
     
         const targetMessageId = Number(draft.metadata.targetMessageId);
         const message = getChat()[targetMessageId];
+        const stateSnapshot = captureSummaryState(state);
+        const messageSnapshot = captureMessage(message);
         const content = normalizeGeneratedBakemono(editedContent ?? draft.content);
-        const original = String(message.mes || '').trimEnd();
-        updateChatMessageText(message, `${original}\n\n${content}`);
-    
-        state.drafts.splice(draftIndex, 1);
-        state.history.unshift({
-            id: `append-missing-${getHash(`${draft.id}|${Date.now()}`)}`,
-            kind: draft.kind,
-            summaryHash: getHash(content),
-            draft,
-            summary: {
-                hash: getHash(content),
-                type: draft.kind,
-                title: draft.title || getBlockTitle(content, '补写摘要'),
-                content,
-                sourceHashes: draft.sourceHashes || [],
-                sourceMessageIds: [targetMessageId],
-                sourceKind: 'missing_summary',
-                metadata: draft.metadata || {},
+        try {
+            const original = String(message.mes || '').trimEnd();
+            updateChatMessageText(message, `${original}\n\n${content}`);
+
+            state.drafts.splice(draftIndex, 1);
+            state.history.unshift({
+                id: `append-missing-${getHash(`${draft.id}|${Date.now()}`)}`,
+                kind: draft.kind,
+                summaryHash: getHash(content),
+                draft,
+                summary: {
+                    hash: getHash(content),
+                    type: draft.kind,
+                    title: draft.title || getBlockTitle(content, '补写摘要'),
+                    content,
+                    sourceHashes: draft.sourceHashes || [],
+                    sourceMessageIds: [targetMessageId],
+                    sourceKind: 'missing_summary',
+                    metadata: draft.metadata || {},
+                    createdAt: new Date().toISOString(),
+                    draftId: draft.id,
+                },
+                action: 'append_missing_summary',
                 createdAt: new Date().toISOString(),
-                draftId: draft.id,
-            },
-            action: 'append_missing_summary',
-            createdAt: new Date().toISOString(),
-        });
-    
-        saveChatConditional().catch(error => console.warn('[BakemonoMemory] failed to save appended summary', error));
-        scanBakemonoBlocks({ persist: false });
-        updateInjectionFromSummaries();
-        saveState();
+            });
+
+            scanBakemonoBlocks({ persist: false });
+            updateInjectionFromSummaries();
+            await persistSummaryStateDurably();
+        } catch (error) {
+            restoreMessage(message, messageSnapshot);
+            restoreSummaryState(stateSnapshot, state);
+            showDurableSaveFailure(error);
+            if (options.silent) throw error;
+            return null;
+        }
         if (!options.silent) {
             renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `已把摘要补写到第 ${targetMessageId} 楼。`);
             toastr.success(`已补写到第 ${targetMessageId} 楼。`);
@@ -186,6 +251,11 @@ export function createSummaryDraftService({
         }
     
         const toast = toastr.info(`正在批量应用 ${ready.length} 个缺失摘要...`, '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
+        const stateSnapshot = captureSummaryState(state);
+        const messageSnapshots = new Map(ready.map(draft => {
+            const messageId = Number(draft.metadata.targetMessageId);
+            return [messageId, captureMessage(getChat()[messageId])];
+        }));
         const appliedDraftIds = new Set();
         let applied = 0;
         const createdAt = new Date().toISOString();
@@ -222,8 +292,14 @@ export function createSummaryDraftService({
             state.drafts = state.drafts.filter(draft => !appliedDraftIds.has(draft.id));
             scanBakemonoBlocks({ persist: false });
             updateInjectionFromSummaries();
-            saveState();
-            await saveChatConditional();
+            await persistSummaryStateDurably();
+        } catch (error) {
+            for (const [messageId, snapshot] of messageSnapshots) {
+                restoreMessage(getChat()[messageId], snapshot);
+            }
+            restoreSummaryState(stateSnapshot, state);
+            showDurableSaveFailure(error);
+            throw error;
         } finally {
             toastr.clear(toast);
         }
@@ -308,8 +384,10 @@ export function createSummaryDraftService({
     
         const draft = state.drafts[draftIndex];
         if (draft.metadata?.appendMode === 'missing_summary') {
-            return commitMissingSummaryDraft(draftIndex, editedContent, options);
+            return await commitMissingSummaryDraft(draftIndex, editedContent, options);
         }
+
+        const stateSnapshot = captureSummaryState(state);
     
         const content = normalizeGeneratedBakemono(editedContent ?? draft.content);
         const titleText = String(draft.title || getDefaultDraftTitle(draft.kind, state)).trim();
@@ -382,7 +460,14 @@ export function createSummaryDraftService({
         if (!options.skipInjection) {
             updateInjectionFromSummaries();
         }
-        saveState();
+        try {
+            await persistSummaryStateDurably();
+        } catch (error) {
+            restoreSummaryState(stateSnapshot, state);
+            showDurableSaveFailure(error);
+            if (options.silent) throw error;
+            return null;
+        }
         if (!options.silent) {
             renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '草稿已确认保存。');
             toastr.success('草稿已保存进长期记忆。');
@@ -440,7 +525,7 @@ export function createSummaryDraftService({
         }, '草稿已重新生成', workbenchRenderScopes.DRAFTS);
     }
     
-    function undoLastCommit() {
+    async function undoLastCommit() {
         const state = ensureState();
         const commit = state.history[0];
         if (!commit) {
@@ -454,6 +539,7 @@ export function createSummaryDraftService({
         if (!confirmed) {
             return;
         }
+        const stateSnapshot = captureSummaryState(state);
         state.history.shift();
     
         removeSummaryByHash(commit.kind, commit.summaryHash);
@@ -462,7 +548,13 @@ export function createSummaryDraftService({
         state.coveredStageHashes = state.coveredStageHashes.filter(hash => !(commit.coveredStageHashes || []).includes(hash));
         state.drafts.unshift(commit.draft);
         updateInjectionFromSummaries();
-        saveState();
+        try {
+            await persistSummaryStateDurably();
+        } catch (error) {
+            restoreSummaryState(stateSnapshot, state);
+            showDurableSaveFailure(error);
+            return;
+        }
         renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '已撤回上次保存，原草稿已放回草稿箱。');
         toastr.success('已撤回上次保存。');
     }
@@ -631,12 +723,14 @@ export function createSummaryDraftService({
         return [];
     }
     
-    function saveEditedSummary(hash, title, content) {
+    async function saveEditedSummary(hash, title, content) {
         const found = findSavedSummaryByHash(hash);
         if (!found) {
             toastr.warning('没有找到这个已保存摘要。');
             return;
         }
+        const state = ensureState();
+        const stateSnapshot = captureSummaryState(state);
         const nextTitle = String(title || found.summary.title || '').trim() || found.summary.title;
         found.summary.title = nextTitle;
         found.summary.metadata = {
@@ -645,7 +739,7 @@ export function createSummaryDraftService({
             userTitleUpdatedAt: new Date().toISOString(),
         };
         found.summary.content = normalizeGeneratedBakemono(content || found.summary.content || '');
-        const block = ensureState().blocks.find(item => item.hash === hash);
+        const block = state.blocks.find(item => item.hash === hash);
         if (block) {
             block.title = found.summary.title;
             block.content = found.summary.content;
@@ -655,12 +749,18 @@ export function createSummaryDraftService({
             };
         }
         updateInjectionFromSummaries();
-        saveState();
+        try {
+            await persistSummaryStateDurably();
+        } catch (error) {
+            restoreSummaryState(stateSnapshot, state);
+            showDurableSaveFailure(error);
+            return;
+        }
         renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '摘要已更新。');
         toastr.success('摘要已更新。');
     }
     
-    function deleteSavedSummary(hash) {
+    async function deleteSavedSummary(hash) {
         const found = findSavedSummaryByHash(hash);
         if (!found) {
             toastr.warning('没有找到这个已保存摘要。');
@@ -680,14 +780,21 @@ export function createSummaryDraftService({
         if (!confirmed) {
             return;
         }
-    
-        removeSummaryByHash(found.kind, hash);
+
         const state = ensureState();
+        const stateSnapshot = captureSummaryState(state);
+        removeSummaryByHash(found.kind, hash);
         recomputeCoveredHashes(state);
         state.blocks = state.blocks.filter(block => block.hash !== hash);
         state.history = state.history.filter(item => item.summaryHash !== hash);
         updateInjectionFromSummaries();
-        saveState();
+        try {
+            await persistSummaryStateDurably();
+        } catch (error) {
+            restoreSummaryState(stateSnapshot, state);
+            showDurableSaveFailure(error);
+            return;
+        }
         renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '摘要已删除。');
         toastr.success('摘要已删除。');
     }

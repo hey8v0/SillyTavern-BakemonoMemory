@@ -908,6 +908,9 @@ test('injection defaults mark their end and start at the front of chat history',
 test('automation and generation API controls share one event boundary', () => {
     assert.match(automationConfigurationEventsSource, /bakemono-memory-apply-automation/);
     assert.match(automationConfigurationEventsSource, /readAutomationFieldsFromUi\(state\)/);
+    assert.match(automationConfigurationEventsSource, /bakemono-memory-apply-generation-api/);
+    assert.match(automationConfigurationEventsSource, /readCustomApiFieldsFromUi\(state\)/);
+    assert.match(settingsSource, /id="bakemono-memory-apply-generation-api"/);
     assert.match(automationConfigurationEventsSource, /fetchCustomApiModels\(\)/);
     assert.match(automationConfigurationEventsSource, /bakemono-memory-stage-target-mode/);
     assert.doesNotMatch(source, /bakemono-memory-apply-automation|bakemono-memory-fetch-models|bakemono-memory-stage-target-mode/);

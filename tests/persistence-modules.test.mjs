@@ -89,3 +89,61 @@ test('global persistence delegates once and missing callbacks remain safe', asyn
     assert.equal(persistence.persistGlobalSettings(null), undefined);
     assert.equal(persistence.persistChatState(null, {}), undefined);
 });
+
+test('summary confirmation reports success only after durable chat save and rolls back failures', async () => {
+    const { createSummaryDraftService } = await loadModule('src/features/summary-draft-service.js');
+    const state = {
+        outputMode: 'plain',
+        blocks: [], storySummaries: [], stageSummaries: [], epicSummaries: [],
+        drafts: [{ id: 'draft-1', kind: 'stage', title: '阶段一', content: '内容', sourceHashes: ['story-1'], sourceMessageIds: [8], metadata: {} }],
+        history: [], coveredBlockHashes: [], coveredStageHashes: [],
+        generatedMemory: '', injection: {}, autoSummaryTransactions: [],
+    };
+    let shouldFail = true;
+    let saveChatCalls = 0;
+    const toastCalls = [];
+    const service = createSummaryDraftService({
+        getChat: () => [],
+        ensureState: () => state,
+        getHash: value => `hash:${String(value)}`,
+        getBlockTitle: (_content, fallback) => fallback,
+        blockTypes: { STORY: 'story', STAGE: 'stage', EPIC: 'epic' },
+        toastr: {
+            success: message => toastCalls.push(['success', message]),
+            error: message => toastCalls.push(['error', message]),
+            warning() {}, info() {}, clear() {},
+        },
+        saveChatConditional: async () => {
+            saveChatCalls += 1;
+            if (shouldFail) throw new Error('disk unavailable');
+        },
+        updateInjectionFromSummaries: () => { state.generatedMemory = state.stageSummaries.map(item => item.content).join('\n'); },
+        saveState() {},
+        renderWorkbenchScope() {},
+        workbenchRenderScopes: { DRAFTS: 'drafts' },
+        getSourceStart: ids => Math.min(...ids),
+        getSourceEnd: ids => Math.max(...ids),
+        getSummaryLevel: () => 1,
+        sortSummariesBySource: items => items,
+        unique: values => [...new Set(values)],
+        mergeBlocks: (current, next) => [...current, ...next],
+        getKindLabel: kind => kind,
+        parseList: () => [],
+        extractConfiguredSegments: () => [],
+    });
+
+    const failed = await service.commitDraft('draft-1');
+    assert.equal(failed, null);
+    assert.equal(state.drafts.length, 1);
+    assert.equal(state.stageSummaries.length, 0);
+    assert.equal(toastCalls.some(([type]) => type === 'success'), false);
+    assert.equal(toastCalls.some(([type]) => type === 'error'), true);
+
+    shouldFail = false;
+    const saved = await service.commitDraft('draft-1');
+    assert.equal(saved.title, '阶段一');
+    assert.equal(state.drafts.length, 0);
+    assert.equal(state.stageSummaries.length, 1);
+    assert.equal(saveChatCalls, 2);
+    assert.equal(toastCalls.at(-1)[0], 'success');
+});

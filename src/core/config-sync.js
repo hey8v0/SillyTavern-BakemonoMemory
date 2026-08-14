@@ -36,6 +36,11 @@ export const inlineGenerationRuntimeFieldNames = Object.freeze([
     'hideTableEditMigratedToRegex',
 ]);
 
+export const automationApiFieldNames = Object.freeze([
+    'apiProvider',
+    'customApi',
+]);
+
 function cloneObject(value) {
     return value && typeof value === 'object' ? structuredClone(value) : {};
 }
@@ -76,6 +81,24 @@ export function createSharedInlineGenerationConfig(inlineGeneration) {
 
 export function mergeSharedInlineGenerationConfig(currentInlineGeneration, sharedInlineGeneration, defaults = {}) {
     return mergeWithRuntime(currentInlineGeneration, sharedInlineGeneration, defaults, inlineGenerationRuntimeFieldNames);
+}
+
+export function createAutomationBehaviorConfig(automation) {
+    return omitFields(automation, automationApiFieldNames);
+}
+
+export function mergeAutomationBehaviorConfig(currentAutomation, behaviorConfig, defaults = {}) {
+    const current = cloneObject(currentAutomation);
+    const result = {
+        ...cloneObject(defaults),
+        ...cloneObject(behaviorConfig),
+    };
+    for (const field of automationApiFieldNames) {
+        if (Object.hasOwn(current, field)) {
+            result[field] = structuredClone(current[field]);
+        }
+    }
+    return result;
 }
 
 export function getActiveConfigSignature(config) {

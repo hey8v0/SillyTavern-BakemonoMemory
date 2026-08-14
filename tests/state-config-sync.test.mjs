@@ -114,6 +114,32 @@ test('shared vector config excludes chat runtime and restores the destination ch
     assert.equal(merged.lastIndexedSignature, 'destination-signature');
 });
 
+test('automation behavior presets never overwrite the independently saved generation API', async () => {
+    const configSync = await loadModule('src/core/config-sync.js');
+    const source = {
+        enabled: true,
+        mode: 'stage',
+        floorInterval: 20,
+        apiProvider: 'custom',
+        customApi: { baseUrl: 'https://api.example.com/v1', apiKey: 'secret', model: 'model-a' },
+    };
+    const behavior = configSync.createAutomationBehaviorConfig(source);
+    assert.equal(Object.hasOwn(behavior, 'apiProvider'), false);
+    assert.equal(Object.hasOwn(behavior, 'customApi'), false);
+
+    const current = {
+        enabled: false,
+        mode: 'stage',
+        apiProvider: 'custom',
+        customApi: { baseUrl: 'https://saved.example/v1', apiKey: 'kept', model: 'model-kept' },
+    };
+    const merged = configSync.mergeAutomationBehaviorConfig(current, { enabled: true, mode: 'epic' }, { apiProvider: 'tavern' });
+    assert.equal(merged.enabled, true);
+    assert.equal(merged.mode, 'epic');
+    assert.equal(merged.apiProvider, 'custom');
+    assert.deepEqual(merged.customApi, current.customApi);
+});
+
 test('shared config bootstrap waits for a real chat and only runs once', async () => {
     const configSync = await loadModule('src/core/config-sync.js');
 

@@ -95,7 +95,6 @@ export function createConfigurationService({
         if (!query('#bakemono-memory-auto-mode').length) {
             return state;
         }
-        readCustomApiFieldsFromUi(state);
         state.automation = {
             ...state.automation,
             enabled: query('#bakemono-memory-auto-enabled').prop('checked'),
@@ -241,7 +240,9 @@ export function createConfigurationService({
     }
 
     function getCurrentPromptPresetPayload(name = '') {
-        const state = readConfigFieldsFromUi(getState());
+        // Feature pages already persist their own live fields. Reading every
+        // hidden form here can replace valid settings with stale DOM defaults.
+        const state = getState();
         return getConfigPayloadFromState(state, name);
     }
 

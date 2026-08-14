@@ -219,7 +219,10 @@ export function createWorkflowOverviewModel({
             return { badge: '等待记忆', title: '尚未建立剧情记忆', copy: `${floorStats.missing.toLocaleString()} 楼正文还没有识别为可用记忆。`, tone: 'attention' };
         }
         if (floorStats.missing) {
-            return { badge: '运行正常', title: '记忆链路运行正常', copy: `最近 ${floorStats.missing.toLocaleString()} 楼尚未整理；已有内容仍正常注入。`, tone: 'healthy' };
+            const firstMissing = Number.isInteger(Number(floorStats.firstMissingFloor))
+                ? `最早是第 ${Number(floorStats.firstMissingFloor).toLocaleString()} 楼，`
+                : '';
+            return { badge: '发现缺口', title: '有助手楼层尚未形成记忆', copy: `${firstMissing}共 ${floorStats.missing.toLocaleString()} 楼待补；生成阶段总结前请先补写。`, tone: 'attention' };
         }
         return { badge: '已同步', title: '现有记忆已经同步', copy: '当前可识别楼层均已有记忆记录。', tone: 'healthy' };
     }

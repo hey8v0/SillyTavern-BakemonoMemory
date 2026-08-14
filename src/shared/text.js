@@ -25,12 +25,24 @@ export function escapeRegExp(value) {
     return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+export function normalizeTagName(value) {
+    const source = String(value || '').trim();
+    const bracketed = source.match(/^<\/?\s*([^\s/>]+)/);
+    if (bracketed?.[1]) {
+        return bracketed[1].trim();
+    }
+    return source.replace(/^\/?/, '').replace(/\/?\s*>$/, '').trim();
+}
+
 export function stripConfiguredTags(text, tags) {
     let result = String(text || '');
     for (const tag of tags) {
-        const escapedTag = escapeRegExp(tag);
-        const pattern = new RegExp(`<${escapedTag}\\b[^>]*>[\\s\\S]*?<\\/${escapedTag}>`, 'gi');
-        result = result.replace(pattern, '');
+        const tagName = normalizeTagName(tag);
+        if (!tagName) continue;
+        const escapedTag = escapeRegExp(tagName);
+        const paired = new RegExp(`<${escapedTag}(?=\\s|>)[^>]*>[\\s\\S]*?<\\/${escapedTag}\\s*>`, 'gi');
+        const selfClosing = new RegExp(`<${escapedTag}(?=\\s|/?>)[^>]*\\/\\s*>`, 'gi');
+        result = result.replace(paired, '').replace(selfClosing, '');
     }
     return result;
 }
@@ -39,11 +51,13 @@ export function extractConfiguredTagBlocks(text, tags) {
     const source = String(text || '');
     const blocks = [];
     tags.forEach(tag => {
-        const escapedTag = escapeRegExp(tag);
-        const pattern = new RegExp(`<${escapedTag}\\b[^>]*>[\\s\\S]*?<\\/${escapedTag}>`, 'gi');
+        const tagName = normalizeTagName(tag);
+        if (!tagName) return;
+        const escapedTag = escapeRegExp(tagName);
+        const pattern = new RegExp(`<${escapedTag}(?=\\s|>)[^>]*>[\\s\\S]*?<\\/${escapedTag}\\s*>`, 'gi');
         const matches = source.match(pattern) || [];
         matches.forEach(content => {
-            blocks.push({ content: content.trim(), matchedTag: tag });
+            blocks.push({ content: content.trim(), matchedTag: tagName });
         });
     });
     return blocks.filter(block => block.content);

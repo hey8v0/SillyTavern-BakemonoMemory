@@ -30,6 +30,8 @@ export function createTurnProcessingController({
     defaultTurnSummaryPrompt,
     getSourceStart,
     stripHtml,
+    stripConfiguredTags,
+    parseList,
     turnProcessingModes,
     processLatestTableEdit,
     hasAppliedTableEditForMessage,
@@ -39,6 +41,14 @@ export function createTurnProcessingController({
     buildTableEditPrompt,
 } = {}) {
     let inlineCaptureTimer = null;
+
+    function stripExcludedTurnContent(value, state = ensureState()) {
+        const withoutExcludedTags = stripConfiguredTags(
+            String(value || ''),
+            parseList(state.scanRules?.excludeTags || ''),
+        );
+        return stripPostProcessNoise(withoutExcludedTags);
+    }
 
     function findLatestAssistantTurn() {
         const sourceChat = getContext().chat || getChat() || [];
@@ -85,7 +95,7 @@ export function createTurnProcessingController({
                 messageId: turn.userMessage.messageId,
                 blockIndex: 0,
                 title: `用户楼层 ${turn.userMessage.messageId}`,
-                content: stripPostProcessNoise(turn.userMessage.mes || ''),
+                content: stripExcludedTurnContent(turn.userMessage.mes || '', state),
             });
         }
         blocks.push({
@@ -94,7 +104,7 @@ export function createTurnProcessingController({
             messageId: turn.assistantMessage.messageId,
             blockIndex: 0,
             title: `正文楼层 ${turn.assistantMessage.messageId}`,
-            content: stripPostProcessNoise(turn.assistantMessage.mes || ''),
+            content: stripExcludedTurnContent(turn.assistantMessage.mes || '', state),
         });
         return blocks.filter(block => block.content.trim());
     }
@@ -255,6 +265,8 @@ export function createTurnProcessingController({
     }
     
     function buildWorldInfoScanMessages(blocks = []) {
+        const state = ensureState();
+        const excludeTags = parseList(state.scanRules?.excludeTags || '');
         const sourceIds = new Set(getSourceMessageIdsFromBlocks(blocks));
         const context = getContext();
         const sourceChat = context.chat || getChat() || [];
@@ -263,7 +275,10 @@ export function createTurnProcessingController({
             .map((message, messageId) => ({ message, messageId }))
             .filter(({ message }) => message?.mes && !message.is_system)
             .filter(({ messageId }) => sourceIds.has(messageId) || messageId >= recentStart)
-            .map(({ message, messageId }) => `${message.is_user ? context.name1 || '用户' : context.name2 || '助手'} #${messageId}: ${stripHtml(message.mes || '')}`)
+            .map(({ message, messageId }) => {
+                const cleaned = stripConfiguredTags(message.mes || '', excludeTags);
+                return `${message.is_user ? context.name1 || '用户' : context.name2 || '助手'} #${messageId}: ${stripHtml(cleaned)}`;
+            })
             .reverse();
     }
     
@@ -297,7 +312,10 @@ export function createTurnProcessingController({
                 true,
                 getWorldInfoGlobalScanData(),
             );
-            return String(result?.worldInfoString || '').trim();
+            return stripConfiguredTags(
+                String(result?.worldInfoString || ''),
+                parseList(state.scanRules?.excludeTags || ''),
+            ).trim();
         } catch (error) {
             console.warn('[BakemonoMemory] failed to read world info for turn summary', error);
             toastr.warning(`世界书参考读取失败：${error?.message || error}`);

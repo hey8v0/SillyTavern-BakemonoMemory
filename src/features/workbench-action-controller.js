@@ -64,7 +64,7 @@ export function createWorkbenchActionController({
             readTurnSummaryFieldsFromUi();
             await processLatestTableEdit({ manual: true });
         } else if (action === 'undo') {
-            undoLastCommit();
+            await undoLastCommit();
         } else if (action === 'clear-queue') {
             clearFinishedQueueTasks();
         } else if (action === 'clear-history') {

@@ -21,6 +21,8 @@ export function createConfigurationController({
     turnProcessingModes,
     mergeSharedInlineGenerationConfig,
     mergeSharedVectorConfig,
+    createAutomationBehaviorConfig,
+    mergeAutomationBehaviorConfig,
     defaultVectorMemory,
     tableSchemaScopes,
     normalizeImportedTablesFromJson,
@@ -242,7 +244,7 @@ export function createConfigurationController({
             return {
                 ...base,
                 automation: {
-                    ...structuredClone(state.automation),
+                    ...createAutomationBehaviorConfig(state.automation),
                     lastSignature: '',
                     lastAutoAt: null,
                 },
@@ -346,8 +348,7 @@ export function createConfigurationController({
             scanBlocks({ persist: false });
         } else if (scope === areaPresetScopes.AUTOMATION && preset.automation) {
             state.automation = {
-                ...structuredClone(defaultAutomation),
-                ...structuredClone(preset.automation),
+                ...mergeAutomationBehaviorConfig(state.automation, preset.automation, defaultAutomation),
                 lastSignature: state.automation.lastSignature || '',
                 lastAutoAt: state.automation.lastAutoAt || null,
             };

@@ -29,12 +29,25 @@ test('shared text helpers preserve scanning and search behavior', async () => {
         text.stripConfiguredTags('正文<think>隐藏</think><bakemono>摘要</bakemono>', ['think']),
         '正文<bakemono>摘要</bakemono>',
     );
+    assert.equal(text.normalizeTagName('<小剧场>'), '小剧场');
+    assert.equal(
+        text.stripConfiguredTags('正文<小剧场 type="extra">不应参与摘要</小剧场>结尾', ['<小剧场>']),
+        '正文结尾',
+    );
+    assert.equal(
+        text.stripConfiguredTags('正文<小剧场 hidden="true" />结尾', ['小剧场']),
+        '正文结尾',
+    );
     assert.deepEqual(
         text.extractConfiguredTagBlocks('<bakemono>一</bakemono><bakemono>二</bakemono>', ['bakemono']),
         [
             { content: '<bakemono>一</bakemono>', matchedTag: 'bakemono' },
             { content: '<bakemono>二</bakemono>', matchedTag: 'bakemono' },
         ],
+    );
+    assert.deepEqual(
+        text.extractConfiguredTagBlocks('<小剧场>番外</小剧场>', ['<小剧场>']),
+        [{ content: '<小剧场>番外</小剧场>', matchedTag: '小剧场' }],
     );
     assert.equal(text.matchesAnyKeyword('阶段总结：第一幕', ['阶段总结']), true);
     assert.equal(text.normalizeSearchText(' 第 12 楼：相 遇 '), '第12楼:相遇');

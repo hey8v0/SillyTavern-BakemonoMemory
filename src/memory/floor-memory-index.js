@@ -191,6 +191,9 @@ export function createMemoryOrchestrationPlan(index, state = {}, { busy = false 
         recommendation = { stateLabel: '旧聊天补课', statusLabel: stats.latestFloor === null ? '等待正文' : `第 ${stats.latestFloor} 楼`, title: '给旧聊天补上记忆', copy: '先选择要整理的楼层范围。', kind: 'nav', target: 'settings', buttonLabel: '设置补课范围', icon: 'fa-box-archive', progress };
     } else if (stats.storySummaryCount === 0) {
         recommendation = { stateLabel: '等待扫描', statusLabel: stats.latestFloor === null ? '准备开始' : `${stats.missing} 楼待识别`, title: '建立第一段剧情记忆', copy: '扫描后，剪辑台会接管后续编排。', kind: 'action', target: 'scan', buttonLabel: '扫描当前聊天', icon: 'fa-magnifying-glass', progress: 0 };
+    } else if (stats.missing > 0) {
+        const firstMissing = Number.isInteger(Number(stats.firstMissingFloor)) ? `最早第 ${stats.firstMissingFloor} 楼` : '存在未整理楼层';
+        recommendation = { stateLabel: '记忆缺口', statusLabel: `${stats.missing} 楼待补`, title: '先补齐漏掉的助手楼层', copy: `${firstMissing}；补齐后再生成阶段总结。`, kind: 'nav', target: 'preview', buttonLabel: '补写缺失摘要', icon: 'fa-triangle-exclamation', progress };
     } else if (stats.uncoveredStoryCount > 0) {
         recommendation = { stateLabel: '等待整理', statusLabel: `${stats.uncoveredStoryCount} 条摘要`, title: '整理下一段长期记忆', copy: '把尚未覆盖的剧情摘要整理成阶段记忆。', kind: 'action', target: 'generate-stage', buttonLabel: '生成阶段总结', icon: 'fa-wand-magic-sparkles', progress };
     } else if (stats.uncoveredStageCount >= 2) {

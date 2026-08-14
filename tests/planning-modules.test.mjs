@@ -74,6 +74,21 @@ test('summary target selection sorts, filters ranges and partitions deterministi
             .map(batch => batch.map(block => block.hash)),
         [['early', 'source-only']],
     );
+
+    const continuityRecords = [
+        { id: 2, summaryState: 'saved' },
+        { id: 4, summaryState: 'missing' },
+        { id: 6, summaryState: 'draft' },
+        { id: 8, summaryState: 'saved' },
+    ];
+    assert.deepEqual(
+        targetSelection.findTargetContinuityGaps([{ messageId: 8 }], continuityRecords).map(record => record.id),
+        [4, 6],
+    );
+    assert.deepEqual(
+        targetSelection.findTargetContinuityGaps([{ sourceMessageIds: [4, 8] }], continuityRecords).map(record => record.id),
+        [6],
+    );
 });
 
 test('floor memory index derives status without mutating chat state and plans enabled tools only', async () => {
@@ -108,6 +123,7 @@ test('floor memory index derives status without mutating chat state and plans en
     assert.equal(index.byId.get(2).summaryState, 'missing');
     assert.equal(plan.actions.processLatestTurn, true);
     assert.equal(plan.actions.refreshVectorIndex, true);
+    assert.equal(plan.recommendation.stateLabel, '记忆缺口');
     assert.deepEqual(state, snapshot);
 });
 

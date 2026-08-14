@@ -11,6 +11,8 @@ export function createSummaryGenerationController({
     promptGenerationTargetSelection,
     selectGenerationTargets,
     partitionGenerationTargets,
+    findTargetContinuityGaps,
+    getFloorMemoryIndex,
     confirmGenerationTargets,
     getTargetSelectionLabel,
     getStageSourceMode,
@@ -53,6 +55,29 @@ export function createSummaryGenerationController({
         return renderGenerationPrompt(getState().generationPrompts.story || defaultStoryGenerationPrompt, blocks, context);
     }
 
+    function confirmStageContinuity(targets, { automatic = false } = {}) {
+        const gaps = findTargetContinuityGaps(targets, getFloorMemoryIndex(getState())?.records || []);
+        if (!gaps.length) {
+            return true;
+        }
+        const floorPreview = gaps.slice(0, 12).map(record => `第 ${record.id} 楼`).join('、');
+        const overflow = gaps.length > 12 ? `等 ${gaps.length} 楼` : '';
+        const status = `发现 ${gaps.length} 个助手楼层尚未保存摘要：${floorPreview}${overflow}`;
+        if (automatic) {
+            renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `${status}。已暂停自动阶段总结，请先补写缺失摘要。`);
+            toastr.warning('阶段总结已暂停：请先补齐缺失摘要。');
+            return false;
+        }
+        return confirmDanger(
+            '阶段材料中间存在记忆缺口，仍要继续吗？',
+            [
+                status,
+                '建议先在“扫描与识别”中补写缺失摘要，避免后续阶段总结永久跳过这些楼层。',
+                '只有确认这些楼层不需要记忆时，才继续生成。',
+            ],
+        );
+    }
+
     async function generateStageDraft(options = {}) {
         if (getIsBusy()) {
             return;
@@ -81,6 +106,9 @@ export function createSummaryGenerationController({
         if (!targets.length) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '当前生成范围没有匹配到可总结摘要。');
             toastr.warning('当前生成范围没有匹配到可总结摘要。');
+            return;
+        }
+        if (!confirmStageContinuity(targets, { automatic: !!options.automatic })) {
             return;
         }
         if (!options.automatic && !confirmGenerationTargets('stage', targets, allTargets.length)) {
@@ -136,6 +164,11 @@ export function createSummaryGenerationController({
         if (!batches.length) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '当前批量范围没有匹配到可总结摘要。');
             toastr.warning('当前批量范围没有匹配到可总结摘要。');
+            return;
+        }
+
+        if (!confirmStageContinuity(batches.flat())) {
+            renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量阶段总结，请先补齐缺失摘要。');
             return;
         }
 

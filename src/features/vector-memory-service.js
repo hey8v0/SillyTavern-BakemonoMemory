@@ -99,7 +99,10 @@ export function createVectorMemoryService({
     }
     
     function getVectorBodyText(text, state = ensureState()) {
-        const excludeTags = parseList(state.vectorMemory.excludeTags || defaultVectorMemory.excludeTags);
+        const excludeTags = unique([
+            ...parseList(state.scanRules?.excludeTags || ''),
+            ...parseList(state.vectorMemory.excludeTags || defaultVectorMemory.excludeTags),
+        ]);
         const summaryTags = getVectorSummaryTags(state);
         return stripConfiguredTags(text, unique([...excludeTags, ...summaryTags])).trim();
     }

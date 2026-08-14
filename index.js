@@ -4,7 +4,7 @@ import { hideChatMessageRange } from '../../../chats.js';
 import { getTokenCountAsync } from '../../../tokenizers.js';
 import { getImageSizeFromDataURL } from '../../../utils.js';
 import { runChatSwitchFlow } from './src/core/chat-switch.js';
-import { createSharedInlineGenerationConfig, createSharedVectorConfig, markActiveConfigApplied, mergeSharedInlineGenerationConfig, mergeSharedVectorConfig, readActiveConfig, sharedConfigVersion, shouldBootstrapSharedConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
+import { createAutomationBehaviorConfig, createSharedInlineGenerationConfig, createSharedVectorConfig, markActiveConfigApplied, mergeAutomationBehaviorConfig, mergeSharedInlineGenerationConfig, mergeSharedVectorConfig, readActiveConfig, sharedConfigVersion, shouldBootstrapSharedConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
 import { persistChatState, persistGlobalSettings } from './src/core/persistence.js';
 import { migrateGenerationPrompts, migrateInlineSummaryPrompt, migratePromptPresetTimelines, migrateTurnSummaryPrompt, migrateVectorQueryRewritePrompt } from './src/core/prompt-migrations.js';
 import { ensureObjectField, fillMissingDefaults, normalizeArrayFields } from './src/core/state-shape.js';
@@ -21,7 +21,7 @@ import { parseTableEditOperations } from './src/tables/operation-parser.js';
 import { buildTableRollbackPlan } from './src/tables/rollback-plan.js';
 import { baseStoryLedgerPreset, createBaseStoryLedgerTables } from './src/tables/builtin-presets.js';
 import { findMatchingTable, mergeTableSchemaWithRows, normalizeImportedTablesFromJson, normalizeTableSchemas, normalizeTableText, toTableSchema } from './src/tables/schema-utils.js';
-import { defaultGenerationTargets, getSortedTargetBlocks, parseLooseNumberRange, partitionGenerationTargets, selectGenerationTargets, targetSelectionModes } from './src/summary/target-selection.js';
+import { defaultGenerationTargets, findTargetContinuityGaps, getSortedTargetBlocks, parseLooseNumberRange, partitionGenerationTargets, selectGenerationTargets, targetSelectionModes } from './src/summary/target-selection.js';
 import { cosineSimilarity, createLocalEmbedding } from './src/vector/math.js';
 import { computeHybridRerankScore, selectHybridCandidates } from './src/vector/hybrid-retrieval.js';
 import { extractCustomModelIds, getCustomChatCompletionsUrl, getCustomEmbeddingsUrl, getCustomModelsUrl, normalizeCustomApiBaseUrl } from './src/vector/provider-config.js';
@@ -530,6 +530,8 @@ const summaryGenerationController = createSummaryGenerationController({
     promptGenerationTargetSelection: (...args) => summaryTargetController.promptGenerationTargetSelection(...args),
     selectGenerationTargets,
     partitionGenerationTargets,
+    findTargetContinuityGaps,
+    getFloorMemoryIndex: state => workflowOverviewModel.getCurrentFloorMemoryIndex(state),
     confirmGenerationTargets: (...args) => summaryTargetController.confirmGenerationTargets(...args),
     getTargetSelectionLabel: (...args) => summaryTargetController.getTargetSelectionLabel(...args),
     getStageSourceMode,
@@ -924,6 +926,8 @@ const configurationController = createConfigurationController({
     turnProcessingModes,
     mergeSharedInlineGenerationConfig,
     mergeSharedVectorConfig,
+    createAutomationBehaviorConfig,
+    mergeAutomationBehaviorConfig,
     defaultVectorMemory,
     tableSchemaScopes,
     normalizeImportedTablesFromJson,
@@ -1278,6 +1282,7 @@ automationConfigurationEvents = createAutomationConfigurationEvents({
     documentRef: document,
     getState: ensureState,
     readAutomationFieldsFromUi,
+    readCustomApiFieldsFromUi,
     readGenerationTargetSettings: (...args) => summaryTargetController.readGenerationTargetSettings(...args),
     persistSharedConfigurationFromState,
     renderWorkbenchScope,
@@ -1687,6 +1692,8 @@ const turnProcessingController = createTurnProcessingController({
     defaultTurnSummaryPrompt,
     getSourceStart,
     stripHtml,
+    stripConfiguredTags,
+    parseList,
     turnProcessingModes,
     processLatestTableEdit,
     hasAppliedTableEditForMessage,

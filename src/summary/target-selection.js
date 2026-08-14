@@ -83,4 +83,37 @@ export function partitionGenerationTargets(blocks = [], kind = 'stage', config =
     }
     return batches.filter(batch => batch.length);
 }
+
+export function findTargetContinuityGaps(blocks = [], floorRecords = []) {
+    const targetIds = new Set(getFiniteMessageIds((blocks || []).flatMap(block => [
+        block?.messageId,
+        ...(block?.sourceMessageIds || []),
+    ])));
+    const records = (floorRecords || [])
+        .filter(record => Number.isInteger(Number(record?.id)) && Number(record.id) >= 0)
+        .sort((a, b) => Number(a.id) - Number(b.id));
+    const recordIds = new Set(records.map(record => Number(record.id)));
+    const matchedTargetIds = [...targetIds].filter(id => recordIds.has(id));
+    if (!records.length || !matchedTargetIds.length) {
+        return [];
+    }
+
+    const firstTarget = Math.min(...matchedTargetIds);
+    const lastTarget = Math.max(...matchedTargetIds);
+    const previousReadyFloor = records
+        .filter(record => Number(record.id) < firstTarget && ['saved', 'covered'].includes(record.summaryState))
+        .at(-1)?.id;
+    const rangeStart = Number.isInteger(Number(previousReadyFloor))
+        ? Number(previousReadyFloor) + 1
+        : Number(records[0].id);
+
+    return records.filter(record => {
+        const id = Number(record.id);
+        return id >= rangeStart
+            && id <= lastTarget
+            && !targetIds.has(id)
+            && ['missing', 'draft'].includes(record.summaryState);
+    });
+}
+
 import { getBlockSortKey, getFiniteMessageIds } from './source-metadata.js';

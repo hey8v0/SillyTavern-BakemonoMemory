@@ -11354,9 +11354,15 @@ details[open] > summary > .bakemono-memory-help-trigger {
 
 @media (max-width: 900px) {
   .bakemono-memory-parent-link {
+    position: sticky;
+    top: 0;
+    z-index: 8;
     min-height: 44px;
     margin-bottom: 8px;
-    padding-inline: 2px 8px;
+    padding-inline: 8px 12px;
+    border-radius: 0 0 14px 0;
+    background: color-mix(in srgb, var(--bk-paper) 92%, transparent);
+    backdrop-filter: blur(10px);
   }
 }
 

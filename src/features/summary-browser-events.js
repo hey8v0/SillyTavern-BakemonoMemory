@@ -73,7 +73,7 @@ export function createSummaryBrowserEvents({
             layout.querySelectorAll('.bk-tab-label').forEach(tab => tab.classList.toggle('is-active', tab === this));
             layout.querySelectorAll('.bk-tab-panel').forEach(panel => panel.classList.toggle('is-active', panel.dataset.bakemonoPanel === panelId));
         });
-        root.off('click.bakemonoSummaryAction').on('click.bakemonoSummaryAction', '[data-bakemono-summary-action]', function () {
+        root.off('click.bakemonoSummaryAction').on('click.bakemonoSummaryAction', '[data-bakemono-summary-action]', async function () {
             const tools = this.closest('.bakemono-memory-summary-tools');
             const hash = tools?.dataset.summaryHash;
             if (!tools || !hash) return;
@@ -84,12 +84,12 @@ export function createSummaryBrowserEvents({
             else if (action === 'more') danger.hidden = !danger.hidden;
             else if (action === 'cancel') editor.hidden = true;
             else if (action === 'save') {
-                saveEditedSummary(
+                await saveEditedSummary(
                     hash,
                     tools.querySelector('.bakemono-summary-title')?.value || '',
                     tools.querySelector('.bakemono-summary-content')?.value || '',
                 );
-            } else if (action === 'delete') deleteSavedSummary(hash);
+            } else if (action === 'delete') await deleteSavedSummary(hash);
         });
     }
 

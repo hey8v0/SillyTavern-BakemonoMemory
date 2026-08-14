@@ -3,6 +3,7 @@ export function createAutomationConfigurationEvents({
     documentRef,
     getState,
     readAutomationFieldsFromUi,
+    readCustomApiFieldsFromUi,
     readGenerationTargetSettings,
     persistSharedConfigurationFromState,
     renderWorkbenchScope,
@@ -17,8 +18,15 @@ export function createAutomationConfigurationEvents({
             readAutomationFieldsFromUi(state);
             readGenerationTargetSettings();
             persistSharedConfigurationFromState(state);
-            renderWorkbenchScope(workbenchRenderScopes.AUTOMATION, '自动总结与生成 API 已同步到所有角色卡。');
-            toastr.success('自动总结与生成 API 已全局保存。');
+            renderWorkbenchScope(workbenchRenderScopes.AUTOMATION, '自动总结设置已同步到所有角色卡。');
+            toastr.success('自动总结设置已全局保存。');
+        });
+        query('#bakemono-memory-apply-generation-api').off('click').on('click', () => {
+            const state = getState();
+            readCustomApiFieldsFromUi(state);
+            persistSharedConfigurationFromState(state);
+            renderWorkbenchScope(workbenchRenderScopes.GENERATION, '生成模型设置已保存，并同步到所有角色卡。');
+            toastr.success('生成模型设置已全局保存。');
         });
         query('#bakemono-memory-auto-trigger').off('change.bakemonoAutomationUi').on('change.bakemonoAutomationUi', function () {
             const triggerType = String(this.value || defaultAutomation.triggerType);
