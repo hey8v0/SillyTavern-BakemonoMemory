@@ -8,6 +8,7 @@ export function createSummaryPreviewRenderer({
     getBlockPlainText,
     stripHtml,
     findSavedSummaryByHash,
+    canRemoveScannedSummaryBlock,
 }) {
     function getBracketMetaLine(text) {
         return text.split('\n').map(line => line.trim()).find(line => /^【[\s\S]+】$/.test(line)) || '';
@@ -133,7 +134,15 @@ export function createSummaryPreviewRenderer({
     function createSavedSummaryControls(block) {
         const saved = findSavedSummaryByHash(block.hash);
         if (!saved) {
-            return documentRef.createDocumentFragment();
+            if (!canRemoveScannedSummaryBlock?.(block)) return documentRef.createDocumentFragment();
+            const sourceTools = documentRef.createElement('div');
+            sourceTools.className = 'bakemono-memory-summary-tools bakemono-memory-source-summary-tools';
+            sourceTools.dataset.summaryHash = block.hash;
+            sourceTools.innerHTML = `
+                <p class="bakemono-memory-source-summary-note"><i class="fa-solid fa-link"></i><span>来自第 ${Number(block.messageId)} 楼正文标签；不是插件元数据里的正式摘要。</span></p>
+                <button class="menu_button danger_button" data-bakemono-summary-action="delete-source"><i class="fa-solid fa-trash"></i><span>从原正文移除</span></button>
+            `;
+            return sourceTools;
         }
         const wrapper = documentRef.createElement('div');
         wrapper.className = 'bakemono-memory-summary-tools';

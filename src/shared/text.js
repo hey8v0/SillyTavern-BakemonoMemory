@@ -74,6 +74,20 @@ export function extractAllTaggedBlocks(text, tagName) {
     return String(text || '').match(pattern) || [];
 }
 
+export function removeExactTextBlock(text, block) {
+    const source = String(text || '');
+    const target = String(block || '');
+    const index = source.indexOf(target);
+    if (!target || index < 0) return null;
+    const before = source.slice(0, index);
+    let after = source.slice(index + target.length);
+    if (/\r?\n$/.test(before) && /^\r?\n/.test(after)) after = after.replace(/^\r?\n/, '');
+    return `${before}${after}`
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 export function stripTableEditTags(text) {
     return String(text || '')
         .replace(/<tableThink>[\s\S]*?<\/tableThink>/gi, '')

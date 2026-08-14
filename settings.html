@@ -709,7 +709,7 @@
             </label>
             <label class="checkbox_label bakemono-memory-switch">
               <input type="checkbox" id="bakemono-memory-turn-auto">
-              <span>回复结束后自动处理</span>
+              <span>按所选时机自动处理</span>
             </label>
             <label class="checkbox_label bakemono-memory-switch">
               <input type="checkbox" id="bakemono-memory-turn-auto-save">
@@ -736,13 +736,24 @@
               <span>表格修改自动应用</span>
             </label>
             <label class="bakemono-memory-field">
-              <span>回复后处理模式</span>
+              <span>自动摘要时机</span>
+              <select id="bakemono-memory-turn-trigger-timing" class="text_pole">
+                <option value="immediate">回复结束后立即处理</option>
+                <option value="next_user">下一轮开始时处理上一条回复</option>
+              </select>
+            </label>
+            <label class="bakemono-memory-field">
+              <span>轮次处理模式</span>
               <select id="bakemono-memory-turn-processing-mode" class="text_pole">
                 <option value="both">摘要 + 填表</option>
                 <option value="summary">只摘要</option>
                 <option value="table">只填表</option>
               </select>
             </label>
+          </div>
+          <div class="bakemono-memory-persistence-protection" role="status">
+            <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+            <span><strong>崩溃恢复保护已开启</strong><small>摘要、草稿和正文补丁会先写入本地恢复日志；酒馆异常退出后会在下次加载时自动核验并恢复。</small></span>
           </div>
           <div class="bakemono-memory-inline-actions">
             <button class="menu_button" id="bakemono-memory-apply-turn-settings">

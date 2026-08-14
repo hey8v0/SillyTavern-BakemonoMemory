@@ -122,6 +122,7 @@ export function createConfigurationController({
                 ...state.turnSummary,
                 enabled: !!preset.turnSummary.enabled,
                 auto: !!preset.turnSummary.auto,
+                triggerTiming: preset.turnSummary.triggerTiming === 'next_user' ? 'next_user' : 'immediate',
                 processingMode: preset.turnSummary.processingMode || state.turnSummary.processingMode || turnProcessingModes.BOTH,
                 saveMode: preset.turnSummary.saveMode === 'commit' ? 'commit' : 'draft',
                 includeUserMessage: preset.turnSummary.includeUserMessage !== false,
@@ -285,6 +286,7 @@ export function createConfigurationController({
                 turnSummary: {
                     enabled: !!state.turnSummary.enabled,
                     auto: !!state.turnSummary.auto,
+                    triggerTiming: state.turnSummary.triggerTiming === 'next_user' ? 'next_user' : 'immediate',
                     processingMode: state.turnSummary.processingMode || turnProcessingModes.BOTH,
                     saveMode: state.turnSummary.saveMode === 'commit' ? 'commit' : 'draft',
                     includeUserMessage: state.turnSummary.includeUserMessage !== false,
@@ -384,6 +386,7 @@ export function createConfigurationController({
                 ...state.turnSummary,
                 enabled: preset.turnSummary.enabled ?? state.turnSummary.enabled,
                 auto: preset.turnSummary.auto ?? state.turnSummary.auto,
+                triggerTiming: preset.turnSummary.triggerTiming === 'next_user' ? 'next_user' : 'immediate',
                 processingMode: preset.turnSummary.processingMode || state.turnSummary.processingMode || turnProcessingModes.BOTH,
                 saveMode: preset.turnSummary.saveMode === 'commit' ? 'commit' : state.turnSummary.saveMode || 'draft',
                 includeUserMessage: preset.turnSummary.includeUserMessage !== false,

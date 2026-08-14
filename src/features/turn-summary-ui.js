@@ -27,6 +27,7 @@ export function createTurnSummaryUi({
     function render(state = getState()) {
         query('#bakemono-memory-turn-enabled').prop('checked', !!state.turnSummary.enabled);
         query('#bakemono-memory-turn-auto').prop('checked', !!state.turnSummary.auto);
+        query('#bakemono-memory-turn-trigger-timing').val(state.turnSummary.triggerTiming === 'next_user' ? 'next_user' : 'immediate');
         query('#bakemono-memory-turn-processing-mode').val(state.turnSummary.processingMode || turnProcessingModes.BOTH);
         query('#bakemono-memory-turn-auto-save').prop('checked', state.turnSummary.saveMode === 'commit');
         query('#bakemono-memory-turn-include-user').prop('checked', state.turnSummary.includeUserMessage !== false);
@@ -65,7 +66,8 @@ export function createTurnSummaryUi({
         const turnEnabled = !!state.turnSummary.enabled;
         const turnAuto = !!state.turnSummary.auto;
         const tableEnabled = !!state.tableDatabase.enabled;
-        const runtimeLabel = !turnEnabled ? '自动记忆未开启' : turnAuto ? '自动记忆运行中' : '自动记忆已启用';
+        const delayed = state.turnSummary.triggerTiming === 'next_user';
+        const runtimeLabel = !turnEnabled ? '自动记忆未开启' : turnAuto ? delayed ? '自动记忆运行中 · 延迟一轮' : '自动记忆运行中 · 即时' : '自动记忆已启用';
         const runtimeTitle = hasProcessedTurn ? `第 ${lastId} 楼已处理` : '等待第一轮正文';
         const summaryDestination = state.turnSummary.saveMode === 'commit' ? '已直接写入长期记忆' : '摘要会先进入待确认';
         const tableDestination = tableEnabled
@@ -76,7 +78,7 @@ export function createTurnSummaryUi({
         query('#bakemono-memory-turn-status').text(hasProcessedTurn
             ? `${summaryDestination}；${tableDestination}。`
             : turnEnabled
-                ? '下一次正文结束后会按当前设置生成摘要。'
+                ? delayed ? '下一轮 user 消息发出后，会处理上一条已完成回复。' : '下一次正文结束后会立即按当前设置生成摘要。'
                 : '开启后，每轮剧情会先生成草稿，再由你确认是否保存。');
         query('.bakemono-memory-turn-status-hero').toggleClass('is-running', turnEnabled && turnAuto);
 

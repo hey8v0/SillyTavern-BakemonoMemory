@@ -10,6 +10,12 @@ export function runChatSwitchFlow(actions = {}) {
     if (typeof flow.syncConfig === 'function') {
         flow.syncConfig(state);
     }
+    if (typeof flow.recover === 'function') {
+        flow.recover(state);
+    }
+    if (typeof flow.scan === 'function') {
+        flow.scan(state);
+    }
     if (typeof flow.scheduleAutoHide === 'function') {
         flow.scheduleAutoHide(chatSwitchReasons.autoHide);
     }

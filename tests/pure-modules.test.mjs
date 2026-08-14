@@ -49,6 +49,14 @@ test('shared text helpers preserve scanning and search behavior', async () => {
         text.extractConfiguredTagBlocks('<小剧场>番外</小剧场>', ['<小剧场>']),
         [{ content: '<小剧场>番外</小剧场>', matchedTag: '小剧场' }],
     );
+    assert.equal(
+        text.removeExactTextBlock(
+            '正文\n<bakemono>幽灵摘要</bakemono>\n结尾',
+            '<bakemono>幽灵摘要</bakemono>',
+        ),
+        '正文\n结尾',
+    );
+    assert.equal(text.removeExactTextBlock('正文', '<bakemono>不存在</bakemono>'), null);
     assert.equal(text.matchesAnyKeyword('阶段总结：第一幕', ['阶段总结']), true);
     assert.equal(text.normalizeSearchText(' 第 12 楼：相 遇 '), '第12楼:相遇');
     assert.equal(text.countKeywordHits('黑曜石钥匙交给了 Nana', ['钥匙', 'Nana', '不存在']), 2);

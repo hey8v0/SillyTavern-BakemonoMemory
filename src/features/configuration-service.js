@@ -129,6 +129,7 @@ export function createConfigurationService({
             ...state.turnSummary,
             enabled: query('#bakemono-memory-turn-enabled').prop('checked'),
             auto: query('#bakemono-memory-turn-auto').prop('checked'),
+            triggerTiming: String(query('#bakemono-memory-turn-trigger-timing').val() || 'immediate') === 'next_user' ? 'next_user' : 'immediate',
             processingMode: String(query('#bakemono-memory-turn-processing-mode').val() || turnProcessingModes.BOTH),
             saveMode: query('#bakemono-memory-turn-auto-save').prop('checked') ? 'commit' : 'draft',
             includeUserMessage: query('#bakemono-memory-turn-include-user').prop('checked'),
@@ -215,6 +216,7 @@ export function createConfigurationService({
             turnSummary: {
                 enabled: !!state.turnSummary.enabled,
                 auto: !!state.turnSummary.auto,
+                triggerTiming: state.turnSummary.triggerTiming === 'next_user' ? 'next_user' : 'immediate',
                 processingMode: state.turnSummary.processingMode || turnProcessingModes.BOTH,
                 saveMode: state.turnSummary.saveMode === 'commit' ? 'commit' : 'draft',
                 includeUserMessage: state.turnSummary.includeUserMessage !== false,

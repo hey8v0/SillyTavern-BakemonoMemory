@@ -6,13 +6,15 @@ import { getImageSizeFromDataURL } from '../../../utils.js';
 import { runChatSwitchFlow } from './src/core/chat-switch.js';
 import { createAutomationBehaviorConfig, createSharedInlineGenerationConfig, createSharedVectorConfig, markActiveConfigApplied, mergeAutomationBehaviorConfig, mergeSharedInlineGenerationConfig, mergeSharedVectorConfig, readActiveConfig, sharedConfigVersion, shouldBootstrapSharedConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
 import { persistChatState, persistGlobalSettings } from './src/core/persistence.js';
+import { installCompactStateSerializer } from './src/core/persisted-chat-state.js';
+import { createSummaryRecoveryJournal } from './src/core/summary-recovery-journal.js';
 import { migrateGenerationPrompts, migrateInlineSummaryPrompt, migratePromptPresetTimelines, migrateTurnSummaryPrompt, migrateVectorQueryRewritePrompt } from './src/core/prompt-migrations.js';
 import { ensureObjectField, fillMissingDefaults, normalizeArrayFields } from './src/core/state-shape.js';
 import { memoryStrategies, normalizeWorkflowState, stageSourceModes, workflowModes } from './src/core/workflow-mode.js';
 import { migrateBuiltInInjectionDefaults, normalizeInjectionMemoryBody, normalizeLineEndings, renderInjectionTemplate } from './src/shared/injection-template.js';
 import { dedupeByHash, unique } from './src/shared/collections.js';
 import { formatBlocksForPrompt, getPromptStructureExcerpt, migrateBuiltInStructuredPrompt, migrateEpicPromptTimeSpan, migrateStagePromptTimeSpan, renderGenerationPrompt, stripPostProcessNoise } from './src/shared/prompt-utils.js';
-import { countKeywordHits, extractAllTaggedBlocks, extractConfiguredTagBlocks, extractTaggedContent, getHash, matchesAnyKeyword, normalizeSearchText, parseList, stripConfiguredTags, stripTableEditTags } from './src/shared/text.js';
+import { countKeywordHits, extractAllTaggedBlocks, extractConfiguredTagBlocks, extractTaggedContent, getHash, matchesAnyKeyword, normalizeSearchText, parseList, removeExactTextBlock, stripConfiguredTags, stripTableEditTags } from './src/shared/text.js';
 import { parseMissingSummaryBatchResult } from './src/summary/draft-parser.js';
 import { getMultiSummaryLabel, getNextMultiSummaryLevel, getSummaryKindLabel, getSummaryLevel } from './src/summary/levels.js';
 import { buildFloorMemoryIndex, createMemoryOrchestrationPlan } from './src/memory/floor-memory-index.js';
@@ -52,6 +54,7 @@ import { createInjectionService } from './src/features/injection-service.js';
 import { createArchiveController } from './src/features/archive-controller.js';
 import { createMemoryOrchestrator } from './src/features/memory-orchestrator.js';
 import { createTurnProcessingController } from './src/features/turn-processing-controller.js';
+import { shouldRunTurnProcessing } from './src/features/turn-trigger-policy.js';
 import { createGenerationClient } from './src/features/generation-client.js';
 import { createSummaryDraftService } from './src/features/summary-draft-service.js';
 import { createContentBlockService } from './src/features/content-block-service.js';
@@ -144,6 +147,21 @@ const {
     injectionKey: INJECTION_KEY,
 });
 
+function getSummaryRecoveryChatIdentity() {
+    const context = getContext();
+    const chatId = String(context?.chatId || '').trim();
+    if (!chatId) return '';
+    const scope = context?.groupId !== undefined && context?.groupId !== null
+        ? `group:${context.groupId}`
+        : `character:${context?.characterId ?? context?.character?.avatar ?? context?.name2 ?? 'unknown'}`;
+    return `${scope}|chat:${chatId}`;
+}
+
+const summaryRecoveryJournal = createSummaryRecoveryJournal({
+    getStorage: () => globalThis.localStorage,
+    getChatId: getSummaryRecoveryChatIdentity,
+});
+
 const extensionFolderPath = (() => {
     const fallback = `scripts/extensions/third-party/${EXT_ID}`;
 
@@ -192,11 +210,19 @@ function confirmDanger(title, lines = [], confirmText = '确认继续吗？') {
 }
 
 
-function saveState() {
-    persistChatState(chat_metadata?.[STORAGE_KEY] || null, {
+function saveState(options = {}) {
+    const state = chat_metadata?.[STORAGE_KEY] || null;
+    const recovery = state
+        ? summaryRecoveryJournal.stage(state, chat, { messageIds: options.recoveryMessageIds || [] })
+        : { status: 'unavailable', revision: 0 };
+    if (recovery.status === 'error') {
+        console.warn('[BakemonoMemory] failed to write summary recovery journal', recovery.error);
+    }
+    persistChatState(state, {
         prepare: state => slimVectorMemoryForSave(state?.vectorMemory, defaultVectorMemory),
         save: saveMetadataDebounced,
     });
+    return recovery;
 }
 
 function saveGlobalSettings() {
@@ -394,6 +420,7 @@ const chatStateService = createChatStateService({
     unique,
     getActiveCoveredStageHashes: (...args) => getActiveCoveredStageHashes(...args),
     getInjectionMemoryParts: (...args) => getInjectionMemoryParts(...args),
+    installCompactStateSerializer,
 });
 const { ensureState, maxStoredScanPreviewItems, sanitizeCurrentChatState } = chatStateService;
 
@@ -463,6 +490,7 @@ const summaryPreviewRenderer = createSummaryPreviewRenderer({
     getBlockPlainText,
     stripHtml,
     findSavedSummaryByHash: (...args) => findSavedSummaryByHash(...args),
+    canRemoveScannedSummaryBlock: (...args) => canRemoveScannedSummaryBlock(...args),
 });
 const {
     createBakemonoNotebook,
@@ -1556,6 +1584,7 @@ const summaryDraftService = createSummaryDraftService({
     markVectorIndexDirty,
     parseList,
     extractConfiguredSegments,
+    removeExactTextBlock,
     confirm: message => window.confirm(message),
 });
 const {
@@ -1564,6 +1593,7 @@ const {
     commitAllMissingSummaryDrafts,
     commitDraft,
     commitMissingSummaryDraft,
+    canRemoveScannedSummaryBlock,
     createDraft,
     deleteSavedSummary,
     discardDraft,
@@ -1579,6 +1609,7 @@ const {
     recordAutoSummaryTransaction,
     regenerateDraft,
     removeMissingSummaryDraftsAndTasks,
+    removeScannedSummaryBlock,
     removeSummaryByHash,
     rollbackAutoSummaryTransaction,
     saveEditedSummary,
@@ -1658,6 +1689,7 @@ const summaryBrowserEvents = createSummaryBrowserEvents({
     renderMemoryRecordList,
     saveEditedSummary,
     deleteSavedSummary,
+    removeScannedSummaryBlock,
 });
 
 const turnProcessingController = createTurnProcessingController({
@@ -1741,6 +1773,7 @@ const memoryOrchestrator = createMemoryOrchestrator({
     scheduleVectorAutoIndex,
     syncInjection,
     scheduleRenderAll,
+    shouldRunTurnProcessing,
 });
 const {
     isAutoThresholdReached,
@@ -2002,11 +2035,28 @@ async function initWorkbench() {
     renderAll();
 }
 
+function reconcileSummaryRecovery(state = ensureState()) {
+    const recovery = summaryRecoveryJournal.reconcile(state, chat);
+    scanBakemonoBlocks({ persist: false, render: false });
+    updateInjectionFromSummaries();
+    if (recovery.status === 'recovered') {
+        saveState();
+        void saveChatConditional();
+        toastr.warning(
+            `检测到酒馆上次未完整写入，已从本地恢复 ${recovery.patchedMessages || 0} 个正文补丁和摘要/草稿数据。`,
+            '剧情剪辑台已恢复',
+            { timeOut: 12000, extendedTimeOut: 18000 },
+        );
+    }
+    return recovery;
+}
+
 async function init() {
     ensureGlobalSettings();
     const initialState = ensureState();
     bootstrapSharedConfigurationFromCurrentChat(initialState);
     syncGlobalActiveConfigToState(initialState, { force: true });
+    reconcileSummaryRecovery(initialState);
     await initWorkbench();
     syncInjection();
     if (ensureState().vectorMemory.enabled) {
@@ -2026,6 +2076,7 @@ async function init() {
             bootstrapSharedConfigurationFromCurrentChat(state);
             return syncGlobalActiveConfigToState(state, { force: true });
         },
+        recover: state => reconcileSummaryRecovery(state),
         scheduleAutoHide: scheduleAutoHideRecent,
         markVectorDirty: markVectorIndexDirty,
         syncInjection,
@@ -2033,11 +2084,24 @@ async function init() {
     }));
     eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
         await runMemoryOrchestrator('收到新回复', {
+            turnTrigger: 'assistant',
             scheduleInlineCapture: true,
             vectorDirtyReason: '收到新消息',
             render: true,
         });
     });
+    if (event_types.MESSAGE_SENT) {
+        eventSource.on(event_types.MESSAGE_SENT, async () => {
+            const state = ensureState();
+            if (!shouldRunTurnProcessing(state.turnSummary, 'user')) return;
+            await runMemoryOrchestrator('开始新一轮', {
+                scan: false,
+                turnOnly: true,
+                turnTrigger: 'user',
+                render: true,
+            });
+        });
+    }
     if (event_types.ITEMIZED_PROMPTS_LOADED) {
         eventSource.on(event_types.ITEMIZED_PROMPTS_LOADED, () => {
             if (!isWorkbenchOpen()) return;

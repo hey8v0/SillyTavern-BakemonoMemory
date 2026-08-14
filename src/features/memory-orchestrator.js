@@ -22,6 +22,7 @@ export function createMemoryOrchestrator({
     scheduleVectorAutoIndex,
     syncInjection,
     scheduleRenderAll,
+    shouldRunTurnProcessing,
 } = {}) {
     async function maybeRunAutoSummary() {
         const state = ensureState();
@@ -84,6 +85,15 @@ export function createMemoryOrchestrator({
         let state = ensureState();
         let floorIndex = getCurrentFloorMemoryIndex(state);
         let plan = getMemoryOrchestrationPlan(state, floorIndex);
+        const turnTrigger = options.turnTrigger || 'assistant';
+        const triggerMatches = shouldRunTurnProcessing?.(state.turnSummary, turnTrigger) !== false;
+
+        if (options.turnOnly) {
+            if (triggerMatches) await maybeRunTurnSummary();
+            syncInjection();
+            if (options.render) scheduleRenderAll();
+            return { index: floorIndex, plan };
+        }
     
         if (options.captureInline !== false && plan.actions.captureInline) {
             await captureInlineGenerationFromLatestMessage();
@@ -95,9 +105,9 @@ export function createMemoryOrchestrator({
         state = ensureState();
         floorIndex = getCurrentFloorMemoryIndex(state);
         plan = getMemoryOrchestrationPlan(state, floorIndex);
-        if (plan.actions.processLatestTurn) {
+        if (plan.actions.processLatestTurn && triggerMatches) {
             await maybeRunTurnSummary();
-        } else if (plan.actions.processLatestTableOnly) {
+        } else if (plan.actions.processLatestTableOnly && triggerMatches) {
             await processLatestTableEdit({ manual: false });
         }
     

@@ -692,6 +692,7 @@ export function createDefaultConfiguration({
     
     const defaultState = {
         version: 1,
+        persistenceRevision: 0,
         configInitialized: false,
         activeConfigId: '',
         blocks: [],
@@ -736,6 +737,7 @@ export function createDefaultConfiguration({
         turnSummary: {
             enabled: false,
             auto: false,
+            triggerTiming: 'immediate',
             processingMode: turnProcessingModes.BOTH,
             saveMode: 'draft',
             includeUserMessage: true,

@@ -8,6 +8,8 @@ const styleSource = fs.readFileSync(new URL('../style.css', import.meta.url), 'u
 const chatSwitchSource = fs.readFileSync(new URL('../src/core/chat-switch.js', import.meta.url), 'utf8');
 const configSyncSource = fs.readFileSync(new URL('../src/core/config-sync.js', import.meta.url), 'utf8');
 const chatStateServiceSource = fs.readFileSync(new URL('../src/core/chat-state-service.js', import.meta.url), 'utf8');
+const persistedChatStateSource = fs.readFileSync(new URL('../src/core/persisted-chat-state.js', import.meta.url), 'utf8');
+const summaryRecoveryJournalSource = fs.readFileSync(new URL('../src/core/summary-recovery-journal.js', import.meta.url), 'utf8');
 const globalSettingsServiceSource = fs.readFileSync(new URL('../src/core/global-settings-service.js', import.meta.url), 'utf8');
 const promptMigrationsSource = fs.readFileSync(new URL('../src/core/prompt-migrations.js', import.meta.url), 'utf8');
 const stateShapeSource = fs.readFileSync(new URL('../src/core/state-shape.js', import.meta.url), 'utf8');
@@ -18,8 +20,10 @@ const promptInspectorSource = fs.readFileSync(new URL('../src/features/prompt-in
 const archiveControllerSource = fs.readFileSync(new URL('../src/features/archive-controller.js', import.meta.url), 'utf8');
 const memoryOrchestratorSource = fs.readFileSync(new URL('../src/features/memory-orchestrator.js', import.meta.url), 'utf8');
 const turnProcessingControllerSource = fs.readFileSync(new URL('../src/features/turn-processing-controller.js', import.meta.url), 'utf8');
+const turnTriggerPolicySource = fs.readFileSync(new URL('../src/features/turn-trigger-policy.js', import.meta.url), 'utf8');
 const generationClientSource = fs.readFileSync(new URL('../src/features/generation-client.js', import.meta.url), 'utf8');
 const summaryDraftServiceSource = fs.readFileSync(new URL('../src/features/summary-draft-service.js', import.meta.url), 'utf8');
+const summaryPreviewRendererSource = fs.readFileSync(new URL('../src/features/summary-preview-renderer.js', import.meta.url), 'utf8');
 const scanControllerSource = fs.readFileSync(new URL('../src/features/scan-controller.js', import.meta.url), 'utf8');
 const summaryGenerationControllerSource = fs.readFileSync(new URL('../src/features/summary-generation-controller.js', import.meta.url), 'utf8');
 const summaryBackfillControllerSource = fs.readFileSync(new URL('../src/features/summary-backfill-controller.js', import.meta.url), 'utf8');
@@ -736,16 +740,37 @@ test('state normalization remains compatible with SillyTavern metadata objects',
     assert.match(workflowModeSource, /state\.outputMode = state\.workflowMode === workflowModes\.GENERIC/);
 });
 
-test('persistence reads the current chat at save time and keeps tavern debounced adapters', () => {
+test('persistence stages crash recovery, compacts metadata and keeps tavern debounced adapters', () => {
     const chatSaveSource = extractFunction('saveState');
     const globalSaveSource = extractFunction('saveGlobalSettings');
 
     assert.match(source, /from '.\/src\/core\/persistence\.js'/);
     assert.match(source, /from '.\/src\/vector\/storage\.js'/);
-    assert.match(chatSaveSource, /persistChatState\(chat_metadata\?\.\[STORAGE_KEY\] \|\| null/);
+    assert.match(source, /from '.\/src\/core\/persisted-chat-state\.js'/);
+    assert.match(source, /from '.\/src\/core\/summary-recovery-journal\.js'/);
+    assert.match(chatSaveSource, /const state = chat_metadata\?\.\[STORAGE_KEY\] \|\| null/);
+    assert.match(chatSaveSource, /summaryRecoveryJournal\.stage\(state, chat/);
+    assert.match(chatSaveSource, /persistChatState\(state/);
     assert.match(chatSaveSource, /slimVectorMemoryForSave\(state\?\.vectorMemory, defaultVectorMemory\)/);
     assert.match(chatSaveSource, /save:\s*saveMetadataDebounced/);
+    assert.match(chatStateServiceSource, /installCompactStateSerializer\?\.\(state\)/);
+    assert.match(persistedChatStateSource, /Object\.defineProperty\(state, 'toJSON'/);
+    assert.match(summaryRecoveryJournalSource, /function reconcile\(state, chat = \[\]\)/);
     assert.match(globalSaveSource, /persistGlobalSettings\(saveSettingsDebounced\)/);
+});
+
+test('turn processing exposes immediate and next-user modes and source-only summaries stay removable', () => {
+    assert.match(settingsSource, /id="bakemono-memory-turn-trigger-timing"/);
+    assert.match(settingsSource, /option value="immediate"/);
+    assert.match(settingsSource, /option value="next_user"/);
+    assert.match(source, /event_types\.MESSAGE_RECEIVED/);
+    assert.match(source, /event_types\.MESSAGE_SENT/);
+    assert.match(source, /turnTrigger: 'assistant'/);
+    assert.match(source, /turnTrigger: 'user'/);
+    assert.match(turnTriggerPolicySource, /trigger === 'user'/);
+    assert.match(memoryOrchestratorSource, /if \(options\.turnOnly\)/);
+    assert.match(summaryPreviewRendererSource, /data-bakemono-summary-action="delete-source"/);
+    assert.match(summaryDraftServiceSource, /async function removeScannedSummaryBlock\(hash\)/);
 });
 
 test('timeline pagination creates DOM only for the visible page', () => {

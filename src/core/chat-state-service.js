@@ -46,6 +46,7 @@ export function createChatStateService({
     unique,
     getActiveCoveredStageHashes,
     getInjectionMemoryParts,
+    installCompactStateSerializer,
 } = {}) {
     const sanitizedChatLengths = new WeakMap();
     const maxStoredScanPreviewItems = 240;
@@ -75,6 +76,8 @@ export function createChatStateService({
         }
     
         const state = chatMetadata[storageKey];
+        installCompactStateSerializer?.(state);
+        state.persistenceRevision = Math.max(0, Number(state.persistenceRevision || 0));
         if (isNewChatState) {
             applyGlobalActiveConfigToState(state);
         } else if (state.configInitialized === undefined) {

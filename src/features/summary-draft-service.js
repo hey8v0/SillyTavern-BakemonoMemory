@@ -34,6 +34,7 @@ export function createSummaryDraftService({
     markVectorIndexDirty,
     parseList,
     extractConfiguredSegments,
+    removeExactTextBlock,
     confirm,
 } = {}) {
     const durableSummaryStateKeys = [
@@ -57,12 +58,19 @@ export function createSummaryDraftService({
     }
 
     function captureSummaryState(state = ensureState()) {
-        return Object.fromEntries(durableSummaryStateKeys.map(key => [key, cloneSerializable(state[key])]));
+        return Object.fromEntries(durableSummaryStateKeys.map(key => {
+            const value = state[key];
+            if (Array.isArray(value)) return [key, value.slice()];
+            if (value && typeof value === 'object') return [key, { ...value }];
+            return [key, value];
+        }));
     }
 
     function restoreSummaryState(snapshot, state = ensureState()) {
         for (const key of durableSummaryStateKeys) {
-            if (Object.hasOwn(snapshot, key)) state[key] = cloneSerializable(snapshot[key]);
+            if (!Object.hasOwn(snapshot, key)) continue;
+            const value = snapshot[key];
+            state[key] = Array.isArray(value) ? value.slice() : value && typeof value === 'object' ? { ...value } : value;
         }
         saveState();
     }
@@ -81,8 +89,11 @@ export function createSummaryDraftService({
         else message.swipes = cloneSerializable(snapshot.swipes);
     }
 
-    async function persistSummaryStateDurably() {
-        saveState();
+    async function persistSummaryStateDurably(recoveryMessageIds = []) {
+        const recovery = saveState({ recoveryMessageIds });
+        if (recovery && ['error', 'unavailable'].includes(recovery.status)) {
+            throw new Error(`本地恢复保护写入失败：${recovery.error?.message || recovery.error || '存储空间不可用'}`);
+        }
         await saveChatConditional();
     }
 
@@ -196,7 +207,7 @@ export function createSummaryDraftService({
 
             scanBakemonoBlocks({ persist: false });
             updateInjectionFromSummaries();
-            await persistSummaryStateDurably();
+            await persistSummaryStateDurably([targetMessageId]);
         } catch (error) {
             restoreMessage(message, messageSnapshot);
             restoreSummaryState(stateSnapshot, state);
@@ -292,7 +303,7 @@ export function createSummaryDraftService({
             state.drafts = state.drafts.filter(draft => !appliedDraftIds.has(draft.id));
             scanBakemonoBlocks({ persist: false });
             updateInjectionFromSummaries();
-            await persistSummaryStateDurably();
+            await persistSummaryStateDurably(ready.map(draft => Number(draft.metadata.targetMessageId)));
         } catch (error) {
             for (const [messageId, snapshot] of messageSnapshots) {
                 restoreMessage(getChat()[messageId], snapshot);
@@ -732,22 +743,23 @@ export function createSummaryDraftService({
         const state = ensureState();
         const stateSnapshot = captureSummaryState(state);
         const nextTitle = String(title || found.summary.title || '').trim() || found.summary.title;
-        found.summary.title = nextTitle;
-        found.summary.metadata = {
-            ...(found.summary.metadata || {}),
-            userTitle: nextTitle,
-            userTitleUpdatedAt: new Date().toISOString(),
-        };
-        found.summary.content = normalizeGeneratedBakemono(content || found.summary.content || '');
-        const block = state.blocks.find(item => item.hash === hash);
-        if (block) {
-            block.title = found.summary.title;
-            block.content = found.summary.content;
-            block.metadata = {
-                ...(block.metadata || {}),
+        const nextSummary = {
+            ...found.summary,
+            title: nextTitle,
+            metadata: {
+                ...(found.summary.metadata || {}),
                 userTitle: nextTitle,
-            };
-        }
+                userTitleUpdatedAt: new Date().toISOString(),
+            },
+            content: normalizeGeneratedBakemono(content || found.summary.content || ''),
+        };
+        found.list[found.index] = nextSummary;
+        state.blocks = state.blocks.map(block => block.hash === hash ? {
+            ...block,
+            title: nextSummary.title,
+            content: nextSummary.content,
+            metadata: { ...(block.metadata || {}), userTitle: nextTitle },
+        } : block);
         updateInjectionFromSummaries();
         try {
             await persistSummaryStateDurably();
@@ -798,6 +810,57 @@ export function createSummaryDraftService({
         renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '摘要已删除。');
         toastr.success('摘要已删除。');
     }
+
+    function canRemoveScannedSummaryBlock(block) {
+        return !!block
+            && !block.isGeneratedSummary
+            && block.sourceKind === 'tag'
+            && Number.isFinite(Number(block.messageId))
+            && Number(block.messageId) < Number.MAX_SAFE_INTEGER
+            && !findSavedSummaryByHash(block.hash);
+    }
+
+    async function removeScannedSummaryBlock(hash) {
+        const state = ensureState();
+        const block = state.blocks.find(item => item.hash === hash);
+        if (!canRemoveScannedSummaryBlock(block)) {
+            toastr.warning('这条内容不是可清理的正文摘要块。');
+            return false;
+        }
+        const messageId = Number(block.messageId);
+        const message = getChat()[messageId];
+        const nextText = removeExactTextBlock(message?.mes || '', block.content || '');
+        if (nextText === null) {
+            toastr.warning('原楼层中的摘要标签已经变化，请重新扫描后再试。');
+            return false;
+        }
+        const confirmed = confirmDanger(
+            `从第 ${messageId} 楼正文移除「${block.title || `#${messageId}.${Number(block.blockIndex || 0) + 1}`}」？`,
+            [
+                '这条记录来自聊天正文标签，不是插件元数据里的正式摘要。',
+                '移除后会修改该楼正文，并从剧情回看中清除这个幽灵层。',
+            ],
+        );
+        if (!confirmed) return false;
+
+        const stateSnapshot = captureSummaryState(state);
+        const messageSnapshot = captureMessage(message);
+        try {
+            updateChatMessageText(message, nextText);
+            state.blocks = state.blocks.filter(item => item.hash !== hash);
+            scanBakemonoBlocks({ persist: false });
+            updateInjectionFromSummaries();
+            await persistSummaryStateDurably([messageId]);
+        } catch (error) {
+            restoreMessage(message, messageSnapshot);
+            restoreSummaryState(stateSnapshot, state);
+            showDurableSaveFailure(error);
+            return false;
+        }
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `已从第 ${messageId} 楼移除正文摘要块。`);
+        toastr.success('幽灵摘要层已从原正文清除。');
+        return true;
+    }
     
     function recomputeCoveredHashes(state = ensureState()) {
         state.coveredBlockHashes = unique(state.stageSummaries.flatMap(summary => summary.sourceHashes || []));
@@ -835,6 +898,7 @@ export function createSummaryDraftService({
         commitAllMissingSummaryDrafts,
         commitDraft,
         commitMissingSummaryDraft,
+        canRemoveScannedSummaryBlock,
         createDraft,
         deleteSavedSummary,
         discardDraft,
@@ -850,6 +914,7 @@ export function createSummaryDraftService({
         recordAutoSummaryTransaction,
         regenerateDraft,
         removeMissingSummaryDraftsAndTasks,
+        removeScannedSummaryBlock,
         removeSummaryByHash,
         rollbackAutoSummaryTransaction,
         saveEditedSummary,

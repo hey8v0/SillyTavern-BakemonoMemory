@@ -13,6 +13,7 @@ export function createSummaryBrowserEvents({
     renderMemoryRecordList,
     saveEditedSummary,
     deleteSavedSummary,
+    removeScannedSummaryBlock,
 } = {}) {
     function bind(rootSelector = '#bakemono-workbench-root') {
         const root = query(rootSelector);
@@ -90,6 +91,7 @@ export function createSummaryBrowserEvents({
                     tools.querySelector('.bakemono-summary-content')?.value || '',
                 );
             } else if (action === 'delete') await deleteSavedSummary(hash);
+            else if (action === 'delete-source') await removeScannedSummaryBlock(hash);
         });
     }
 

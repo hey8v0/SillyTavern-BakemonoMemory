@@ -127,6 +127,50 @@ test('floor memory index derives status without mutating chat state and plans en
     assert.deepEqual(state, snapshot);
 });
 
+test('turn summary trigger policy supports both immediate and next-user timing', async () => {
+    const policy = await loadModule('src/features/turn-trigger-policy.js');
+
+    assert.equal(policy.shouldRunTurnProcessing({ triggerTiming: 'immediate' }, 'assistant'), true);
+    assert.equal(policy.shouldRunTurnProcessing({ triggerTiming: 'immediate' }, 'user'), false);
+    assert.equal(policy.shouldRunTurnProcessing({ triggerTiming: 'next_user' }, 'assistant'), false);
+    assert.equal(policy.shouldRunTurnProcessing({ triggerTiming: 'next_user' }, 'user'), true);
+    assert.equal(policy.shouldRunTurnProcessing({}, 'assistant'), true);
+});
+
+test('delayed turn orchestration skips the new assistant event and runs on the next user turn', async () => {
+    const { createMemoryOrchestrator } = await loadModule('src/features/memory-orchestrator.js');
+    const policy = await loadModule('src/features/turn-trigger-policy.js');
+    const state = {
+        turnSummary: { auto: true, enabled: true, triggerTiming: 'next_user', processingMode: 'summary' },
+        tableDatabase: { enabled: false, tables: [] },
+        automation: { enabled: false },
+    };
+    let processed = 0;
+    const orchestrator = createMemoryOrchestrator({
+        ensureState: () => state,
+        isBusy: () => false,
+        scanBakemonoBlocks() {},
+        getCurrentFloorMemoryIndex: () => ({}),
+        getMemoryOrchestrationPlan: () => ({ actions: { processLatestTurn: true } }),
+        captureInlineGenerationFromLatestMessage: async () => {},
+        scheduleInlineGenerationCapture() {},
+        processLatestTurnSummary: async () => { processed += 1; },
+        processLatestTableEdit: async () => {},
+        turnProcessingModes: { BOTH: 'both', SUMMARY: 'summary', TABLE: 'table' },
+        shouldRunTurnProcessing: policy.shouldRunTurnProcessing,
+        syncInjection() {},
+        scheduleRenderAll() {},
+        scheduleAutoHideRecent() {},
+        markVectorIndexDirty() {},
+        scheduleVectorAutoIndex() {},
+    });
+
+    await orchestrator.runMemoryOrchestrator('收到新回复', { turnTrigger: 'assistant' });
+    assert.equal(processed, 0);
+    await orchestrator.runMemoryOrchestrator('开始新一轮', { turnOnly: true, turnTrigger: 'user' });
+    assert.equal(processed, 1);
+});
+
 test('built-in story ledger excludes duplicate summary tables and keeps guidance read-only', async () => {
     const { baseStoryLedgerPreset, createBaseStoryLedgerTables } = await loadModule('src/tables/builtin-presets.js');
     const tables = createBaseStoryLedgerTables();
