@@ -1,5 +1,13 @@
 # 剧情剪辑台开发交接文档
 
+## 2026-08-15 / v1.4.5 / TT 恢复配额降级热修
+
+- 用户录屏确认“生成草稿后后台不写入”不是生成失败：点击“确认保存”后实际报错为 `本地恢复保护写入失败：The quota has been exceeded`，v1.4.4 将 TT `localStorage` 配额错误当成硬失败，主动恢复了保存前状态。
+- 恢复日志遇到 `QuotaExceededError`、错误码 22/1014 或等价 quota 文案时，先自动重试 essential 日志，只保留正式摘要、草稿、覆盖/隐藏状态、最新回合状态和正文补丁；省略可从酒馆存档继承的历史、已完成任务与自动事务记录。
+- 若 essential 日志仍然超额，状态改为 `quota-exceeded`：摘要事务继续等待 `saveChatConditional()`，不再回滚正式摘要；界面明确提示“恢复保护已降级”，说明本次没有额外崩溃恢复副本。非配额类恢复写入错误仍按原逻辑回滚。
+- 新增 TT 配额满仍写入酒馆、完整日志超额后切换 essential 日志、双重超额后明确降级三项回归测试；完整 Node 测试 115/115 通过，`index.js` 与 `src` 共 91 个 JavaScript 文件语法检查通过，`git diff --check` 通过。遵照用户要求未打开浏览器。
+- v1.4.5 完整源码已同步到 `E:\SillyTavern\public\scripts\extensions\third-party\SillyTavern-BakemonoMemory`，安装目录 91 个 JavaScript 文件语法检查通过，manifest 版本为 `1.4.5`。
+
 ## 2026-08-15 / v1.4.4 / 崩溃恢复、低峰值保存与双摘要时机
 
 - 摘要、草稿、撤回状态和受影响正文补丁在请求 SillyTavern 保存前先写入按聊天隔离的 `localStorage` 恢复日志；下次载入按 `persistenceRevision` 核验，酒馆存档缺少最新修订时自动恢复，修订已落盘时自动清理日志。

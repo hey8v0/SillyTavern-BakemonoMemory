@@ -14,6 +14,19 @@ const recoveryStateKeys = [
     'turnSummary',
 ];
 
+const essentialRecoveryStateKeys = new Set([
+    'storySummaries',
+    'stageSummaries',
+    'epicSummaries',
+    'drafts',
+    'coveredBlockHashes',
+    'coveredStageHashes',
+    'hiddenMessageIds',
+    'customHiddenMessageIds',
+    'autoHideRecent',
+    'turnSummary',
+]);
+
 function cloneSerializable(value) {
     if (value === undefined) return undefined;
     if (typeof structuredClone === 'function') return structuredClone(value);
@@ -66,6 +79,15 @@ function stableValueHash(value) {
     return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
+function isQuotaExceededError(error) {
+    const name = String(error?.name || '');
+    const message = String(error?.message || error || '');
+    return name === 'QuotaExceededError'
+        || Number(error?.code) === 22
+        || Number(error?.code) === 1014
+        || /quota|exceed|storage.{0,12}full/i.test(message);
+}
+
 function compactRecoveryHistory(value) {
     return (Array.isArray(value) ? value : []).slice(0, 40).map((entry, index) => {
         if (!entry || typeof entry !== 'object') return entry;
@@ -95,9 +117,10 @@ function compactRecoveryTasks(value) {
         : task);
 }
 
-function makeRecoveryState(state, { clone = true } = {}) {
+function makeRecoveryState(state, { clone = true, recoveryLevel = 'full' } = {}) {
     const snapshot = {};
     for (const key of recoveryStateKeys) {
+        if (recoveryLevel === 'essential' && !essentialRecoveryStateKeys.has(key)) continue;
         const value = state?.[key];
         const selected = key === 'history'
             ? compactRecoveryHistory(value)
@@ -177,7 +200,8 @@ export function createSummaryRecoveryJournal({
         const patchById = new Map((existing?.messagePatches || []).map(patch => [Number(patch.messageId), patch]));
         for (const patch of makeMessagePatches(chat, options.messageIds || [])) patchById.set(Number(patch.messageId), patch);
         const messagePatches = [...patchById.values()].sort((a, b) => a.messageId - b.messageId);
-        const recoveryState = makeRecoveryState(state, { clone: false });
+        const preferredRecoveryLevel = existing?.recoveryLevel === 'essential' ? 'essential' : 'full';
+        const recoveryState = makeRecoveryState(state, { clone: false, recoveryLevel: preferredRecoveryLevel });
         recoveryState.persistenceRevision = 0;
         const signature = stableValueHash({ state: recoveryState, messagePatches });
         if (existing?.signature === signature && Number(existing?.revision || 0) === currentRevision) {
@@ -187,21 +211,45 @@ export function createSummaryRecoveryJournal({
         const revision = Math.max(currentRevision, Number(existing?.revision || 0)) + 1;
         const previousRevision = currentRevision;
         state.persistenceRevision = revision;
-        const payload = {
-            schemaVersion: 1,
-            chatIdHash: stableHash(String(getChatId?.() || '')),
-            revision,
-            signature,
-            updatedAt: new Date().toISOString(),
-            state: { ...makeRecoveryState(state, { clone: false }), persistenceRevision: revision },
-            messagePatches,
+        const makePayload = recoveryLevel => {
+            const selectedState = makeRecoveryState(state, { clone: false, recoveryLevel });
+            selectedState.persistenceRevision = 0;
+            return {
+                schemaVersion: 1,
+                recoveryLevel,
+                chatIdHash: stableHash(String(getChatId?.() || '')),
+                revision,
+                signature: stableValueHash({ state: selectedState, messagePatches }),
+                updatedAt: new Date().toISOString(),
+                state: { ...makeRecoveryState(state, { clone: false, recoveryLevel }), persistenceRevision: revision },
+                messagePatches,
+            };
         };
+
+        const payload = makePayload(preferredRecoveryLevel);
         try {
             target.setItem(key, JSON.stringify(payload));
-            return { status: 'staged', revision };
+            return { status: preferredRecoveryLevel === 'essential' ? 'staged-compact' : 'staged', revision };
         } catch (error) {
+            if (preferredRecoveryLevel === 'full' && isQuotaExceededError(error)) {
+                try {
+                    target.setItem(key, JSON.stringify(makePayload('essential')));
+                    return { status: 'staged-compact', revision };
+                } catch (compactError) {
+                    state.persistenceRevision = previousRevision;
+                    return {
+                        status: isQuotaExceededError(compactError) ? 'quota-exceeded' : 'error',
+                        revision: previousRevision,
+                        error: compactError,
+                    };
+                }
+            }
             state.persistenceRevision = previousRevision;
-            return { status: 'error', revision: previousRevision, error };
+            return {
+                status: isQuotaExceededError(error) ? 'quota-exceeded' : 'error',
+                revision: previousRevision,
+                error,
+            };
         }
     }
 

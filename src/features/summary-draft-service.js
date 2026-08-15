@@ -91,10 +91,19 @@ export function createSummaryDraftService({
 
     async function persistSummaryStateDurably(recoveryMessageIds = []) {
         const recovery = saveState({ recoveryMessageIds });
-        if (recovery && ['error', 'unavailable'].includes(recovery.status)) {
+        if (recovery?.status === 'error') {
             throw new Error(`本地恢复保护写入失败：${recovery.error?.message || recovery.error || '存储空间不可用'}`);
         }
         await saveChatConditional();
+        if (recovery && ['quota-exceeded', 'unavailable'].includes(recovery.status)) {
+            toastr.warning(
+                recovery.status === 'quota-exceeded'
+                    ? 'TT 本地恢复空间已满；本次已继续交给酒馆保存，但本次操作暂时没有额外崩溃恢复副本。'
+                    : '当前无法使用本地恢复空间；本次已继续交给酒馆保存。',
+                '剧情剪辑台 · 恢复保护已降级',
+            );
+        }
+        return recovery;
     }
 
     function showDurableSaveFailure(error) {

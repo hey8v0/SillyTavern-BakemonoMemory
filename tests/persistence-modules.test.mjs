@@ -148,6 +148,55 @@ test('summary confirmation rolls back explicit save rejection and succeeds after
     assert.equal(toastCalls.at(-1)[0], 'success');
 });
 
+test('summary confirmation still writes to tavern when TT recovery storage quota is full', async () => {
+    const { createSummaryDraftService } = await loadModule('src/features/summary-draft-service.js');
+    const state = {
+        outputMode: 'plain',
+        blocks: [], storySummaries: [], stageSummaries: [], epicSummaries: [],
+        drafts: [{ id: 'draft-quota', kind: 'stage', title: '阶段配额', content: '仍需保存', sourceHashes: ['story-1'], sourceMessageIds: [8], metadata: {} }],
+        history: [], coveredBlockHashes: [], coveredStageHashes: [],
+        generatedMemory: '', injection: {}, autoSummaryTransactions: [],
+    };
+    let saveChatCalls = 0;
+    const toastCalls = [];
+    const service = createSummaryDraftService({
+        getChat: () => [],
+        ensureState: () => state,
+        getHash: value => `hash:${String(value)}`,
+        getBlockTitle: (_content, fallback) => fallback,
+        blockTypes: { STORY: 'story', STAGE: 'stage', EPIC: 'epic' },
+        toastr: {
+            success: message => toastCalls.push(['success', message]),
+            error: message => toastCalls.push(['error', message]),
+            warning: message => toastCalls.push(['warning', message]),
+            info() {}, clear() {},
+        },
+        saveChatConditional: async () => { saveChatCalls += 1; },
+        updateInjectionFromSummaries: () => { state.generatedMemory = state.stageSummaries.map(item => item.content).join('\n'); },
+        saveState: () => ({ status: 'quota-exceeded', error: new Error('The quota has been exceeded') }),
+        renderWorkbenchScope() {},
+        workbenchRenderScopes: { DRAFTS: 'drafts' },
+        getSourceStart: ids => Math.min(...ids),
+        getSourceEnd: ids => Math.max(...ids),
+        getSummaryLevel: () => 1,
+        sortSummariesBySource: items => items,
+        unique: values => [...new Set(values)],
+        mergeBlocks: (current, next) => [...current, ...next],
+        getKindLabel: kind => kind,
+        parseList: () => [],
+        extractConfiguredSegments: () => [],
+    });
+
+    const saved = await service.commitDraft('draft-quota');
+
+    assert.equal(saved?.title, '阶段配额');
+    assert.equal(saveChatCalls, 1);
+    assert.equal(state.drafts.length, 0);
+    assert.equal(state.stageSummaries.length, 1);
+    assert.equal(toastCalls.some(([type]) => type === 'error'), false);
+    assert.equal(toastCalls.some(([type]) => type === 'warning'), true);
+});
+
 test('scanned source-only summary can be removed from its original message', async () => {
     const { createSummaryDraftService } = await loadModule('src/features/summary-draft-service.js');
     const messages = Array.from({ length: 5 }, () => null);
@@ -246,6 +295,77 @@ test('recovery journal clears itself after the same revision is observed in chat
 
     assert.equal(journal.reconcile(state, []).status, 'verified');
     assert.equal(journal.peek(), null);
+});
+
+test('recovery journal retries quota failures with an essential payload', async () => {
+    const { createSummaryRecoveryJournal } = await loadModule('src/core/summary-recovery-journal.js');
+    const values = new Map();
+    const attempts = [];
+    const storage = {
+        getItem: key => values.get(key) ?? null,
+        setItem: (key, value) => {
+            const payload = JSON.parse(value);
+            attempts.push(payload);
+            if (attempts.length === 1) {
+                const error = new Error('The quota has been exceeded');
+                error.name = 'QuotaExceededError';
+                throw error;
+            }
+            values.set(key, value);
+        },
+        removeItem: key => values.delete(key),
+    };
+    const state = {
+        persistenceRevision: 0,
+        storySummaries: [{ hash: 'story-1', content: '必须恢复' }],
+        stageSummaries: [], epicSummaries: [], drafts: [{ id: 'draft-1', content: '草稿' }],
+        history: [{ id: 'history-1', draft: { content: '重复历史', prompt: '很长提示词' } }],
+        coveredBlockHashes: [], coveredStageHashes: [], hiddenMessageIds: [], customHiddenMessageIds: [],
+        autoHideRecent: {}, autoSummaryTransactions: [{ id: 'transaction-1' }],
+        taskQueue: [{ id: 'task-1', status: 'done', rawResult: '很长结果' }],
+        turnSummary: { lastProcessedMessageId: 8 },
+    };
+    const journal = createSummaryRecoveryJournal({ storage, getChatId: () => 'tt-quota-chat' });
+
+    const staged = journal.stage(state, []);
+
+    assert.equal(staged.status, 'staged-compact');
+    assert.equal(attempts.length, 2);
+    assert.equal(attempts[1].recoveryLevel, 'essential');
+    assert.equal(attempts[1].state.storySummaries[0].content, '必须恢复');
+    assert.equal(attempts[1].state.drafts[0].content, '草稿');
+    assert.equal('history' in attempts[1].state, false);
+    assert.equal('taskQueue' in attempts[1].state, false);
+    assert.equal('autoSummaryTransactions' in attempts[1].state, false);
+});
+
+test('recovery journal reports quota degradation only after both payload sizes fail', async () => {
+    const { createSummaryRecoveryJournal } = await loadModule('src/core/summary-recovery-journal.js');
+    let attempts = 0;
+    const storage = {
+        getItem: () => null,
+        setItem: () => {
+            attempts += 1;
+            const error = new Error('The quota has been exceeded');
+            error.name = 'QuotaExceededError';
+            throw error;
+        },
+        removeItem() {},
+    };
+    const state = {
+        persistenceRevision: 4,
+        storySummaries: [{ hash: 'story-1', content: '摘要' }],
+        stageSummaries: [], epicSummaries: [], drafts: [], history: [],
+        coveredBlockHashes: [], coveredStageHashes: [], hiddenMessageIds: [], customHiddenMessageIds: [],
+        autoHideRecent: {}, autoSummaryTransactions: [], taskQueue: [], turnSummary: {},
+    };
+    const journal = createSummaryRecoveryJournal({ storage, getChatId: () => 'tt-full-chat' });
+
+    const staged = journal.stage(state, []);
+
+    assert.equal(staged.status, 'quota-exceeded');
+    assert.equal(attempts, 2);
+    assert.equal(state.persistenceRevision, 4);
 });
 
 test('persisted chat state omits rebuildable copies and compacts duplicate history payloads', async () => {
