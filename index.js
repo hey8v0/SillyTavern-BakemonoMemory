@@ -4,7 +4,7 @@ import { hideChatMessageRange } from '../../../chats.js';
 import { getTokenCountAsync } from '../../../tokenizers.js';
 import { getImageSizeFromDataURL } from '../../../utils.js';
 import { runChatSwitchFlow } from './src/core/chat-switch.js';
-import { createAutomationBehaviorConfig, createSharedInlineGenerationConfig, createSharedVectorConfig, markActiveConfigApplied, mergeAutomationBehaviorConfig, mergeSharedInlineGenerationConfig, mergeSharedVectorConfig, readActiveConfig, sharedConfigVersion, shouldBootstrapSharedConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
+import { createAutomationBehaviorConfig, createSharedInlineGenerationConfig, createSharedVectorConfig, isStateConfigNewerThanActive, markActiveConfigApplied, mergeAutomationBehaviorConfig, mergeSharedInlineGenerationConfig, mergeSharedVectorConfig, readActiveConfig, sharedConfigVersion, shouldBootstrapSharedConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
 import { persistChatState, persistGlobalSettings } from './src/core/persistence.js';
 import { installCompactStateSerializer } from './src/core/persisted-chat-state.js';
 import { createSummaryRecoveryJournal } from './src/core/summary-recovery-journal.js';
@@ -14,7 +14,7 @@ import { memoryStrategies, normalizeWorkflowState, stageSourceModes, workflowMod
 import { migrateBuiltInInjectionDefaults, normalizeInjectionMemoryBody, normalizeLineEndings, renderInjectionTemplate } from './src/shared/injection-template.js';
 import { dedupeByHash, unique } from './src/shared/collections.js';
 import { formatBlocksForPrompt, getPromptStructureExcerpt, migrateBuiltInStructuredPrompt, migrateEpicPromptTimeSpan, migrateStagePromptTimeSpan, renderGenerationPrompt, stripPostProcessNoise } from './src/shared/prompt-utils.js';
-import { countKeywordHits, extractAllTaggedBlocks, extractConfiguredTagBlocks, extractTaggedContent, getHash, matchesAnyKeyword, normalizeSearchText, parseList, removeExactTextBlock, stripConfiguredTags, stripTableEditTags } from './src/shared/text.js';
+import { countKeywordHits, extractAllTaggedBlocks, extractConfiguredTagBlocks, extractTaggedContent, filterTextByConfiguredTags, getHash, matchesAnyKeyword, normalizeSearchText, parseList, removeExactTextBlock, stripConfiguredTags, stripTableEditTags } from './src/shared/text.js';
 import { parseMissingSummaryBatchResult } from './src/summary/draft-parser.js';
 import { getMultiSummaryLabel, getNextMultiSummaryLevel, getSummaryKindLabel, getSummaryLevel } from './src/summary/levels.js';
 import { buildFloorMemoryIndex, createMemoryOrchestrationPlan } from './src/memory/floor-memory-index.js';
@@ -194,6 +194,8 @@ const extensionFolderPath = (() => {
 })();
 
 let isBusy = false;
+let foregroundResumeTimer = null;
+let foregroundResumeWhenIdle = false;
 function escapeHtml(value) {
     const div = document.createElement('div');
     div.textContent = String(value ?? '');
@@ -232,6 +234,10 @@ function saveGlobalSettings() {
 function setBusy(value) {
     isBusy = value;
     $('#bakemono-memory-generate-stage, #bakemono-memory-generate-epic, #bakemono-memory-backfill, [data-bakemono-action="generate-stage"], [data-bakemono-action="generate-stage-batch"], [data-bakemono-action="generate-epic"], [data-bakemono-action="generate-epic-batch"], [data-bakemono-action="backfill"], [data-bakemono-action="batch-summary"], [data-bakemono-action="commit-missing-all"], [data-bakemono-action="remove-missing-all"], [data-bakemono-action="process-latest-turn"], [data-bakemono-action="process-latest-table"], [data-bakemono-action="vector-index"], [data-bakemono-action="vector-test"], [data-bakemono-action="vector-fetch-models"], [data-bakemono-action="vector-fetch-query-models"], [data-bakemono-draft-action], [data-bakemono-task-action], [data-bakemono-auto-tx-action], [data-bakemono-table-draft-action]').prop('disabled', value);
+    if (!value && foregroundResumeWhenIdle) {
+        foregroundResumeWhenIdle = false;
+        scheduleForegroundRuntimeResume('生成流程结束');
+    }
 }
 
 let workbenchRenderer = null;
@@ -709,6 +715,7 @@ const tableStateService = createTableStateService({
     mergeTableSchemaWithRows,
     updateInjectionFromSummaries: (...args) => updateInjectionFromSummaries(...args),
     saveState,
+    saveChatConditional,
     getFiniteMessageIds,
     toastr,
     confirmDanger,
@@ -794,6 +801,7 @@ const tableWorkflowController = createTableWorkflowController({
     buildTurnReferenceSystemPrompt: (...args) => buildTurnReferenceSystemPrompt(...args),
     createTableEditDraft,
     saveState,
+    saveChatConditional,
     renderWorkbenchScope,
     workbenchRenderScopes,
     applyTableOperations,
@@ -915,6 +923,7 @@ const configurationService = createConfigurationService({
     storageKey: STORAGE_KEY,
     getContext,
     shouldBootstrapSharedConfig,
+    isStateConfigNewerThanActive,
 });
 const {
     bootstrapSharedConfigurationFromCurrentChat,
@@ -922,6 +931,7 @@ const {
     getCurrentPromptPresetPayload,
     normalizeImportedPreset,
     persistSharedConfigurationFromState,
+    recoverNewerSharedConfigurationFromState,
     readAutomationFieldsFromUi,
     readConfigFieldsFromUi,
     readCustomApiFieldsFromUi,
@@ -959,6 +969,8 @@ const configurationController = createConfigurationController({
     defaultVectorMemory,
     tableSchemaScopes,
     normalizeImportedTablesFromJson,
+    findMatchingTable,
+    mergeTableSchemaWithRows,
     setTableSchemaScope,
     syncInlineGenerationPrompts: (...args) => injectionService.syncInlineGenerationPrompts(...args),
     scheduleVectorAutoIndex: (...args) => vectorMemoryService.scheduleVectorAutoIndex(...args),
@@ -1109,6 +1121,7 @@ const vectorActionsController = createVectorActionsController({
     renderWorkbenchScope,
     workbenchRenderScopes,
     saveState,
+    saveChatConditional,
     confirmDanger,
     fetchImpl: globalThis.fetch.bind(globalThis),
 });
@@ -1725,6 +1738,7 @@ const turnProcessingController = createTurnProcessingController({
     getSourceStart,
     stripHtml,
     stripConfiguredTags,
+    filterTextByConfiguredTags,
     parseList,
     turnProcessingModes,
     processLatestTableEdit,
@@ -2011,6 +2025,7 @@ function bindSettingsEvents() {
     tableManagementEvents.bind();
     contentConfigurationEvents.bind();
     automationConfigurationEvents.bind();
+    vectorActionsController.bind();
     bindPresetEvents();
     bindScanEvents();
 }
@@ -2051,9 +2066,36 @@ function reconcileSummaryRecovery(state = ensureState()) {
     return recovery;
 }
 
+function scheduleForegroundRuntimeResume(reason = '恢复前台') {
+    clearTimeout(foregroundResumeTimer);
+    foregroundResumeTimer = setTimeout(async () => {
+        foregroundResumeTimer = null;
+        if (document.visibilityState === 'hidden') return;
+        if (isBusy) {
+            foregroundResumeWhenIdle = true;
+            return;
+        }
+        try {
+            const state = ensureState();
+            recoverNewerSharedConfigurationFromState(state);
+            syncGlobalActiveConfigToState(state);
+            reconcileSummaryRecovery(state);
+            await runMemoryOrchestrator('恢复前台', {
+                turnTrigger: 'assistant',
+                scheduleInlineCapture: true,
+                vectorDirtyReason: reason,
+                render: true,
+            });
+        } catch (error) {
+            console.warn('[BakemonoMemory] foreground runtime resume failed', error);
+        }
+    }, 500);
+}
+
 async function init() {
     ensureGlobalSettings();
     const initialState = ensureState();
+    recoverNewerSharedConfigurationFromState(initialState);
     bootstrapSharedConfigurationFromCurrentChat(initialState);
     syncGlobalActiveConfigToState(initialState, { force: true });
     reconcileSummaryRecovery(initialState);
@@ -2073,6 +2115,7 @@ async function init() {
     eventSource.on(event_types.CHAT_CHANGED, () => runChatSwitchFlow({
         getState: ensureState,
         syncConfig: state => {
+            recoverNewerSharedConfigurationFromState(state);
             bootstrapSharedConfigurationFromCurrentChat(state);
             return syncGlobalActiveConfigToState(state, { force: true });
         },
@@ -2082,6 +2125,14 @@ async function init() {
         syncInjection,
         scheduleRender: scheduleRenderAll,
     }));
+    if (event_types.CHAT_LOADED) {
+        eventSource.on(event_types.CHAT_LOADED, () => scheduleForegroundRuntimeResume('聊天已载入'));
+    }
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') scheduleForegroundRuntimeResume('返回前台');
+    });
+    window.addEventListener('pageshow', () => scheduleForegroundRuntimeResume('页面恢复'));
+    window.addEventListener('focus', () => scheduleForegroundRuntimeResume('窗口恢复'));
     eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
         await runMemoryOrchestrator('收到新回复', {
             turnTrigger: 'assistant',

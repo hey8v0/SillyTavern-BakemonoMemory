@@ -31,6 +31,7 @@ export function createTurnProcessingController({
     getSourceStart,
     stripHtml,
     stripConfiguredTags,
+    filterTextByConfiguredTags,
     parseList,
     turnProcessingModes,
     processLatestTableEdit,
@@ -42,12 +43,21 @@ export function createTurnProcessingController({
 } = {}) {
     let inlineCaptureTimer = null;
 
-    function stripExcludedTurnContent(value, state = ensureState()) {
-        const withoutExcludedTags = stripConfiguredTags(
-            String(value || ''),
-            parseList(state.scanRules?.excludeTags || ''),
-        );
-        return stripPostProcessNoise(withoutExcludedTags);
+    function getTurnExcludeTags(state = ensureState()) {
+        return [...new Set([
+            ...parseList(state.scanRules?.excludeTags || ''),
+            ...parseList(state.turnSummary?.excludeTags || ''),
+        ])];
+    }
+
+    function stripExcludedTurnContent(value, state = ensureState(), options = {}) {
+        const filtered = filterTextByConfiguredTags(String(value || ''), {
+            includeTags: options.applyIncludeTags
+                ? parseList(state.turnSummary?.includeTags || '')
+                : [],
+            excludeTags: getTurnExcludeTags(state),
+        });
+        return stripPostProcessNoise(filtered);
     }
 
     function findLatestAssistantTurn() {
@@ -81,6 +91,14 @@ export function createTurnProcessingController({
         }
         return null;
     }
+
+    function hasStoredTurnSummaryForMessage(messageId, state = ensureState()) {
+        const targetId = Number(messageId);
+        return [...(state.drafts || []), ...(state.storySummaries || [])].some(item => (
+            item?.metadata?.sourceKind === 'turn'
+            && (item.sourceMessageIds || []).some(id => Number(id) === targetId)
+        ));
+    }
     
     function buildLatestTurnBlocks(state = ensureState()) {
         const turn = findLatestAssistantTurn();
@@ -98,13 +116,17 @@ export function createTurnProcessingController({
                 content: stripExcludedTurnContent(turn.userMessage.mes || '', state),
             });
         }
+        const assistantContent = stripExcludedTurnContent(turn.assistantMessage.mes || '', state, { applyIncludeTags: true });
+        if (!assistantContent.trim()) {
+            return [];
+        }
         blocks.push({
             hash: getHash(`turn-assistant|${turn.assistantMessage.messageId}|${turn.assistantMessage.mes || ''}`),
             type: blockTypes.STORY,
             messageId: turn.assistantMessage.messageId,
             blockIndex: 0,
             title: `正文楼层 ${turn.assistantMessage.messageId}`,
-            content: stripExcludedTurnContent(turn.assistantMessage.mes || '', state),
+            content: assistantContent,
         });
         return blocks.filter(block => block.content.trim());
     }
@@ -200,7 +222,7 @@ export function createTurnProcessingController({
         state.inlineGeneration.lastProcessedSignature = signature;
         saveState();
         updateInjectionFromSummaries();
-        if (changedMessage) {
+        if (changedMessage || capturedSomething) {
             await saveChatConditional();
         }
         if (capturedSomething) {
@@ -266,7 +288,7 @@ export function createTurnProcessingController({
     
     function buildWorldInfoScanMessages(blocks = []) {
         const state = ensureState();
-        const excludeTags = parseList(state.scanRules?.excludeTags || '');
+        const excludeTags = getTurnExcludeTags(state);
         const sourceIds = new Set(getSourceMessageIdsFromBlocks(blocks));
         const context = getContext();
         const sourceChat = context.chat || getChat() || [];
@@ -314,7 +336,7 @@ export function createTurnProcessingController({
             );
             return stripConfiguredTags(
                 String(result?.worldInfoString || ''),
-                parseList(state.scanRules?.excludeTags || ''),
+                getTurnExcludeTags(state),
             ).trim();
         } catch (error) {
             console.warn('[BakemonoMemory] failed to read world info for turn summary', error);
@@ -378,6 +400,12 @@ export function createTurnProcessingController({
         if (!options.manual && state.turnSummary.lastProcessedMessageId === turn.assistantMessage.messageId) {
             return;
         }
+        if (!options.manual && hasStoredTurnSummaryForMessage(turn.assistantMessage.messageId, state)) {
+            state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
+            saveState();
+            await saveChatConditional();
+            return;
+        }
         if (!options.manual && hasAppliedTableEditForMessage(turn.assistantMessage.messageId, state)) {
             state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
             saveState();
@@ -436,6 +464,7 @@ export function createTurnProcessingController({
             state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
             saveState();
             updateInjectionFromSummaries();
+            await saveChatConditional();
             const savedText = state.turnSummary.saveMode === 'commit' ? '已保存到长期记忆。' : '摘要进入草稿箱。';
             renderWorkbenchScope(workbenchRenderScopes.TABLES, options.manual ? `最新正文已处理，${savedText}` : `正文摘要已自动生成，${savedText}`);
         }, options.manual ? '最新正文已处理' : '正文摘要草稿已生成', workbenchRenderScopes.TABLES);

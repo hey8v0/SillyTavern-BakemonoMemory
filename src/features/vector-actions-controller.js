@@ -16,6 +16,7 @@ export function createVectorActionsController({
     renderWorkbenchScope,
     workbenchRenderScopes,
     saveState,
+    saveChatConditional = async () => {},
     confirmDanger,
     fetchImpl = globalThis.fetch,
 } = {}) {
@@ -119,8 +120,36 @@ export function createVectorActionsController({
             }
         }
         persistSharedConfigurationFromState(state);
+        await saveChatConditional();
         syncInjection();
         renderWorkbenchScope(workbenchRenderScopes.VECTOR, '向量记忆配置已保存，并同步到所有角色卡。');
+    }
+
+    async function persistVectorEnabledFromUi() {
+        const state = ensureState();
+        const wasEnabled = !!state.vectorMemory?.enabled;
+        readVectorMemoryFieldsFromUi(state);
+        if (state.vectorMemory.enabled && !wasEnabled) {
+            markVectorIndexDirty('向量开关已开启', state);
+        }
+        persistSharedConfigurationFromState(state);
+        await saveChatConditional();
+        syncInjection();
+        renderWorkbenchScope(workbenchRenderScopes.VECTOR, state.vectorMemory.enabled
+            ? '向量记忆已开启并立即保存。'
+            : '向量记忆已关闭并立即保存。');
+    }
+
+    function bind() {
+        query('#bakemono-memory-vector-enabled')
+            .off('change.bakemonoVectorEnabled')
+            .on('change.bakemonoVectorEnabled', async () => {
+                try {
+                    await persistVectorEnabledFromUi();
+                } catch (error) {
+                    toastr.error(`向量开关保存失败：${error?.message || error}`);
+                }
+            });
     }
     
     async function testVectorMemoryRetrieval() {
@@ -162,9 +191,11 @@ export function createVectorActionsController({
     }
 
     return {
+        bind,
         fetchVectorEmbeddingModels,
         fetchVectorQueryModels,
         applyVectorMemorySettings,
+        persistVectorEnabledFromUi,
         testVectorMemoryRetrieval,
         clearVectorMemoryIndex,
     };

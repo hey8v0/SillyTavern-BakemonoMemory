@@ -745,6 +745,8 @@ export function createDefaultConfiguration({
             includeCharacterContext: true,
             referenceContext: '',
             worldInfoMaxContext: 4096,
+            includeTags: '',
+            excludeTags: '',
             lastProcessedMessageId: null,
             prompt: defaultTurnSummaryPrompt,
             tablePrompt: defaultTableEditPrompt,

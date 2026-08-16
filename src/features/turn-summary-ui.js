@@ -34,6 +34,8 @@ export function createTurnSummaryUi({
         query('#bakemono-memory-turn-include-character').prop('checked', state.turnSummary.includeCharacterContext !== false);
         query('#bakemono-memory-turn-include-world-info').prop('checked', !!state.turnSummary.includeWorldInfo);
         query('#bakemono-memory-turn-world-max-context').val(state.turnSummary.worldInfoMaxContext ?? defaultState.turnSummary.worldInfoMaxContext);
+        query('#bakemono-memory-turn-include-tags').val(state.turnSummary.includeTags || '');
+        query('#bakemono-memory-turn-exclude-tags').val(state.turnSummary.excludeTags || '');
         query('#bakemono-memory-turn-reference').val(state.turnSummary.referenceContext || '');
         query('#bakemono-memory-table-enabled').prop('checked', !!state.tableDatabase.enabled);
         query('#bakemono-memory-table-inject-memory').prop('checked', state.tableDatabase.injectMemory !== false);

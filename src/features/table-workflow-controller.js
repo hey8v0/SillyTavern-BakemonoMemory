@@ -9,6 +9,7 @@ export function createTableWorkflowController({
     buildTurnReferenceSystemPrompt,
     createTableEditDraft,
     saveState,
+    saveChatConditional = async () => {},
     renderWorkbenchScope,
     workbenchRenderScopes,
     applyTableOperations,
@@ -23,6 +24,14 @@ export function createTableWorkflowController({
             return;
         }
         if (!options.manual && state.turnSummary.lastProcessedMessageId === turn.assistantMessage.messageId) {
+            return;
+        }
+        if (!options.manual && (state.tableDatabase.editDrafts || []).some(draft => (
+            (draft.sourceMessageIds || []).some(id => Number(id) === Number(turn.assistantMessage.messageId))
+        ))) {
+            state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
+            saveState();
+            await saveChatConditional();
             return;
         }
         const blocks = buildLatestTurnBlocks(state);
@@ -44,6 +53,7 @@ export function createTableWorkflowController({
             if (!draft) {
                 state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
                 saveState();
+                await saveChatConditional();
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, '本轮正文没有生成表格修改。');
                 toastr.info('本轮正文没有需要修改的表格。');
                 return;
@@ -57,11 +67,13 @@ export function createTableWorkflowController({
                 state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draft.id);
                 state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
                 saveState();
+                await saveChatConditional();
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改已自动应用。');
                 return;
             }
             state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
             saveState();
+            await saveChatConditional();
             renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改草稿已生成，请确认后应用。');
             switchWorkbenchTab('tables');
         }, '表格修改草稿已生成', workbenchRenderScopes.TABLES);

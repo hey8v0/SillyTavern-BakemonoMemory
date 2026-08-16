@@ -50,6 +50,24 @@ test('shared text helpers preserve scanning and search behavior', async () => {
         [{ content: '<小剧场>番外</小剧场>', matchedTag: '小剧场' }],
     );
     assert.equal(
+        text.filterTextByConfiguredTags(
+            '<正文>只保留这段</正文><小剧场>不要摘要</小剧场><thinking>也不要</thinking>',
+            { includeTags: ['正文'], excludeTags: ['小剧场', 'thinking'] },
+        ),
+        '<正文>只保留这段</正文>',
+    );
+    assert.equal(
+        text.filterTextByConfiguredTags(
+            '开头<小剧场>不要摘要</小剧场>结尾',
+            { excludeTags: ['小剧场'] },
+        ),
+        '开头结尾',
+    );
+    assert.equal(
+        text.filterTextByConfiguredTags('<小剧场>只有番外</小剧场>', { includeTags: ['正文'] }),
+        '',
+    );
+    assert.equal(
         text.removeExactTextBlock(
             '正文\n<bakemono>幽灵摘要</bakemono>\n结尾',
             '<bakemono>幽灵摘要</bakemono>',

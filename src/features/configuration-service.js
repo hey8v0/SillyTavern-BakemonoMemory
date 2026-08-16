@@ -39,6 +39,7 @@ export function createConfigurationService({
     storageKey,
     getContext,
     shouldBootstrapSharedConfig,
+    isStateConfigNewerThanActive,
 }) {
     const sharedGlobalConfigId = 'bakemono-shared-settings';
 
@@ -136,6 +137,8 @@ export function createConfigurationService({
             includeCharacterContext: query('#bakemono-memory-turn-include-character').prop('checked'),
             includeWorldInfo: query('#bakemono-memory-turn-include-world-info').prop('checked'),
             worldInfoMaxContext: Math.max(1024, Number(query('#bakemono-memory-turn-world-max-context').val() || defaultState.turnSummary.worldInfoMaxContext)),
+            includeTags: String(query('#bakemono-memory-turn-include-tags').val() || ''),
+            excludeTags: String(query('#bakemono-memory-turn-exclude-tags').val() || ''),
             referenceContext: String(query('#bakemono-memory-turn-reference').val() || ''),
             prompt: String(query('#bakemono-memory-turn-prompt').val() || defaultTurnSummaryPrompt),
             tablePrompt: String(query('#bakemono-memory-table-prompt').val() || defaultTableEditPrompt),
@@ -223,6 +226,8 @@ export function createConfigurationService({
                 includeCharacterContext: state.turnSummary.includeCharacterContext !== false,
                 includeWorldInfo: !!state.turnSummary.includeWorldInfo,
                 worldInfoMaxContext: Math.max(1024, Number(state.turnSummary.worldInfoMaxContext || defaultState.turnSummary.worldInfoMaxContext)),
+                includeTags: String(state.turnSummary.includeTags || ''),
+                excludeTags: String(state.turnSummary.excludeTags || ''),
                 referenceContext: String(state.turnSummary.referenceContext || ''),
                 prompt: String(state.turnSummary.prompt || defaultTurnSummaryPrompt),
                 tablePrompt: String(state.turnSummary.tablePrompt || defaultTableEditPrompt),
@@ -278,6 +283,15 @@ export function createConfigurationService({
         return true;
     }
 
+    function recoverNewerSharedConfigurationFromState(state = getState()) {
+        const active = getActiveGlobalConfig();
+        if (!isStateConfigNewerThanActive(state, active)) {
+            return false;
+        }
+        persistSharedConfigurationFromState(state, { skipChatSave: true });
+        return true;
+    }
+
     function normalizeImportedPreset(value) {
         const parsed = JSON.parse(value);
         const preset = Array.isArray(parsed) ? parsed[0] : parsed;
@@ -320,6 +334,7 @@ export function createConfigurationService({
         getCurrentPromptPresetPayload,
         normalizeImportedPreset,
         persistSharedConfigurationFromState,
+        recoverNewerSharedConfigurationFromState,
         readAutomationFieldsFromUi,
         readConfigFieldsFromUi,
         readCustomApiFieldsFromUi,

@@ -26,6 +26,8 @@ export function createConfigurationController({
     defaultVectorMemory,
     tableSchemaScopes,
     normalizeImportedTablesFromJson,
+    findMatchingTable,
+    mergeTableSchemaWithRows,
     setTableSchemaScope,
     syncInlineGenerationPrompts,
     scheduleVectorAutoIndex,
@@ -129,6 +131,8 @@ export function createConfigurationController({
                 includeCharacterContext: preset.turnSummary.includeCharacterContext !== false,
                 includeWorldInfo: !!preset.turnSummary.includeWorldInfo,
                 worldInfoMaxContext: Math.max(1024, Number(preset.turnSummary.worldInfoMaxContext || state.turnSummary.worldInfoMaxContext || defaultState.turnSummary.worldInfoMaxContext)),
+                includeTags: String(preset.turnSummary.includeTags || ''),
+                excludeTags: String(preset.turnSummary.excludeTags || ''),
                 referenceContext: String(preset.turnSummary.referenceContext || ''),
                 prompt: String(preset.turnSummary.prompt || state.turnSummary.prompt || defaultTurnSummaryPrompt),
                 tablePrompt: String(preset.turnSummary.tablePrompt || state.turnSummary.tablePrompt || defaultTableEditPrompt),
@@ -153,6 +157,10 @@ export function createConfigurationController({
             }
         }
         if (preset.tableDatabase) {
+            const currentTables = Array.isArray(state.tableDatabase.tables) ? state.tableDatabase.tables : [];
+            const sharedSchemas = Array.isArray(preset.tableDatabase.tables)
+                ? normalizeImportedTablesFromJson({ tables: preset.tableDatabase.tables })
+                : null;
             state.tableDatabase = {
                 ...state.tableDatabase,
                 enabled: !!preset.tableDatabase.enabled,
@@ -161,9 +169,9 @@ export function createConfigurationController({
                 schemaScope: Object.values(tableSchemaScopes).includes(preset.tableDatabase.schemaScope)
                     ? preset.tableDatabase.schemaScope
                     : state.tableDatabase.schemaScope,
-                tables: Array.isArray(preset.tableDatabase.tables)
-                    ? normalizeImportedTablesFromJson({ tables: preset.tableDatabase.tables })
-                    : state.tableDatabase.tables,
+                tables: sharedSchemas
+                    ? sharedSchemas.map(schema => mergeTableSchemaWithRows(schema, findMatchingTable(schema, currentTables)))
+                    : currentTables,
                 editDrafts: state.tableDatabase.editDrafts || [],
                 history: state.tableDatabase.history || [],
             };
@@ -272,6 +280,8 @@ export function createConfigurationController({
                     includeCharacterContext: state.turnSummary.includeCharacterContext !== false,
                     includeWorldInfo: !!state.turnSummary.includeWorldInfo,
                     worldInfoMaxContext: Math.max(1024, Number(state.turnSummary.worldInfoMaxContext || defaultState.turnSummary.worldInfoMaxContext)),
+                    includeTags: String(state.turnSummary.includeTags || ''),
+                    excludeTags: String(state.turnSummary.excludeTags || ''),
                     referenceContext: String(state.turnSummary.referenceContext || ''),
                     prompt: String(state.turnSummary.prompt || defaultTurnSummaryPrompt),
                     tablePrompt: String(state.turnSummary.tablePrompt || defaultTableEditPrompt),
@@ -293,6 +303,8 @@ export function createConfigurationController({
                     includeCharacterContext: state.turnSummary.includeCharacterContext !== false,
                     includeWorldInfo: !!state.turnSummary.includeWorldInfo,
                     worldInfoMaxContext: Math.max(1024, Number(state.turnSummary.worldInfoMaxContext || defaultState.turnSummary.worldInfoMaxContext)),
+                    includeTags: String(state.turnSummary.includeTags || ''),
+                    excludeTags: String(state.turnSummary.excludeTags || ''),
                     referenceContext: String(state.turnSummary.referenceContext || ''),
                     prompt: String(state.turnSummary.prompt || defaultTurnSummaryPrompt),
                     tablePrompt: String(state.turnSummary.tablePrompt || defaultTableEditPrompt),
@@ -373,6 +385,8 @@ export function createConfigurationController({
                 state.turnSummary.includeCharacterContext = preset.turnSummary.includeCharacterContext !== false;
                 state.turnSummary.includeWorldInfo = !!preset.turnSummary.includeWorldInfo;
                 state.turnSummary.worldInfoMaxContext = Math.max(1024, Number(preset.turnSummary.worldInfoMaxContext || state.turnSummary.worldInfoMaxContext || defaultState.turnSummary.worldInfoMaxContext));
+                state.turnSummary.includeTags = String(preset.turnSummary.includeTags || '');
+                state.turnSummary.excludeTags = String(preset.turnSummary.excludeTags || '');
                 state.turnSummary.referenceContext = String(preset.turnSummary.referenceContext || state.turnSummary.referenceContext || '');
                 state.turnSummary.prompt = preset.turnSummary.prompt || state.turnSummary.prompt || defaultTurnSummaryPrompt;
                 state.turnSummary.tablePrompt = preset.turnSummary.tablePrompt || state.turnSummary.tablePrompt || defaultTableEditPrompt;
@@ -393,6 +407,8 @@ export function createConfigurationController({
                 includeCharacterContext: preset.turnSummary.includeCharacterContext !== false,
                 includeWorldInfo: !!preset.turnSummary.includeWorldInfo,
                 worldInfoMaxContext: Math.max(1024, Number(preset.turnSummary.worldInfoMaxContext || state.turnSummary.worldInfoMaxContext || defaultState.turnSummary.worldInfoMaxContext)),
+                includeTags: String(preset.turnSummary.includeTags || ''),
+                excludeTags: String(preset.turnSummary.excludeTags || ''),
                 referenceContext: String(preset.turnSummary.referenceContext || ''),
                 prompt: String(preset.turnSummary.prompt || state.turnSummary.prompt || defaultTurnSummaryPrompt),
                 tablePrompt: String(preset.turnSummary.tablePrompt || state.turnSummary.tablePrompt || defaultTableEditPrompt),

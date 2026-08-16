@@ -13,6 +13,7 @@ export function createTableStateService({
     mergeTableSchemaWithRows,
     updateInjectionFromSummaries,
     saveState,
+    saveChatConditional = () => {},
     getFiniteMessageIds,
     toastr,
     confirmDanger,
@@ -209,6 +210,13 @@ export function createTableStateService({
         syncCurrentTableSchemas(state);
         updateInjectionFromSummaries();
         saveState();
+        try {
+            void Promise.resolve(saveChatConditional()).catch(error => {
+                console.warn('[BakemonoMemory] immediate table save failed', error);
+            });
+        } catch (error) {
+            console.warn('[BakemonoMemory] immediate table save failed', error);
+        }
         if ([tableSchemaScopes.GLOBAL, tableSchemaScopes.CHARACTER].includes(state.tableDatabase?.schemaScope)) {
             saveGlobalSettings();
         }

@@ -751,6 +751,20 @@
               </select>
             </label>
           </div>
+          <div class="bakemono-memory-prompt-hint">
+            <i class="fa-solid fa-filter" aria-hidden="true"></i>
+            <span>以下标签只控制“自动记忆 / 回复后处理”。“扫描与识别”里的读取标签不会自动套用；扫描排除标签仍会继续兼容剔除。</span>
+          </div>
+          <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
+            <label class="bakemono-memory-editor">
+              <span>自动记忆读取标签（留空读取整条正文）</span>
+              <textarea id="bakemono-memory-turn-include-tags" class="text_pole textarea_compact" rows="3" spellcheck="false" placeholder="例如：正文, content"></textarea>
+            </label>
+            <label class="bakemono-memory-editor">
+              <span>自动记忆排除标签</span>
+              <textarea id="bakemono-memory-turn-exclude-tags" class="text_pole textarea_compact" rows="3" spellcheck="false" placeholder="例如：小剧场, thinking, tableEdit"></textarea>
+            </label>
+          </div>
           <div class="bakemono-memory-persistence-protection" role="status">
             <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
             <span><strong>崩溃恢复保护已开启</strong><small>摘要、草稿和正文补丁会优先写入本地恢复日志；TT 空间不足时自动切换轻量日志，仍不足也不会阻断酒馆正式保存。</small></span>

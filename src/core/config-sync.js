@@ -108,6 +108,28 @@ export function getActiveConfigSignature(config) {
     return `${String(config.id || '')}|${String(config.updatedAt || '')}`;
 }
 
+function readSignatureParts(signature) {
+    const [id = '', ...timestampParts] = String(signature || '').split('|');
+    return { id, updatedAt: timestampParts.join('|') };
+}
+
+export function isStateConfigNewerThanActive(state, config) {
+    if (!state || !config || typeof config !== 'object') {
+        return false;
+    }
+    const stateSignature = readSignatureParts(state.activeConfigSignature);
+    const configId = String(config.id || '');
+    const stateConfigId = String(state.activeConfigId || '');
+    const isSharedRecovery = stateSignature.id === 'bakemono-shared-settings'
+        && stateConfigId === stateSignature.id;
+    if (!stateSignature.id || stateConfigId !== stateSignature.id || (stateSignature.id !== configId && !isSharedRecovery)) {
+        return false;
+    }
+    const stateTime = Date.parse(stateSignature.updatedAt);
+    const configTime = Date.parse(String(config.updatedAt || ''));
+    return Number.isFinite(stateTime) && (!Number.isFinite(configTime) || stateTime > configTime);
+}
+
 export function shouldSyncActiveConfig(state, config, options = {}) {
     if (!config || typeof config !== 'object') {
         return false;

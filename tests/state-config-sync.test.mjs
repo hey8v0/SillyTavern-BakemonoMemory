@@ -50,6 +50,39 @@ test('config sync decision follows signature and supports forced chat refresh', 
     );
 });
 
+test('a newer chat-side shared config can repair a debounced global save after TT resumes', async () => {
+    const configSync = await loadModule('src/core/config-sync.js');
+
+    assert.equal(configSync.isStateConfigNewerThanActive({
+        activeConfigId: 'bakemono-shared-settings',
+        activeConfigSignature: 'bakemono-shared-settings|2026-08-16T08:00:00.000Z',
+    }, {
+        id: 'bakemono-shared-settings',
+        updatedAt: '2026-08-16T07:59:00.000Z',
+    }), true);
+    assert.equal(configSync.isStateConfigNewerThanActive({
+        activeConfigId: 'bakemono-shared-settings',
+        activeConfigSignature: 'bakemono-shared-settings|2026-08-16T07:58:00.000Z',
+    }, {
+        id: 'bakemono-shared-settings',
+        updatedAt: '2026-08-16T07:59:00.000Z',
+    }), false);
+    assert.equal(configSync.isStateConfigNewerThanActive({
+        activeConfigId: 'bakemono-shared-settings',
+        activeConfigSignature: 'bakemono-shared-settings|2026-08-16T08:00:00.000Z',
+    }, {
+        id: 'legacy-default-preset',
+        updatedAt: 'default',
+    }), true);
+    assert.equal(configSync.isStateConfigNewerThanActive({
+        activeConfigId: 'another-config',
+        activeConfigSignature: 'another-config|2026-08-16T08:00:00.000Z',
+    }, {
+        id: 'bakemono-shared-settings',
+        updatedAt: '2026-08-16T07:59:00.000Z',
+    }), false);
+});
+
 test('applied config marker updates only synchronization metadata', async () => {
     const configSync = await loadModule('src/core/config-sync.js');
     const state = { blocks: [{ hash: 'keep-me' }], activeConfigId: 'old' };

@@ -63,6 +63,20 @@ export function extractConfiguredTagBlocks(text, tags) {
     return blocks.filter(block => block.content);
 }
 
+export function filterTextByConfiguredTags(text, options = {}) {
+    const excludeTags = Array.isArray(options.excludeTags) ? options.excludeTags : [];
+    const includeTags = Array.isArray(options.includeTags) ? options.includeTags : [];
+    const stripped = stripConfiguredTags(text, excludeTags);
+    if (!includeTags.length) {
+        return stripped.trim();
+    }
+    return extractConfiguredTagBlocks(stripped, includeTags)
+        .map(block => block.content)
+        .filter(Boolean)
+        .join('\n\n')
+        .trim();
+}
+
 export function extractTaggedContent(text, tagName) {
     const pattern = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'i');
     const match = String(text || '').match(pattern);

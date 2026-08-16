@@ -865,6 +865,32 @@ test('saved settings become shared defaults while vector runtime remains chat-lo
     const vectorApply = extractFunctionFrom(vectorActionsControllerSource, 'applyVectorMemorySettings');
     assert.match(vectorPersist, /persistSharedConfigurationFromState\(state/);
     assert.match(vectorApply, /persistSharedConfigurationFromState\(state/);
+    assert.match(vectorActionsControllerSource, /bakemono-memory-vector-enabled/);
+    assert.match(vectorActionsControllerSource, /await saveChatConditional\(\)/);
+    assert.match(source, /vectorActionsController\.bind\(\)/);
+});
+
+test('automatic memory owns explicit include and exclude tag filters', () => {
+    assert.match(settingsSource, /id="bakemono-memory-turn-include-tags"/);
+    assert.match(settingsSource, /id="bakemono-memory-turn-exclude-tags"/);
+    assert.match(configurationServiceSource, /includeTags:\s*String\(query\('#bakemono-memory-turn-include-tags'/);
+    assert.match(configurationServiceSource, /excludeTags:\s*String\(query\('#bakemono-memory-turn-exclude-tags'/);
+    assert.match(turnProcessingControllerSource, /filterTextByConfiguredTags/);
+});
+
+test('TT lifecycle refreshes loaded chats and retries missed automatic work on foreground resume', () => {
+    assert.match(source, /event_types\.CHAT_LOADED/);
+    assert.match(source, /visibilitychange/);
+    assert.match(source, /pageshow/);
+    assert.match(source, /runMemoryOrchestrator\('恢复前台'/);
+});
+
+test('table mutations request an immediate tavern save instead of relying only on debounce', () => {
+    assert.match(tableStateServiceSource, /saveChatConditional/);
+    assert.match(tableWorkflowControllerSource, /await saveChatConditional\(\)/);
+    assert.match(turnProcessingControllerSource, /changedMessage \|\| capturedSomething/);
+    assert.match(configurationControllerSource, /mergeTableSchemaWithRows/);
+    assert.match(configurationControllerSource, /findMatchingTable/);
 });
 
 test('first shared-settings upgrade preserves the current chat before forced synchronization', () => {
