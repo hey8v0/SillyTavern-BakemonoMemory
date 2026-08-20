@@ -139,8 +139,11 @@ export function createSummaryPreviewRenderer({
             sourceTools.className = 'bakemono-memory-summary-tools bakemono-memory-source-summary-tools';
             sourceTools.dataset.summaryHash = block.hash;
             sourceTools.innerHTML = `
-                <p class="bakemono-memory-source-summary-note"><i class="fa-solid fa-link"></i><span>来自第 ${Number(block.messageId)} 楼正文标签；不是插件元数据里的正式摘要。</span></p>
-                <button class="menu_button danger_button" data-bakemono-summary-action="delete-source"><i class="fa-solid fa-trash"></i><span>从原正文移除</span></button>
+                <p class="bakemono-memory-source-summary-note"><i class="fa-solid fa-link"></i><span>从第 ${Number(block.messageId)} 楼正文标签识别；这是“扫描与识别”的正常来源。</span></p>
+                <details class="bakemono-memory-danger-zone">
+                    <summary>管理正文来源</summary>
+                    <button class="menu_button danger_button" data-bakemono-summary-action="delete-source"><i class="fa-solid fa-trash"></i><span>删除正文中的这条摘要</span></button>
+                </details>
             `;
             return sourceTools;
         }

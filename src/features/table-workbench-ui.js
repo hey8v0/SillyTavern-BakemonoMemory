@@ -16,8 +16,6 @@ export function createTableWorkbenchUi({
     workbenchRenderScopes,
     normalizeImportedTablesFromJson,
     confirmDanger,
-    syncCurrentTableSchemas,
-    updateInjectionFromSummaries,
     parseList,
     getHash,
     getNextTableIndex,
@@ -377,8 +375,7 @@ export function createTableWorkbenchUi({
         state.tableDatabase.tables = tables;
         state.tableDatabase.lastImportAt = new Date().toISOString();
         state.tableDatabase.enabled = true;
-        syncCurrentTableSchemas(state);
-        updateInjectionFromSummaries();
+        persistCurrentTableDatabase(state);
         renderWorkbenchScope(workbenchRenderScopes.TABLES, `已导入 ${tables.length} 张表格。`);
         toastr.success(`已导入 ${tables.length} 张表格。`);
         return true;
@@ -416,10 +413,9 @@ export function createTableWorkbenchUi({
         };
         state.tableDatabase.tables.push(table);
         state.tableDatabase.enabled = true;
-        syncCurrentTableSchemas(state);
+        persistCurrentTableDatabase(state);
         query('#bakemono-memory-new-table-name').val('');
         query('#bakemono-memory-new-table-columns').val('');
-        updateInjectionFromSummaries();
         renderWorkbenchScope(workbenchRenderScopes.TABLES, `已创建表格：${name}`);
         toastr.success('表格已创建。');
     }

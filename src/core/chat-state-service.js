@@ -1,3 +1,7 @@
+export function shouldSanitizeChatState(previousLength, chatLength) {
+    return Number.isFinite(previousLength) && chatLength < previousLength;
+}
+
 export function createChatStateService({
     defaultState,
     chatMetadata,
@@ -63,7 +67,7 @@ export function createChatStateService({
         if (previousLength === chatLength) {
             return;
         }
-        if (previousLength === undefined || chatLength < previousLength) {
+        if (shouldSanitizeChatState(previousLength, chatLength)) {
             sanitizeCurrentChatState(state);
         }
         sanitizedChatLengths.set(state, chatLength);

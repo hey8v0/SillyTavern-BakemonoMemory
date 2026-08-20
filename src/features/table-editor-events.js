@@ -4,7 +4,6 @@ export function createTableEditorEvents({
     toastr,
     confirmDanger,
     parseTableEditOperations,
-    saveState,
     renderWorkbenchScope,
     workbenchRenderScopes,
     applyTableOperations,
@@ -35,7 +34,7 @@ export function createTableEditorEvents({
             if (action === 'discard') {
                 if (!confirmDanger('丢弃表格修改草稿？', ['草稿丢弃后不会修改表格。'])) return;
                 state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draftId);
-                saveState();
+                persistCurrentTableDatabase(state);
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格草稿已丢弃。');
                 return;
             }
@@ -48,7 +47,7 @@ export function createTableEditorEvents({
                 return;
             }
             if (action === 'reparse') {
-                saveState();
+                persistCurrentTableDatabase(state);
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, `已重新解析：${draft.operations.length} 项操作。`);
                 return;
             }
@@ -63,7 +62,7 @@ export function createTableEditorEvents({
                 });
                 state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString(), undoSnapshotId: undoSnapshot?.id || '' });
                 state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draftId);
-                saveState();
+                persistCurrentTableDatabase(state);
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改已应用。');
                 toastr.success('表格修改已应用。');
             } catch (error) {

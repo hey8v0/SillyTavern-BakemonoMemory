@@ -23,6 +23,9 @@ test('chat switch coordinator preserves the existing side-effect order and reaso
             calls.push('get-state');
             return state;
         },
+        recover(current) {
+            calls.push(`recover:${current.id}`);
+        },
         syncConfig(current) {
             calls.push(`sync-config:${current.id}`);
         },
@@ -43,6 +46,7 @@ test('chat switch coordinator preserves the existing side-effect order and reaso
     assert.equal(result, state);
     assert.deepEqual(calls, [
         'get-state',
+        'recover:new-chat-state',
         'sync-config:new-chat-state',
         'auto-hide:chat changed',
         'vector-dirty:切换聊天:true',

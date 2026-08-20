@@ -293,8 +293,136 @@ test('recovery journal clears itself after the same revision is observed in chat
     const journal = createSummaryRecoveryJournal({ storage, getChatId: () => 'chat-b' });
     journal.stage(state, []);
 
-    assert.equal(journal.reconcile(state, []).status, 'verified');
+    const freshlyLoadedState = structuredClone(state);
+    assert.equal(journal.reconcile(freshlyLoadedState, []).status, 'verified');
     assert.equal(journal.peek(), null);
+});
+
+test('recovery journal does not create a phantom revision when protected data is unchanged', async () => {
+    const { createSummaryRecoveryJournal } = await loadModule('src/core/summary-recovery-journal.js');
+    const values = new Map();
+    let writes = 0;
+    const storage = {
+        getItem: key => values.get(key) ?? null,
+        setItem: (key, value) => {
+            writes += 1;
+            values.set(key, value);
+        },
+        removeItem: key => values.delete(key),
+    };
+    const state = {
+        persistenceRevision: 0,
+        storySummaries: [], stageSummaries: [], epicSummaries: [], drafts: [], history: [],
+        coveredBlockHashes: [], coveredStageHashes: [], hiddenMessageIds: [], customHiddenMessageIds: [],
+        autoHideRecent: {}, autoSummaryTransactions: [], taskQueue: [], turnSummary: {},
+        tableDatabase: { tables: [], chatProfiles: [], profileRows: {} },
+    };
+    const journal = createSummaryRecoveryJournal({ storage, getChatId: () => 'chat-baseline' });
+
+    assert.equal(journal.reconcile(state, []).status, 'none');
+    assert.equal(journal.stage(state, []).status, 'unchanged');
+    assert.equal(state.persistenceRevision, 0);
+    assert.equal(writes, 0);
+});
+
+test('recovery journal keeps an unverified write-ahead copy until a fresh chat state confirms it', async () => {
+    const { createSummaryRecoveryJournal } = await loadModule('src/core/summary-recovery-journal.js');
+    const values = new Map();
+    const storage = {
+        getItem: key => values.get(key) ?? null,
+        setItem: (key, value) => values.set(key, value),
+        removeItem: key => values.delete(key),
+    };
+    const makeState = () => ({
+        persistenceRevision: 0,
+        storySummaries: [], stageSummaries: [], epicSummaries: [], drafts: [], history: [],
+        coveredBlockHashes: [], coveredStageHashes: [], hiddenMessageIds: [], customHiddenMessageIds: [],
+        autoHideRecent: {}, autoSummaryTransactions: [], taskQueue: [], turnSummary: {},
+        tableDatabase: { tables: [], chatProfiles: [], profileRows: {} },
+    });
+    const state = makeState();
+    const journal = createSummaryRecoveryJournal({ storage, getChatId: () => 'chat-runtime-verification' });
+    journal.reconcile(state, []);
+    state.stageSummaries.push({ hash: 'stage-1', content: '不能提前删除' });
+
+    assert.equal(journal.stage(state, []).status, 'staged');
+    assert.equal(journal.reconcile(state, []).status, 'pending-verification');
+    assert.notEqual(journal.peek(), null);
+
+    const freshlyLoadedState = makeState();
+    freshlyLoadedState.persistenceRevision = state.persistenceRevision;
+    freshlyLoadedState.stageSummaries = structuredClone(state.stageSummaries);
+    assert.equal(journal.reconcile(freshlyLoadedState, []).status, 'verified');
+    assert.equal(journal.peek(), null);
+});
+
+test('recovery journal restores table rows together with summaries and drafts', async () => {
+    const { createSummaryRecoveryJournal } = await loadModule('src/core/summary-recovery-journal.js');
+    const values = new Map();
+    const storage = {
+        getItem: key => values.get(key) ?? null,
+        setItem: (key, value) => values.set(key, value),
+        removeItem: key => values.delete(key),
+    };
+    const makeState = rows => ({
+        persistenceRevision: 0,
+        storySummaries: [], stageSummaries: [], epicSummaries: [], drafts: [], history: [],
+        coveredBlockHashes: [], coveredStageHashes: [], hiddenMessageIds: [], customHiddenMessageIds: [],
+        autoHideRecent: {}, autoSummaryTransactions: [], taskQueue: [], turnSummary: {},
+        tableDatabase: {
+            enabled: true,
+            schemaScope: 'chat',
+            tables: [{ id: 'characters', tableIndex: 0, name: '角色', columns: ['姓名'], rows }],
+            chatProfiles: [],
+            profileRows: {},
+        },
+    });
+    const state = makeState([]);
+    const journal = createSummaryRecoveryJournal({ storage, getChatId: () => 'chat-table-recovery' });
+    journal.reconcile(state, []);
+    state.tableDatabase.tables[0].rows.push(['阿青']);
+    assert.equal(journal.stage(state, []).status, 'staged');
+
+    const reloadedState = makeState([]);
+    const recovered = journal.reconcile(reloadedState, []);
+    assert.equal(recovered.status, 'recovered');
+    assert.deepEqual(reloadedState.tableDatabase.tables[0].rows, [['阿青']]);
+    assert.equal(recovered.tableRows, 1);
+});
+
+test('recovery journal suppresses recovered-data notices when only the revision is stale', async () => {
+    const { createSummaryRecoveryJournal } = await loadModule('src/core/summary-recovery-journal.js');
+    const values = new Map();
+    const storage = {
+        getItem: key => values.get(key) ?? null,
+        setItem: (key, value) => values.set(key, value),
+        removeItem: key => values.delete(key),
+    };
+    const makeState = () => ({
+        persistenceRevision: 0,
+        storySummaries: [{ hash: 'same', content: '已经存在' }],
+        stageSummaries: [], epicSummaries: [], drafts: [], history: [],
+        coveredBlockHashes: [], coveredStageHashes: [], hiddenMessageIds: [], customHiddenMessageIds: [],
+        autoHideRecent: {}, autoSummaryTransactions: [], taskQueue: [], turnSummary: {},
+        tableDatabase: { tables: [], chatProfiles: [], profileRows: {} },
+    });
+    const state = makeState();
+    const journal = createSummaryRecoveryJournal({ storage, getChatId: () => 'chat-revision-only' });
+    journal.reconcile(state, []);
+    state.drafts.push({ id: 'temporary', content: 'change' });
+    journal.stage(state, []);
+
+    const reloadedState = makeState();
+    reloadedState.drafts = [{ id: 'temporary', content: 'change' }];
+    assert.equal(journal.reconcile(reloadedState, []).status, 'revision-only');
+});
+
+test('chat state cleanup waits for a known complete baseline before pruning shorter chats', async () => {
+    const { shouldSanitizeChatState } = await loadModule('src/core/chat-state-service.js');
+
+    assert.equal(shouldSanitizeChatState(undefined, 12), false);
+    assert.equal(shouldSanitizeChatState(12, 20), false);
+    assert.equal(shouldSanitizeChatState(20, 12), true);
 });
 
 test('recovery journal retries quota failures with an essential payload', async () => {

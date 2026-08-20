@@ -753,6 +753,7 @@ test('persistence stages crash recovery, compacts metadata and keeps tavern debo
     assert.match(chatSaveSource, /persistChatState\(state/);
     assert.match(chatSaveSource, /slimVectorMemoryForSave\(state\?\.vectorMemory, defaultVectorMemory\)/);
     assert.match(chatSaveSource, /save:\s*saveMetadataDebounced/);
+    assert.match(source, /context\?\.getCurrentChatId\?\.\(\)/);
     assert.match(chatStateServiceSource, /installCompactStateSerializer\?\.\(state\)/);
     assert.match(persistedChatStateSource, /Object\.defineProperty\(state, 'toJSON'/);
     assert.match(summaryRecoveryJournalSource, /function reconcile\(state, chat = \[\]\)/);
@@ -770,7 +771,10 @@ test('turn processing exposes immediate and next-user modes and source-only summ
     assert.match(turnTriggerPolicySource, /trigger === 'user'/);
     assert.match(memoryOrchestratorSource, /if \(options\.turnOnly\)/);
     assert.match(summaryPreviewRendererSource, /data-bakemono-summary-action="delete-source"/);
+    assert.doesNotMatch(summaryPreviewRendererSource, /不是插件元数据里的正式摘要/);
+    assert.match(summaryPreviewRendererSource, /从第 \$\{Number\(block\.messageId\)\} 楼正文标签识别/);
     assert.match(summaryDraftServiceSource, /async function removeScannedSummaryBlock\(hash\)/);
+    assert.doesNotMatch(summaryDraftServiceSource, /幽灵摘要层/);
 });
 
 test('timeline pagination creates DOM only for the visible page', () => {
@@ -897,7 +901,7 @@ test('first shared-settings upgrade preserves the current chat before forced syn
     assert.match(configurationServiceSource, /function bootstrapSharedConfigurationFromCurrentChat\(/);
     assert.match(configurationServiceSource, /shouldBootstrapSharedConfig\(settings, hasActiveChat\)/);
     assert.match(presetRegistrySource, /settings\.sharedConfigVersion = sharedConfigVersion/);
-    assert.match(source, /const initialState = ensureState\(\);[\s\S]*?bootstrapSharedConfigurationFromCurrentChat\(initialState\);[\s\S]*?syncGlobalActiveConfigToState\(initialState, \{ force: true \}\)/);
+    assert.match(source, /const initialState = ensureState\(\);[\s\S]*?reconcileSummaryRecovery\(initialState\);[\s\S]*?bootstrapSharedConfigurationFromCurrentChat\(initialState\);[\s\S]*?syncGlobalActiveConfigToState\(initialState, \{ force: true \}\)/);
     assert.match(source, /syncConfig:\s*state => \{[\s\S]*?bootstrapSharedConfigurationFromCurrentChat\(state\);[\s\S]*?return syncGlobalActiveConfigToState\(state, \{ force: true \}\);[\s\S]*?\}/);
 });
 
@@ -910,7 +914,7 @@ test('chat changes keep their side effects in one ordered coordinator', () => {
     assert.match(source, /syncInjection,\s*scheduleRender:\s*scheduleRenderAll/);
     assert.match(
         chatSwitchSource,
-        /flow\.syncConfig\(state\)[\s\S]*flow\.scheduleAutoHide\(chatSwitchReasons\.autoHide\)[\s\S]*flow\.markVectorDirty\(chatSwitchReasons\.vectorDirty\)[\s\S]*flow\.syncInjection\(\)[\s\S]*flow\.scheduleRender\(\)/,
+        /flow\.recover\(state\)[\s\S]*flow\.syncConfig\(state\)[\s\S]*flow\.scheduleAutoHide\(chatSwitchReasons\.autoHide\)[\s\S]*flow\.markVectorDirty\(chatSwitchReasons\.vectorDirty\)[\s\S]*flow\.syncInjection\(\)[\s\S]*flow\.scheduleRender\(\)/,
     );
 });
 
@@ -982,7 +986,7 @@ test('table-memory injection toggle persists immediately before page refresh', (
 
 test('entry assembly keeps forward dependencies lazy until their modules exist', () => {
     assert.match(source, /getActiveCoveredStageHashes:\s*\(\.\.\.args\) => getActiveCoveredStageHashes\(\.\.\.args\)/);
-    assert.equal((source.match(/updateInjectionFromSummaries:\s*\(\.\.\.args\) => updateInjectionFromSummaries\(\.\.\.args\)/g) || []).length, 3);
+    assert.equal((source.match(/updateInjectionFromSummaries:\s*\(\.\.\.args\) => updateInjectionFromSummaries\(\.\.\.args\)/g) || []).length, 2);
     assert.match(source, /findLatestAssistantTurn:\s*\(\.\.\.args\) => findLatestAssistantTurn\(\.\.\.args\)/);
     assert.match(source, /buildLatestTurnBlocks:\s*\(\.\.\.args\) => buildLatestTurnBlocks\(\.\.\.args\)/);
     assert.match(source, /callGenerationModel:\s*\(\.\.\.args\) => callGenerationModel\(\.\.\.args\)/);

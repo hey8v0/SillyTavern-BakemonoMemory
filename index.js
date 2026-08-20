@@ -149,7 +149,16 @@ const {
 
 function getSummaryRecoveryChatIdentity() {
     const context = getContext();
-    const chatId = String(context?.chatId || '').trim();
+    let resolvedChatId = context?.chatId;
+    if (!resolvedChatId && typeof context?.getCurrentChatId === 'function') {
+        try {
+            resolvedChatId = context?.getCurrentChatId?.();
+        } catch {
+            resolvedChatId = '';
+        }
+    }
+    resolvedChatId = resolvedChatId || context?.chatMetadata?.integrity || chat_metadata?.integrity;
+    const chatId = String(resolvedChatId || '').trim();
     if (!chatId) return '';
     const scope = context?.groupId !== undefined && context?.groupId !== null
         ? `group:${context.groupId}`
@@ -157,8 +166,65 @@ function getSummaryRecoveryChatIdentity() {
     return `${scope}|chat:${chatId}`;
 }
 
+function getSummaryRecoveryStorage() {
+    let local = null;
+    try {
+        local = globalThis.localStorage;
+    } catch {
+        local = null;
+    }
+    let account = null;
+    try {
+        account = getContext()?.accountStorage || null;
+    } catch {
+        account = null;
+    }
+    const isStorage = value => value
+        && typeof value.getItem === 'function'
+        && typeof value.setItem === 'function'
+        && typeof value.removeItem === 'function';
+    if (!isStorage(local)) return isStorage(account) ? account : null;
+    if (!isStorage(account)) return local;
+    return {
+        getItem(key) {
+            try {
+                const value = local.getItem(key);
+                if (value !== null && value !== undefined) return value;
+            } catch {
+                // Fall through to SillyTavern account storage.
+            }
+            return account.getItem(key);
+        },
+        setItem(key, value) {
+            try {
+                local.setItem(key, value);
+                account.removeItem(key);
+            } catch (error) {
+                const isQuotaError = error?.name === 'QuotaExceededError'
+                    || Number(error?.code) === 22
+                    || Number(error?.code) === 1014
+                    || /quota|exceed|storage.{0,12}full/i.test(String(error?.message || error || ''));
+                if (isQuotaError) throw error;
+                try {
+                    local.removeItem(key);
+                } catch {
+                    // The account-backed copy below remains authoritative.
+                }
+                account.setItem(key, value);
+            }
+        },
+        removeItem(key) {
+            try {
+                local.removeItem(key);
+            } finally {
+                account.removeItem(key);
+            }
+        },
+    };
+}
+
 const summaryRecoveryJournal = createSummaryRecoveryJournal({
-    getStorage: () => globalThis.localStorage,
+    getStorage: getSummaryRecoveryStorage,
     getChatId: getSummaryRecoveryChatIdentity,
 });
 
@@ -832,8 +898,6 @@ const tableWorkbenchUi = createTableWorkbenchUi({
     workbenchRenderScopes,
     normalizeImportedTablesFromJson,
     confirmDanger,
-    syncCurrentTableSchemas,
-    updateInjectionFromSummaries: (...args) => updateInjectionFromSummaries(...args),
     parseList,
     getHash,
     getNextTableIndex,
@@ -856,7 +920,6 @@ const tableEditorEvents = createTableEditorEvents({
     toastr,
     confirmDanger,
     parseTableEditOperations,
-    saveState,
     renderWorkbenchScope,
     workbenchRenderScopes,
     applyTableOperations,
@@ -2052,13 +2115,27 @@ async function initWorkbench() {
 
 function reconcileSummaryRecovery(state = ensureState()) {
     const recovery = summaryRecoveryJournal.reconcile(state, chat);
-    scanBakemonoBlocks({ persist: false, render: false });
-    updateInjectionFromSummaries();
-    if (recovery.status === 'recovered') {
+    if (['recovered', 'revision-only'].includes(recovery.status)) {
+        scanBakemonoBlocks({ persist: false, render: false });
+        updateInjectionFromSummaries();
         saveState();
         void saveChatConditional();
+    }
+    if (recovery.status === 'recovered') {
+        const restoredParts = [];
+        const changedKeys = new Set(recovery.changedStateKeys || []);
+        if (['storySummaries', 'stageSummaries', 'epicSummaries', 'drafts'].some(key => changedKeys.has(key))) {
+            restoredParts.push(`${recovery.summaryItems || 0} 项摘要/草稿`);
+        }
+        if (changedKeys.has('tableDatabase')) {
+            restoredParts.push(`${recovery.tableRows || 0} 行表格数据`);
+        }
+        if (recovery.patchedMessages) {
+            restoredParts.push(`${recovery.patchedMessages} 个正文补丁`);
+        }
+        if (!restoredParts.length) restoredParts.push('未完整写入的记忆状态');
         toastr.warning(
-            `检测到酒馆上次未完整写入，已从本地恢复 ${recovery.patchedMessages || 0} 个正文补丁和摘要/草稿数据。`,
+            `检测到酒馆上次未完整写入，已恢复：${restoredParts.join('、')}。`,
             '剧情剪辑台已恢复',
             { timeOut: 12000, extendedTimeOut: 18000 },
         );
@@ -2077,9 +2154,9 @@ function scheduleForegroundRuntimeResume(reason = '恢复前台') {
         }
         try {
             const state = ensureState();
+            reconcileSummaryRecovery(state);
             recoverNewerSharedConfigurationFromState(state);
             syncGlobalActiveConfigToState(state);
-            reconcileSummaryRecovery(state);
             await runMemoryOrchestrator('恢复前台', {
                 turnTrigger: 'assistant',
                 scheduleInlineCapture: true,
@@ -2095,10 +2172,10 @@ function scheduleForegroundRuntimeResume(reason = '恢复前台') {
 async function init() {
     ensureGlobalSettings();
     const initialState = ensureState();
+    reconcileSummaryRecovery(initialState);
     recoverNewerSharedConfigurationFromState(initialState);
     bootstrapSharedConfigurationFromCurrentChat(initialState);
     syncGlobalActiveConfigToState(initialState, { force: true });
-    reconcileSummaryRecovery(initialState);
     await initWorkbench();
     syncInjection();
     if (ensureState().vectorMemory.enabled) {

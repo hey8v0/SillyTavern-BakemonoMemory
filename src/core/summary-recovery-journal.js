@@ -12,6 +12,7 @@ const recoveryStateKeys = [
     'autoSummaryTransactions',
     'taskQueue',
     'turnSummary',
+    'tableDatabase',
 ];
 
 const essentialRecoveryStateKeys = new Set([
@@ -25,6 +26,7 @@ const essentialRecoveryStateKeys = new Set([
     'customHiddenMessageIds',
     'autoHideRecent',
     'turnSummary',
+    'tableDatabase',
 ]);
 
 function cloneSerializable(value) {
@@ -117,6 +119,19 @@ function compactRecoveryTasks(value) {
         : task);
 }
 
+function compactRecoveryTableDatabase(value, recoveryLevel = 'full') {
+    if (!value || typeof value !== 'object') return {};
+    if (recoveryLevel !== 'essential') return value;
+    return {
+        ...value,
+        editDrafts: Array.isArray(value.editDrafts) ? value.editDrafts : [],
+        history: [],
+        undoStack: [],
+        redoStack: [],
+        rollbackHistory: [],
+    };
+}
+
 function makeRecoveryState(state, { clone = true, recoveryLevel = 'full' } = {}) {
     const snapshot = {};
     for (const key of recoveryStateKeys) {
@@ -126,6 +141,8 @@ function makeRecoveryState(state, { clone = true, recoveryLevel = 'full' } = {})
             ? compactRecoveryHistory(value)
             : key === 'taskQueue'
                 ? compactRecoveryTasks(value)
+                : key === 'tableDatabase'
+                    ? compactRecoveryTableDatabase(value, recoveryLevel)
                 : value ?? (key === 'turnSummary' ? {} : []);
         snapshot[key] = clone ? cloneSerializable(selected) : selected;
     }
@@ -149,6 +166,21 @@ export function createSummaryRecoveryJournal({
     getChatId = () => '',
     keyPrefix = 'bakemono-memory-summary-recovery-v1',
 } = {}) {
+    const baselineSignatures = new WeakMap();
+    const pendingStateRevisions = new WeakMap();
+
+    function makeSignature(state, messagePatches = [], recoveryLevel = 'full') {
+        const recoveryState = makeRecoveryState(state, { clone: false, recoveryLevel });
+        recoveryState.persistenceRevision = 0;
+        return stableValueHash({ state: recoveryState, messagePatches });
+    }
+
+    function rememberBaseline(state) {
+        if (state && typeof state === 'object') {
+            baselineSignatures.set(state, makeSignature(state));
+        }
+    }
+
     function resolveStorage() {
         try {
             return typeof getStorage === 'function' ? getStorage() : storage;
@@ -201,10 +233,11 @@ export function createSummaryRecoveryJournal({
         for (const patch of makeMessagePatches(chat, options.messageIds || [])) patchById.set(Number(patch.messageId), patch);
         const messagePatches = [...patchById.values()].sort((a, b) => a.messageId - b.messageId);
         const preferredRecoveryLevel = existing?.recoveryLevel === 'essential' ? 'essential' : 'full';
-        const recoveryState = makeRecoveryState(state, { clone: false, recoveryLevel: preferredRecoveryLevel });
-        recoveryState.persistenceRevision = 0;
-        const signature = stableValueHash({ state: recoveryState, messagePatches });
+        const signature = makeSignature(state, messagePatches, preferredRecoveryLevel);
         if (existing?.signature === signature && Number(existing?.revision || 0) === currentRevision) {
+            return { status: 'unchanged', revision: currentRevision };
+        }
+        if (!existing && baselineSignatures.get(state) === signature) {
             return { status: 'unchanged', revision: currentRevision };
         }
 
@@ -229,11 +262,13 @@ export function createSummaryRecoveryJournal({
         const payload = makePayload(preferredRecoveryLevel);
         try {
             target.setItem(key, JSON.stringify(payload));
+            pendingStateRevisions.set(state, revision);
             return { status: preferredRecoveryLevel === 'essential' ? 'staged-compact' : 'staged', revision };
         } catch (error) {
             if (preferredRecoveryLevel === 'full' && isQuotaExceededError(error)) {
                 try {
                     target.setItem(key, JSON.stringify(makePayload('essential')));
+                    pendingStateRevisions.set(state, revision);
                     return { status: 'staged-compact', revision };
                 } catch (compactError) {
                     state.persistenceRevision = previousRevision;
@@ -255,27 +290,60 @@ export function createSummaryRecoveryJournal({
 
     function reconcile(state, chat = []) {
         const payload = read();
-        if (!payload) return { status: 'none', revision: Number(state?.persistenceRevision || 0) };
+        if (!payload) {
+            rememberBaseline(state);
+            return { status: 'none', revision: Number(state?.persistenceRevision || 0) };
+        }
         const savedRevision = Math.max(0, Number(state?.persistenceRevision || 0));
         const pendingRevision = Math.max(0, Number(payload.revision || 0));
         if (pendingRevision <= savedRevision) {
+            if (Number(pendingStateRevisions.get(state) || 0) >= pendingRevision) {
+                return { status: 'pending-verification', revision: savedRevision };
+            }
             remove();
+            rememberBaseline(state);
             return { status: pendingRevision === savedRevision ? 'verified' : 'stale', revision: savedRevision };
         }
 
+        const changedStateKeys = recoveryStateKeys.filter(key => (
+            Object.hasOwn(payload.state || {}, key)
+            && stableValueHash(payload.state[key]) !== stableValueHash(state?.[key])
+        ));
+        const changedMessageIds = [];
+        for (const patch of payload.messagePatches || []) {
+            const message = chat?.[Number(patch.messageId)];
+            if (!message) continue;
+            if (
+                String(message.mes || '') !== String(patch.mes || '')
+                || stableValueHash(message.swipes) !== stableValueHash(patch.swipes)
+            ) {
+                changedMessageIds.push(Number(patch.messageId));
+            }
+        }
         for (const key of [...recoveryStateKeys, 'persistenceRevision']) {
             if (Object.hasOwn(payload.state || {}, key)) state[key] = cloneSerializable(payload.state[key]);
         }
-        let patchedMessages = 0;
         for (const patch of payload.messagePatches || []) {
             const message = chat?.[Number(patch.messageId)];
             if (!message) continue;
             message.mes = String(patch.mes || '');
             if (patch.swipes === undefined) delete message.swipes;
             else message.swipes = cloneSerializable(patch.swipes);
-            patchedMessages += 1;
         }
-        return { status: 'recovered', revision: pendingRevision, patchedMessages };
+        pendingStateRevisions.set(state, pendingRevision);
+        const summaryItems = ['storySummaries', 'stageSummaries', 'epicSummaries', 'drafts']
+            .reduce((sum, key) => sum + (Array.isArray(payload.state?.[key]) ? payload.state[key].length : 0), 0);
+        const tableRows = (payload.state?.tableDatabase?.tables || [])
+            .reduce((sum, table) => sum + (Array.isArray(table?.rows) ? table.rows.length : 0), 0);
+        const changed = changedStateKeys.length > 0 || changedMessageIds.length > 0;
+        return {
+            status: changed ? 'recovered' : 'revision-only',
+            revision: pendingRevision,
+            patchedMessages: changedMessageIds.length,
+            summaryItems,
+            tableRows,
+            changedStateKeys,
+        };
     }
 
     return {

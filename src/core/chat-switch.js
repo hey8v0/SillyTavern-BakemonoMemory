@@ -7,11 +7,11 @@ export function runChatSwitchFlow(actions = {}) {
     const flow = actions && typeof actions === 'object' ? actions : {};
     const state = typeof flow.getState === 'function' ? flow.getState() : undefined;
 
-    if (typeof flow.syncConfig === 'function') {
-        flow.syncConfig(state);
-    }
     if (typeof flow.recover === 'function') {
         flow.recover(state);
+    }
+    if (typeof flow.syncConfig === 'function') {
+        flow.syncConfig(state);
     }
     if (typeof flow.scan === 'function') {
         flow.scan(state);

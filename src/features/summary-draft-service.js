@@ -846,8 +846,8 @@ export function createSummaryDraftService({
         const confirmed = confirmDanger(
             `从第 ${messageId} 楼正文移除「${block.title || `#${messageId}.${Number(block.blockIndex || 0) + 1}`}」？`,
             [
-                '这条记录来自聊天正文标签，不是插件元数据里的正式摘要。',
-                '移除后会修改该楼正文，并从剧情回看中清除这个幽灵层。',
+                '这条摘要由“扫描与识别”从聊天正文标签读取。',
+                '删除后会修改该楼正文，并从剧情回看中移除这条摘要。',
             ],
         );
         if (!confirmed) return false;
@@ -867,7 +867,7 @@ export function createSummaryDraftService({
             return false;
         }
         renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `已从第 ${messageId} 楼移除正文摘要块。`);
-        toastr.success('幽灵摘要层已从原正文清除。');
+        toastr.success('正文摘要已从原楼层移除。');
         return true;
     }
     
