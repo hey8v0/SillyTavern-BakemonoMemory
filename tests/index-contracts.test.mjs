@@ -769,7 +769,7 @@ test('stateful services follow SillyTavern live chat_metadata binding', () => {
     assert.match(turnProcessingControllerSource, /getChatMetadata\?\.\(\)\?\.system_prompt/);
 });
 
-test('turn processing exposes immediate and next-user modes and source-only summaries stay removable', () => {
+test('turn processing exposes immediate and next-user modes and source-only summaries stay visually clean', () => {
     assert.match(settingsSource, /id="bakemono-memory-turn-trigger-timing"/);
     assert.match(settingsSource, /option value="immediate"/);
     assert.match(settingsSource, /option value="next_user"/);
@@ -779,9 +779,11 @@ test('turn processing exposes immediate and next-user modes and source-only summ
     assert.match(source, /turnTrigger: 'user'/);
     assert.match(turnTriggerPolicySource, /trigger === 'user'/);
     assert.match(memoryOrchestratorSource, /if \(options\.turnOnly\)/);
-    assert.match(summaryPreviewRendererSource, /data-bakemono-summary-action="delete-source"/);
-    assert.doesNotMatch(summaryPreviewRendererSource, /不是插件元数据里的正式摘要/);
-    assert.match(summaryPreviewRendererSource, /从第 \$\{Number\(block\.messageId\)\} 楼正文标签识别/);
+    assert.doesNotMatch(summaryPreviewRendererSource, /data-bakemono-summary-action="delete-source"/);
+    assert.doesNotMatch(summaryPreviewRendererSource, /管理正文来源/);
+    assert.doesNotMatch(summaryPreviewRendererSource, /正文标签识别/);
+    assert.doesNotMatch(summaryBrowserEventsSource, /delete-source/);
+    assert.doesNotMatch(styleSource, /bakemono-memory-source-summary-(?:note|tools)/);
     assert.match(summaryDraftServiceSource, /async function removeScannedSummaryBlock\(hash\)/);
     assert.doesNotMatch(summaryDraftServiceSource, /幽灵摘要层/);
 });

@@ -12461,8 +12461,7 @@ details[open] > summary > .bakemono-memory-help-trigger {
     font-size: 11px;
   }
 }
-.bakemono-memory-persistence-protection,
-.bakemono-memory-source-summary-note {
+.bakemono-memory-persistence-protection {
   display: flex;
   align-items: flex-start;
   gap: 0.65rem;
@@ -12473,8 +12472,7 @@ details[open] > summary > .bakemono-memory-help-trigger {
   background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 78%, transparent);
 }
 
-.bakemono-memory-persistence-protection span,
-.bakemono-memory-source-summary-note span {
+.bakemono-memory-persistence-protection span {
   display: grid;
   gap: 0.2rem;
 }
@@ -12482,12 +12480,4 @@ details[open] > summary > .bakemono-memory-help-trigger {
 .bakemono-memory-persistence-protection small {
   opacity: 0.78;
   line-height: 1.45;
-}
-
-.bakemono-memory-source-summary-tools {
-  margin-top: 0.8rem;
-}
-
-.bakemono-memory-source-summary-note {
-  font-size: 0.86em;
 }

@@ -565,7 +565,6 @@ const summaryPreviewRenderer = createSummaryPreviewRenderer({
     getBlockPlainText,
     stripHtml,
     findSavedSummaryByHash: (...args) => findSavedSummaryByHash(...args),
-    canRemoveScannedSummaryBlock: (...args) => canRemoveScannedSummaryBlock(...args),
 });
 const {
     createBakemonoNotebook,
@@ -1672,7 +1671,6 @@ const {
     commitAllMissingSummaryDrafts,
     commitDraft,
     commitMissingSummaryDraft,
-    canRemoveScannedSummaryBlock,
     createDraft,
     deleteSavedSummary,
     discardDraft,
@@ -1688,7 +1686,6 @@ const {
     recordAutoSummaryTransaction,
     regenerateDraft,
     removeMissingSummaryDraftsAndTasks,
-    removeScannedSummaryBlock,
     removeSummaryByHash,
     rollbackAutoSummaryTransaction,
     saveEditedSummary,
@@ -1768,7 +1765,6 @@ const summaryBrowserEvents = createSummaryBrowserEvents({
     renderMemoryRecordList,
     saveEditedSummary,
     deleteSavedSummary,
-    removeScannedSummaryBlock,
 });
 
 const turnProcessingController = createTurnProcessingController({
