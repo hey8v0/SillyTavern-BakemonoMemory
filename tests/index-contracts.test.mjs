@@ -724,6 +724,7 @@ test('state normalization remains compatible with SillyTavern metadata objects',
     assert.doesNotMatch(ensureSource, /normalizedChatStates/);
     assert.match(source, /from '.\/src\/core\/state-shape\.js'/);
     assert.match(ensureSource, /fillMissingDefaults\(state, defaultState\)/);
+    assert.match(ensureSource, /ensureCurrentChatStateSlot\(\{/);
     assert.match(ensureSource, /normalizeArrayFields\(state, \['drafts', 'history', 'taskQueue', 'autoSummaryTransactions', 'memoryRecords'\]\)/);
     assert.match(ensureSource, /ensureObjectField\(state, 'automation', defaultAutomation\)/);
     assert.match(ensureSource, /state\.scanPreview = \(Array\.isArray\(state\.scanPreview\)/);
@@ -757,7 +758,15 @@ test('persistence stages crash recovery, compacts metadata and keeps tavern debo
     assert.match(chatStateServiceSource, /installCompactStateSerializer\?\.\(state\)/);
     assert.match(persistedChatStateSource, /Object\.defineProperty\(state, 'toJSON'/);
     assert.match(summaryRecoveryJournalSource, /function reconcile\(state, chat = \[\]\)/);
+    assert.match(chatSaveSource, /if \(!state\)/);
+    assert.match(chatSaveSource, /refused to save a missing live chat state/);
     assert.match(globalSaveSource, /persistGlobalSettings\(saveSettingsDebounced\)/);
+});
+
+test('stateful services follow SillyTavern live chat_metadata binding', () => {
+    assert.equal((source.match(/getChatMetadata:\s*\(\) => chat_metadata/g) || []).length, 2);
+    assert.doesNotMatch(source, /chatMetadata:\s*chat_metadata/);
+    assert.match(turnProcessingControllerSource, /getChatMetadata\?\.\(\)\?\.system_prompt/);
 });
 
 test('turn processing exposes immediate and next-user modes and source-only summaries stay removable', () => {

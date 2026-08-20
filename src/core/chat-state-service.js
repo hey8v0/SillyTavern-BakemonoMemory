@@ -1,3 +1,24 @@
+export function ensureCurrentChatStateSlot({
+    getChatMetadata,
+    chatMetadata,
+    storageKey,
+    createState,
+} = {}) {
+    const currentChatMetadata = getChatMetadata?.() || chatMetadata;
+    if (!currentChatMetadata || typeof currentChatMetadata !== 'object') {
+        throw new Error('Current SillyTavern chat metadata is unavailable');
+    }
+    const isNewChatState = !currentChatMetadata[storageKey];
+    if (isNewChatState) {
+        currentChatMetadata[storageKey] = createState();
+    }
+    return {
+        chatMetadata: currentChatMetadata,
+        isNewChatState,
+        state: currentChatMetadata[storageKey],
+    };
+}
+
 export function shouldSanitizeChatState(previousLength, chatLength) {
     return Number.isFinite(previousLength) && chatLength < previousLength;
 }
@@ -5,6 +26,7 @@ export function shouldSanitizeChatState(previousLength, chatLength) {
 export function createChatStateService({
     defaultState,
     chatMetadata,
+    getChatMetadata,
     storageKey,
     extensionSettings,
     getContext,
@@ -74,12 +96,12 @@ export function createChatStateService({
     }
     
     function ensureState() {
-        const isNewChatState = !chatMetadata[storageKey];
-        if (!chatMetadata[storageKey]) {
-            chatMetadata[storageKey] = cloneDefaultState();
-        }
-    
-        const state = chatMetadata[storageKey];
+        const { isNewChatState, state } = ensureCurrentChatStateSlot({
+            getChatMetadata,
+            chatMetadata,
+            storageKey,
+            createState: cloneDefaultState,
+        });
         installCompactStateSerializer?.(state);
         state.persistenceRevision = Math.max(0, Number(state.persistenceRevision || 0));
         if (isNewChatState) {

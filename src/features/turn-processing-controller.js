@@ -1,7 +1,7 @@
 export function createTurnProcessingController({
     getContext,
     getChat,
-    chatMetadata,
+    getChatMetadata,
     ensureState,
     getHash,
     blockTypes,
@@ -277,7 +277,7 @@ export function createTurnProcessingController({
             ['性格', character.personality || data.personality],
             ['场景', character.scenario || data.scenario],
             ['创作者备注', character.creator_notes || data.creator_notes],
-            ['系统提示', chatMetadata.system_prompt || data.system_prompt],
+            ['系统提示', getChatMetadata?.()?.system_prompt || data.system_prompt],
             ['用户人设', context.powerUserSettings?.persona_description],
         ];
         return fields

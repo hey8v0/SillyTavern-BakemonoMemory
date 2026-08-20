@@ -425,6 +425,33 @@ test('chat state cleanup waits for a known complete baseline before pruning shor
     assert.equal(shouldSanitizeChatState(20, 12), true);
 });
 
+test('chat state slot follows SillyTavern when chat_metadata is replaced', async () => {
+    const { ensureCurrentChatStateSlot } = await loadModule('src/core/chat-state-service.js');
+    const storageKey = 'bakemonoMemory';
+    let currentMetadata = {};
+
+    const first = ensureCurrentChatStateSlot({
+        getChatMetadata: () => currentMetadata,
+        storageKey,
+        createState: () => ({ marker: 'first' }),
+    });
+    assert.equal(first.isNewChatState, true);
+    assert.equal(first.state, currentMetadata[storageKey]);
+
+    const previousMetadata = currentMetadata;
+    currentMetadata = { [storageKey]: { marker: 'loaded-by-sillytavern' } };
+    const loaded = ensureCurrentChatStateSlot({
+        getChatMetadata: () => currentMetadata,
+        storageKey,
+        createState: () => ({ marker: 'wrong-default' }),
+    });
+
+    assert.equal(loaded.isNewChatState, false);
+    assert.equal(loaded.state, currentMetadata[storageKey]);
+    assert.equal(loaded.state.marker, 'loaded-by-sillytavern');
+    assert.equal(previousMetadata[storageKey].marker, 'first');
+});
+
 test('recovery journal retries quota failures with an essential payload', async () => {
     const { createSummaryRecoveryJournal } = await loadModule('src/core/summary-recovery-journal.js');
     const values = new Map();

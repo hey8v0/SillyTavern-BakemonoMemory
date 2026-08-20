@@ -280,9 +280,12 @@ function confirmDanger(title, lines = [], confirmText = '确认继续吗？') {
 
 function saveState(options = {}) {
     const state = chat_metadata?.[STORAGE_KEY] || null;
-    const recovery = state
-        ? summaryRecoveryJournal.stage(state, chat, { messageIds: options.recoveryMessageIds || [] })
-        : { status: 'unavailable', revision: 0 };
+    if (!state) {
+        const error = new Error('当前聊天状态尚未连接到 SillyTavern 正式元数据，已阻止空保存');
+        console.error('[BakemonoMemory] refused to save a missing live chat state', error);
+        return { status: 'error', revision: 0, error };
+    }
+    const recovery = summaryRecoveryJournal.stage(state, chat, { messageIds: options.recoveryMessageIds || [] });
     if (recovery.status === 'error') {
         console.warn('[BakemonoMemory] failed to write summary recovery journal', recovery.error);
     }
@@ -446,7 +449,7 @@ const {
 
 const chatStateService = createChatStateService({
     defaultState,
-    chatMetadata: chat_metadata,
+    getChatMetadata: () => chat_metadata,
     storageKey: STORAGE_KEY,
     extensionSettings: extension_settings,
     getContext,
@@ -1771,7 +1774,7 @@ const summaryBrowserEvents = createSummaryBrowserEvents({
 const turnProcessingController = createTurnProcessingController({
     getContext,
     getChat: () => chat,
-    chatMetadata: chat_metadata,
+    getChatMetadata: () => chat_metadata,
     ensureState,
     getHash,
     blockTypes,
