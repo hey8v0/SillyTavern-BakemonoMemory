@@ -379,6 +379,7 @@ export function createVectorMemoryService({
     function getVectorSourceSignature(state = ensureState()) {
         return [
             getEmbeddingSpaceKey(state),
+            JSON.stringify(['index-v3', ...['indexMode', 'chunkSize', 'overlap', 'longMessageThreshold', 'summaryMaxChars'].map(key => state.vectorMemory[key] ?? defaultVectorMemory[key])]),
             ...getVectorSourceMessages(state)
                 .map(({ message, messageId, cleanedText, summaryText }) => `${messageId}:${getMessageVariantKey(message)}:${getHash(cleanedText || '')}:${getHash(summaryText || '')}`),
             ...getVectorSavedSummarySources(state)
@@ -452,6 +453,14 @@ export function createVectorMemoryService({
     }
     
     function markVectorIndexDirty(reason = 'changed', state = ensureState()) {
+        if (state.vectorMemory.records?.length && state.vectorMemory.lastIndexedSignature === getVectorSourceSignature(state)) {
+            if (state.vectorMemory.dirty) {
+                state.vectorMemory.dirty = false;
+                state.vectorMemory.dirtyReason = '';
+                saveState();
+            }
+            return;
+        }
         state.vectorMemory.dirty = true;
         state.vectorMemory.dirtyReason = reason;
         clearVectorRecall(`索引待刷新：${reason}`, state);

@@ -1,26 +1,27 @@
 import { helpGuideArticles, helpGuideCategories } from './help-guide-content.js';
 
-export function createHelpGuide({ escapeHtml } = {}) {
+export function createHelpGuide({ escapeHtml, documentRef = globalThis.document } = {}) {
     let activeCategory = 'start';
     let activeArticle = '';
     let boundRoot = null;
 
     function getArticleOrder() {
-        return ['quick-start', ...Object.values(helpGuideCategories).flat()];
+        if (activeCategory === 'manual') return helpGuideCategories.manual;
+        return ['quick-start', ...Object.entries(helpGuideCategories).filter(([category]) => category !== 'manual').flatMap(([, articles]) => articles)];
     }
 
     function renderArticle(articleId) {
         const article = helpGuideArticles[articleId];
         if (!article) return;
-        document.getElementById('bakemono-memory-help-article-number').textContent = `${article.number} / ${article.category}`;
-        document.getElementById('bakemono-memory-help-article-title').textContent = article.title;
-        document.getElementById('bakemono-memory-help-article-meta').innerHTML = `<span>${escapeHtml(article.audience)}</span><span>${escapeHtml(article.duration)}</span>`;
-        document.getElementById('bakemono-memory-help-article-lead').textContent = article.lead;
-        document.getElementById('bakemono-memory-help-article-steps').innerHTML = article.steps.map(([title, copy], index) => `
+        documentRef.getElementById('bakemono-memory-help-article-number').textContent = `${article.number} / ${article.category}`;
+        documentRef.getElementById('bakemono-memory-help-article-title').textContent = article.title;
+        documentRef.getElementById('bakemono-memory-help-article-meta').innerHTML = `<span>${escapeHtml(article.audience)}</span><span>${escapeHtml(article.duration)}</span>`;
+        documentRef.getElementById('bakemono-memory-help-article-lead').textContent = article.lead;
+        documentRef.getElementById('bakemono-memory-help-article-steps').innerHTML = article.steps.map(([title, copy], index) => `
             <li><span>${String(index + 1).padStart(2, '0')}</span><div><h5>${escapeHtml(title)}</h5><p>${escapeHtml(copy)}</p></div></li>
         `).join('');
 
-        const note = document.getElementById('bakemono-memory-help-article-note');
+        const note = documentRef.getElementById('bakemono-memory-help-article-note');
         if (note) {
             note.hidden = !article.note;
             if (article.note) note.querySelector('p').innerHTML = `<strong>${escapeHtml(article.note[0])}</strong>${escapeHtml(article.note[1])}`;
@@ -28,7 +29,7 @@ export function createHelpGuide({ escapeHtml } = {}) {
 
         const order = getArticleOrder();
         const nextId = order[order.indexOf(articleId) + 1];
-        const nextButton = document.getElementById('bakemono-memory-help-next');
+        const nextButton = documentRef.getElementById('bakemono-memory-help-next');
         if (nextButton) {
             nextButton.hidden = !nextId;
             if (nextId) {
@@ -40,30 +41,30 @@ export function createHelpGuide({ escapeHtml } = {}) {
 
     function render() {
         const category = helpGuideCategories[activeCategory] ? activeCategory : 'start';
-        const hub = document.querySelector('[data-bakemono-help-view="hub"]');
-        const reader = document.querySelector('[data-bakemono-help-view="article"]');
+        const hub = documentRef.querySelector('[data-bakemono-help-view="hub"]');
+        const reader = documentRef.querySelector('[data-bakemono-help-view="article"]');
         const article = helpGuideArticles[activeArticle];
-        const panel = document.querySelector('.bakemono-memory-help-panel');
+        const panel = documentRef.querySelector('.bakemono-memory-help-panel');
         if (hub) hub.hidden = !!article;
         if (reader) reader.hidden = !article;
         panel?.classList.toggle('is-reading', !!article);
 
-        if (document.getElementById('bakemono-workbench-root')?.dataset.activeTab === 'help') {
-            const title = document.getElementById('bakemono-workbench-title');
-            const kicker = document.getElementById('bakemono-workbench-section-title');
-            const shortKicker = document.getElementById('bakemono-workbench-section-title-short');
+        if (documentRef.getElementById('bakemono-workbench-root')?.dataset.activeTab === 'help') {
+            const title = documentRef.getElementById('bakemono-workbench-title');
+            const kicker = documentRef.getElementById('bakemono-workbench-section-title');
+            const shortKicker = documentRef.getElementById('bakemono-workbench-section-title-short');
             if (title) title.textContent = article?.title || '使用说明';
             if (kicker) kicker.textContent = article ? `使用说明 · ${article.number} / ${article.category}` : '帮助中心 · 随时可查';
             if (shortKicker) shortKicker.textContent = article ? `说明 · ${article.number}` : '帮助中心';
         }
 
-        document.querySelectorAll('[data-bakemono-help-category]').forEach(button => {
+        documentRef.querySelectorAll('[data-bakemono-help-category]').forEach(button => {
             const isActive = button.dataset.bakemonoHelpCategory === category;
             button.classList.toggle('is-active', isActive);
             button.setAttribute('aria-pressed', String(isActive));
         });
 
-        const list = document.getElementById('bakemono-memory-help-list');
+        const list = documentRef.getElementById('bakemono-memory-help-list');
         if (list) {
             list.innerHTML = helpGuideCategories[category].map(articleId => {
                 const item = helpGuideArticles[articleId];
@@ -76,20 +77,25 @@ export function createHelpGuide({ escapeHtml } = {}) {
     }
 
     function scrollToTop() {
-        document.querySelector('.bakemono-workbench-main')?.scrollTo({ top: 0, behavior: 'auto' });
+        documentRef.querySelector('.bakemono-workbench-main')?.scrollTo({ top: 0, behavior: 'auto' });
     }
 
     function openArticle(articleId) {
         if (!helpGuideArticles[articleId]) return;
+        activeCategory = Object.keys(helpGuideCategories).find(category => helpGuideCategories[category].includes(articleId)) || 'start';
         activeArticle = articleId;
         render();
         scrollToTop();
+        const title = documentRef.getElementById('bakemono-memory-help-article-title');
+        title?.setAttribute('tabindex', '-1');
+        title?.focus?.({ preventScroll: true });
     }
 
     function closeArticle() {
         activeArticle = '';
         render();
         scrollToTop();
+        documentRef.querySelector(`[data-bakemono-help-category="${activeCategory}"]`)?.focus?.({ preventScroll: true });
     }
 
     function handleClick(event) {

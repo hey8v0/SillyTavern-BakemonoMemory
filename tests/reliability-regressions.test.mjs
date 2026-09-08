@@ -37,7 +37,7 @@ test('stream API error after partial content is not returned as a successful sum
 });
 
 function vectorController(overrides = {}) {
-    const state = { vectorMemory: { customApi: { baseUrl: 'https://example.com/v1/embeddings', model: '' }, records: [{}] } };
+    const state = { vectorMemory: { enabled: true, customApi: { baseUrl: 'https://example.com/v1/embeddings', model: '' }, records: [{}] } };
     const notices = [];
     return { state, notices, controller: createVectorActionsController({
         getState: () => state, readVectorMemoryFieldsFromUi: noop,

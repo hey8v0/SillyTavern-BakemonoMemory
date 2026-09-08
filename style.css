@@ -11099,6 +11099,8 @@ details[open] > summary > .bakemono-memory-help-trigger {
 }
 
 .bakemono-memory-help-steps p {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
   margin: 5px 0 0;
   color: var(--bk-ink-soft);
   font-size: 13px;

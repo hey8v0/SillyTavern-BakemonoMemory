@@ -179,6 +179,12 @@ export function createVectorActionsController({
     async function testVectorMemoryRetrieval() {
         const state = ensureState();
         readVectorMemoryFieldsFromUi(state);
+        if (!state.vectorMemory.enabled) {
+            const message = '向量召回当前关闭。请先在“向量配置”开启向量记忆并应用配置，再测试召回。';
+            toastr.warning(message);
+            renderWorkbenchScope(workbenchRenderScopes.VECTOR, message);
+            return false;
+        }
         if (!state.vectorMemory.records.length) {
             toastr.warning('还没有索引。请先点击“建立/刷新索引”。');
             renderWorkbenchScope(workbenchRenderScopes.VECTOR, '向量记忆尚未建立索引。');
@@ -190,7 +196,7 @@ export function createVectorActionsController({
         saveState();
         syncInjection();
         renderWorkbenchScope(workbenchRenderScopes.VECTOR, hits.length ? `向量召回完成：命中 ${hits.length} 条记忆。` : (state.vectorMemory.lastRecallSkippedReason || '向量召回完成：没有命中。'));
-        return true;
+        return hits.length > 0 || !state.vectorMemory.lastRecallSkippedReason;
     }
     
     function clearVectorMemoryIndex() {
