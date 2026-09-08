@@ -12483,3 +12483,211 @@ details[open] > summary > .bakemono-memory-help-trigger {
   opacity: 0.78;
   line-height: 1.45;
 }
+
+/* Workbench interaction surfaces */
+#bakemono-workbench-root {
+  --bk-interaction-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --bk-surface-border: color-mix(in srgb, var(--bk-accent) 24%, var(--bk-line));
+}
+
+#bakemono-workbench-root :is(.bakemono-memory-help-tabs, .bakemono-memory-review-tabs) {
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid var(--bk-line);
+  border-radius: 16px;
+  background: var(--bk-paper-soft);
+  scroll-padding-inline: 5px;
+}
+
+#bakemono-workbench-root :is(.bakemono-memory-help-tabs, .bakemono-memory-review-tabs) > button {
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--bk-ink-soft);
+}
+
+#bakemono-workbench-root :is(.bakemono-memory-help-tabs, .bakemono-memory-review-tabs) > button.is-active {
+  border-color: var(--bk-surface-border);
+  background: var(--bk-paper);
+  color: var(--bk-accent);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--bk-shadow) 40%, transparent);
+}
+
+#bakemono-workbench-root :is(.menu_button, .bakemono-workbench-tab, .bakemono-memory-help-tabs > button, .bakemono-memory-review-tabs > button, .bakemono-memory-help-list > button) {
+  transition: transform 140ms var(--bk-interaction-ease), border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+  touch-action: manipulation;
+}
+
+#bakemono-workbench-root :is(button, input, select, textarea, summary, [role="button"]):focus-visible {
+  outline: 2px solid var(--bk-accent);
+  outline-offset: 3px;
+}
+
+#bakemono-workbench-root :is(button, .menu_button):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+#bakemono-workbench-root :is(.menu_button, .bakemono-memory-help-tabs > button, .bakemono-memory-review-tabs > button, .bakemono-memory-help-list > button):active:not(:disabled):not(:focus-visible) {
+  transform: scale(0.98);
+}
+
+#bakemono-workbench-root :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select):focus {
+  border-color: var(--bk-accent);
+}
+
+#bakemono-workbench-root :is(.bakemono-memory-hub-list, .bakemono-memory-help-list > button, .bakemono-memory-health-board) {
+  border-color: var(--bk-surface-border);
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--bk-shadow) 22%, transparent);
+}
+
+#bakemono-workbench-root :is(.bakemono-memory-vector-meter, .bakemono-memory-automation-progress, .bakemono-memory-scene-progress) {
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bk-paper-soft);
+}
+
+#bakemono-workbench-root :is(.bakemono-memory-vector-meter, .bakemono-memory-automation-progress, .bakemono-memory-scene-progress) > span {
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--bk-accent) 65%, var(--bk-paper)), var(--bk-accent));
+}
+
+#bakemono-workbench-root .bakemono-memory-help-search-box {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--bk-surface-border);
+  border-radius: 18px;
+  background: linear-gradient(130deg, var(--bk-paper), var(--bk-paper-soft));
+}
+
+#bakemono-workbench-root .bakemono-memory-help-search-box > label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+#bakemono-workbench-root .bakemono-memory-help-search-box > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+#bakemono-workbench-root #bakemono-memory-help-search {
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--bk-line);
+  border-radius: 12px;
+  background: var(--bk-paper);
+  color: inherit;
+  font: inherit;
+}
+
+#bakemono-workbench-root #bakemono-memory-help-search-clear {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--bk-accent);
+  cursor: pointer;
+}
+
+#bakemono-workbench-root #bakemono-memory-help-search-status {
+  color: var(--bk-ink-soft);
+  line-height: 1.5;
+}
+
+#bakemono-workbench-root :is(.bakemono-memory-help-cover, #bakemono-memory-help-search-clear)[hidden] {
+  display: none !important;
+}
+
+#bakemono-workbench-root .bakemono-memory-operation-toast {
+  width: min(480px, calc(100vw - 28px));
+  align-items: flex-start;
+  pointer-events: auto;
+  background: var(--bk-paper);
+}
+
+#bakemono-workbench-root .bakemono-memory-operation-toast > i {
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
+
+#bakemono-workbench-root .bakemono-memory-operation-copy {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  max-height: min(35vh, 220px);
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  -webkit-line-clamp: unset;
+  line-height: 1.6;
+}
+
+#bakemono-workbench-root .bakemono-memory-operation-dismiss {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  margin: -4px -6px -4px 0;
+  padding: 0;
+  border: 1px solid var(--bk-line);
+  border-radius: 10px;
+  background: var(--bk-paper-soft);
+  color: inherit;
+  cursor: pointer;
+  font: 22px/1 sans-serif;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  #bakemono-workbench-root :is(.bakemono-memory-help-list > button, .bakemono-memory-hub-link):hover:not(:disabled) {
+    border-color: var(--bk-accent);
+    background-color: var(--bk-paper-soft);
+  }
+
+  #bakemono-workbench-root .bakemono-memory-help-list > button:hover:not(:focus-visible) {
+    transform: translateY(-2px);
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  #bakemono-workbench-root :is(.menu_button, .bakemono-workbench-tab, .bakemono-memory-help-list > button):hover {
+    transform: none;
+  }
+
+  #bakemono-workbench-root :is(.bakemono-memory-help-tabs > button, .bakemono-memory-review-tabs > button, .bakemono-memory-help-back, .bakemono-memory-operation-dismiss) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  #bakemono-workbench-root #bakemono-memory-help-search {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #bakemono-workbench-root *,
+  #bakemono-workbench-root *::before,
+  #bakemono-workbench-root *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+
+  #bakemono-workbench-root :is(.menu_button, .bakemono-memory-help-list > button, .bakemono-memory-help-tabs > button, .bakemono-memory-review-tabs > button):is(:hover, :active) {
+    transform: none !important;
+  }
+}

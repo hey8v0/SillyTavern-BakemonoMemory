@@ -2163,10 +2163,18 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.4.11 · 先看快速开始，按需查阅详细手册中的完整步骤与排错方法。</p>
+          <p>v1.4.12 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">
+          <div class="bakemono-memory-help-search-box">
+            <label for="bakemono-memory-help-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span>搜索使用说明</span></label>
+            <div>
+              <input id="bakemono-memory-help-search" type="search" placeholder="例如：标签、阶段总结、401" autocomplete="off" aria-describedby="bakemono-memory-help-search-status">
+              <button id="bakemono-memory-help-search-clear" type="button" aria-label="清空搜索" hidden>清空</button>
+            </div>
+            <small id="bakemono-memory-help-search-status" role="status" aria-live="polite">可以搜索问题、功能名或错误代码</small>
+          </div>
           <nav class="bakemono-memory-help-tabs" aria-label="说明分类">
             <button type="button" class="is-active" data-bakemono-help-category="start">快速开始</button>
             <button type="button" data-bakemono-help-category="manual">详细手册</button>

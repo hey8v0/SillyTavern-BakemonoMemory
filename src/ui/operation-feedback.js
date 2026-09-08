@@ -6,6 +6,8 @@ export function createOperationFeedback({
     logError = (...args) => console.error(...args),
     rootId = 'bakemono-workbench-root',
     toastId = 'bakemono-memory-operation-toast',
+    documentRef = globalThis.document,
+    windowRef = globalThis.window,
 } = {}) {
     let timer = null;
     let captureUntil = 0;
@@ -26,40 +28,56 @@ export function createOperationFeedback({
 
     function clear() {
         if (timer) {
-            window.clearTimeout(timer);
+            windowRef.clearTimeout(timer);
             timer = null;
         }
-        document.getElementById(toastId)?.remove();
-        document.getElementById(rootId)?.classList.remove('is-operation-running');
+        documentRef.getElementById(toastId)?.remove();
+        documentRef.getElementById(rootId)?.classList.remove('is-operation-running');
     }
 
     function set(state = '', message = '', timeout = 0) {
-        const root = document.getElementById(rootId);
+        const root = documentRef.getElementById(rootId);
         const text = String(message || '').trim();
         if (!root || !state || !text) {
             clear();
             return;
         }
         if (timer) {
-            window.clearTimeout(timer);
+            windowRef.clearTimeout(timer);
             timer = null;
         }
-        let toast = document.getElementById(toastId);
+        let toast = documentRef.getElementById(toastId);
         if (!toast) {
-            toast = document.createElement('div');
+            toast = documentRef.createElement('div');
             toast.id = toastId;
             toast.className = 'bakemono-memory-operation-toast';
             toast.setAttribute('role', 'status');
             toast.setAttribute('aria-live', 'polite');
+            toast.setAttribute('aria-atomic', 'true');
             root.appendChild(toast);
         }
-        const icon = state === 'running'
-            ? '<span class="bakemono-memory-operation-spinner" aria-hidden="true"></span>'
-            : `<i class="fa-solid ${state === 'success' ? 'fa-check' : 'fa-triangle-exclamation'}" aria-hidden="true"></i>`;
+        const icon = documentRef.createElement('i');
+        icon.className = state === 'running' ? 'bakemono-memory-operation-spinner'
+            : `fa-solid ${state === 'success' ? 'fa-check' : 'fa-triangle-exclamation'}`;
+        icon.setAttribute('aria-hidden', 'true');
+        const copy = documentRef.createElement('span');
+        copy.className = 'bakemono-memory-operation-copy';
+        copy.textContent = text;
         toast.className = `bakemono-memory-operation-toast is-${state}`;
-        toast.innerHTML = `${icon}<span>${escapeHtml?.(text) ?? text}</span>`;
+        toast.textContent = '';
+        toast.appendChild(icon);
+        toast.appendChild(copy);
+        if (state !== 'running') {
+            const dismiss = documentRef.createElement('button');
+            dismiss.type = 'button';
+            dismiss.className = 'bakemono-memory-operation-dismiss';
+            dismiss.setAttribute('aria-label', '关闭提示');
+            dismiss.textContent = '×';
+            dismiss.onclick = clear;
+            toast.appendChild(dismiss);
+        }
         root.classList.toggle('is-operation-running', state === 'running');
-        if (timeout > 0) timer = window.setTimeout(clear, timeout);
+        if (timeout > 0 && state !== 'error') timer = windowRef.setTimeout(clear, timeout);
     }
 
     function armCapture(duration = 10000) {

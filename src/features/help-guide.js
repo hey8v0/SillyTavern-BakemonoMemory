@@ -1,9 +1,24 @@
 import { helpGuideArticles, helpGuideCategories } from './help-guide-content.js';
 
+const searchableHelp = Object.entries(helpGuideArticles).map(([id, article]) => ({
+    id,
+    title: article.title.toLocaleLowerCase(),
+    text: [article.title, article.category, article.tag, article.lead, ...article.steps.flat(), ...(article.note || [])].join(' ').toLocaleLowerCase(),
+}));
+
+export function searchHelpArticles(query = '') {
+    const terms = String(query).trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) return [];
+    return searchableHelp.filter(article => terms.every(term => article.text.includes(term)))
+        .sort((a, b) => terms.filter(term => b.title.includes(term)).length - terms.filter(term => a.title.includes(term)).length)
+        .map(article => article.id);
+}
+
 export function createHelpGuide({ escapeHtml, documentRef = globalThis.document } = {}) {
     let activeCategory = 'start';
     let activeArticle = '';
     let boundRoot = null;
+    let searchQuery = '';
 
     function getArticleOrder() {
         if (activeCategory === 'manual') return helpGuideCategories.manual;
@@ -64,12 +79,22 @@ export function createHelpGuide({ escapeHtml, documentRef = globalThis.document 
             button.setAttribute('aria-pressed', String(isActive));
         });
 
+        const searching = !!searchQuery.trim();
+        const articleIds = searching ? searchHelpArticles(searchQuery) : helpGuideCategories[category];
+        const searchStatus = documentRef.getElementById('bakemono-memory-help-search-status');
+        if (searchStatus) searchStatus.textContent = searching
+            ? (articleIds.length ? `找到 ${articleIds.length} 篇说明 · 搜索全部分类` : '没有找到相关说明，试试“标签”“保存”或“向量”。')
+            : '可以搜索问题、功能名或错误代码';
+        const clearButton = documentRef.getElementById('bakemono-memory-help-search-clear');
+        if (clearButton) clearButton.hidden = !searching;
+        const cover = documentRef.querySelector('.bakemono-memory-help-cover');
+        if (cover) cover.hidden = searching;
         const list = documentRef.getElementById('bakemono-memory-help-list');
         if (list) {
-            list.innerHTML = helpGuideCategories[category].map(articleId => {
+            list.innerHTML = articleIds.map(articleId => {
                 const item = helpGuideArticles[articleId];
                 return `<button type="button" data-bakemono-help-article="${articleId}">
-                    <span>${escapeHtml(item.number)}</span><strong>${escapeHtml(item.title)}</strong><em>${escapeHtml(item.tag)}</em><i class="fa-solid fa-arrow-right"></i>
+                    <span>${escapeHtml(item.number)}</span><strong>${escapeHtml(item.title)}</strong><em>${escapeHtml(searching ? item.category : item.tag)}</em><i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
                 </button>`;
             }).join('');
         }
@@ -99,12 +124,24 @@ export function createHelpGuide({ escapeHtml, documentRef = globalThis.document 
     }
 
     function handleClick(event) {
+        const clearButton = event.target?.closest?.('#bakemono-memory-help-search-clear');
+        if (clearButton && boundRoot?.contains(clearButton)) {
+            searchQuery = '';
+            const input = documentRef.getElementById('bakemono-memory-help-search');
+            if (input) input.value = '';
+            render();
+            input?.focus?.({ preventScroll: true });
+            return;
+        }
         const categoryButton = event.target?.closest?.('[data-bakemono-help-category]');
         if (categoryButton && boundRoot?.contains(categoryButton)) {
             activeCategory = helpGuideCategories[categoryButton.dataset.bakemonoHelpCategory]
                 ? categoryButton.dataset.bakemonoHelpCategory
                 : 'start';
             activeArticle = '';
+            searchQuery = '';
+            const input = documentRef.getElementById('bakemono-memory-help-search');
+            if (input) input.value = '';
             render();
             return;
         }
@@ -117,11 +154,21 @@ export function createHelpGuide({ escapeHtml, documentRef = globalThis.document 
         if (backButton && boundRoot?.contains(backButton)) closeArticle();
     }
 
+    function handleInput(event) {
+        if (event.target?.id !== 'bakemono-memory-help-search' || !boundRoot?.contains(event.target) || event.isComposing) return;
+        searchQuery = event.target.value;
+        render();
+    }
+
     function bind(root) {
         if (boundRoot === root) return;
         boundRoot?.removeEventListener('click', handleClick);
+        boundRoot?.removeEventListener('input', handleInput);
+        boundRoot?.removeEventListener('compositionend', handleInput);
         boundRoot = root || null;
         boundRoot?.addEventListener('click', handleClick);
+        boundRoot?.addEventListener('input', handleInput);
+        boundRoot?.addEventListener('compositionend', handleInput);
     }
 
     return { bind, closeArticle, openArticle, render };
