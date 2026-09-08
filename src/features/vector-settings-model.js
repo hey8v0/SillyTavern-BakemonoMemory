@@ -61,7 +61,7 @@ export function createVectorSettingsModel({
             customApi: {
                 baseUrl: String(query('#bakemono-memory-vector-base-url').val() || '').trim(),
                 apiKey: String(query('#bakemono-memory-vector-api-key').val() || '').trim(),
-                model: String(query('#bakemono-memory-vector-model').val() || defaultVectorMemory.customApi.model).trim(),
+                model: String(query('#bakemono-memory-vector-model').val() || '').trim(),
                 models: Array.isArray(state.vectorMemory?.customApi?.models) ? state.vectorMemory.customApi.models : [],
             },
             records: previousRecords,

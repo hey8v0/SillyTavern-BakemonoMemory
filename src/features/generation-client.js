@@ -12,6 +12,7 @@ export function createGenerationClient({
     getCustomModelsUrl,
     extractCustomModelIds,
     renderCustomModelOptions,
+    formatApiFailure = response => `接口请求失败：${response.status} ${response.statusText}`,
 } = {}) {
     async function callGenerationModel({ prompt, systemPrompt }) {
         const state = ensureState();
@@ -46,7 +47,7 @@ export function createGenerationClient({
             }),
         });
         if (!response.ok) {
-            throw new Error(`自定义 API 请求失败：${response.status} ${response.statusText}`);
+            throw new Error(formatApiFailure(response, '自定义 API 请求失败'));
         }
         if (stream) {
             return await readOpenAIStream(response);
@@ -67,33 +68,33 @@ export function createGenerationClient({
         const decoder = new TextDecoder();
         let buffer = '';
         let content = '';
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-                break;
+        function readLine(line) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) return;
+            const payload = trimmed.slice(5).trim();
+            if (!payload || payload === '[DONE]') return;
+            let data;
+            try { data = JSON.parse(payload); } catch {
+                if (/^[{[]/.test(payload)) throw new Error('自定义 API 流式数据不完整或格式错误，本次未作为完整摘要保存。');
+                return; // Non-JSON keep-alive messages from compatible proxies.
             }
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split(/\r?\n/);
-            buffer = lines.pop() || '';
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed || !trimmed.startsWith('data:')) {
-                    continue;
-                }
-                const payload = trimmed.slice(5).trim();
-                if (!payload || payload === '[DONE]') {
-                    continue;
-                }
-                try {
-                    const data = JSON.parse(payload);
-                    content += data?.choices?.[0]?.delta?.content
-                        || data?.choices?.[0]?.message?.content
-                        || data?.choices?.[0]?.text
-                        || '';
-                } catch {
-                    // Some proxies send keep-alive chunks that are not JSON.
-                }
+            if (data?.error) throw new Error('自定义 API 流式响应返回错误；本次未作为完整摘要保存，请检查服务商额度或重试。');
+            content += data?.choices?.[0]?.delta?.content
+                || data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text || '';
+        }
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split(/\r?\n/);
+                buffer = lines.pop() || '';
+                for (const line of lines) readLine(line);
             }
+            buffer += decoder.decode();
+            for (const line of buffer.split(/\r?\n/)) readLine(line);
+        } finally {
+            reader.releaseLock();
         }
         if (!content.trim()) {
             throw new Error('自定义 API 流式响应没有返回可用内容。');
@@ -121,9 +122,12 @@ export function createGenerationClient({
                 },
             });
             if (!response.ok) {
-                throw new Error(`拉取模型失败：${response.status} ${response.statusText}`);
+                throw new Error(formatApiFailure(response, '拉取模型失败'));
             }
             const data = await response.json();
+            if (ensureState() !== state || state.automation.customApi !== config) {
+                throw new Error('聊天或接口配置已切换，请在当前配置重新拉取模型。');
+            }
             const models = extractCustomModelIds(data);
             if (!models.length) {
                 throw new Error('接口返回里没有找到模型 ID。');

@@ -30,6 +30,7 @@ export function createWorkbenchActionController({
     testVectorMemoryRetrieval,
     persistVectorMemoryFieldsFromUi,
     fetchVectorEmbeddingModels,
+    testEmbeddingConnection,
     fetchVectorQueryModels,
     clearVectorMemoryIndex,
     runVisibleOperation,
@@ -93,6 +94,8 @@ export function createWorkbenchActionController({
             await runVisibleOperation('正在建立/刷新向量索引...', () => buildVectorMemoryIndex(), '向量索引已刷新');
         } else if (action === 'vector-test') {
             await runVisibleOperation('正在测试向量召回...', () => testVectorMemoryRetrieval(), '召回测试已完成');
+        } else if (action === 'vector-test-embedding') {
+            await runVisibleOperation('正在验证嵌入接口...', () => testEmbeddingConnection(), '嵌入接口验证通过');
         } else if (action === 'vector-fetch-models') {
             persistVectorMemoryFieldsFromUi();
             await runVisibleOperation('正在拉取嵌入向量模型...', () => fetchVectorEmbeddingModels(), '嵌入模型列表已更新');

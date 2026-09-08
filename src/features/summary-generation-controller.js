@@ -1,3 +1,35 @@
+export function inspectSummaryMaterials(blocks = []) {
+    const invalid = [];
+    let textLength = 0;
+    for (const [index, block] of blocks.entries()) {
+        const raw = String(block?.content || '');
+        let text = raw.replace(/<(script|style|thinking)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
+        // HTML disclosure headings are not story content. A custom <summary> body may be.
+        if (/<details\b/i.test(text)) text = text.replace(/<summary\b[^>]*>[\s\S]*?<\/summary>/gi, '');
+        text = text.replace(/<[^>]*>/g, '').replace(/&(?:nbsp|#160|#xA0);/gi, ' ').trim();
+        const meaningful = text.replace(/[\s\p{P}\p{S}]/gu, '');
+        if (!meaningful || /^(?:剧情摘要|摘要|阶段总结|总结|剧集终了点击回看)$/.test(meaningful)) {
+            invalid.push(Number.isFinite(block?.messageId) && block.messageId < Number.MAX_SAFE_INTEGER ? `第 ${block.messageId} 楼` : `第 ${index + 1} 条材料`);
+        }
+        textLength += text.length;
+    }
+    return { count: blocks.length, textLength, invalid };
+}
+
+function validateSummaryMaterials(blocks) {
+    const report = inspectSummaryMaterials(blocks);
+    if (!report.count || report.invalid.length) {
+        throw new Error(`${report.invalid.slice(0, 8).join('、') || '当前范围'}没有有效剧情内容，已停止生成。请检查“扫描与识别”的读取标签：HTML 的 summary 常常只是标题，应读取包含摘要正文的外层标签；也可检查原摘要是否为空。`);
+    }
+    return report;
+}
+
+export function getSummaryMaterialPreview(blocks = []) {
+    const report = inspectSummaryMaterials(blocks);
+    const preview = blocks.slice(0, 2).map((block, index) => `${index + 1}. ${String(block.content || '').slice(0, 220)}${String(block.content || '').length > 220 ? '…' : ''}`).join('\n');
+    return `材料检查：${report.count} 条，正文约 ${report.textLength} 字。\n实际材料开头（最多前两条，完整材料仍会发送）：\n${preview}`;
+}
+
 export function createSummaryGenerationController({
     getIsBusy,
     scanBlocks,
@@ -44,15 +76,27 @@ export function createSummaryGenerationController({
     }
 
     function buildStageUserPrompt(blocks) {
+        validateSummaryMaterials(blocks);
         return renderGenerationPrompt(getState().generationPrompts.stage, blocks);
     }
 
     function buildEpicUserPrompt(blocks) {
+        validateSummaryMaterials(blocks);
         return renderGenerationPrompt(getState().generationPrompts.epic, blocks);
     }
 
     function buildStoryUserPrompt(blocks, context = {}) {
         return renderGenerationPrompt(getState().generationPrompts.story || defaultStoryGenerationPrompt, blocks, context);
+    }
+
+    function reportNoStageMaterials(state) {
+        const excluded = getStageSourceMode() === 'backfill'
+            && getStoryMaterialBlocks('summaries').some(block => !state.coveredBlockHashes.includes(block.hash));
+        const message = excluded
+            ? '当前选择“仅插件已保存摘要”，正文标签摘要未被纳入。请将“阶段材料”改为“正文标签 + 插件摘要”，无需删除原文或重新补课。'
+            : '没有新的剧情摘要需要生成阶段总结。';
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, message);
+        toastr.info(message);
     }
 
     function confirmStageContinuity(targets, { automatic = false } = {}) {
@@ -87,14 +131,14 @@ export function createSummaryGenerationController({
         const state = getState();
         const allTargets = getUnsummarizedStoryBlocks();
         if (!allTargets.length) {
-            renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有新的剧情摘要需要生成阶段总结。');
-            toastr.info('没有新的剧情摘要需要生成阶段总结。');
+            reportNoStageMaterials(state);
             return;
         }
         let targetConfig = state.generationTargets.stage;
         if (!options.automatic) {
             readGenerationTargetSettings();
             targetConfig = await promptGenerationTargetSelection('stage', allTargets.length);
+            if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
             if (!targetConfig) {
                 renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消阶段总结生成。');
                 return;
@@ -111,6 +155,7 @@ export function createSummaryGenerationController({
         if (!confirmStageContinuity(targets, { automatic: !!options.automatic })) {
             return;
         }
+        validateSummaryMaterials(targets);
         if (!options.automatic && !confirmGenerationTargets('stage', targets, allTargets.length)) {
             return;
         }
@@ -148,12 +193,12 @@ export function createSummaryGenerationController({
         readGenerationTargetSettings();
         const allTargets = getUnsummarizedStoryBlocks();
         if (!allTargets.length) {
-            renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有新的剧情摘要需要生成阶段总结。');
-            toastr.info('没有新的剧情摘要需要生成阶段总结。');
+            reportNoStageMaterials(state);
             return;
         }
 
         const targetConfig = await promptGenerationTargetSelection('stage', allTargets.length, { batch: true });
+        if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
         if (!targetConfig) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量阶段总结。');
             return;
@@ -172,11 +217,14 @@ export function createSummaryGenerationController({
             return;
         }
 
+        const materialReport = validateSummaryMaterials(batches.flat());
         const totalTargets = batches.reduce((sum, batch) => sum + batch.length, 0);
         const confirmed = confirmDanger(
             `加入 ${batches.length} 个阶段总结批次任务？`,
             [
                 `将覆盖 ${totalTargets}/${allTargets.length} 个普通摘要。`,
+                `有效材料约 ${materialReport.textLength} 字（已排除 HTML 标题和标签计数）。`,
+                getSummaryMaterialPreview(batches.flat()),
                 `每批最多 ${Math.max(1, Number(config.count || defaultGenerationTargets.stage.count))} 个摘要。`,
                 '生成结果会进入待确认草稿，不会自动保存。',
             ],
@@ -236,6 +284,7 @@ export function createSummaryGenerationController({
         if (!options.automatic) {
             readGenerationTargetSettings();
             targetConfig = await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length || allStoryFallback.length);
+            if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
             if (!targetConfig) {
                 renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消多次总结生成。');
                 return;
@@ -254,6 +303,7 @@ export function createSummaryGenerationController({
             return;
         }
 
+        validateSummaryMaterials(targets);
         if (!options.automatic) {
             const latestEpicAt = state.epicSummaries.at(-1)?.createdAt;
             const confirmed = confirm([
@@ -263,6 +313,7 @@ export function createSummaryGenerationController({
                 `多次总结来源：${multiTargets.length}/${allMultiTargets.length} 个`,
                 `普通摘要 fallback：${storyFallback.length}/${allStoryFallback.length} 个`,
                 `当前范围：${getTargetSelectionLabel('epic', targets.length, sourcePoolSize)}`,
+                getSummaryMaterialPreview(targets),
                 `上次多次总结：${latestEpicAt ? new Date(latestEpicAt).toLocaleString() : '尚未生成'}`,
                 '',
                 '这只会生成待确认草稿，确认保存后才会写入长期记忆。继续吗？',
@@ -274,6 +325,7 @@ export function createSummaryGenerationController({
         }
 
         const prompt = buildEpicUserPrompt(targets);
+        const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
         enqueueSummaryTask({
             kind: blockTypes.EPIC,
             label: `${getMultiSummaryLabel(nextLevel)} · ${targets.length} 个片段`,
@@ -281,13 +333,13 @@ export function createSummaryGenerationController({
             systemPrompt: buildEpicSystemPrompt(),
             sourceHashes: targets.map(block => block.hash),
             sourceStageHashes: targets.filter(block => block.type === blockTypes.STAGE || block.type === blockTypes.EPIC).map(block => block.hash),
-            sourceMessageIds: unique(targets.map(block => block.messageId).filter(Number.isFinite)),
+            sourceMessageIds,
             trigger: options.automatic ? 'auto' : 'manual',
             metadata: {
-                sourceRange: formatSourceRange(targets.map(block => block.messageId)),
-                sourceStart: getSourceStart(targets.map(block => block.messageId)),
-                sourceEnd: getSourceEnd(targets.map(block => block.messageId)),
-                sourceSortKey: getSourceStart(targets.map(block => block.messageId)),
+                sourceRange: formatSourceRange(sourceMessageIds),
+                sourceStart: getSourceStart(sourceMessageIds),
+                sourceEnd: getSourceEnd(sourceMessageIds),
+                sourceSortKey: getSourceStart(sourceMessageIds),
                 level: nextLevel,
                 selectionLabel: getTargetSelectionLabel('epic', targets.length, sourcePoolSize),
             },
@@ -313,6 +365,7 @@ export function createSummaryGenerationController({
         }
 
         const targetConfig = await promptGenerationTargetSelection('epic', sourceBlocks.length, { batch: true });
+        if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
         if (!targetConfig) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量多次总结。');
             return;
@@ -326,11 +379,14 @@ export function createSummaryGenerationController({
             return;
         }
 
+        const materialReport = validateSummaryMaterials(batches.flat());
         const totalTargets = batches.reduce((sum, batch) => sum + batch.length, 0);
         const confirmed = confirmDanger(
             `加入 ${batches.length} 个多次总结批次任务？`,
             [
                 `将覆盖 ${totalTargets}/${sourceBlocks.length} 个阶段/多次材料。`,
+                `有效材料约 ${materialReport.textLength} 字（已排除 HTML 标题和标签计数）。`,
+                getSummaryMaterialPreview(batches.flat()),
                 `每批最多 ${Math.max(1, Number(config.count || defaultGenerationTargets.epic.count))} 个材料。`,
                 '建议先确认并保存已有阶段总结，再批量生成多次总结。',
                 '生成结果会进入待确认草稿，不会自动保存。',

@@ -15,6 +15,7 @@ export function createSummaryTargetController({
     confirmDanger,
     getSourceMessageIdsFromBlocks,
     formatSourceRange,
+    getSummaryMaterialPreview = () => '',
     renderWorkbenchScope,
     workbenchRenderScopes,
 } = {}) {
@@ -321,6 +322,7 @@ export function createSummaryTargetController({
             [
                 `本次范围：${getTargetSelectionLabel(kind, targets.length, totalLength)}`,
                 `来源：${formatSourceRange(sourceMessageIds)}`,
+                getSummaryMaterialPreview(targets),
                 '生成结果会先进入草稿箱，确认保存后才会写入长期记忆。',
             ],
             '确认生成吗？',

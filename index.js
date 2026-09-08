@@ -26,7 +26,7 @@ import { findMatchingTable, mergeTableSchemaWithRows, normalizeImportedTablesFro
 import { defaultGenerationTargets, findTargetContinuityGaps, getSortedTargetBlocks, parseLooseNumberRange, partitionGenerationTargets, selectGenerationTargets, targetSelectionModes } from './src/summary/target-selection.js';
 import { cosineSimilarity, createLocalEmbedding } from './src/vector/math.js';
 import { computeHybridRerankScore, selectHybridCandidates } from './src/vector/hybrid-retrieval.js';
-import { extractCustomModelIds, getCustomChatCompletionsUrl, getCustomEmbeddingsUrl, getCustomModelsUrl, normalizeCustomApiBaseUrl } from './src/vector/provider-config.js';
+import { extractCustomModelIds, extractEmbeddingModelCandidates, formatApiFailure, getCustomChatCompletionsUrl, getCustomEmbeddingsUrl, getCustomModelsUrl, normalizeCustomApiBaseUrl } from './src/vector/provider-config.js';
 import { extractChatCompletionText, parseVectorQueryRewritePayload } from './src/vector/query-parser.js';
 import { compactEmbedding, getClippedVectorText, slimVectorMemoryForSave } from './src/vector/storage.js';
 import { createPromptInspector } from './src/features/prompt-inspector.js';
@@ -60,7 +60,7 @@ import { createSummaryDraftService } from './src/features/summary-draft-service.
 import { createContentBlockService } from './src/features/content-block-service.js';
 import { createScanController } from './src/features/scan-controller.js';
 import { createSummaryPreviewRenderer } from './src/features/summary-preview-renderer.js';
-import { createSummaryGenerationController } from './src/features/summary-generation-controller.js';
+import { createSummaryGenerationController, getSummaryMaterialPreview } from './src/features/summary-generation-controller.js';
 import { createSummaryBackfillController } from './src/features/summary-backfill-controller.js';
 import { createConfigurationService } from './src/features/configuration-service.js';
 import { createConfigurationController } from './src/features/configuration-controller.js';
@@ -1094,6 +1094,7 @@ const {
 } = memoryRecordsUi;
 
 const vectorMemoryService = createVectorMemoryService({
+    formatApiFailure,
     defaultVectorMemory,
     getState: ensureState,
     normalizeLineEndings,
@@ -1169,6 +1170,9 @@ const {
 } = vectorWorkbenchUi;
 
 const vectorActionsController = createVectorActionsController({
+    fetchCustomEmbedding: (...args) => vectorMemoryService.fetchCustomEmbedding(...args),
+    extractEmbeddingModelCandidates,
+    formatApiFailure,
     query: $,
     getState: ensureState,
     readVectorMemoryFieldsFromUi,
@@ -1195,6 +1199,7 @@ const {
     clearVectorMemoryIndex,
     fetchVectorEmbeddingModels,
     fetchVectorQueryModels,
+    testEmbeddingConnection,
     testVectorMemoryRetrieval,
 } = vectorActionsController;
 
@@ -1610,6 +1615,7 @@ const {
 } = workbenchPageOverviews;
 
 const generationClient = createGenerationClient({
+    formatApiFailure,
     query: $,
     ensureState,
     generateRaw,
@@ -1859,6 +1865,7 @@ const {
 } = memoryOrchestrator;
 
 const summaryTargetController = createSummaryTargetController({
+    getSummaryMaterialPreview,
     query: $,
     getState: ensureState,
     defaultGenerationTargets,
@@ -1890,6 +1897,7 @@ const {
 } = summaryTargetController;
 
 const summaryTaskQueue = createSummaryTaskQueue({
+    getTaskSourceSignature: task => JSON.stringify((task.sourceMessageIds || []).map(id => [id, chat[id] ? getMessageVariantKey(chat[id]) : null, getHash(chat[id]?.mes || '')])),
     getState: ensureState,
     getHash,
     getKindLabel,
@@ -2008,6 +2016,7 @@ workbenchRenderer = createWorkbenchRenderer({
 });
 
 const workbenchActionController = createWorkbenchActionController({
+    testEmbeddingConnection,
     workbenchRenderScopes,
     scanBakemonoBlocks,
     chooseStageGenerationMode,

@@ -1,4 +1,4 @@
-import { formatSourceRange, getSourceEnd, getSourceStart } from '../summary/source-metadata.js';
+import { formatSourceRange, getSourceEnd, getSourceStart, getSourceMessageIdsFromBlocks } from '../summary/source-metadata.js';
 
 export function migrateStagePromptTimeSpan(prompt, fallback = '') {
     const migrated = String(prompt || fallback)
@@ -43,7 +43,7 @@ export function formatBlocksForPrompt(blocks, context = {}) {
         context.suggestedTitle ? `推荐标题：${context.suggestedTitle}` : '',
     ].filter(Boolean).join('\n');
     const body = blocks.map((block, index) => {
-        const messageLabel = Number.isFinite(block.messageId) ? `message ${block.messageId}` : 'message unknown';
+        const messageLabel = Number.isFinite(block.messageId) && block.messageId < Number.MAX_SAFE_INTEGER ? `message ${block.messageId}` : formatSourceRange(getSourceMessageIdsFromBlocks([block]));
         return `--- #${index + 1} | ${messageLabel} | ${block.title} ---\n${block.content}`;
     }).join('\n\n');
     return [header, body].filter(Boolean).join('\n\n');
@@ -56,13 +56,14 @@ export function renderGenerationPrompt(template, blocks, context = {}) {
         return blockText;
     }
     const hadBlocksPlaceholder = prompt.includes('{{blocks}}');
-    const sourceStart = context.sourceStart ?? getSourceStart(blocks.map(block => block.messageId));
-    const sourceEnd = context.sourceEnd ?? getSourceEnd(blocks.map(block => block.messageId));
+    const sourceIds = getSourceMessageIdsFromBlocks(blocks);
+    const sourceStart = context.sourceStart ?? getSourceStart(sourceIds);
+    const sourceEnd = context.sourceEnd ?? getSourceEnd(sourceIds);
     const replacements = {
         blocks: blockText,
         batchIndex: context.batchIndex ?? '',
         batchTotal: context.batchTotal ?? '',
-        sourceRange: context.sourceRange || formatSourceRange(blocks.map(block => block.messageId)),
+        sourceRange: context.sourceRange || formatSourceRange(sourceIds),
         startFloor: Number.isFinite(sourceStart) && sourceStart < Number.MAX_SAFE_INTEGER ? sourceStart : '未知',
         endFloor: Number.isFinite(sourceEnd) && sourceEnd < Number.MAX_SAFE_INTEGER ? sourceEnd : '未知',
         suggestedTitle: context.suggestedTitle || '',

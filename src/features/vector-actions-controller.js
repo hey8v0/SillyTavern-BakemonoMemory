@@ -6,12 +6,15 @@ export function createVectorActionsController({
     normalizeCustomApiBaseUrl,
     getCustomModelsUrl,
     extractCustomModelIds,
+    extractEmbeddingModelCandidates = extractCustomModelIds,
+    formatApiFailure = response => `拉取模型失败：${response.status} ${response.statusText}`,
     renderVectorModelOptions,
     renderVectorQueryModelOptions,
     toastr,
     getVectorSourceSignature,
     markVectorIndexDirty,
     retrieveVectorMemoryHits,
+    fetchCustomEmbedding,
     syncInjection,
     renderWorkbenchScope,
     workbenchRenderScopes,
@@ -20,6 +23,25 @@ export function createVectorActionsController({
     confirmDanger,
     fetchImpl = globalThis.fetch,
 } = {}) {
+    async function testEmbeddingConnection() {
+        const state = ensureState();
+        readVectorMemoryFieldsFromUi(state);
+        persistSharedConfigurationFromState(state);
+        const config = state.vectorMemory.customApi;
+        try {
+            // A fixed tiny sample verifies capability without transmitting chat content.
+            const embedding = await fetchCustomEmbedding('连接测试', state);
+            if (ensureState() !== state || state.vectorMemory.customApi !== config) {
+                throw new Error('测试期间配置或聊天已切换，请在当前配置重新测试。');
+            }
+            toastr.success(`嵌入接口测试通过：返回 ${embedding.length} 维向量。未发送聊天正文，也未修改索引。`);
+            return true;
+        } catch (error) {
+            toastr.error(error instanceof TypeError ? '连接失败：可能是网络、证书或跨域限制，请检查服务商是否允许浏览器直连。' : error?.message || String(error), '嵌入接口测试失败');
+            return false;
+        }
+    }
+
     async function fetchVectorEmbeddingModels() {
         const state = ensureState();
         readVectorMemoryFieldsFromUi(state);
@@ -40,21 +62,20 @@ export function createVectorActionsController({
                 },
             });
             if (!response.ok) {
-                throw new Error(`拉取模型失败：${response.status} ${response.statusText}`);
+                throw new Error(formatApiFailure(response, '拉取模型失败'));
             }
             const data = await response.json();
-            const models = extractCustomModelIds(data);
+            if (ensureState() !== state || state.vectorMemory.customApi !== config) {
+                throw new Error('聊天或向量配置已切换，请在当前配置重新拉取模型。');
+            }
+            const models = extractEmbeddingModelCandidates(data);
             if (!models.length) {
                 throw new Error('接口返回里没有找到模型 ID。');
             }
             state.vectorMemory.customApi.models = models;
-            if (!String(state.vectorMemory.customApi.model || '').trim()) {
-                state.vectorMemory.customApi.model = state.vectorMemory.customApi.models[0];
-                query('#bakemono-memory-vector-model').val(state.vectorMemory.customApi.model);
-            }
             renderVectorModelOptions(state.vectorMemory.customApi.models);
             persistSharedConfigurationFromState(state);
-            toastr.success(`已拉取 ${state.vectorMemory.customApi.models.length} 个嵌入向量模型。`);
+            toastr.success(`已拉取 ${models.length} 个模型候选；名称筛选不代表能力验证，请选择服务商支持的嵌入模型，也可手动填写。`);
             return true;
         } catch (error) {
             toastr.error(error?.message || String(error), '嵌入向量模型拉取失败');
@@ -85,9 +106,12 @@ export function createVectorActionsController({
                 },
             });
             if (!response.ok) {
-                throw new Error(`拉取模型失败：${response.status} ${response.statusText}`);
+                throw new Error(formatApiFailure(response, '拉取模型失败'));
             }
             const data = await response.json();
+            if (ensureState() !== state || state.vectorMemory.queryCustomApi !== queryConfig || state.vectorMemory.customApi !== embeddingConfig) {
+                throw new Error('聊天或改写配置已切换，请在当前配置重新拉取模型。');
+            }
             const models = extractCustomModelIds(data);
             if (!models.length) {
                 throw new Error('接口返回里没有找到模型 ID。');
@@ -160,8 +184,9 @@ export function createVectorActionsController({
             renderWorkbenchScope(workbenchRenderScopes.VECTOR, '向量记忆尚未建立索引。');
             return false;
         }
-        const query = String(query('#bakemono-memory-vector-test-query').val() || '').trim();
-        const hits = await retrieveVectorMemoryHits(query, state);
+        const queryText = String(query('#bakemono-memory-vector-test-query').val() || '').trim();
+        const hits = await retrieveVectorMemoryHits(queryText, state);
+        if (ensureState() !== state) return false;
         saveState();
         syncInjection();
         renderWorkbenchScope(workbenchRenderScopes.VECTOR, hits.length ? `向量召回完成：命中 ${hits.length} 条记忆。` : (state.vectorMemory.lastRecallSkippedReason || '向量召回完成：没有命中。'));
@@ -193,6 +218,7 @@ export function createVectorActionsController({
     return {
         bind,
         fetchVectorEmbeddingModels,
+        testEmbeddingConnection,
         fetchVectorQueryModels,
         applyVectorMemorySettings,
         persistVectorEnabledFromUi,

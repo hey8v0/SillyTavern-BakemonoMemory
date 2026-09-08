@@ -480,8 +480,8 @@
           <label class="bakemono-memory-field">
             <span>阶段材料</span>
             <select id="bakemono-memory-stage-source-mode" class="text_pole">
-              <option value="summaries">摘要总结模式</option>
-              <option value="backfill">插件补课摘要</option>
+              <option value="summaries">正文标签 + 插件摘要</option>
+              <option value="backfill">仅插件已保存摘要</option>
               <option value="raw">普通正文总结</option>
               <option value="mixed">混合材料</option>
               <option value="auto">自动选择</option>
@@ -1826,6 +1826,10 @@
             <button type="button" class="menu_button" data-bakemono-action="vector-fetch-models">
               <i class="fa-solid fa-cloud-arrow-down"></i>
               <span>拉取模型</span>
+            </button>
+            <button type="button" class="menu_button" data-bakemono-action="vector-test-embedding" title="发送一条固定短文本验证向量能力，可能产生极少量 API 用量；不会发送聊天正文">
+              <i class="fa-solid fa-plug"></i>
+              <span>测试嵌入接口</span>
             </button>
           </div>
           </div>

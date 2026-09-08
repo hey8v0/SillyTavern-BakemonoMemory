@@ -42,6 +42,7 @@ export function createVectorMemoryService({
     countKeywordHits,
     selectHybridCandidates,
     fetchImpl = globalThis.fetch,
+    formatApiFailure = response => `嵌入向量接口请求失败：${response.status} ${response.statusText}`,
     setTimer = globalThis.setTimeout,
     clearTimer = globalThis.clearTimeout,
 } = {}) {
@@ -188,7 +189,7 @@ export function createVectorMemoryService({
                 }),
             });
             if (!response.ok) {
-                throw new Error(`查询重写请求失败：${response.status} ${response.statusText}`);
+                throw new Error(formatApiFailure(response, '查询重写请求失败'));
             }
             const data = await response.json();
             const content = extractChatCompletionText(data);
@@ -377,6 +378,7 @@ export function createVectorMemoryService({
     
     function getVectorSourceSignature(state = ensureState()) {
         return [
+            getEmbeddingSpaceKey(state),
             ...getVectorSourceMessages(state)
                 .map(({ message, messageId, cleanedText, summaryText }) => `${messageId}:${getMessageVariantKey(message)}:${getHash(cleanedText || '')}:${getHash(summaryText || '')}`),
             ...getVectorSavedSummarySources(state)
@@ -473,22 +475,25 @@ export function createVectorMemoryService({
         }, 1200);
     }
     
+    function getEmbeddingSpaceKey(state) {
+        const config = state.vectorMemory;
+        return JSON.stringify(['embedding-v2', config.embeddingProvider || 'local',
+            config.embeddingProvider === 'custom-openai' ? getCustomEmbeddingsUrl(config.customApi?.baseUrl || 'http://unconfigured.invalid') : '',
+            config.customApi?.model || '', config.embeddingDimensions || defaultVectorMemory.embeddingDimensions]);
+    }
+
     async function getEmbeddingForText(text, state = ensureState()) {
         const source = String(text || '');
-        const cacheKey = `${state.vectorMemory.embeddingProvider || 'local'}:${state.vectorMemory.customApi?.model || ''}:${getHash(source)}`;
+        const cacheKey = `${getEmbeddingSpaceKey(state)}:${getHash(source)}`;
         if (Array.isArray(vectorEmbeddingRuntimeCache.get(cacheKey))) {
             return vectorEmbeddingRuntimeCache.get(cacheKey);
         }
         const dimensions = Math.max(32, Number(state.vectorMemory.embeddingDimensions || defaultVectorMemory.embeddingDimensions));
         if (state.vectorMemory.embeddingProvider === 'custom-openai') {
-            try {
-                const embedding = compactEmbedding(await fetchCustomEmbedding(source, state), dimensions);
-                vectorEmbeddingRuntimeCache.set(cacheKey, embedding);
-                pruneVectorRuntimeCache();
-                return embedding;
-            } catch (error) {
-                console.warn('[BakemonoMemory] custom embedding failed, fallback to local', error);
-            }
+            const embedding = compactEmbedding(await fetchCustomEmbedding(source, state), dimensions);
+            vectorEmbeddingRuntimeCache.set(cacheKey, embedding);
+            pruneVectorRuntimeCache();
+            return embedding;
         }
         const embedding = compactEmbedding(createLocalEmbedding(source, dimensions), dimensions);
         vectorEmbeddingRuntimeCache.set(cacheKey, embedding);
@@ -500,7 +505,7 @@ export function createVectorMemoryService({
         const config = state.vectorMemory.customApi || {};
         const baseUrl = normalizeCustomApiBaseUrl(config.baseUrl);
         const apiKey = String(config.apiKey || '').trim();
-        const model = String(config.model || defaultVectorMemory.customApi.model).trim();
+        const model = String(config.model || '').trim();
         if (!baseUrl || !model) {
             throw new Error('嵌入向量接口需要填写接口地址和模型。');
         }
@@ -513,12 +518,12 @@ export function createVectorMemoryService({
             body: JSON.stringify({ model, input: text }),
         });
         if (!response.ok) {
-            throw new Error(`嵌入向量接口请求失败：${response.status} ${response.statusText}`);
+            throw new Error(formatApiFailure(response, '嵌入向量接口请求失败'));
         }
         const data = await response.json();
         const embedding = data?.data?.[0]?.embedding;
-        if (!Array.isArray(embedding)) {
-            throw new Error('嵌入向量接口没有返回向量结果。');
+        if (!Array.isArray(embedding) || !embedding.length || !embedding.every(value => typeof value === 'number' && Number.isFinite(value))) {
+            throw new Error('嵌入向量接口没有返回有效数值向量，请确认模型支持 embeddings。');
         }
         return embedding.map(Number);
     }
@@ -625,6 +630,9 @@ export function createVectorMemoryService({
             });
         }
     
+        if (ensureState() !== state || signature !== getVectorSourceSignature(state)) {
+            throw new Error('聊天、正文或向量配置已变化，本次索引未覆盖原索引，请在当前聊天重新建立索引。');
+        }
         state.vectorMemory.records = records;
         state.vectorMemory.embeddingCache = {};
         state.vectorMemory.lastIndexAt = new Date().toISOString();
@@ -632,6 +640,7 @@ export function createVectorMemoryService({
         state.vectorMemory.dirty = false;
         state.vectorMemory.dirtyReason = '';
         await retrieveVectorMemoryHits('', state);
+        if (ensureState() !== state) return records;
         saveState();
         syncInjection();
         renderWorkbenchScope(workbenchRenderScopes.VECTOR, silent ? '' : `向量索引完成：${records.length} 个原文片段。`);
@@ -644,6 +653,10 @@ export function createVectorMemoryService({
     async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState()) {
         if (!state.vectorMemory?.enabled || !Array.isArray(state.vectorMemory.records) || !state.vectorMemory.records.length) {
             return clearVectorRecall('', state);
+        }
+        const signature = getVectorSourceSignature(state);
+        if (state.vectorMemory.lastIndexedSignature !== signature) {
+            return clearVectorRecall('正文或向量配置已变化，请先建立/刷新索引，避免混用旧向量。', state);
         }
         const minAiMessages = Math.max(0, Number(state.vectorMemory.startAfterAiMessages || 0));
         if (minAiMessages > 0 && getAssistantMessageCount() < minAiMessages) {
@@ -662,16 +675,27 @@ export function createVectorMemoryService({
         try {
             queries = await prepareVectorQueries(explicitQuery, state);
         } catch (error) {
+            if (ensureState() !== state) return [];
             console.warn('[BakemonoMemory] vector query rewrite failed', error);
             return clearVectorRecall(`查询重写失败，本轮不召回：${error?.message || error}`, state);
         }
+        if (ensureState() !== state) return [];
         if (!queries.length) {
             return clearVectorRecall('查询重写没有生成有效检索句，本轮不召回。', state);
         }
     
         const queryEmbeddings = [];
-        for (const query of queries) {
-            queryEmbeddings.push(await getEmbeddingForText(query, state));
+        try {
+            for (const query of queries) {
+                queryEmbeddings.push(await getEmbeddingForText(query, state));
+            }
+        } catch (error) {
+            if (ensureState() !== state) return [];
+            return clearVectorRecall(`嵌入请求失败，本轮未使用旧召回：${error?.message || error}`, state);
+        }
+        if (ensureState() !== state) return [];
+        if (signature !== getVectorSourceSignature(state)) {
+            return clearVectorRecall('召回期间正文或配置发生变化，请刷新索引后重试。', state);
         }
         const keywords = parseList(state.vectorMemory.keywordTriggers);
         const embeddingThreshold = Math.max(0, Number(state.vectorMemory.embeddingThreshold ?? state.vectorMemory.minScore ?? defaultVectorMemory.embeddingThreshold));

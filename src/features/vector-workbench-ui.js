@@ -47,7 +47,7 @@ export function createVectorWorkbenchUi({
         query('#bakemono-memory-vector-provider').val(state.vectorMemory.embeddingProvider || defaultVectorMemory.embeddingProvider);
         query('#bakemono-memory-vector-base-url').val(state.vectorMemory.customApi?.baseUrl || '');
         query('#bakemono-memory-vector-api-key').val(state.vectorMemory.customApi?.apiKey || '');
-        query('#bakemono-memory-vector-model').val(state.vectorMemory.customApi?.model || defaultVectorMemory.customApi.model);
+        query('#bakemono-memory-vector-model').val(state.vectorMemory.customApi?.model || '');
         renderVectorModelOptions(state.vectorMemory.customApi?.models || []);
         const messageRecordCount = unique((state.vectorMemory.records || []).map(record => String(record.messageId))).length;
         const bodyRecordCount = (state.vectorMemory.records || []).filter(record => record.kind !== 'summary').length;

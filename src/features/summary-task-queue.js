@@ -22,8 +22,10 @@ export function createSummaryTaskQueue({
     switchWorkbenchTab,
     confirmDanger,
     historyState,
+    getTaskSourceSignature = () => '',
 } = {}) {
     let isQueueRunning = false;
+    let runVersion = 0;
     const cancelledQueueTaskIds = new Set();
     function enqueueSummaryTask({ kind, prompt, systemPrompt, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], trigger = 'manual', label = '', metadata = {}, autoStart = true, silent = false }) {
         const state = ensureState();
@@ -43,6 +45,7 @@ export function createSummaryTaskQueue({
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
         };
+        task.metadata = { ...metadata, sourceFingerprint: getTaskSourceSignature(task) };
         state.taskQueue.push(task);
         saveState();
         if (!silent) {
@@ -61,12 +64,15 @@ export function createSummaryTaskQueue({
         }
     
         isQueueRunning = true;
+        const run = ++runVersion;
+        const isCurrentRun = () => run === runVersion && ensureState() === state;
         setBusy(true);
         const toast = toastr.info('正在处理总结任务队列...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
         let createdDrafts = 0;
         let autoCommitted = 0;
         try {
             while (true) {
+                if (!isCurrentRun()) return;
                 const task = state.taskQueue.find(item => item.status === 'queued');
                 if (!task) {
                     break;
@@ -78,10 +84,23 @@ export function createSummaryTaskQueue({
                 renderTaskQueueProgress(`正在处理任务：${task.label}`);
     
                 try {
+                    const sourceSignature = getTaskSourceSignature(task);
+                    if (task.metadata?.sourceFingerprint && task.metadata.sourceFingerprint !== sourceSignature) {
+                        throw new Error('任务排队后来源正文已变化，请重新选择材料生成，不要重试旧提示词。');
+                    }
                     const rawResult = await callGenerationModel({
                         prompt: task.prompt,
                         systemPrompt: task.systemPrompt,
                     });
+                    if (!isCurrentRun()) {
+                        cancelledQueueTaskIds.delete(task.id);
+                        task.status = 'failed';
+                        task.error = '聊天或队列已切换，本次返回未写入；请回原聊天检查后重试。';
+                        return;
+                    }
+                    if (sourceSignature !== getTaskSourceSignature(task)) {
+                        throw new Error('生成期间来源正文或回复版本已变化，本次返回未写入，请重新选择材料生成。');
+                    }
                     if (cancelledQueueTaskIds.has(task.id)) {
                         cancelledQueueTaskIds.delete(task.id);
                         task.status = 'cancelled';
@@ -130,6 +149,7 @@ export function createSummaryTaskQueue({
                     });
                     if (task.trigger === 'auto' && state.automation.mode === 'commit_hide' && task.kind === blockTypes.STAGE) {
                         const summary = await commitDraft(draft.id, draft.content, { silent: true });
+                        if (!isCurrentRun()) return;
                         autoCommitted += 1;
                         const preserveRecent = Math.max(0, Number(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent));
                         task.metadata = {
@@ -139,6 +159,7 @@ export function createSummaryTaskQueue({
                         };
                         const hiddenBefore = new Set(state.hiddenMessageIds || []);
                         const hiddenIds = await hideCoveredMessages({ confirm: false, preserveRecent, silent: true }) || [];
+                        if (!isCurrentRun()) return;
                         const newlyHiddenIds = hiddenIds.filter(id => !hiddenBefore.has(id));
                         recordAutoSummaryTransaction({
                             task,
@@ -157,6 +178,7 @@ export function createSummaryTaskQueue({
                         state.automation.lastAutoAt = new Date().toISOString();
                     }
                 } catch (error) {
+                    if (!isCurrentRun()) return;
                     task.status = 'failed';
                     task.error = error?.message || String(error);
                     task.updatedAt = new Date().toISOString();
@@ -172,13 +194,15 @@ export function createSummaryTaskQueue({
                 ? `任务队列处理完成，已自动保存 ${autoCommitted} 个阶段总结并收纳旧楼层。`
                 : autoCommitted
                     ? `任务队列处理完成，已自动保存 ${autoCommitted} 个阶段总结，另有 ${createdDrafts} 个草稿待确认。`
-                    : '任务队列处理完成，生成结果已进入草稿箱。';
+                    : createdDrafts ? '任务队列处理完成，生成结果已进入草稿箱。' : '本次没有生成草稿，请查看任务中的失败原因。';
             renderWorkbenchScope(workbenchRenderScopes.DRAFTS, message);
         } finally {
             toastr.clear(toast);
-            isQueueRunning = false;
-            setBusy(false);
-            renderTaskQueueProgress();
+            if (run === runVersion) {
+                isQueueRunning = false;
+                setBusy(false);
+                renderTaskQueueProgress();
+            }
         }
     }
     
@@ -215,6 +239,7 @@ export function createSummaryTaskQueue({
         }
         if (isRunningTask) {
             cancelledQueueTaskIds.add(task.id);
+            runVersion += 1;
             isQueueRunning = false;
             setBusy(false);
         }
@@ -270,6 +295,7 @@ export function createSummaryTaskQueue({
     }
 
     function resetRunning() {
+        runVersion += 1;
         isQueueRunning = false;
     }
 
