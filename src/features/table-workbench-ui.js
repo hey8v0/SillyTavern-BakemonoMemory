@@ -279,10 +279,10 @@ export function createTableWorkbenchUi({
                 const copy = document.createElement('div');
                 const itemTitle = document.createElement('strong');
                 const operationLabel = operation.op === 'insert' ? '新增记录' : operation.op === 'delete' ? '删除记录' : '更新记录';
-                itemTitle.textContent = `表格 #${operation.tableIndex} · ${operationLabel}`;
+                itemTitle.textContent = operation.op === 'clock' ? '更新剧情时间' : operation.op === 'semantic' ? `表格 #${operation.tableIndex} · 更新字段语义` : `表格 #${operation.tableIndex} · ${operationLabel}`;
                 const itemText = document.createElement('p');
                 const dataText = Object.entries(operation.data || {}).map(([key, value]) => `${key}：${value}`).join(' · ');
-                itemText.textContent = dataText || (Number.isFinite(operation.rowIndex) ? `第 ${operation.rowIndex} 行` : '等待查看具体内容');
+                itemText.textContent = operation.op === 'semantic' ? `第 ${operation.columnIndex} 列：${operation.kind}` : dataText || (Number.isFinite(operation.rowIndex) ? `第 ${operation.rowIndex} 行` : '等待查看具体内容');
                 copy.append(itemTitle, itemText);
                 item.append(sign, copy);
                 preview.append(item);
@@ -332,6 +332,7 @@ export function createTableWorkbenchUi({
         const columnNames = table.columns.map((name, colIndex) => String(details.querySelector(`[data-table-column-name="${colIndex}"]`)?.value || name || '').trim() || `字段 ${colIndex}`);
         table.columns = columnNames;
         table.columnKinds = columnNames.map((_, i) => details.querySelector(`[data-table-column-kind="${i}"]`)?.value || table.columnKinds?.[i] || 'text');
+        table.semanticOverrides = {};
         table.columnPrompts = columnNames.map((_, colIndex) => String(details.querySelector(`[data-table-column-prompt="${colIndex}"]`)?.value || '').trim());
         table.note = String(details.querySelector('[data-table-note]')?.value || '').trim();
         table.readOnly = !!details.querySelector('[data-table-readonly]')?.checked;

@@ -133,6 +133,7 @@ export function createSummaryTargetController({
                         <p>${isBatch
                             ? `本次可用材料：${totalLength} 个。设置每批数量后会分批加入队列。`
                             : `本次可用材料：${totalLength} 个。你可以只合并一部分，避免一次压得太简洁。`}</p>
+                        ${kind === 'epic' && options.sourceCounts ? `<label class="bakemono-memory-field"><span>本次总结材料</span><select class="text_pole" data-bakemono-target-source>${Object.entries({stage: '阶段总结 → 多次总结', epic: '已有多次总结 → 继续压缩', story: '普通摘要 → 多次总结'}).map(([key, label]) => `<option value="${key}" ${options.sourceCounts[key] ? '' : 'disabled'}>${label}（${options.sourceCounts[key] || 0} 条）</option>`).join('')}</select></label>` : ''}
                         <label class="bakemono-memory-field">
                             <span>读取范围</span>
                             <select class="text_pole" data-bakemono-target-mode>
@@ -164,6 +165,8 @@ export function createSummaryTargetController({
             const countInput = overlay.querySelector('[data-bakemono-target-count]');
             const rangeInput = overlay.querySelector('[data-bakemono-target-range]');
             const hint = overlay.querySelector('[data-bakemono-target-hint]');
+            const sourceInput = overlay.querySelector('[data-bakemono-target-source]');
+            if (sourceInput) sourceInput.value = options.sourceCounts[current.sourceMode] ? current.sourceMode : Object.keys(options.sourceCounts).find(key => options.sourceCounts[key] > 0);
     
             modeInput.value = current.mode || targetSelectionModes.ALL;
             countInput.value = current.count || defaults.count;
@@ -201,6 +204,7 @@ export function createSummaryTargetController({
             overlay.querySelector('[data-bakemono-target-confirm]').addEventListener('click', () => {
                 const parsed = {
                     ...current,
+                    ...(sourceInput ? { sourceMode: sourceInput.value } : {}),
                     mode: Object.values(targetSelectionModes).includes(modeInput.value) ? modeInput.value : targetSelectionModes.ALL,
                     count: Math.max(1, Number(countInput.value || current.count || defaults.count)),
                     range: String(rangeInput.value || '').trim(),
@@ -209,6 +213,7 @@ export function createSummaryTargetController({
                     toastr.warning('请填写可识别的楼层范围，例如 0-20 或 0-20, 35-50。');
                     return;
                 }
+                if (ensureState() !== state) { close(null); return; }
                 state.generationTargets[kind] = parsed;
                 query(`#bakemono-memory-${kind}-target-mode`).val(parsed.mode);
                 query(`#bakemono-memory-${kind}-target-count`).val(parsed.count);
@@ -216,6 +221,13 @@ export function createSummaryTargetController({
                 saveState();
                 close(parsed);
             });
+            const syncSourceCount = () => {
+                if (!sourceInput) return;
+                overlay.querySelector('.bakemono-memory-target-body > p').textContent = `本次可用材料：${options.sourceCounts[sourceInput.value] || 0} 个。`;
+                syncHint();
+            };
+            sourceInput?.addEventListener('change', syncSourceCount);
+            syncSourceCount();
             modeInput.addEventListener('change', syncHint);
             countInput.addEventListener('input', syncHint);
             syncHint();

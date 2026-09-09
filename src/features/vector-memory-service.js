@@ -124,7 +124,7 @@ export function createVectorMemoryService({
             ...parseList(state.vectorMemory.excludeTags || defaultVectorMemory.excludeTags),
         ]);
         const summaryTags = getVectorSummaryTags(state);
-        return stripConfiguredTags(text, unique([...excludeTags, ...summaryTags])).trim();
+        return normalizeLineEndings(stripHtml(stripConfiguredTags(text, unique([...excludeTags, ...summaryTags, 'script', 'style'])))).trim();
     }
     
     function getVectorSourceMessages(state = ensureState()) {
@@ -492,6 +492,7 @@ export function createVectorMemoryService({
             if (state.vectorMemory.dirty) {
                 state.vectorMemory.dirty = false;
                 state.vectorMemory.dirtyReason = '';
+                if (String(state.vectorMemory.lastRecallSkippedReason || '').startsWith('索引待刷新：')) state.vectorMemory.lastRecallSkippedReason = '';
                 saveState();
             }
             return;
@@ -750,6 +751,7 @@ export function createVectorMemoryService({
         state.vectorMemory.lastIndexedSignature = signature;
         state.vectorMemory.dirty = false;
         state.vectorMemory.dirtyReason = '';
+        if (String(state.vectorMemory.lastRecallSkippedReason || '').startsWith('索引待刷新：')) state.vectorMemory.lastRecallSkippedReason = '';
         saveState();
         syncInjection();
         renderWorkbenchScope(workbenchRenderScopes.VECTOR, silent ? '' : `向量索引完成：${records.length} 个片段，复用 ${reused} 个。`);
@@ -760,8 +762,29 @@ export function createVectorMemoryService({
     }
     
     async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState()) {
-        if (!state.vectorMemory?.enabled || !Array.isArray(state.vectorMemory.records) || !state.vectorMemory.records.length) {
+        if (!state.vectorMemory?.enabled) {
             return clearVectorRecall('', state);
+        }
+        if (state.vectorMemory.lastIndexedSignature !== getVectorSourceSignature(state)
+            && state.vectorMemory.autoIndex !== false && !pausedIndexStates.has(state)) {
+            clearTimer(vectorIndexTimer);
+            try {
+                // A pending build may have captured the message before a late widget update.
+                // Retry once with the newest source; never inject known-stale records.
+                for (let attempt = 0; attempt < 2; attempt++) {
+                    try { await buildVectorMemoryIndex({ silent: true }); }
+                    catch (error) {
+                        if (ensureState() !== state) return [];
+                        if (attempt || pausedIndexStates.has(state)) throw error;
+                        if (state.vectorMemory.lastIndexedSignature === getVectorSourceSignature(state)) break;
+                        if (!/正文|聊天.*变化/.test(String(error?.message))) throw error;
+                    }
+                    if (ensureState() !== state) return [];
+                    if (state.vectorMemory.lastIndexedSignature === getVectorSourceSignature(state)) break;
+                }
+            } catch (error) {
+                return clearVectorRecall(`召回前刷新索引失败：${error?.message || error}`, state);
+            }
         }
         const signature = getVectorSourceSignature(state);
         if (state.vectorMemory.lastIndexedSignature !== signature) {

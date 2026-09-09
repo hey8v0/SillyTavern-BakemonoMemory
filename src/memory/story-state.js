@@ -1,4 +1,4 @@
-import { getHash } from '../shared/text.js';
+import { getHash, stripConfiguredTags, parseList } from '../shared/text.js';
 
 export const semanticKinds = ['text', 'person', 'item', 'plan', 'location'];
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -14,6 +14,10 @@ export function ensureTableIdentity(table) {
     table.rowIds = (table.rows || []).map((_, i) => table.rowIds?.[i] || uid('row'));
     table.columnKinds = (table.columns || []).map((_, i) => semanticKinds.includes(table.columnKinds?.[i]) ? table.columnKinds[i] : 'text');
     table.cellRefs ||= {};
+    if (table.semanticOverrides) for (const key of Object.keys(table.semanticOverrides)) {
+        const index = table.columnIds.indexOf(key);
+        if (index < 0 || table.semanticOverrides[key]?.name !== table.columns[index]) delete table.semanticOverrides[key];
+    }
     const validCells = new Set(table.rowIds.flatMap(row => table.columnIds.map(column => `${row}:${column}`)));
     for (const key of Object.keys(table.cellRefs)) if (!validCells.has(key)) delete table.cellRefs[key];
     return table;
@@ -23,7 +27,7 @@ export function messageRevision(message) {
     return getHash(`${message?.mes || ''}|${message?.swipe_id ?? ''}|${!!message?.is_user}`);
 }
 
-function captureSources(previous = [], chat = []) {
+function captureSources(previous = [], chat = [], state = {}) {
     const used = new Set();
     const exact = new Map(), anchors = new Map();
     for (const item of previous) {
@@ -34,6 +38,8 @@ function captureSources(previous = [], chat = []) {
     }
     const sources = chat.map((message, floor) => {
         const revision = messageRevision(message);
+        const memoryRevision = messageRevision({ ...message, mes: stripConfiguredTags(message?.mes || '',
+            [...new Set([...parseList(state.scanRules?.excludeTags), ...parseList(state.vectorMemory?.excludeTags), 'script', 'style'])]).trim() });
         const anchor = getHash(JSON.stringify([message?.send_date || '', message?.name || '', !!message?.is_user]));
         let match = exact.get(`${anchor}:${revision}`)?.find(item => !used.has(item.id));
         if (!match) {
@@ -42,7 +48,7 @@ function captureSources(previous = [], chat = []) {
         }
         const id = match?.id || uid('source');
         used.add(id);
-        return { id, floor, anchor, revision };
+        return { id, floor, anchor, revision, memoryRevision };
     });
     return sources;
 }
@@ -61,7 +67,7 @@ export function ensureChronicle(state, chat = []) {
     if (!state.chronicle) {
         (state.tableDatabase.tables || []).forEach(ensureTableIdentity);
         state.chronicle = { version: 1, clock: { label: '', date: '', precision: 'unknown' }, entities: [],
-            sources: captureSources([], chat), links: {}, events: [], checkpoints: [], baselineFloor: chat.length - 1 };
+            sources: captureSources([], chat, state), links: {}, events: [], checkpoints: [], baselineFloor: chat.length - 1 };
         state.chronicle.baseline = projection(state);
         state.chronicle.createdAt = new Date().toISOString();
     }
@@ -147,7 +153,7 @@ export function summaryItems(state) {
 export function refreshMemoryLinks(state, chat = []) {
     const c = state.chronicle;
     if (!c) return {};
-    c.sources = captureSources(c.sources, chat);
+    c.sources = captureSources(c.sources, chat, state);
     const items = summaryItems(state);
     const byHash = new Map(items.filter(item => item.hash).map(item => [item.hash, item]));
     const current = new Map(c.sources.map(source => [source.id, source]));
@@ -169,7 +175,12 @@ export function refreshMemoryLinks(state, chat = []) {
         if (checking.has(hash)) return true;
         checking.add(hash);
         const link = c.links[hash];
-        const stale = !!link && (link.refs.some(ref => current.get(ref.id)?.revision !== ref.revision || current.get(ref.id)?.floor !== ref.floor)
+        const stale = !!link && (link.refs.some(ref => {
+            const source = current.get(ref.id);
+            if (!source || source.floor !== ref.floor) return true;
+            if (!ref.memoryRevision && source.revision === ref.revision) ref.memoryRevision = source.memoryRevision;
+            return ref.memoryRevision ? source.memoryRevision !== ref.memoryRevision : source.revision !== ref.revision;
+        })
             || link.children.some(child => !byHash.has(child.hash) || getHash(byHash.get(child.hash).content || '') !== child.revision || check(child.hash)));
         checking.delete(hash);
         done.set(hash, stale);

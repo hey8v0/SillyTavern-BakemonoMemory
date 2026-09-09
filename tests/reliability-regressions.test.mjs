@@ -4,7 +4,15 @@ import * as provider from '../src/vector/provider-config.js';
 import { createGenerationClient } from '../src/features/generation-client.js';
 import { createVectorActionsController } from '../src/features/vector-actions-controller.js';
 import { createVectorMemoryService } from '../src/features/vector-memory-service.js';
-import { createSummaryGenerationController } from '../src/features/summary-generation-controller.js';
+import { createSummaryGenerationController, selectEpicSourcePool } from '../src/features/summary-generation-controller.js';
+
+test('upper summary material selection can explicitly recompress epic despite remaining stage summaries', () => {
+    const pools = { stage: [{hash:'s'}], epic: [{hash:'e', level:2}], story: [{hash:'raw'}] };
+    assert.equal(selectEpicSourcePool(pools, 'epic'), pools.epic);
+    assert.equal(selectEpicSourcePool(pools, 'stage'), pools.stage);
+    assert.deepEqual(selectEpicSourcePool({...pools, epic:[]}, 'epic'), []);
+    assert.equal(selectEpicSourcePool(pools), pools.stage);
+});
 import { createSummaryTaskQueue } from '../src/features/summary-task-queue.js';
 import { renderGenerationPrompt } from '../src/shared/prompt-utils.js';
 import * as sourceMetadata from '../src/summary/source-metadata.js';

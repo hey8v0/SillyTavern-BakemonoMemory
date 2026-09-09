@@ -13,6 +13,7 @@ import * as provider from '../src/vector/provider-config.js';
 import * as math from '../src/vector/math.js';
 import * as sourceMetadata from '../src/summary/source-metadata.js';
 import { selectHybridCandidates, computeHybridRerankScore } from '../src/vector/hybrid-retrieval.js';
+import { stripConfiguredTags } from '../src/shared/text.js';
 
 const noop = () => {};
 const toastr = { info: noop, success: noop, warning: noop, error: noop, clear: noop };
@@ -43,6 +44,58 @@ function vectorFixture(count = 150, overrides = {}) {
     return { state, chat, cache, dependencies, service: createVectorMemoryService(dependencies),
         calls: () => calls, yields: () => yields, cleaned: () => cleaned };
 }
+
+test('excluded trailing widget leaves index current; retrieval refreshes changed text before evaluating recall', async () => {
+    const f = vectorFixture(2, { stripConfiguredTags, stripHtml: text => text.replace(/<[^>]*>/g, ''), setTimer: () => 1, clearTimer() {} });
+    f.state.vectorMemory.excludeTags = 'widget';
+    f.state.vectorMemory.startAfterAiMessages = 99;
+    await f.service.buildVectorMemoryIndex();
+    const signature = f.service.getVectorSourceSignature();
+    f.chat[1].mes += '<widget>动态按钮</widget><script>run()</script>';
+    f.service.markVectorIndexDirty('消息变更');
+    assert.equal(f.service.getVectorSourceSignature(), signature);
+    assert.equal(f.state.vectorMemory.dirty, false);
+    f.chat[1].mes += '新的剧情';
+    f.service.markVectorIndexDirty('消息变更');
+    assert.equal(f.state.vectorMemory.dirty, true);
+    await f.service.retrieveVectorMemoryHits('线索');
+    assert.equal(f.state.vectorMemory.lastIndexedSignature, f.service.getVectorSourceSignature());
+    assert.equal(f.state.vectorMemory.dirty, false);
+    assert.match(f.state.vectorMemory.lastRecallSkippedReason, /少于 99/);
+    assert.equal(f.calls(), 3);
+});
+
+test('recall does not restart an explicitly paused index', async () => {
+    const f = vectorFixture(1);
+    await f.service.buildVectorMemoryIndex();
+    f.service.pauseVectorIndex();
+    f.chat.push({mes:'新增'});
+    await f.service.retrieveVectorMemoryHits('线索');
+    assert.equal(f.calls(), 1);
+    assert.match(f.state.vectorMemory.lastRecallSkippedReason, /刷新索引/);
+});
+
+test('recall retries the newest source after a pending build is invalidated by a late append', async () => {
+    const f = vectorFixture(1);
+    await f.service.buildVectorMemoryIndex();
+    f.chat[0].mes = '第一版变化';
+    f.state.vectorMemory.startAfterAiMessages = 99;
+    let release, calls = 0;
+    const service = createVectorMemoryService({ ...f.dependencies, fetchImpl: async () => {
+        if (++calls === 1) await new Promise(resolve => { release = resolve; });
+        return new Response(JSON.stringify({ data: [{embedding:[0.2, 0.8, 0.4]}] }));
+    }});
+    const pending = service.buildVectorMemoryIndex().catch(error => error);
+    while (!release) await tick();
+    f.chat[0].mes += '追加内容';
+    const recall = service.retrieveVectorMemoryHits('线索');
+    release();
+    assert.ok(await pending instanceof Error);
+    await recall;
+    assert.equal(f.state.vectorMemory.lastIndexedSignature, service.getVectorSourceSignature());
+    assert.equal(f.state.vectorMemory.records[0].text, '第一版变化追加内容');
+    assert.equal(calls, 2);
+});
 
 test('150 indexed fragments are reused across scans and reload; one appended fragment costs one request', async () => {
     const f = vectorFixture();

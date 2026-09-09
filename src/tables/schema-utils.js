@@ -48,6 +48,13 @@ export function mergeTableSchemaWithRows(schema, existing) {
         ...schema,
         rows,
         columnIds: schema.columnIds?.length ? [...schema.columnIds] : [...(existing?.columnIds || [])],
+        columnKinds: schema.columns.map((name, i) => {
+            const id = schema.columnIds?.[i] || existing?.columnIds?.[i];
+            const override = existing?.semanticOverrides?.[id];
+            return override?.name === name && ['text', 'person', 'item', 'plan', 'location'].includes(override.kind)
+                ? override.kind : schema.columnKinds?.[i] || 'text';
+        }),
+        semanticOverrides: structuredClone(existing?.semanticOverrides || {}),
         rowIds: Array.isArray(existing?.rowIds) ? [...existing.rowIds] : [],
         cellRefs: existing?.cellRefs ? structuredClone(existing.cellRefs) : {},
     };
@@ -65,6 +72,7 @@ export function normalizeImportedTablesFromJson(raw) {
             rows: Array.isArray(table.rows) ? table.rows.map(row => Array.isArray(row) ? row.map(cell => String(cell ?? '')) : []) : [],
             rowIds: Array.isArray(table.rowIds) ? [...table.rowIds] : [],
             cellRefs: table.cellRefs ? structuredClone(table.cellRefs) : {},
+            semanticOverrides: structuredClone(table.semanticOverrides || {}),
         }));
     }
     if (Array.isArray(parsed?.tableStructure)) {

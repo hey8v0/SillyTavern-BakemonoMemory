@@ -41,7 +41,7 @@ export function createSummaryGenerationUi({ documentRef, query, getState }) {
                 action: 'generate-epic',
                 icon: 'fa-layer-group',
                 title: '把多个阶段连成时间线',
-                button: '生成多次总结',
+                button: '生成多次总结 / 继续压缩',
                 code: `${upperLevelMaterialCount} 条材料`,
                 description: `${stageBlocks.length} 条阶段总结与 ${epicBlocks.length} 条上层总结可继续压缩，适合整理一卷或一条长期剧情线。`,
                 progress: upperLevelMaterialCount ? Math.min(100, Math.round((epicBlocks.length / upperLevelMaterialCount) * 100)) : 0,

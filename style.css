@@ -12706,4 +12706,19 @@ details[open] > summary > .bakemono-memory-help-trigger {
     overflow: auto;
 }
 #bakemono-workbench-root #bakemono-story-state li { overflow-wrap: anywhere; margin-block: 0.6em; }
-#bakemono-workbench-root [data-story-action] { min-height: 44px; white-space: normal; }
+#bakemono-workbench-root [data-story-action] {
+    display: inline-flex;
+    width: auto;
+    min-width: max-content;
+    max-width: 100%;
+    min-height: 44px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+    word-break: normal;
+    writing-mode: horizontal-tb;
+    padding-inline: 0.85em;
+    margin-block: 0.35em;
+}
+#bakemono-workbench-root [data-story-action] > span { white-space: nowrap; }
+#bakemono-workbench-root .bakemono-story-actions { display: flex; flex-wrap: wrap; gap: 0.5em; }
+#bakemono-workbench-root .bakemono-story-correction { margin-block: 0.75em; }

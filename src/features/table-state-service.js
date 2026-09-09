@@ -236,6 +236,7 @@ export function createTableStateService({
             profileKey: getActiveTableProfileKey(state),
             sourceMessageIds: getFiniteMessageIds(options.sourceMessageIds || []),
             tables: structuredClone(state.tableDatabase.tables || []),
+            storyState: state.chronicle ? structuredClone({ clock: state.chronicle.clock, entities: state.chronicle.entities }) : null,
         };
         state.tableDatabase.undoStack.unshift(snapshot);
         state.tableDatabase.undoStack = state.tableDatabase.undoStack.slice(0, 20);
@@ -267,10 +268,12 @@ export function createTableStateService({
         state.tableDatabase.redoStack.unshift({
             ...snapshot,
             redoTables: structuredClone(state.tableDatabase.tables || []),
+            redoStoryState: state.chronicle ? structuredClone({ clock: state.chronicle.clock, entities: state.chronicle.entities }) : null,
             undoneAt: new Date().toISOString(),
         });
         state.tableDatabase.redoStack = state.tableDatabase.redoStack.slice(0, 20);
         state.tableDatabase.tables = structuredClone(snapshot.tables || []);
+        if (state.chronicle && snapshot.storyState) Object.assign(state.chronicle, structuredClone(snapshot.storyState));
         persistCurrentTableDatabase(state);
         renderWorkbenchScope(workbenchRenderScopes.TABLES, `已撤销表格操作：${snapshot.label || '表格操作'}`);
         toastr.success('已撤销上次表格操作。');
@@ -303,6 +306,7 @@ export function createTableStateService({
         });
         state.tableDatabase.undoStack = state.tableDatabase.undoStack.slice(0, 20);
         state.tableDatabase.tables = structuredClone(snapshot.redoTables || []);
+        if (state.chronicle && snapshot.redoStoryState) Object.assign(state.chronicle, structuredClone(snapshot.redoStoryState));
         persistCurrentTableDatabase(state);
         renderWorkbenchScope(workbenchRenderScopes.TABLES, `已重做表格操作：${snapshot.label || '表格操作'}`);
         toastr.success('已重做上次表格操作。');
@@ -334,6 +338,7 @@ export function createTableStateService({
         state.tableDatabase.undoStack = (state.tableDatabase.undoStack || []).filter(snapshot => !rollbackIds.has(snapshot.id));
         state.tableDatabase.redoStack = [];
         state.tableDatabase.tables = structuredClone(plan.restoreSnapshot.tables || []);
+        if (state.chronicle && plan.restoreSnapshot.storyState) Object.assign(state.chronicle, structuredClone(plan.restoreSnapshot.storyState));
         state.tableDatabase.history = (state.tableDatabase.history || []).filter(item => !rollbackIds.has(item.undoSnapshotId));
         state.tableDatabase.editDrafts = (state.tableDatabase.editDrafts || []).filter(draft => (
             !getFiniteMessageIds(draft.sourceMessageIds || []).some(id => affectedIds.includes(id))

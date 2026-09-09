@@ -1,4 +1,9 @@
-import { ensureTableIdentity, resolveEntity, storyTimeContext } from '../memory/story-state.js';
+import { ensureTableIdentity, resolveEntity, storyTimeContext, setStoryTime, upsertEntity, markStoryChange } from '../memory/story-state.js';
+
+export const storyStateEditGuide = `剧情状态随本次填表维护，在同一个 <tableEdit> 内可追加：
+setColumnKind(表号, 列号, "person")：实体名称列可标为 person/item/plan/location；普通描述列保持 text，不把一段描述或多人列表当成一个实体。
+setStoryClock({"date":"1889-10-15","label":"夜晚","flashback":false})：仅根据本轮明确发生的时间变化填写；架空时间只填 label；明确经过 N 天且当前已有日期时可用 relativeDays:N。回忆用 flashback:true，不推进现在。
+这些操作可与 insertRow/updateRow/deleteRow 共存。已有字段语义无变化时不要重复输出。没有时间依据时省略时钟操作，不能用现实日期或猜测填空。`;
 
 export function createTableMemoryModel({
     getState: ensureState,
@@ -19,7 +24,7 @@ export function createTableMemoryModel({
         if (!tables.length) {
             return '暂无表格结构。';
         }
-        return tables.map(table => [
+        return [storyStateEditGuide, storyTimeContext(state)].filter(Boolean).join('\n\n') + '\n\n' + tables.map(table => [
             `${table.tableIndex}: ${table.name} (${table.columns.map((col, index) => `${index}:${col}`).join(', ')})`,
             `权限：${table.readOnly ? '只读' : '可写'} / ${table.allowAiEdit === false || table.readOnly ? '禁止 AI 修改' : '允许 AI 修改'}`,
             `字段语义：${table.columns.map((col, i) => `${col}=${table.columnKinds?.[i] || 'text'}`).join(' / ')}；实体名称应保持一致，不确定时不要猜测归属。`,
@@ -111,7 +116,7 @@ export function createTableMemoryModel({
             sourceRange: formatSourceRange(getSourceMessageIdsFromBlocks(blocks)),
         });
         const template = String(state.turnSummary.tablePrompt || defaultTableEditPrompt);
-        return [storyTimeContext(state), template
+        return [storyTimeContext(state), template.includes('{{tableGuide}}') ? '' : storyStateEditGuide, template
             .replaceAll('{{blocks}}', blockText)
             .replaceAll('{{tableData}}', formatTableDataForPrompt(state))
             .replaceAll('{{tableGuide}}', formatTableGuideForPrompt(state))
@@ -164,9 +169,26 @@ export function createTableMemoryModel({
         const sourceMessageIds = getFiniteMessageIds(options.sourceMessageIds || []);
         let snapshot = null;
         const nextTables = structuredClone(state.tableDatabase.tables || []);
+        const nextState = { chronicle: state.chronicle ? { clock: structuredClone(state.chronicle.clock), entities: structuredClone(state.chronicle.entities) } : null };
+        let clockOperation = null;
         const tablesByIndex = new Map(nextTables.map(table => [Number(table.tableIndex), table]));
         const deletes = [];
         for (const operation of operations) {
+            if (operation.op === 'clock') {
+                if (!nextState.chronicle) throw new Error('剧情状态尚未初始化');
+                const data = operation.data;
+                if (clockOperation) throw new Error('一次填表只接受一项剧情时间更新');
+                if (!data || typeof data !== 'object' || Array.isArray(data)
+                    || Object.keys(data).some(key => !['label', 'date', 'relativeDays', 'flashback'].includes(key))
+                    || (data.label !== undefined && typeof data.label !== 'string')
+                    || (data.date !== undefined && typeof data.date !== 'string')
+                    || (data.flashback !== undefined && typeof data.flashback !== 'boolean')
+                    || (data.relativeDays !== undefined && !Number.isInteger(data.relativeDays))
+                    || (!data.label?.trim() && !data.date?.trim() && data.relativeDays === undefined)) throw new Error('剧情时间操作无效');
+                setStoryTime(nextState, { ...data, sourceMessageIds });
+                clockOperation = data;
+                continue;
+            }
             const table = tablesByIndex.get(Number(operation.tableIndex));
             if (!table) {
                 throw new Error(`表格 ${operation.tableIndex} 不存在。`);
@@ -176,6 +198,14 @@ export function createTableMemoryModel({
             }
             table.rows = Array.isArray(table.rows) ? table.rows : [];
             ensureTableIdentity(table);
+            if (operation.op === 'semantic') {
+                if (!Number.isInteger(operation.columnIndex) || operation.columnIndex < 0 || operation.columnIndex >= table.columns.length
+                    || !['text', 'person', 'item', 'plan', 'location'].includes(operation.kind)) throw new Error('字段语义无效');
+                table.columnKinds[operation.columnIndex] = operation.kind;
+                table.semanticOverrides ||= {};
+                table.semanticOverrides[table.columnIds[operation.columnIndex]] = { name: table.columns[operation.columnIndex], kind: operation.kind };
+                continue;
+            }
             if (!['insert', 'update', 'delete'].includes(operation.op)) throw new Error('未知表格操作');
             if (operation.op !== 'insert' && (!Number.isInteger(operation.rowIndex) || !table.rows[operation.rowIndex])) throw new Error('表格数据行不存在');
             if (operation.op === 'insert') {
@@ -208,10 +238,23 @@ export function createTableMemoryModel({
             }
         });
         nextTables.forEach(ensureTableIdentity);
+        if (nextState.chronicle) for (const table of nextTables) {
+            if (table.readOnly || table.allowAiEdit === false) continue;
+            table.rows.forEach(row => row.forEach((value, index) => {
+                const kind = table.columnKinds[index], name = String(value || '').trim();
+                if (kind === 'text' || !name || name.length > 200 || /[\n,，、；;]/.test(name) || /^(未知|无|不明|待定|暂无|none|unknown)$/i.test(name)) return;
+                if (!nextState.chronicle.entities.some(e => e.kind === kind && [e.name, ...(e.aliases || [])].includes(name))) upsertEntity(nextState, { kind, name });
+            }));
+        }
         if (options.recordUndo !== false && operations.length) {
             snapshot = pushTableUndoSnapshot(options.undoLabel || `AI 表格修改 ${operations.length} 项`, state, { sourceMessageIds });
         }
         state.tableDatabase.tables = nextTables;
+        if (nextState.chronicle) {
+            Object.assign(state.chronicle, nextState.chronicle);
+            markStoryChange(state, { label: options.undoLabel || 'AI 更新表格与剧情状态', sourceMessageIds, mode: clockOperation?.flashback ? 'flashback' : 'source',
+                ...(clockOperation?.flashback ? { storyTime: state.chronicle.clock.lastFlashback } : {}) });
+        }
         saveCurrentTableProfileRows(state);
         updateInjectionFromSummaries();
         if (sourceMessageIds.length) {

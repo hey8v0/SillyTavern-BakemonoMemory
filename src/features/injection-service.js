@@ -1,4 +1,5 @@
 import { isMemoryCurrent, storyTimeContext, refreshMemoryLinks, activeStoryCoverage } from '../memory/story-state.js';
+import { storyStateEditGuide } from './table-memory-model.js';
 
 export function createInjectionService({
     ensureState,
@@ -107,9 +108,10 @@ export function createInjectionService({
         const summaryValue = state.inlineGeneration?.summaryEnabled
             ? renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state)
             : '';
-        const tableValue = state.inlineGeneration?.tableEnabled
+        let tableValue = state.inlineGeneration?.tableEnabled
             ? renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state)
             : '';
+        if (tableValue && !tableValue.includes(storyStateEditGuide)) tableValue += '\n\n' + [storyTimeContext(state), storyStateEditGuide].filter(Boolean).join('\n\n');
         setExtensionPrompt(inlinePromptKeys.SUMMARY, summaryValue, extensionPromptTypes.IN_CHAT, depth, false, role);
         setExtensionPrompt(inlinePromptKeys.TABLE, tableValue, extensionPromptTypes.IN_CHAT, depth, false, role);
     }

@@ -3,7 +3,7 @@ import { messageRevision, replayChronicle } from './story-state.js';
 
 const arrays = ['storySummaries', 'stageSummaries', 'epicSummaries', 'drafts', 'coveredBlockHashes', 'coveredStageHashes'];
 const recordFields = ['id', 'hash', 'title', 'content', 'type', 'kind', 'level', 'sourceKind', 'sourceMessageIds', 'sourceHashes', 'sourceStageHashes', 'sourceStart', 'sourceEnd', 'messageId', 'createdAt', 'trigger'];
-const tableFields = ['id', 'tableIndex', 'name', 'columns', 'columnIds', 'columnKinds', 'rowIds', 'cellRefs', 'columnPrompts', 'note', 'initNode', 'insertNode', 'updateNode', 'deleteNode', 'rows', 'readOnly', 'allowAiEdit', 'injectLimit', 'required'];
+const tableFields = ['id', 'tableIndex', 'name', 'columns', 'columnIds', 'columnKinds', 'semanticOverrides', 'rowIds', 'cellRefs', 'columnPrompts', 'note', 'initNode', 'insertNode', 'updateNode', 'deleteNode', 'rows', 'readOnly', 'allowAiEdit', 'injectLimit', 'required'];
 const pick = (value, fields) => Object.fromEntries(fields.filter(key => value?.[key] !== undefined).map(key => [key, value[key]]));
 const pickRecord = value => ({ ...pick(value, recordFields), metadata: pick(value?.metadata, ['sourceKind', 'sourceRange', 'sourceSortKey', 'batchIndex', 'batchTotal']) });
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -19,7 +19,7 @@ function validateProjection(value) {
         || new Set(value.entities.map(entity => entity.id)).size !== value.entities.length) throw new Error('语义实体格式无效');
 }
 
-export function createMemoryBackup(state, { chatKey = '', chat = [], scanned = [], version = '1.6.0' } = {}) {
+export function createMemoryBackup(state, { chatKey = '', chat = [], scanned = [], version = '1.6.1' } = {}) {
     const memory = Object.fromEntries(arrays.map(key => [key, (state[key] || []).map(item => typeof item === 'object' ? pickRecord(item) : item)]));
     for (const block of scanned) {
         const target = block.type === 'stage' ? memory.stageSummaries : block.type === 'epic' ? memory.epicSummaries : block.type === 'story' ? memory.storySummaries : null;
@@ -135,7 +135,7 @@ export function restoreMemoryBackup(state, validated) {
     return state;
 }
 
-export function createDiagnosticReport(state, { version = '1.6.0', storage = {} } = {}) {
+export function createDiagnosticReport(state, { version = '1.6.1', storage = {} } = {}) {
     // Strict whitelist: no raw errors, identifiers, endpoint URLs, prompts, text, or embeddings.
     return { format: 'bakemono-diagnostic', version, createdAt: new Date().toISOString(),
         counts: { story: state.storySummaries?.length || 0, stage: state.stageSummaries?.length || 0,

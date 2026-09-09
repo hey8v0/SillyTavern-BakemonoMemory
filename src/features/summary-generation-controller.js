@@ -1,5 +1,10 @@
 import { storyTimeContext } from '../memory/story-state.js';
 
+export function selectEpicSourcePool(pools, mode = 'auto') {
+    if (['stage', 'epic', 'story'].includes(mode)) return pools[mode] || [];
+    return pools.stage?.length ? pools.stage : pools.epic?.length ? pools.epic : pools.story || [];
+}
+
 export function inspectSummaryMaterials(blocks = []) {
     const invalid = [];
     let textLength = 0;
@@ -285,19 +290,17 @@ export function createSummaryGenerationController({
         let targetConfig = state.generationTargets.epic;
         if (!options.automatic) {
             readGenerationTargetSettings();
-            targetConfig = await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length || allStoryFallback.length);
+            targetConfig = await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length || allStoryFallback.length, { sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length, story: allStoryFallback.length } });
             if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
             if (!targetConfig) {
                 renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消多次总结生成。');
                 return;
             }
         }
-        const stageTargets = selectGenerationTargets(allStageTargets, targetConfig);
-        const multiTargets = selectGenerationTargets(allMultiTargets, targetConfig);
-        const storyFallback = selectGenerationTargets(allStoryFallback, targetConfig);
-        const targets = stageTargets.length ? stageTargets : multiTargets.length ? multiTargets : storyFallback;
+        const pool = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets, story: allStoryFallback }, targetConfig.sourceMode);
+        const targets = selectGenerationTargets(pool, targetConfig);
         const nextLevel = getNextMultiSummaryLevel(targets);
-        const sourcePoolSize = stageTargets.length ? allStageTargets.length : multiTargets.length ? allMultiTargets.length : allStoryFallback.length;
+        const sourcePoolSize = pool.length;
 
         if (!targets.length) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '当前生成范围没有匹配到可用于多次总结的内容。');
@@ -311,9 +314,7 @@ export function createSummaryGenerationController({
             const confirmed = confirm([
                 `即将生成【${getMultiSummaryLabel(nextLevel)}】草稿。`,
                 '',
-                `阶段总结来源：${stageTargets.length}/${allStageTargets.length} 个`,
-                `多次总结来源：${multiTargets.length}/${allMultiTargets.length} 个`,
-                `普通摘要 fallback：${storyFallback.length}/${allStoryFallback.length} 个`,
+                `本次材料：${pool === allStageTargets ? '阶段总结 → 多次总结' : pool === allMultiTargets ? '已有多次总结 → 继续压缩' : '普通摘要 → 多次总结'}，${targets.length}/${sourcePoolSize} 个`,
                 `当前范围：${getTargetSelectionLabel('epic', targets.length, sourcePoolSize)}`,
                 getSummaryMaterialPreview(targets),
                 `上次多次总结：${latestEpicAt ? new Date(latestEpicAt).toLocaleString() : '尚未生成'}`,
@@ -359,20 +360,21 @@ export function createSummaryGenerationController({
         const allStageTargets = getUnsummarizedStageBlocks();
         const allMultiTargets = getUnsummarizedMultiSummaryBlocks();
         const allStoryFallback = getStoryMaterialBlocks().filter(block => !state.coveredBlockHashes.includes(block.hash));
-        const sourceBlocks = allStageTargets.length ? allStageTargets : allMultiTargets.length ? allMultiTargets : allStoryFallback;
+        let sourceBlocks = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets, story: allStoryFallback });
         if (!sourceBlocks.length) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有可用于生成多次总结的内容。');
             toastr.info('没有可用于生成多次总结的内容。');
             return;
         }
 
-        const targetConfig = await promptGenerationTargetSelection('epic', sourceBlocks.length, { batch: true });
+        const targetConfig = await promptGenerationTargetSelection('epic', sourceBlocks.length, { batch: true, sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length, story: allStoryFallback.length } });
         if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
         if (!targetConfig) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量多次总结。');
             return;
         }
 
+        sourceBlocks = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets, story: allStoryFallback }, targetConfig.sourceMode);
         const config = targetConfig || state.generationTargets.epic || defaultGenerationTargets.epic;
         const batches = partitionGenerationTargets(sourceBlocks, 'epic', config);
         if (!batches.length) {

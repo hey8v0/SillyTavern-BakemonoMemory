@@ -39,5 +39,13 @@ export function parseTableEditOperations(raw) {
     while ((match = deleteRe.exec(text))) {
         operations.push({ op: 'delete', tableIndex: Number(match[1]), rowIndex: Number(match[2]) });
     }
+    const kindRe = /setColumnKind\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*"(text|person|item|plan|location)"\s*\)/g;
+    while ((match = kindRe.exec(text))) operations.push({ op: 'semantic', tableIndex: Number(match[1]), columnIndex: Number(match[2]), kind: match[3] });
+    const clockRe = /setStoryClock\s*\(\s*(\{(?:[^{}"]|"(?:[^"\\]|\\.)*")*\})\s*\)/g;
+    while ((match = clockRe.exec(text))) operations.push({ op: 'clock', data: JSON.parse(match[1]) });
+    if ((text.match(/setStoryClock\s*\(/g) || []).length !== operations.filter(op => op.op === 'clock').length
+        || (text.match(/setColumnKind\s*\(/g) || []).length !== operations.filter(op => op.op === 'semantic').length) {
+        throw new Error('剧情状态操作格式无效，请重新生成或修正草稿。');
+    }
     return operations;
 }
