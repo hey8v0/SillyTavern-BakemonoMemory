@@ -1,5 +1,8 @@
+import { isMemoryCurrent, storyTimeContext, refreshMemoryLinks, activeStoryCoverage } from '../memory/story-state.js';
+
 export function createInjectionService({
     ensureState,
+    getChat,
     getActiveEpicMemoryBlocks,
     getMultiSummaryLabel,
     getActiveCoveredStageHashes,
@@ -31,6 +34,8 @@ export function createInjectionService({
     }
     
     function getInjectionMemoryParts(state = ensureState()) {
+        if (getChat && state.chronicle) refreshMemoryLinks(state, getChat());
+        const coveredStories = activeStoryCoverage(state);
         const activeEpicBlocks = getActiveEpicMemoryBlocks(state);
         const epicContents = activeEpicBlocks.map(item => `## ${getMultiSummaryLabel(item)}\n${item.content}`);
         const epicCoveredStageHashes = getActiveCoveredStageHashes(state);
@@ -40,7 +45,8 @@ export function createInjectionService({
         const shouldInjectStory = state.memoryStrategy === memoryStrategies.GENERIC;
         const storyContents = shouldInjectStory
             ? state.storySummaries
-                .filter(item => !(state.coveredBlockHashes || []).includes(item.hash))
+                .filter(item => isMemoryCurrent(state, item))
+                .filter(item => !coveredStories.has(item.hash))
                 .map(item => item.content)
             : [];
     
@@ -50,7 +56,7 @@ export function createInjectionService({
                 stageContents.length ? '## 阶段总结\n' + stageContents.join('\n\n') : '',
             ].filter(Boolean).join('\n\n'),
             memory: storyContents.length ? '## 普通剧情摘要\n' + storyContents.join('\n\n') : '',
-            table: renderInjectedTablesSection(state),
+            table: [storyTimeContext(state), renderInjectedTablesSection(state)].filter(Boolean).join('\n\n'),
             vector: renderVectorMemorySection(state),
         };
         const sections = [sources.summary, sources.memory, sources.table, sources.vector].filter(Boolean);
@@ -70,6 +76,7 @@ export function createInjectionService({
     
     function syncInjection() {
         const state = ensureState();
+        state.generatedMemory = getInjectionMemoryParts(state).memory;
         const content = renderInjectionContent(state);
         state.injection.content = content;
         const value = state.injection.enabled ? content : '';

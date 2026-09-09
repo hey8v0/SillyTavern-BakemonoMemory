@@ -1,3 +1,5 @@
+import { markStoryChange } from '../memory/story-state.js';
+
 export function createTableStateService({
     tableSchemaScopes,
     getContext,
@@ -223,6 +225,7 @@ export function createTableStateService({
     }
     
     function pushTableUndoSnapshot(label = '表格操作', state = ensureState(), options = {}) {
+        markStoryChange(state, { label, sourceMessageIds: options.sourceMessageIds || [], mode: options.sourceMessageIds?.length ? 'source' : 'manual' });
         state.tableDatabase.undoStack = Array.isArray(state.tableDatabase.undoStack) ? state.tableDatabase.undoStack : [];
         const snapshot = {
             id: `table-undo-${Date.now()}-${Math.random().toString(36).slice(2)}`,

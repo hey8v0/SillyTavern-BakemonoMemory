@@ -1,3 +1,5 @@
+import { storyTimeContext } from '../memory/story-state.js';
+
 export function inspectSummaryMaterials(blocks = []) {
     const invalid = [];
     let textLength = 0;
@@ -77,16 +79,16 @@ export function createSummaryGenerationController({
 
     function buildStageUserPrompt(blocks) {
         validateSummaryMaterials(blocks);
-        return renderGenerationPrompt(getState().generationPrompts.stage, blocks);
+        return [storyTimeContext(getState()), renderGenerationPrompt(getState().generationPrompts.stage, blocks)].filter(Boolean).join('\n\n');
     }
 
     function buildEpicUserPrompt(blocks) {
         validateSummaryMaterials(blocks);
-        return renderGenerationPrompt(getState().generationPrompts.epic, blocks);
+        return [storyTimeContext(getState()), renderGenerationPrompt(getState().generationPrompts.epic, blocks)].filter(Boolean).join('\n\n');
     }
 
     function buildStoryUserPrompt(blocks, context = {}) {
-        return renderGenerationPrompt(getState().generationPrompts.story || defaultStoryGenerationPrompt, blocks, context);
+        return [storyTimeContext(getState()), renderGenerationPrompt(getState().generationPrompts.story || defaultStoryGenerationPrompt, blocks, context)].filter(Boolean).join('\n\n');
     }
 
     function reportNoStageMaterials(state) {

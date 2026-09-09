@@ -117,6 +117,8 @@ export function createTableEditorEvents({
                 }
                 pushTableUndoSnapshot(`删除字段：${table.name || table.tableIndex} / ${colName}`, state);
                 table.columns.splice(colIndex, 1);
+                table.columnIds?.splice(colIndex, 1);
+                table.columnKinds?.splice(colIndex, 1);
                 table.columnPrompts = Array.isArray(table.columnPrompts) ? table.columnPrompts : [];
                 table.columnPrompts.splice(colIndex, 1);
                 table.rows = (table.rows || []).map(row => row.filter((_, index) => index !== colIndex));
@@ -140,6 +142,7 @@ export function createTableEditorEvents({
                 }
                 pushTableUndoSnapshot(`删除数据行：${table.name || table.tableIndex} #${rowIndex + 1}`, state);
                 table.rows.splice(rowIndex, 1);
+                table.rowIds?.splice(rowIndex, 1);
                 tableUiState.openSection = 'rows';
                 persistCurrentTableDatabase(state);
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, `已删除数据行：${table.name || table.tableIndex}`);

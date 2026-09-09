@@ -3,10 +3,23 @@ export const helpGuideCategories = {
     flow: ['fresh-flow', 'active-flow', 'review-flow'],
     feature: ['summary-feature', 'archive-feature', 'automatic-feature', 'retrieval-feature', 'setup-feature', 'safety-feature'],
     faq: ['injection-empty', 'chat-config', 'mobile-lag', 'main-model'],
-    manual: ['manual-start', 'manual-tags', 'manual-auto', 'manual-backfill', 'manual-summary', 'manual-api', 'manual-vector', 'manual-tables', 'manual-injection', 'manual-troubleshooting'],
+    manual: ['manual-start', 'manual-tags', 'manual-auto', 'manual-backfill', 'manual-summary', 'manual-api', 'manual-vector', 'manual-tables', 'manual-injection', 'manual-troubleshooting', 'manual-story-state'],
 };
 
 export const helpGuideArticles = {
+    'manual-story-state': {
+        number: '11', category: '详细手册', title: '剧情状态、历史与记忆恢复', tag: '状态与备份', audience: '使用表格 / 长篇剧情', duration: '约 6 分钟',
+        lead: '表格、实体和剧情时间组成当前状态；Delta 账本记录每次变化，历史查看不改变当前聊天。',
+        steps: [
+            ['先留恢复包', '在“维护 → 记忆备份与诊断”导出记忆恢复包。它包含私人摘要、草稿、表格、正文标签摘要副本与账本，不包含 API 配置、密钥、完整正文和向量索引。诊断报告是另一个文件，只含数量和状态，不含剧情内容和原始报错。'],
+            ['恢复时会发生什么', '打开原聊天再选择恢复包。插件校验文件与聊天，预览数据数量，先下载恢复前副本；你确认副本已下载后才替换记忆。不会替换正文或隐藏楼层，不导入运行任务；全局表格会恢复为聊天内副本。导入后刷新向量索引可能产生 API 用量。暂不接受超过 50 MB 的恢复包。'],
+            ['查看历史', '表格页展开“逐楼变更账本”，输入楼层或点某笔记录的“查看状态”。这里只读展示；“返回当前状态”不会撤销数据。旧聊天从迁移基线开始记录，不能还原升级前任意一楼。事后补课保留来源楼层，但按实际记录位置入账；删楼前的历史仍可按记录序号查看。'],
+            ['设置语义', '在表格字段编辑里选择人物、物品、计划或地点，并保存表格。在实体区域新建名称和别名；唯一名称会被识别，重名需选中实体并填写表号、行号和列号绑定，编号从 0 开始。绑定使用稳定 ID，改名后状态视图显示新名，原表格文字保留；不想绑定的字段保持自由文本即可。'],
+            ['设置剧情时间', '日期格式为 YYYY-MM-DD，未知或架空日期可只填写描述。相对天数需要已有明确日期。回忆时间必须勾选“这是回忆时间”，不会把当前时钟倒退。插件按你确认的时间为摘要和注入提供上下文，不自动猜日期，也不调用额外模型。'],
+            ['核对过期总结', '“分层记忆来源”列出来源楼层、下层记忆与记录时剧情时间。来源正文或下层总结变化后，关联总结标记需要更新，停止自动注入与召回，但内容保留。用已有阶段 / 多次总结流程重新生成，检查后再保存。'],
+            ['维护长聊天', '历史 Delta 不自动删条目，定期检查点加速重放。定期导出备份，不要只依赖浏览器恢复空间；浏览器清理数据、存储配额或服务端保存失败仍需要恢复包兜底。'],
+        ],
+    },
     'manual-start': {
         number: '01', category: '详细手册', title: '从安装到第一条可用记忆', tag: '起步', audience: '第一次使用 / 换预设', duration: '约 5 分钟',
         lead: '先完成一次“取得摘要 → 检查 → 保存 → 查看注入”的小流程，再开启持续自动化。无需先配置向量和表格。',

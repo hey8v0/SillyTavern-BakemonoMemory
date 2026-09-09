@@ -9,7 +9,7 @@ function toDataModule(source) {
 }
 
 async function loadModule(path) {
-    if (path === 'src/core/persisted-chat-state.js') return import(new URL(path, repoUrl));
+    if (['src/core/persisted-chat-state.js', 'src/core/chat-state-service.js'].includes(path)) return import(new URL(path, repoUrl));
     const source = await readFile(new URL(path, repoUrl), 'utf8');
     return await import(toDataModule(source));
 }

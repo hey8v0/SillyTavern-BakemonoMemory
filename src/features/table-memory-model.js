@@ -1,3 +1,5 @@
+import { ensureTableIdentity, resolveEntity, storyTimeContext } from '../memory/story-state.js';
+
 export function createTableMemoryModel({
     getState: ensureState,
     formatBlocksForPrompt,
@@ -20,6 +22,7 @@ export function createTableMemoryModel({
         return tables.map(table => [
             `${table.tableIndex}: ${table.name} (${table.columns.map((col, index) => `${index}:${col}`).join(', ')})`,
             `权限：${table.readOnly ? '只读' : '可写'} / ${table.allowAiEdit === false || table.readOnly ? '禁止 AI 修改' : '允许 AI 修改'}`,
+            `字段语义：${table.columns.map((col, i) => `${col}=${table.columnKinds?.[i] || 'text'}`).join(' / ')}；实体名称应保持一致，不确定时不要猜测归属。`,
             table.columnPrompts?.some(Boolean)
                 ? `columns:\n${table.columns.map((col, index) => `${index}:${col}${table.columnPrompts?.[index] ? ` -> ${table.columnPrompts[index]}` : ''}`).join('\n')}`
                 : '',
@@ -84,7 +87,12 @@ export function createTableMemoryModel({
             ].filter(Boolean);
             if (rows.length) {
                 for (const [rowIndex, row] of rows.entries()) {
-                    lines.push(`row ${rowIndex}: ${table.columns.map((col, colIndex) => `${col}:${row?.[colIndex] ?? ''}`).join(' | ')}`);
+                    lines.push(`row ${rowIndex}: ${table.columns.map((col, colIndex) => {
+                        const value = String(row?.[colIndex] ?? '');
+                        const ref = table.cellRefs?.[`${table.rowIds?.[rowIndex]}:${table.columnIds?.[colIndex]}`];
+                        const entity = resolveEntity(state, table.columnKinds?.[colIndex], value, ref?.value === value ? ref.entityId : '');
+                        return `${col}:${entity?.name || value}`;
+                    }).join(' | ')}`);
                 }
             } else {
                 lines.push('(暂无数据行)');
@@ -103,12 +111,12 @@ export function createTableMemoryModel({
             sourceRange: formatSourceRange(getSourceMessageIdsFromBlocks(blocks)),
         });
         const template = String(state.turnSummary.tablePrompt || defaultTableEditPrompt);
-        return template
+        return [storyTimeContext(state), template
             .replaceAll('{{blocks}}', blockText)
             .replaceAll('{{tableData}}', formatTableDataForPrompt(state))
             .replaceAll('{{tableGuide}}', formatTableGuideForPrompt(state))
             .replaceAll('{{readonlyTables}}', formatSpecificTablesForPrompt(getReadonlyTables(state)))
-            .replaceAll('{{writableTables}}', formatSpecificTablesForPrompt(getWritableTables(state)));
+            .replaceAll('{{writableTables}}', formatSpecificTablesForPrompt(getWritableTables(state)))].filter(Boolean).join('\n\n');
     }
 
     function getTableSchemasForPreset(state = ensureState()) {
@@ -117,6 +125,8 @@ export function createTableMemoryModel({
             tableIndex: Number.isFinite(Number(table.tableIndex)) ? Number(table.tableIndex) : 0,
             name: String(table.name || '未命名表格'),
             columns: Array.isArray(table.columns) ? table.columns.map(col => String(col || '')) : [],
+            columnIds: [...(table.columnIds || [])],
+            columnKinds: [...(table.columnKinds || [])],
             columnPrompts: Array.isArray(table.columnPrompts) ? table.columnPrompts.map(text => String(text || '')) : [],
             note: String(table.note || ''),
             initNode: String(table.initNode || ''),
@@ -153,10 +163,8 @@ export function createTableMemoryModel({
     function applyTableOperations(operations = [], state = ensureState(), options = {}) {
         const sourceMessageIds = getFiniteMessageIds(options.sourceMessageIds || []);
         let snapshot = null;
-        if (options.recordUndo !== false && operations.length) {
-            snapshot = pushTableUndoSnapshot(options.undoLabel || `AI 表格修改 ${operations.length} 项`, state, { sourceMessageIds });
-        }
-        const tablesByIndex = new Map((state.tableDatabase.tables || []).map(table => [Number(table.tableIndex), table]));
+        const nextTables = structuredClone(state.tableDatabase.tables || []);
+        const tablesByIndex = new Map(nextTables.map(table => [Number(table.tableIndex), table]));
         const deletes = [];
         for (const operation of operations) {
             const table = tablesByIndex.get(Number(operation.tableIndex));
@@ -167,6 +175,9 @@ export function createTableMemoryModel({
                 throw new Error(`表格 ${operation.tableIndex}「${table.name || ''}」是只读或禁止 AI 修改，已拒绝本次操作。`);
             }
             table.rows = Array.isArray(table.rows) ? table.rows : [];
+            ensureTableIdentity(table);
+            if (!['insert', 'update', 'delete'].includes(operation.op)) throw new Error('未知表格操作');
+            if (operation.op !== 'insert' && (!Number.isInteger(operation.rowIndex) || !table.rows[operation.rowIndex])) throw new Error('表格数据行不存在');
             if (operation.op === 'insert') {
                 const row = table.columns.map((_, index) => normalizeTableText(operation.data?.[String(index)] ?? operation.data?.[index] ?? ''));
                 table.rows.push(row);
@@ -177,6 +188,7 @@ export function createTableMemoryModel({
                 }
                 for (const [key, value] of Object.entries(operation.data || {})) {
                     const colIndex = Number(key);
+                    if (!Number.isInteger(colIndex) || colIndex < 0 || colIndex >= table.columns.length) throw new Error('表格字段不存在');
                     if (Number.isFinite(colIndex) && colIndex >= 0 && colIndex < table.columns.length) {
                         row[colIndex] = normalizeTableText(value);
                     }
@@ -185,11 +197,21 @@ export function createTableMemoryModel({
                 deletes.push({ table, rowIndex: operation.rowIndex });
             }
         }
+        const deleted = new Set();
         deletes.sort((a, b) => b.rowIndex - a.rowIndex).forEach(({ table, rowIndex }) => {
+            const key = `${table.id}:${rowIndex}`;
+            if (deleted.has(key)) return;
+            deleted.add(key);
             if (table.rows[rowIndex]) {
                 table.rows.splice(rowIndex, 1);
+                table.rowIds?.splice(rowIndex, 1);
             }
         });
+        nextTables.forEach(ensureTableIdentity);
+        if (options.recordUndo !== false && operations.length) {
+            snapshot = pushTableUndoSnapshot(options.undoLabel || `AI 表格修改 ${operations.length} 项`, state, { sourceMessageIds });
+        }
+        state.tableDatabase.tables = nextTables;
         saveCurrentTableProfileRows(state);
         updateInjectionFromSummaries();
         if (sourceMessageIds.length) {

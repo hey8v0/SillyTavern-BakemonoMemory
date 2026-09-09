@@ -1,3 +1,5 @@
+import { isMemoryCurrent } from '../memory/story-state.js';
+
 export function createSummaryMemoryModel({
     blockTypes,
     memoryStrategies,
@@ -40,8 +42,8 @@ export function createSummaryMemoryModel({
 
     function getEpicMemoryBlocks(state) {
         return dedupeByHash([
-            ...(state.epicSummaries || []).map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
-            ...(state.blocks || []).filter(block => block.type === blockTypes.EPIC),
+            ...(state.epicSummaries || []).filter(item => isMemoryCurrent(state, item)).map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
+            ...(state.blocks || []).filter(block => block.type === blockTypes.EPIC && isMemoryCurrent(state, block)),
         ]);
     }
 
@@ -83,8 +85,8 @@ export function createSummaryMemoryModel({
 
     function getStageMemoryBlocks(state) {
         return dedupeByHash([
-            ...(state.stageSummaries || []).map(summary => ({ ...summaryToBlock(summary), type: blockTypes.STAGE })),
-            ...(state.blocks || []).filter(block => block.type === blockTypes.STAGE),
+            ...(state.stageSummaries || []).filter(item => isMemoryCurrent(state, item)).map(summary => ({ ...summaryToBlock(summary), type: blockTypes.STAGE })),
+            ...(state.blocks || []).filter(block => block.type === blockTypes.STAGE && isMemoryCurrent(state, block)),
         ]);
     }
 

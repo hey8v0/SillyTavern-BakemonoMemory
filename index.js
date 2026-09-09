@@ -4,6 +4,8 @@ import { hideChatMessageRange } from '../../../chats.js';
 import { getTokenCountAsync } from '../../../tokenizers.js';
 import { getImageSizeFromDataURL } from '../../../utils.js';
 import { runChatSwitchFlow } from './src/core/chat-switch.js';
+import { captureChronicle } from './src/memory/story-state.js';
+import { createStoryToolsUi } from './src/features/story-tools-ui.js';
 import { createAutomationBehaviorConfig, createSharedInlineGenerationConfig, createSharedVectorConfig, isStateConfigNewerThanActive, markActiveConfigApplied, mergeAutomationBehaviorConfig, mergeSharedInlineGenerationConfig, mergeSharedVectorConfig, readActiveConfig, sharedConfigVersion, shouldBootstrapSharedConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
 import { persistChatState, persistGlobalSettings } from './src/core/persistence.js';
 import { installCompactStateSerializer } from './src/core/persisted-chat-state.js';
@@ -283,6 +285,11 @@ function saveState(options = {}) {
     if (!state) {
         const error = new Error('当前聊天状态尚未连接到 SillyTavern 正式元数据，已阻止空保存');
         console.error('[BakemonoMemory] refused to save a missing live chat state', error);
+        return { status: 'error', revision: 0, error };
+    }
+    try { captureChronicle(state, chat); }
+    catch (error) {
+        console.error('[BakemonoMemory] story state could not be recorded', error);
         return { status: 'error', revision: 0, error };
     }
     const recovery = summaryRecoveryJournal.stage(state, chat, { messageIds: options.recoveryMessageIds || [] });
@@ -1245,6 +1252,7 @@ const {
 } = archiveController;
 
 const injectionService = createInjectionService({
+    getChat: () => chat,
     ensureState,
     getActiveEpicMemoryBlocks,
     getMultiSummaryLabel,
@@ -1738,6 +1746,19 @@ const {
     renderOverview: renderMaintenanceOverview,
 } = maintenanceUi;
 
+const storyToolsUi = createStoryToolsUi({
+    documentRef: document, getState: ensureState, getChat: () => chat,
+    getChatKey: getSummaryRecoveryChatIdentity,
+    getScannedBlocks: () => { scanBakemonoBlocks({ persist: false, render: false }); return ensureState().blocks || []; },
+    saveState, saveChat: saveChatConditional, refresh: () => {
+        updateInjectionFromSummaries();
+        renderWorkbenchScope(workbenchRenderScopes.TABLES);
+        renderWorkbenchScope(workbenchRenderScopes.ARCHIVE);
+    },
+    isBusy: () => isBusy, escapeHtml, notify: (message, error) => error ? toastr.error(message) : toastr.success(message),
+    confirm: message => window.confirm(message),
+});
+
 const summaryTimelineUi = createSummaryTimelineUi({
     documentRef: document,
     getState: ensureState,
@@ -1978,7 +1999,7 @@ workbenchRenderer = createWorkbenchRenderer({
     renderDrafts,
     renderHistory,
     renderTaskQueue,
-    renderTurnSummaryPanel,
+    renderTurnSummaryPanel: state => { renderTurnSummaryPanel(state); storyToolsUi.render(state); },
     renderInjectionOverview,
     renderPromptOverview,
     renderAutomationOverview,
@@ -1988,7 +2009,7 @@ workbenchRenderer = createWorkbenchRenderer({
     renderCustomModelOptions,
     renderAppearanceSettings,
     renderAutoHideRecentPanel,
-    renderMaintenanceOverview,
+    renderMaintenanceOverview: state => { renderMaintenanceOverview(state); storyToolsUi.render(state); },
     renderHelp: () => helpGuide.render(),
     getStoryBlocks,
     getBlocksByType,
@@ -2097,6 +2118,7 @@ function bindSettingsEvents() {
     bindSummaryGenerationEvents();
     bindPromptEvents();
     bindMaintenanceEvents();
+    storyToolsUi.bind();
     tableEditorEvents.bind();
     tableManagementEvents.bind();
     contentConfigurationEvents.bind();

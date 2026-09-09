@@ -125,6 +125,8 @@ test('manual reader escapes tag examples and returns to the detailed chapter lis
     assert.equal(node('[data-bakemono-help-category="manual"]').attrs['aria-pressed'], 'true');
     assert.match(node('bakemono-memory-help-list').innerHTML, /manual-troubleshooting/);
     guide.openArticle('manual-troubleshooting');
+    assert.equal(node('bakemono-memory-help-next').dataset.bakemonoHelpArticle, 'manual-story-state');
+    guide.openArticle('manual-story-state');
     assert.equal(node('bakemono-memory-help-next').hidden, true);
     guide.openArticle('main-model');
     assert.equal(node('bakemono-memory-help-next').hidden, true);

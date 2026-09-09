@@ -1,3 +1,5 @@
+import { semanticKinds, ensureTableIdentity } from '../memory/story-state.js';
+
 export function createTableWorkbenchUi({
     query,
     document,
@@ -150,6 +152,7 @@ export function createTableWorkbenchUi({
                         <span>字段提示词</span>
                         <textarea class="text_pole textarea_compact" data-table-column-prompt="${index}" rows="3" spellcheck="false" placeholder="告诉 AI 这一栏应该记录什么、什么时候更新、不要写什么。">${escapeHtml(table.columnPrompts?.[index] || '')}</textarea>
                     </label>
+                    <label><span>字段语义</span><select class="text_pole" data-table-column-kind="${index}">${semanticKinds.map(kind => `<option value="${kind}" ${kind === (table.columnKinds?.[index] || 'text') ? 'selected' : ''}>${({ text: '自由文本', person: '人物', item: '物品', plan: '计划', location: '地点' })[kind]}</option>`).join('')}</select></label>
                     <button type="button" class="menu_button danger_button" data-bakemono-table-action="delete-column" data-table-col="${index}"><i class="fa-solid fa-trash"></i><span>删除字段</span></button>
                 </div>
             `).join('');
@@ -328,6 +331,7 @@ export function createTableWorkbenchUi({
         table.name = String(details.querySelector('[data-table-name]')?.value || table.name || '').trim() || '未命名表格';
         const columnNames = table.columns.map((name, colIndex) => String(details.querySelector(`[data-table-column-name="${colIndex}"]`)?.value || name || '').trim() || `字段 ${colIndex}`);
         table.columns = columnNames;
+        table.columnKinds = columnNames.map((_, i) => details.querySelector(`[data-table-column-kind="${i}"]`)?.value || table.columnKinds?.[i] || 'text');
         table.columnPrompts = columnNames.map((_, colIndex) => String(details.querySelector(`[data-table-column-prompt="${colIndex}"]`)?.value || '').trim());
         table.note = String(details.querySelector('[data-table-note]')?.value || '').trim();
         table.readOnly = !!details.querySelector('[data-table-readonly]')?.checked;
@@ -338,6 +342,7 @@ export function createTableWorkbenchUi({
             table.columns.map((_, colIndex) => String(row.querySelector(`[data-table-col="${colIndex}"]`)?.value || '').trim())
         ));
         table.rows = rows;
+        ensureTableIdentity(table);
         if (options.persist !== false) {
             persistCurrentTableDatabase(state);
         }

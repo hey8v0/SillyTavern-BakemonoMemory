@@ -1,3 +1,5 @@
+import { storyTimeContext } from '../memory/story-state.js';
+
 export function createTurnProcessingController({
     getContext,
     getChat,
@@ -253,10 +255,10 @@ export function createTurnProcessingController({
     
     function buildTurnSummaryPrompt(blocks, state = ensureState()) {
         const sourceIds = getSourceMessageIdsFromBlocks(blocks);
-        return renderGenerationPrompt(state.turnSummary.prompt || defaultTurnSummaryPrompt, blocks, {
+        return [storyTimeContext(state), renderGenerationPrompt(state.turnSummary.prompt || defaultTurnSummaryPrompt, blocks, {
             sourceRange: formatSourceRange(sourceIds),
             suggestedTitle: `正文摘要 ${state.storySummaries.length + state.drafts.filter(draft => draft.kind === blockTypes.STORY).length + 1}`,
-        });
+        })].filter(Boolean).join('\n\n');
     }
     
     function getCurrentCharacterForReference() {

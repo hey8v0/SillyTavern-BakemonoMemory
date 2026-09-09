@@ -12691,3 +12691,19 @@ details[open] > summary > .bakemono-memory-help-trigger {
     transform: none !important;
   }
 }
+/* Story state tools use the existing workbench colors and controls. */
+#bakemono-workbench-root #bakemono-story-state,
+#bakemono-workbench-root #bakemono-story-backup { min-width: 0; }
+#bakemono-workbench-root #bakemono-story-state label {
+    display: block;
+    margin-block: 0.65em;
+}
+#bakemono-workbench-root #bakemono-story-state .text_pole { width: 100%; min-width: 0; }
+#bakemono-workbench-root #bakemono-story-state pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 22rem;
+    overflow: auto;
+}
+#bakemono-workbench-root #bakemono-story-state li { overflow-wrap: anywhere; margin-block: 0.6em; }
+#bakemono-workbench-root [data-story-action] { min-height: 44px; white-space: normal; }

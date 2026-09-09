@@ -1,6 +1,7 @@
 import { createEmbeddingCache, getEmbeddingCacheKey } from '../vector/embedding-cache.js';
 import { runApiRequest } from '../shared/request-policy.js';
 import { createBm25Index } from '../vector/bm25-index.js';
+import { isMemoryCurrent, activeStoryCoverage, summaryItems, storyTimeContext } from '../memory/story-state.js';
 
 export function createVectorMemoryService({
     defaultVectorMemory,
@@ -247,6 +248,7 @@ export function createVectorMemoryService({
         }
         const systemPrompt = '你是剧情记忆检索的查询改写器。关闭思考过程。只输出 INTENT 与 Q1-Q5 六行中文，不输出解释、英文、JSON、Markdown 或分析。';
         const prompt = `${state.vectorMemory.queryRewritePrompt || defaultVectorMemory.queryRewritePrompt}
+    ${storyTimeContext(state)}
     
     <最近剧情>
     ${baseQuery}
@@ -420,16 +422,16 @@ export function createVectorMemoryService({
     }
     
     function getInjectedSummaryHashesForVector(state = ensureState()) {
-        const coveredStoryHashes = new Set(state.coveredBlockHashes || []);
+        const coveredStoryHashes = activeStoryCoverage(state);
         const coveredStageHashes = getActiveCoveredStageHashes(state);
         return new Set([
             ...(state.memoryStrategy === memoryStrategies.GENERIC
                 ? (state.storySummaries || [])
-                    .filter(summary => summary.hash && !coveredStoryHashes.has(summary.hash))
+                    .filter(summary => summary.hash && isMemoryCurrent(state, summary) && !coveredStoryHashes.has(summary.hash))
                     .map(summary => summary.hash)
                 : []),
             ...(state.stageSummaries || [])
-                .filter(summary => summary.hash && !coveredStageHashes.has(summary.hash))
+                .filter(summary => summary.hash && isMemoryCurrent(state, summary) && !coveredStageHashes.has(summary.hash))
                 .map(summary => summary.hash),
             ...getActiveEpicMemoryBlocks(state)
                 .map(summary => summary.hash)
@@ -442,6 +444,7 @@ export function createVectorMemoryService({
         const sources = [];
         const injectedSummaryHashes = getInjectedSummaryHashesForVector(state);
         const addSummary = (summary, type) => {
+            if (!isMemoryCurrent(state, summary)) return;
             const raw = String(summary?.content || '').trim();
             if (!summary?.hash || !raw) {
                 return;
@@ -477,7 +480,7 @@ export function createVectorMemoryService({
             });
         };
         (state.storySummaries || [])
-            .filter(summary => ['backfill', 'turn', 'inline', 'manual', 'turn_manual', 'turn_auto', 'inline_summary'].includes(String(summary.sourceKind || summary.metadata?.sourceKind || '')))
+            .filter(summary => ['backfill', 'turn', 'inline', 'manual', 'turn_manual', 'turn_auto', 'inline_summary', 'backup_tag'].includes(String(summary.sourceKind || summary.metadata?.sourceKind || '')))
             .forEach(summary => addSummary(summary, blockTypes.STORY));
         (state.stageSummaries || []).forEach(summary => addSummary(summary, blockTypes.STAGE));
         (state.epicSummaries || []).forEach(summary => addSummary(summary, blockTypes.EPIC));
@@ -720,6 +723,7 @@ export function createVectorMemoryService({
                 id: source.id,
                 kind: 'summary',
                 messageId: source.messageId,
+                memoryHash: source.hash,
                 chunkIndex: 0,
                 role: 'memory',
                 isHidden: false,
@@ -923,7 +927,12 @@ export function createVectorMemoryService({
                 }
             }
         }
-        const hits = [...fullHits, ...summaryHits]
+        const seenText = new Set();
+        const hits = [...fullHits, ...summaryHits].filter(item => {
+            const text = String(item.text || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
+            if (!text || seenText.has(text)) return false;
+            seenText.add(text); return true;
+        })
             .slice(0, finalRecallCount)
             .sort((a, b) => (
                 Number(a.messageId) - Number(b.messageId)
@@ -945,6 +954,7 @@ export function createVectorMemoryService({
             isHidden: hit.isHidden,
             isSavedSummary: !!hit.isSavedSummary,
             summaryType: hit.summaryType || '',
+            memoryHash: hit.memoryHash || '',
             title: hit.title,
             text: getClippedVectorText(hit.text, hit.recallTier === 'full' ? hitTextLimit : Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars))),
             matchedText: getClippedVectorText(hit.matchedText || '', Math.min(textLimit, 480)),
@@ -970,6 +980,9 @@ export function createVectorMemoryService({
         let used = 0;
         const lines = [];
         for (const hit of hits) {
+            const memoryHash = hit.memoryHash || (hit.isSavedSummary ? summaryItems(state).find(item => String(hit.id || '').endsWith(`-${item.hash}`))?.hash : '');
+            if (memoryHash && !isMemoryCurrent(state, { hash: memoryHash })) continue;
+            if (hit.isSavedSummary && !memoryHash && state.chronicle) continue;
             const source = String(hit.text || '').trim();
             const snippet = hit.kind === 'message' && source.length > perMessageMaxChars
                 ? `${source.slice(0, perMessageMaxChars)}...`

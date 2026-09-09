@@ -1,3 +1,5 @@
+import { ensureChronicle } from '../memory/story-state.js';
+
 export function ensureCurrentChatStateSlot({
     getChatMetadata,
     chatMetadata,
@@ -199,6 +201,7 @@ export function createChatStateService({
         ensureObjectField(state.vectorMemory, 'embeddingCache', {});
         ensureObjectField(state, 'chatGuard', defaultState.chatGuard);
         sanitizeChatStateWhenStructureChanges(state);
+        ensureChronicle(state, getContext().chat || getFallbackChat?.() || []);
         return state;
     }
     
@@ -286,13 +289,14 @@ export function createChatStateService({
     
         state.blocks = filterArray(state.blocks, block => hasCurrentSourceMessages(block, messageMap));
         state.scanPreview = filterArray(state.scanPreview, item => hasCurrentSourceMessages(item, messageMap));
-        state.storySummaries = filterArray(state.storySummaries, summary => hasCurrentSourceMessages(summary, messageMap));
+        state.storySummaries = filterArray(state.storySummaries, summary => state.chronicle?.links?.[summary.hash] || hasCurrentSourceMessages(summary, messageMap));
         const validStoryHashes = new Set([
             ...state.blocks.map(block => block.hash).filter(Boolean),
             ...state.storySummaries.map(summary => summary.hash).filter(Boolean),
         ]);
     
         state.stageSummaries = filterArray(state.stageSummaries, summary => {
+            if (state.chronicle?.links?.[summary.hash]) return true;
             if (!hasCurrentSourceMessages(summary, messageMap)) {
                 return false;
             }
@@ -305,6 +309,7 @@ export function createChatStateService({
         const validStageHashes = new Set(state.stageSummaries.map(summary => summary.hash).filter(Boolean));
     
         state.epicSummaries = filterArray(state.epicSummaries, summary => {
+            if (state.chronicle?.links?.[summary.hash]) return true;
             if (!hasCurrentSourceMessages(summary, messageMap)) {
                 return false;
             }

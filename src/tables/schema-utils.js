@@ -9,6 +9,8 @@ export function toTableSchema(table, fallbackIndex = 0) {
         tableIndex,
         name: String(table?.name || `表格 ${tableIndex}`),
         columns,
+        columnIds: Array.isArray(table?.columnIds) ? [...table.columnIds] : [],
+        columnKinds: columns.map((_, i) => ['person', 'item', 'plan', 'location'].includes(table?.columnKinds?.[i]) ? table.columnKinds[i] : 'text'),
         columnPrompts: Array.isArray(table?.columnPrompts)
             ? table.columnPrompts.map(text => String(text || '')).slice(0, columns.length)
             : columns.map(() => ''),
@@ -45,6 +47,9 @@ export function mergeTableSchemaWithRows(schema, existing) {
     return {
         ...schema,
         rows,
+        columnIds: schema.columnIds?.length ? [...schema.columnIds] : [...(existing?.columnIds || [])],
+        rowIds: Array.isArray(existing?.rowIds) ? [...existing.rowIds] : [],
+        cellRefs: existing?.cellRefs ? structuredClone(existing.cellRefs) : {},
     };
 }
 
@@ -58,6 +63,8 @@ export function normalizeImportedTablesFromJson(raw) {
         return parsed.tables.map((table, index) => ({
             ...toTableSchema(table, index),
             rows: Array.isArray(table.rows) ? table.rows.map(row => Array.isArray(row) ? row.map(cell => String(cell ?? '')) : []) : [],
+            rowIds: Array.isArray(table.rowIds) ? [...table.rowIds] : [],
+            cellRefs: table.cellRefs ? structuredClone(table.cellRefs) : {},
         }));
     }
     if (Array.isArray(parsed?.tableStructure)) {
