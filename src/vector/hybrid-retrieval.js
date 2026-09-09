@@ -1,52 +1,11 @@
-const CJK_STOP_CHARACTERS = new Set('的了是在与和及或也都而被把对从为有还就又很这那中上下来去后前着过于将并但则所其之'.split(''));
-const LATIN_TERM_PATTERN = /[a-z0-9][a-z0-9_.-]+/g;
-const CJK_SEQUENCE_PATTERN = /[\u3400-\u9fff]+/g;
+import { createBm25Index, normalizeLexicalText, tokenizeBm25Text } from './bm25-index.js';
 
 function unique(values = []) {
     return [...new Set(values.filter(Boolean))];
 }
 
-function normalizeLexicalText(value = '') {
-    return String(value || '')
-        .normalize('NFKC')
-        .toLowerCase()
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-function isUsefulCjkGram(value = '') {
-    const characters = [...String(value || '')];
-    return characters.length >= 2 && characters.filter(character => !CJK_STOP_CHARACTERS.has(character)).length >= 2;
-}
-
 function tokenizeHybridText(value = '', options = {}) {
-    const normalized = normalizeLexicalText(value);
-    if (!normalized) {
-        return [];
-    }
-    const terms = [];
-    for (const term of normalized.match(LATIN_TERM_PATTERN) || []) {
-        if (term.length >= 2) {
-            terms.push(term);
-        }
-    }
-    for (const sequence of normalized.match(CJK_SEQUENCE_PATTERN) || []) {
-        if (sequence.length >= 2 && sequence.length <= 12 && isUsefulCjkGram(sequence)) {
-            terms.push(sequence);
-        }
-        for (const size of [2, 3, 4]) {
-            if (sequence.length < size) {
-                continue;
-            }
-            for (let index = 0; index <= sequence.length - size; index += 1) {
-                const gram = sequence.slice(index, index + size);
-                if (isUsefulCjkGram(gram)) {
-                    terms.push(gram);
-                }
-            }
-        }
-    }
-    return unique(terms).slice(0, Math.max(1, Number(options.maxTerms || 180)));
+    return unique(tokenizeBm25Text(value)).slice(0, Math.max(1, Number(options.maxTerms || 180)));
 }
 
 export function createHybridQueryTerms(queries = [], keywordTerms = [], options = {}) {
@@ -56,63 +15,26 @@ export function createHybridQueryTerms(queries = [], keywordTerms = [], options 
     const generatedTerms = (Array.isArray(queries) ? queries : [])
         .flatMap(query => tokenizeHybridText(query, options));
     return {
-        terms: unique([...explicitKeywords, ...generatedTerms]).slice(0, Math.max(1, Number(options.maxTerms || 180))),
+        terms: unique([...explicitKeywords, ...explicitKeywords.flatMap(term => tokenizeHybridText(term, options)), ...generatedTerms])
+            .slice(0, Math.max(1, Number(options.maxTerms || 180))),
         explicitKeywords,
     };
-}
-
-function getRecordSearchText(record = {}) {
-    return normalizeLexicalText(`${record.title || ''}\n${record.summary || ''}\n${record.text || ''}`);
-}
-
-function buildDocumentFrequency(records = [], terms = []) {
-    const frequencies = new Map(terms.map(term => [term, 0]));
-    for (const record of records) {
-        const haystack = getRecordSearchText(record);
-        for (const term of terms) {
-            if (haystack.includes(term)) {
-                frequencies.set(term, (frequencies.get(term) || 0) + 1);
-            }
-        }
-    }
-    return frequencies;
-}
-
-function getInverseDocumentFrequency(documentCount, frequency) {
-    return Math.log(1 + (documentCount - frequency + 0.5) / (frequency + 0.5));
 }
 
 export function enrichHybridLexicalScores(records = [], queries = [], keywordTerms = [], options = {}) {
     const source = Array.isArray(records) ? records : [];
     const { terms, explicitKeywords } = createHybridQueryTerms(queries, keywordTerms, options);
-    if (!source.length || !terms.length) {
-        return source.map(record => ({
-            ...record,
-            lexicalScore: 0,
-            keywordHits: 0,
-            matchedTerms: [],
-            matchedKeywords: [],
-        }));
-    }
-    const frequencies = buildDocumentFrequency(source, terms);
-    const weights = new Map(terms
-        .filter(term => Number(frequencies.get(term) || 0) > 0)
-        .map(term => [term, getInverseDocumentFrequency(source.length, frequencies.get(term) || 0)]));
-    const totalWeight = [...weights.values()].reduce((sum, weight) => sum + weight, 0) || 1;
-    return source.map(record => {
-        const haystack = getRecordSearchText(record);
-        const matchedTerms = terms.filter(term => haystack.includes(term));
-        const matchedKeywords = explicitKeywords.filter(term => haystack.includes(term));
-        const matchedWeight = matchedTerms.reduce((sum, term) => sum + (weights.get(term) || 0), 0);
+    const index = options.lexicalIndex || createBm25Index();
+    const scores = index.score(source, terms, explicitKeywords);
+    return source.map((record, i) => {
+        const { matchedTerms, ...score } = scores[i];
         return {
             ...record,
-            lexicalScore: Math.max(0, Math.min(1, matchedWeight / totalWeight)),
-            keywordHits: matchedKeywords.length,
+            ...score,
             matchedTerms: matchedTerms
                 .slice()
                 .sort((a, b) => b.length - a.length || a.localeCompare(b))
                 .slice(0, Math.max(1, Number(options.maxMatchedTerms || 8))),
-            matchedKeywords,
         };
     });
 }

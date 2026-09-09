@@ -1,5 +1,6 @@
 import { createEmbeddingCache, getEmbeddingCacheKey } from '../vector/embedding-cache.js';
 import { runApiRequest } from '../shared/request-policy.js';
+import { createBm25Index } from '../vector/bm25-index.js';
 
 export function createVectorMemoryService({
     defaultVectorMemory,
@@ -53,6 +54,15 @@ export function createVectorMemoryService({
 } = {}) {
     let vectorIndexTimer = null;
     let indexRun = null;
+    const lexicalIndex = createBm25Index();
+    let lexicalState = null;
+    function getLexicalIndex(state) {
+        if (lexicalState !== state) {
+            lexicalIndex.clear();
+            lexicalState = state;
+        }
+        return lexicalIndex;
+    }
     const pausedIndexStates = new WeakSet();
     let cachedSourceState = null, cachedSourceRules = '', sourceTextCache = [];
     const vectorEmbeddingRuntimeCache = new Map();
@@ -354,6 +364,10 @@ export function createVectorMemoryService({
     }
     
     function clearVectorRecall(reason = '', state = ensureState()) {
+        if (lexicalState !== state || !state.vectorMemory.records?.length) {
+            lexicalIndex.clear();
+            lexicalState = state;
+        }
         state.vectorMemory.lastHits = [];
         state.vectorMemory.lastQueries = [];
         state.vectorMemory.lastRewriteIntent = '';
@@ -810,7 +824,16 @@ export function createVectorMemoryService({
             };
         });
     
+        const preparedLexicalIndex = getLexicalIndex(state);
+        const prepared = await preparedLexicalIndex.prepare(scored, {
+            yieldToUi, isCurrent: () => ensureState() === state && lexicalState === state,
+        });
+        if (!prepared || ensureState() !== state) return [];
+        if (signature !== getVectorSourceSignature(state)) {
+            return clearVectorRecall('词索引准备期间正文或配置发生变化，请刷新后重试。', state);
+        }
         let embeddingCandidates = selectHybridCandidates(scored, queries, keywords, {
+            lexicalIndex: preparedLexicalIndex,
             embeddingThreshold,
             candidateCount: rerankCandidateCount,
             keywordBoost: state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost,
@@ -821,6 +844,7 @@ export function createVectorMemoryService({
             const fallbackCandidates = scored.filter(item => item.isHidden || !recentVisibleIds.has(Number(item.messageId)));
             if (fallbackCandidates.length) {
                 embeddingCandidates = selectHybridCandidates(fallbackCandidates, queries, keywords, {
+                    lexicalIndex: getLexicalIndex(state),
                     embeddingThreshold: 0,
                     candidateCount: rerankCandidateCount,
                     keywordBoost: state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost,

@@ -12,6 +12,7 @@ import { createGenerationClient } from '../src/features/generation-client.js';
 import * as provider from '../src/vector/provider-config.js';
 import * as math from '../src/vector/math.js';
 import * as sourceMetadata from '../src/summary/source-metadata.js';
+import { selectHybridCandidates, computeHybridRerankScore } from '../src/vector/hybrid-retrieval.js';
 
 const noop = () => {};
 const toastr = { info: noop, success: noop, warning: noop, error: noop, clear: noop };
@@ -117,6 +118,23 @@ function queueFixture(tasks, overrides = {}) {
         ...overrides };
     return { state, created, queue: createSummaryTaskQueue(deps), deps };
 }
+
+test('BM25 participates in the actual vector recall pipeline without extra embedding calls', async () => {
+    const f = vectorFixture(2, { selectHybridCandidates, computeHybridRerankScore, countKeywordHits: () => 0 });
+    f.chat[0].mes = 'silver key promised to Nana';
+    f.chat[1].mes = 'silver key ' + 'breakfast weather '.repeat(120);
+    Object.assign(f.state.vectorMemory, { queryMode: 'off', skipIfAllInContext: false, contextWindowMessages: 0,
+        embeddingThreshold: 0, rerankThreshold: 0, rerankCandidateCount: 20,
+        finalRecallCount: 1, fullRecallCount: 1, perMessageMaxChars: 1600, maxStoredTextChars: 1200 });
+    await f.service.buildVectorMemoryIndex();
+    const hits = await f.service.retrieveVectorMemoryHits('silver key');
+    assert.equal(hits.length, 1); assert.equal(hits[0].messageId, 0);
+    assert.ok(hits[0].lexicalScore > 0);
+    const calls = f.calls();
+    await f.service.retrieveVectorMemoryHits('silver key');
+    assert.equal(f.calls(), calls);
+    assert.equal(Object.hasOwn(f.state.vectorMemory, 'lexicalIndex'), false);
+});
 
 test('queue pauses after current task and resumes pending tasks without repeating completed tasks', async () => {
     let release, calls = 0;

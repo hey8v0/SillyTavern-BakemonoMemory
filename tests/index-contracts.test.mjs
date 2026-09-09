@@ -288,13 +288,14 @@ test('vector recall uses independent semantic and lexical candidates with explai
     assert.match(vectorMemoryServiceSource, /keywordBoost:\s*state\.vectorMemory\.keywordBoost/);
     assert.match(vectorMemoryServiceSource, /lexicalScore:\s*Number/);
     assert.match(vectorMemoryServiceSource, /matchedTerms:\s*Array\.isArray/);
-    assert.match(settingsSource, /混合召回 v2：语义 \+ 稀有词 \+ 关键词/);
+    assert.match(settingsSource, /混合召回：向量 \+ BM25 \+ 关键词/);
     assert.match(vectorWorkbenchUiSource, /title:\s*`混合初筛/);
     assert.match(hybridRetrievalSource, /export function selectHybridCandidates\(/);
     assert.match(hybridRetrievalSource, /vectorRanked/);
     assert.match(hybridRetrievalSource, /lexicalRanked/);
     assert.match(hybridRetrievalSource, /keywordRanked/);
-    assert.match(hybridRetrievalSource, /getInverseDocumentFrequency/);
+    assert.match(hybridRetrievalSource, /createBm25Index/);
+    assert.match(vectorMemoryServiceSource, /preparedLexicalIndex\.prepare/);
 });
 
 test('vector indexing, settings, actions, and page rendering are assembled as separate boundaries', () => {
