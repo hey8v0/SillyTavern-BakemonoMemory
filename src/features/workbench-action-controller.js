@@ -27,6 +27,7 @@ export function createWorkbenchActionController({
     restoreAutoHiddenMessages,
     applyVectorMemorySettings,
     buildVectorMemoryIndex,
+    pauseVectorIndex,
     testVectorMemoryRetrieval,
     persistVectorMemoryFieldsFromUi,
     fetchVectorEmbeddingModels,
@@ -92,6 +93,8 @@ export function createWorkbenchActionController({
             await applyVectorMemorySettings();
         } else if (action === 'vector-index') {
             await runVisibleOperation('正在建立/刷新向量索引...', () => buildVectorMemoryIndex(), '向量索引已刷新');
+        } else if (action === 'vector-pause') {
+            pauseVectorIndex();
         } else if (action === 'vector-test') {
             await runVisibleOperation('正在测试向量召回...', () => testVectorMemoryRetrieval(), '召回测试已完成');
         } else if (action === 'vector-test-embedding') {

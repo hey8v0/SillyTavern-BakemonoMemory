@@ -702,6 +702,7 @@ export function createDefaultConfiguration({
         drafts: [],
         history: [],
         taskQueue: [],
+        taskQueuePaused: false,
         autoSummaryTransactions: [],
         memoryRecords: [],
         generatedMemory: '',

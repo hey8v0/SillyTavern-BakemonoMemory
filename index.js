@@ -1897,6 +1897,7 @@ const {
 } = summaryTargetController;
 
 const summaryTaskQueue = createSummaryTaskQueue({
+    rebuildMissingTask: task => summaryBackfillController.rebuildMissingTask(task),
     getTaskSourceSignature: task => JSON.stringify((task.sourceMessageIds || []).map(id => [id, chat[id] ? getMessageVariantKey(chat[id]) : null, getHash(chat[id]?.mes || '')])),
     getState: ensureState,
     getHash,
@@ -1932,6 +1933,9 @@ const {
 } = summaryTaskQueue;
 
 const reviewQueueEvents = createReviewQueueEvents({
+    pauseQueue: () => summaryTaskQueue.pauseQueue(),
+    resumeQueue: () => summaryTaskQueue.resumeQueue(),
+    stopCurrentTask: () => summaryTaskQueue.stopCurrentTask(),
     query: $,
     globalRef: globalThis,
     getIsBusy: () => isBusy,
@@ -2016,6 +2020,7 @@ workbenchRenderer = createWorkbenchRenderer({
 });
 
 const workbenchActionController = createWorkbenchActionController({
+    pauseVectorIndex: () => vectorMemoryService.pauseVectorIndex(),
     testEmbeddingConnection,
     workbenchRenderScopes,
     scanBakemonoBlocks,
@@ -2123,6 +2128,7 @@ async function initWorkbench() {
 
 function reconcileSummaryRecovery(state = ensureState()) {
     const recovery = summaryRecoveryJournal.reconcile(state, chat);
+    summaryTaskQueue.recoverInterruptedTasks(state);
     if (['recovered', 'revision-only'].includes(recovery.status)) {
         scanBakemonoBlocks({ persist: false, render: false });
         updateInjectionFromSummaries();

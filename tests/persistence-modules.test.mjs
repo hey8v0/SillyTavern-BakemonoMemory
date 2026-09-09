@@ -9,16 +9,17 @@ function toDataModule(source) {
 }
 
 async function loadModule(path) {
+    if (path === 'src/core/persisted-chat-state.js') return import(new URL(path, repoUrl));
     const source = await readFile(new URL(path, repoUrl), 'utf8');
     return await import(toDataModule(source));
 }
 
-test('vector storage compacts and normalizes embeddings deterministically', async () => {
+test('vector storage preserves dimensions and normalizes embeddings deterministically', async () => {
     const storage = await loadModule('src/vector/storage.js');
     const source = Array.from({ length: 64 }, (_, index) => index + 1);
     const compact = storage.compactEmbedding(source, 32);
 
-    assert.equal(compact.length, 32);
+    assert.equal(compact.length, 64);
     const norm = Math.sqrt(compact.reduce((sum, value) => sum + value * value, 0));
     assert.ok(Math.abs(norm - 1) < 0.00001);
     assert.deepEqual(storage.compactEmbedding(['bad'], 32), []);
@@ -55,7 +56,7 @@ test('save preparation clears runtime cache and bounds stored vector text', asyn
     assert.equal(vectorMemory.records[0].id, 'record-a');
     assert.equal(vectorMemory.records[0].text.length, 243);
     assert.equal(vectorMemory.records[0].matchedText.length, 243);
-    assert.equal(vectorMemory.records[0].embedding.length, 32);
+    assert.equal(vectorMemory.records[0].embedding.length, 64);
     assert.equal(vectorMemory.lastHits[0].text.length, 303);
     assert.equal(vectorMemory.lastHits[0].matchedText.length, 243);
 });

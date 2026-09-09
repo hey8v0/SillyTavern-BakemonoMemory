@@ -1,3 +1,6 @@
+import { createEmbeddingCache, getEmbeddingCacheKey } from '../vector/embedding-cache.js';
+import { runApiRequest } from '../shared/request-policy.js';
+
 export function createVectorMemoryService({
     defaultVectorMemory,
     getState: ensureState,
@@ -45,8 +48,13 @@ export function createVectorMemoryService({
     formatApiFailure = response => `嵌入向量接口请求失败：${response.status} ${response.statusText}`,
     setTimer = globalThis.setTimeout,
     clearTimer = globalThis.clearTimeout,
+    embeddingCache = createEmbeddingCache(),
+    yieldToUi = () => new Promise(resolve => setTimeout(resolve, 0)),
 } = {}) {
     let vectorIndexTimer = null;
+    let indexRun = null;
+    const pausedIndexStates = new WeakSet();
+    let cachedSourceState = null, cachedSourceRules = '', sourceTextCache = [];
     const vectorEmbeddingRuntimeCache = new Map();
     function pruneVectorRuntimeCache(limit = 120) {
         while (vectorEmbeddingRuntimeCache.size > limit) {
@@ -112,13 +120,23 @@ export function createVectorMemoryService({
         const context = getContext();
         const sourceChat = context.chat || getFallbackChat?.() || [];
         const maxIndexedMessages = Math.max(0, Number(state.vectorMemory.maxIndexedMessages ?? defaultVectorMemory.maxIndexedMessages));
+        const rules = JSON.stringify([state.scanRules?.excludeTags, state.vectorMemory.excludeTags, state.vectorMemory.summaryTags]);
+        if (cachedSourceState !== state || cachedSourceRules !== rules) {
+            cachedSourceState = state;
+            cachedSourceRules = rules;
+            sourceTextCache = [];
+        }
+        sourceTextCache.length = sourceChat.length;
         const items = sourceChat
-            .map((message, messageId) => ({
-                message,
-                messageId,
-                cleanedText: getVectorBodyText(message?.mes || '', state),
-                summaryText: extractVectorSummaryText(message?.mes || '', state),
-            }))
+            .map((message, messageId) => {
+                const raw = message?.mes || '';
+                let cached = sourceTextCache[messageId];
+                if (!cached || cached.raw !== raw) {
+                    cached = { raw, cleanedText: getVectorBodyText(raw, state), summaryText: extractVectorSummaryText(raw, state) };
+                    sourceTextCache[messageId] = cached;
+                }
+                return { message, messageId, cleanedText: cached.cleanedText, summaryText: cached.summaryText };
+            })
             .filter(({ message }) => message?.mes && (state.vectorMemory.includeHidden !== false || !message.is_system))
             .filter(({ message }) => state.vectorMemory.includeUser === true || !message.is_user);
         return maxIndexedMessages > 0 ? items.slice(-maxIndexedMessages) : items;
@@ -169,7 +187,8 @@ export function createVectorMemoryService({
             if (!baseUrl || !model) {
                 throw new Error('查询重写需要聊天模型。请填写改写模型；接口地址和密钥可留空复用嵌入向量接口。');
             }
-            const response = await fetchImpl(getCustomChatCompletionsUrl(baseUrl), {
+            const data = await runApiRequest({ url: getCustomChatCompletionsUrl(baseUrl), fetchImpl, timeoutMs: 120000,
+                formatError: response => formatApiFailure(response, '查询重写请求失败'), init: {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -187,11 +206,10 @@ export function createVectorMemoryService({
                     stream: false,
                     enable_thinking: false,
                 }),
-            });
-            if (!response.ok) {
-                throw new Error(formatApiFailure(response, '查询重写请求失败'));
+            } });
+            if (data?.choices?.[0]?.finish_reason && data.choices[0].finish_reason !== 'stop') {
+                throw new Error('查询重写输出未完整结束，请检查输出上限。');
             }
-            const data = await response.json();
             const content = extractChatCompletionText(data);
             if (!content) {
                 throw new Error('查询重写没有返回可用内容。');
@@ -470,14 +488,16 @@ export function createVectorMemoryService({
     
     function scheduleVectorAutoIndex(reason = 'auto') {
         const state = ensureState();
-        if (!state.vectorMemory.enabled || state.vectorMemory.autoIndex === false) {
+        if (!state.vectorMemory.enabled || state.vectorMemory.autoIndex === false || pausedIndexStates.has(state)) {
             return;
         }
         clearTimer(vectorIndexTimer);
         vectorIndexTimer = setTimer(async () => {
+            if (ensureState() !== state || pausedIndexStates.has(state)) return;
             try {
                 await buildVectorMemoryIndex({ silent: true, reason });
             } catch (error) {
+                if (ensureState() !== state || pausedIndexStates.has(state)) return;
                 console.warn('[BakemonoMemory] vector auto index failed', error);
                 toastr.warning(`向量自动索引失败：${error?.message || error}`);
             }
@@ -486,20 +506,34 @@ export function createVectorMemoryService({
     
     function getEmbeddingSpaceKey(state) {
         const config = state.vectorMemory;
-        return JSON.stringify(['embedding-v2', config.embeddingProvider || 'local',
+        return JSON.stringify(['embedding-native-v1', config.embeddingProvider || 'local',
             config.embeddingProvider === 'custom-openai' ? getCustomEmbeddingsUrl(config.customApi?.baseUrl || 'http://unconfigured.invalid') : '',
-            config.customApi?.model || '', config.embeddingDimensions || defaultVectorMemory.embeddingDimensions]);
+            config.customApi?.model || '', config.embeddingProvider === 'custom-openai' ? 'native' : config.embeddingDimensions || defaultVectorMemory.embeddingDimensions]);
     }
 
-    async function getEmbeddingForText(text, state = ensureState()) {
+    async function getEmbeddingForText(text, state = ensureState(), options = {}) {
         const source = String(text || '');
-        const cacheKey = `${getEmbeddingSpaceKey(state)}:${getHash(source)}`;
+        const space = getEmbeddingSpaceKey(state);
+        const cacheKey = options.key || await getEmbeddingCacheKey(space, source);
+        const assertCurrent = () => {
+            if (options.signal?.aborted) throw new Error('索引已暂停，已完成片段可在下次继续使用。');
+            if (ensureState() !== state || getEmbeddingSpaceKey(state) !== space || (options.space && options.space !== space)) throw new Error('聊天或向量配置已变化，请在当前聊天重试。');
+        };
+        assertCurrent();
         if (Array.isArray(vectorEmbeddingRuntimeCache.get(cacheKey))) {
             return vectorEmbeddingRuntimeCache.get(cacheKey);
         }
         const dimensions = Math.max(32, Number(state.vectorMemory.embeddingDimensions || defaultVectorMemory.embeddingDimensions));
         if (state.vectorMemory.embeddingProvider === 'custom-openai') {
-            const embedding = compactEmbedding(await fetchCustomEmbedding(source, state), dimensions);
+            let embedding;
+            try { embedding = await embeddingCache.get(cacheKey); } catch {}
+            assertCurrent();
+            if (!embedding) {
+                embedding = compactEmbedding(await fetchCustomEmbedding(source, state, options), dimensions);
+                assertCurrent();
+                try { await embeddingCache.put(cacheKey, embedding); } catch {}
+            }
+            assertCurrent();
             vectorEmbeddingRuntimeCache.set(cacheKey, embedding);
             pruneVectorRuntimeCache();
             return embedding;
@@ -510,7 +544,7 @@ export function createVectorMemoryService({
         return embedding;
     }
     
-    async function fetchCustomEmbedding(text, state = ensureState()) {
+    async function fetchCustomEmbedding(text, state = ensureState(), options = {}) {
         const config = state.vectorMemory.customApi || {};
         const baseUrl = normalizeCustomApiBaseUrl(config.baseUrl);
         const apiKey = String(config.apiKey || '').trim();
@@ -518,20 +552,19 @@ export function createVectorMemoryService({
         if (!baseUrl || !model) {
             throw new Error('嵌入向量接口需要填写接口地址和模型。');
         }
-        const response = await fetchImpl(getCustomEmbeddingsUrl(baseUrl), {
+        const data = await runApiRequest({ url: getCustomEmbeddingsUrl(baseUrl), fetchImpl,
+            signal: options.signal, timeoutMs: 120000,
+            formatError: response => formatApiFailure(response, '嵌入向量接口请求失败'),
+            init: {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
             },
             body: JSON.stringify({ model, input: text }),
-        });
-        if (!response.ok) {
-            throw new Error(formatApiFailure(response, '嵌入向量接口请求失败'));
-        }
-        const data = await response.json();
+        } });
         const embedding = data?.data?.[0]?.embedding;
-        if (!Array.isArray(embedding) || !embedding.length || !embedding.every(value => typeof value === 'number' && Number.isFinite(value))) {
+        if (!Array.isArray(embedding) || !embedding.length || embedding.length > 16384 || !embedding.some(value => value !== 0) || !embedding.every(value => typeof value === 'number' && Number.isFinite(value))) {
             throw new Error('嵌入向量接口没有返回有效数值向量，请确认模型支持 embeddings。');
         }
         return embedding.map(Number);
@@ -539,12 +572,63 @@ export function createVectorMemoryService({
     
     async function buildVectorMemoryIndex({ silent = false } = {}) {
         const state = ensureState();
+        if (silent && pausedIndexStates.has(state)) return state.vectorMemory.records || [];
+        if (!silent) pausedIndexStates.delete(state);
+        if (indexRun && indexRun.state !== state) {
+            indexRun.controller.abort();
+            indexRun = null;
+        }
+        if (indexRun) return indexRun.promise;
+        const controller = new AbortController();
+        const run = { controller, state };
+        indexRun = run;
+        run.promise = performIndexBuild({ silent, signal: controller.signal }).catch(error => {
+            if (controller.signal.aborted && pausedIndexStates.has(state) && ensureState() === state) return false;
+            throw error;
+        }).finally(() => {
+            if (indexRun === run) indexRun = null;
+        });
+        return run.promise;
+    }
+
+    function pauseVectorIndex() {
+        const state = ensureState();
+        pausedIndexStates.add(state);
+        clearTimer(vectorIndexTimer);
+        indexRun?.controller.abort();
+        renderWorkbenchScope(workbenchRenderScopes.VECTOR, '索引已暂停；点击建立 / 刷新索引继续。已完成片段会尽可能复用。');
+    }
+
+    async function performIndexBuild({ silent = false, signal } = {}) {
+        const state = ensureState();
         readVectorMemoryFieldsFromUi(state);
         const signature = getVectorSourceSignature(state);
+        const space = getEmbeddingSpaceKey(state);
         if (silent && !state.vectorMemory.dirty && state.vectorMemory.lastIndexedSignature === signature) {
             return state.vectorMemory.records || [];
         }
         const records = [];
+        const reusable = new Map((state.vectorMemory.records || [])
+            .filter(record => record.embeddingFormat === 'native-v1' && record.embeddingKey && Array.isArray(record.embedding) && record.embedding.length)
+            .map(record => [record.embeddingKey, record.embedding]));
+        let processed = 0, reused = 0, checkedDimensions = 0;
+        const embeddingForRecord = async text => {
+            if (signal.aborted || ensureState() !== state || space !== getEmbeddingSpaceKey(state)) throw new Error('索引已暂停或聊天配置已切换，已完成片段会在继续时复用。');
+            const key = await getEmbeddingCacheKey(space, String(text || ''));
+            if (signal.aborted || ensureState() !== state || space !== getEmbeddingSpaceKey(state)) throw new Error('聊天或向量配置已变化，本次索引未替换原数据。');
+            const existing = reusable.get(key);
+            const embedding = existing || await getEmbeddingForText(text, state, { key, signal, space });
+            if (checkedDimensions && checkedDimensions !== embedding.length) throw new Error('接口返回的向量维度发生变化，本次未替换原索引。');
+            checkedDimensions = embedding.length;
+            if (existing) reused++;
+            reusable.set(key, embedding);
+            processed++;
+            if (processed % 10 === 0) {
+                renderWorkbenchScope(workbenchRenderScopes.VECTOR, `索引处理中：已处理 ${processed} 个片段，复用 ${reused} 个。`);
+                await yieldToUi();
+            }
+            return { embedding, embeddingKey: key, embeddingFormat: 'native-v1' };
+        };
         const indexMode = String(state.vectorMemory.indexMode || defaultVectorMemory.indexMode);
         const chunkSize = Math.max(240, Number(state.vectorMemory.chunkSize || defaultVectorMemory.chunkSize));
         const overlap = Math.max(0, Number(state.vectorMemory.overlap || defaultVectorMemory.overlap));
@@ -571,7 +655,7 @@ export function createVectorMemoryService({
                     text: getClippedVectorText(summaryContent, Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars))),
                     summary: getClippedVectorText(summaryContent, Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars))),
                     preview: toPlainPreview(summaryContent, 180),
-                    embedding: await getEmbeddingForText(summaryContent, state),
+                    ...await embeddingForRecord(summaryContent),
                     createdAt: new Date().toISOString(),
                 });
             }
@@ -590,7 +674,7 @@ export function createVectorMemoryService({
                     text: fullText,
                     summary: '',
                     preview: toPlainPreview(fullText, 180),
-                    embedding: await getEmbeddingForText(fullText, state),
+                    ...await embeddingForRecord(fullText),
                     createdAt: new Date().toISOString(),
                 });
                 continue;
@@ -611,7 +695,7 @@ export function createVectorMemoryService({
                     text,
                     summary: '',
                     preview: toPlainPreview(text, 180),
-                    embedding: await getEmbeddingForText(text, state),
+                    ...await embeddingForRecord(text),
                     createdAt: new Date().toISOString(),
                 });
             }
@@ -634,12 +718,12 @@ export function createVectorMemoryService({
                 text: source.text,
                 summary: source.text,
                 preview: source.preview,
-                embedding: await getEmbeddingForText(source.text, state),
+                ...await embeddingForRecord(source.text),
                 createdAt: source.createdAt || new Date().toISOString(),
             });
         }
     
-        if (ensureState() !== state || signature !== getVectorSourceSignature(state)) {
+        if (signal.aborted || ensureState() !== state || signature !== getVectorSourceSignature(state)) {
             throw new Error('聊天、正文或向量配置已变化，本次索引未覆盖原索引，请在当前聊天重新建立索引。');
         }
         state.vectorMemory.records = records;
@@ -648,11 +732,9 @@ export function createVectorMemoryService({
         state.vectorMemory.lastIndexedSignature = signature;
         state.vectorMemory.dirty = false;
         state.vectorMemory.dirtyReason = '';
-        await retrieveVectorMemoryHits('', state);
-        if (ensureState() !== state) return records;
         saveState();
         syncInjection();
-        renderWorkbenchScope(workbenchRenderScopes.VECTOR, silent ? '' : `向量索引完成：${records.length} 个原文片段。`);
+        renderWorkbenchScope(workbenchRenderScopes.VECTOR, silent ? '' : `向量索引完成：${records.length} 个片段，复用 ${reused} 个。`);
         if (!silent) {
             toastr.success(`已建立 ${records.length} 个向量片段。`);
         }
@@ -705,6 +787,9 @@ export function createVectorMemoryService({
         if (ensureState() !== state) return [];
         if (signature !== getVectorSourceSignature(state)) {
             return clearVectorRecall('召回期间正文或配置发生变化，请刷新索引后重试。', state);
+        }
+        if (recallRecords.some(record => !Array.isArray(record.embedding) || queryEmbeddings.some(vector => vector.length !== record.embedding.length))) {
+            return clearVectorRecall('向量维度不一致，请刷新索引；本次未混用不同维度。', state);
         }
         const keywords = parseList(state.vectorMemory.keywordTriggers);
         const embeddingThreshold = Math.max(0, Number(state.vectorMemory.embeddingThreshold ?? state.vectorMemory.minScore ?? defaultVectorMemory.embeddingThreshold));
@@ -912,6 +997,7 @@ export function createVectorMemoryService({
         getEmbeddingForText,
         fetchCustomEmbedding,
         buildVectorMemoryIndex,
+        pauseVectorIndex,
         retrieveVectorMemoryHits,
         renderVectorMemorySection,
     };

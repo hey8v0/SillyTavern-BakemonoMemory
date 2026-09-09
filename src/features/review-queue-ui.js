@@ -19,7 +19,7 @@ export function createReviewQueueUi({
     }
 
     function getTaskStatusLabel(status) {
-        return { queued: '等待中', running: '生成中', done: '已完成', failed: '失败' }[status] || '等待中';
+        return { queued: '等待中', running: '生成中', done: '已完成', partial: '部分完成', failed: '失败' }[status] || '等待中';
     }
 
     function renderTabs(state = getState()) {
@@ -45,7 +45,7 @@ export function createReviewQueueUi({
         renderTabs(state);
         container.innerHTML = '';
         const missingDraftCount = state.drafts.filter(draft => draft.metadata?.appendMode === 'missing_summary').length;
-        const missingTaskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && ['queued', 'failed', 'done'].includes(task.status)).length;
+        const missingTaskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && ['queued', 'failed', 'partial', 'done'].includes(task.status)).length;
         if (missingDraftCount || missingTaskCount) {
             const bulkActions = documentRef.createElement('div');
             bulkActions.className = 'bakemono-memory-inline-actions bakemono-memory-draft-bulk-actions';
@@ -184,7 +184,15 @@ export function createReviewQueueUi({
         if (!container) return;
         renderTabs(state);
         container.innerHTML = '';
-        const removableTaskStatuses = new Set(['queued', 'failed', 'done']);
+        const controls = documentRef.createElement('div');
+        controls.className = 'bakemono-memory-inline-actions';
+        const running = state.taskQueue.some(task => task.status === 'running');
+        controls.innerHTML = state.taskQueuePaused
+            ? '<button type="button" class="menu_button" data-bakemono-queue-control="resume">继续队列</button>'
+            : '<button type="button" class="menu_button" data-bakemono-queue-control="pause" title="当前任务完成后暂停，保留其结果">暂停队列</button>';
+        if (running) controls.insertAdjacentHTML('beforeend', '<button type="button" class="menu_button" data-bakemono-queue-control="stop">停止当前任务</button>');
+        if (state.taskQueue.length) container.append(controls);
+        const removableTaskStatuses = new Set(['queued', 'failed', 'partial', 'done']);
         const missingTaskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && removableTaskStatuses.has(task.status)).length;
         const stuckTaskCount = state.taskQueue.filter(task => task.status === 'running').length;
         if (missingTaskCount || stuckTaskCount) {
@@ -224,7 +232,7 @@ export function createReviewQueueUi({
             }
             const actions = documentRef.createElement('div');
             actions.className = 'bakemono-memory-task-actions';
-            if (task.status === 'failed') actions.innerHTML = '<button class="menu_button" data-bakemono-task-action="retry"><i class="fa-solid fa-rotate"></i><span>重试</span></button>';
+            if (['failed', 'partial'].includes(task.status)) actions.innerHTML = `<button class="menu_button" data-bakemono-task-action="retry"><i class="fa-solid fa-rotate"></i><span>${task.status === 'partial' ? '补齐缺失' : '重试'}</span></button>`;
             const removeLabel = task.status === 'running' ? '强制移除' : '移除';
             actions.insertAdjacentHTML('beforeend', `<button class="menu_button${task.status === 'running' ? ' danger' : ''}" data-bakemono-task-action="remove"><i class="fa-solid fa-xmark"></i><span>${removeLabel}</span></button>`);
             row.append(marker, main, actions);

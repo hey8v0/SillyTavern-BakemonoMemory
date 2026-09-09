@@ -22,7 +22,7 @@ test('all supported endpoint pastes resolve to sibling API endpoints', () => {
 });
 
 test('stream flushes final unterminated event and split UTF-8 without duplicating chunks', async () => {
-    const bytes = new TextEncoder().encode('data: {"choices":[{"delta":{"content":"前"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":"尾巴"}}]}');
+    const bytes = new TextEncoder().encode('data: {"choices":[{"delta":{"content":"前"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":"尾巴"},"finish_reason":"stop"}]}');
     const response = new Response(new ReadableStream({ start(controller) {
         for (const byte of bytes) controller.enqueue(Uint8Array.of(byte));
         controller.close();

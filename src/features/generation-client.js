@@ -1,3 +1,5 @@
+import { runApiRequest } from '../shared/request-policy.js';
+
 export function createGenerationClient({
     query,
     ensureState,
@@ -13,8 +15,15 @@ export function createGenerationClient({
     extractCustomModelIds,
     renderCustomModelOptions,
     formatApiFailure = response => `接口请求失败：${response.status} ${response.statusText}`,
+    requestTimeoutMs = 300000,
 } = {}) {
-    async function callGenerationModel({ prompt, systemPrompt }) {
+    function checkFinishReason(reason) {
+        if (reason && reason !== 'stop') throw new Error(reason === 'length'
+            ? '模型输出达到长度上限，摘要可能被截断；请提高输出上限或减小批次后重试。'
+            : `模型未正常完成输出（${reason}），本次未作为完整摘要保存。`);
+    }
+
+    async function callGenerationModel({ prompt, systemPrompt, signal }) {
         const state = ensureState();
         if (state.automation.apiProvider !== 'custom') {
             return await generateRaw({ prompt, systemPrompt });
@@ -29,7 +38,10 @@ export function createGenerationClient({
         }
     
         const stream = !!config.stream;
-        const response = await fetchImpl(getCustomChatCompletionsUrl(baseUrl), {
+        return await runApiRequest({ url: getCustomChatCompletionsUrl(baseUrl), fetchImpl, signal,
+            timeoutMs: requestTimeoutMs,
+            formatError: response => formatApiFailure(response, '自定义 API 请求失败'),
+            init: {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -45,19 +57,18 @@ export function createGenerationClient({
                 max_tokens: Number(config.maxTokens ?? defaultAutomation.customApi.maxTokens),
                 stream,
             }),
-        });
-        if (!response.ok) {
-            throw new Error(formatApiFailure(response, '自定义 API 请求失败'));
-        }
+        }, consume: async response => {
         if (stream) {
             return await readOpenAIStream(response);
         }
         const data = await response.json();
+        checkFinishReason(data?.choices?.[0]?.finish_reason);
         const content = data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text;
         if (!content) {
             throw new Error('自定义 API 没有返回可用内容。');
         }
         return content;
+        } });
     }
     
     async function readOpenAIStream(response) {
@@ -68,17 +79,22 @@ export function createGenerationClient({
         const decoder = new TextDecoder();
         let buffer = '';
         let content = '';
+        let finished = false;
         function readLine(line) {
             const trimmed = line.trim();
             if (!trimmed.startsWith('data:')) return;
             const payload = trimmed.slice(5).trim();
-            if (!payload || payload === '[DONE]') return;
+            if (!payload) return;
+            if (payload === '[DONE]') { finished = true; return; }
             let data;
             try { data = JSON.parse(payload); } catch {
                 if (/^[{[]/.test(payload)) throw new Error('自定义 API 流式数据不完整或格式错误，本次未作为完整摘要保存。');
                 return; // Non-JSON keep-alive messages from compatible proxies.
             }
             if (data?.error) throw new Error('自定义 API 流式响应返回错误；本次未作为完整摘要保存，请检查服务商额度或重试。');
+            const reason = data?.choices?.[0]?.finish_reason;
+            checkFinishReason(reason);
+            if (reason === 'stop') finished = true;
             content += data?.choices?.[0]?.delta?.content
                 || data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text || '';
         }
@@ -90,15 +106,20 @@ export function createGenerationClient({
                 const lines = buffer.split(/\r?\n/);
                 buffer = lines.pop() || '';
                 for (const line of lines) readLine(line);
+                if (finished) { await reader.cancel(); break; }
             }
             buffer += decoder.decode();
             for (const line of buffer.split(/\r?\n/)) readLine(line);
+        } catch (error) {
+            try { await reader.cancel(); } catch {}
+            throw error;
         } finally {
             reader.releaseLock();
         }
         if (!content.trim()) {
             throw new Error('自定义 API 流式响应没有返回可用内容。');
         }
+        if (!finished) throw new Error('流式连接结束，但没有收到完成标记；可能中途断线，本次未作为完整摘要保存。');
         return content;
     }
     

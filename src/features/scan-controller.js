@@ -26,6 +26,9 @@ export function createScanController({
     defaultClassificationRules,
     defaultPreviewLayouts,
 }) {
+    let cachedState = null;
+    let cachedRules = '';
+    let messageCache = [];
     function scanBakemonoBlocks({ persist = true, render = persist } = {}) {
         const state = getState();
         const scanned = [];
@@ -36,16 +39,25 @@ export function createScanController({
         const context = getContext();
         const sourceChat = context.chat || getFallbackChat() || [];
         const rules = state.scanRules;
+        const rulesKey = JSON.stringify([rules, state.classificationRules, state.previewLayouts]);
+        if (cachedState !== state || rulesKey !== cachedRules) {
+            messageCache = [];
+            cachedState = state;
+            cachedRules = rulesKey;
+        }
         const includeHidden = rules.includeHidden !== false;
 
         sourceChat.forEach((message, messageId) => {
             if (!message?.mes || (message.is_system && !includeHidden)) {
                 return;
             }
-            extractConfiguredSegments(message?.mes, rules).forEach((segment, blockIndex) => {
+            const variantKey = getMessageVariantKey(message);
+            let cached = messageCache[messageId];
+            if (!cached || cached.text !== message.mes || cached.variant !== variantKey || cached.hidden !== !!message.is_system) {
+                cached = { text: message.mes, variant: variantKey, hidden: !!message.is_system,
+                    blocks: extractConfiguredSegments(message.mes, rules).map((segment, blockIndex) => {
                 const content = segment.content;
                 const sourceKind = getSegmentSourceKind(segment);
-                const variantKey = getMessageVariantKey(message);
                 const hash = getHash(`${segment.mode}|${segment.matchedTag}|${sourceKind}|${messageId}|${variantKey}|${blockIndex}|${content}`);
                 const type = classifyBlock(content);
                 const block = {
@@ -61,6 +73,13 @@ export function createScanController({
                     sourceIdentity: `${messageId}:${variantKey}:${segment.mode}:${segment.matchedTag}:${blockIndex}`,
                     isHidden: !!message?.is_system,
                 };
+                return block;
+                    }),
+                };
+                messageCache[messageId] = cached;
+            }
+            cached.blocks.forEach(block => {
+                const { content, hash, type, blockIndex, matchedTag, scanMode, sourceKind } = block;
                 scanned.push(block);
                 if (shouldPersistScannedBlock(block, state)) {
                     scannedForBlocks.push(block);
@@ -70,8 +89,8 @@ export function createScanController({
                     type,
                     messageId,
                     blockIndex,
-                    matchedTag: segment.matchedTag,
-                    scanMode: segment.mode,
+                    matchedTag,
+                    scanMode,
                     sourceKind,
                     title: block.title,
                     isHidden: !!message?.is_system,
@@ -79,17 +98,18 @@ export function createScanController({
                 });
             });
         });
+        messageCache.length = sourceChat.length;
 
         state.blocks = mergeBlocks(state.blocks, scannedForBlocks, state, { replaceScanned: true });
+        const coveredBlocks = new Set(state.coveredBlockHashes);
+        const coveredStages = new Set(state.coveredStageHashes);
         for (const block of scannedForBlocks) {
             const previous = previousBlockByContent.get(block.content);
-            if (previous?.hash && state.coveredBlockHashes.includes(previous.hash)) {
-                state.coveredBlockHashes = unique([...state.coveredBlockHashes, block.hash]);
-            }
-            if (previous?.hash && state.coveredStageHashes.includes(previous.hash)) {
-                state.coveredStageHashes = unique([...state.coveredStageHashes, block.hash]);
-            }
+            if (previous?.hash && coveredBlocks.has(previous.hash)) coveredBlocks.add(block.hash);
+            if (previous?.hash && coveredStages.has(previous.hash)) coveredStages.add(block.hash);
         }
+        state.coveredBlockHashes = [...coveredBlocks];
+        state.coveredStageHashes = [...coveredStages];
         state.scanPreview = preview.slice(-maxStoredScanPreviewItems);
         state.lastScanMatchCount = scanned.length;
         state.lastScanAt = new Date().toISOString();

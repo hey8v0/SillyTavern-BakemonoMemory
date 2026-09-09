@@ -15,12 +15,22 @@ export function createReviewQueueEvents({
     discardDraft,
     retryQueueTask,
     removeQueueTask,
+    pauseQueue,
+    resumeQueue,
+    stopCurrentTask,
     rollbackAutoSummaryTransaction,
     changeHistoryPage,
     renderHistory,
 } = {}) {
     function bind(rootSelector = '#bakemono-workbench-root') {
         const root = query(rootSelector);
+        root.off('click.bakemonoQueueControl').on('click.bakemonoQueueControl', '[data-bakemono-queue-control]', async function () {
+            try {
+            if (this.dataset.bakemonoQueueControl === 'pause') pauseQueue();
+            else if (this.dataset.bakemonoQueueControl === 'resume') await resumeQueue();
+            else if (this.dataset.bakemonoQueueControl === 'stop') stopCurrentTask();
+            } catch (error) { toastr.error(error?.message || String(error)); }
+        });
         root.off('click.bakemonoReviewView').on('click.bakemonoReviewView', '[data-bakemono-review-view]', function () {
             const nextView = String(this.dataset.bakemonoReviewView || 'drafts');
             if (!['drafts', 'tasks', 'history'].includes(nextView)) return;

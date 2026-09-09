@@ -626,7 +626,7 @@ test('vector, draft, and table actions use page-scoped rendering', () => {
         assert.doesNotMatch(functionSource, /renderAll\(/, `${name} should not refresh the whole workbench`);
     }
     for (const [moduleSource, name] of [
-        [vectorMemoryServiceSource, 'buildVectorMemoryIndex'],
+        [vectorMemoryServiceSource, 'performIndexBuild'],
         [vectorActionsControllerSource, 'applyVectorMemorySettings'],
         [vectorActionsControllerSource, 'testVectorMemoryRetrieval'],
         [vectorActionsControllerSource, 'clearVectorMemoryIndex'],

@@ -6,7 +6,6 @@ const fallbackVectorDefaults = {
 
 export function compactEmbedding(values = [], dimensions = fallbackVectorDefaults.embeddingDimensions) {
     const source = Array.isArray(values) ? values.map(Number).filter(Number.isFinite) : [];
-    const targetSize = Math.max(32, Math.min(384, Number(dimensions || fallbackVectorDefaults.embeddingDimensions)));
     if (!source.length) {
         return [];
     }
@@ -14,18 +13,49 @@ export function compactEmbedding(values = [], dimensions = fallbackVectorDefault
         const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0)) || 1;
         return vector.map(value => Number((value / norm).toFixed(6)));
     };
-    if (source.length <= targetSize) {
-        return normalize(source);
+    return normalize(source);
+}
+
+export function encodeEmbedding(values) {
+    if (!Array.isArray(values) || !values.length || !values.every(Number.isFinite)) return '';
+    const bytes = new Uint8Array(values.length * 4);
+    const view = new DataView(bytes.buffer);
+    values.forEach((value, index) => view.setFloat32(index * 4, value, true));
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return 'f32:' + btoa(binary);
+}
+
+export function decodeEmbedding(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string' || !value.startsWith('f32:')) return [];
+    try {
+        const binary = atob(value.slice(4));
+        if (!binary.length || binary.length % 4 || binary.length > 65536) return [];
+        const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+        const view = new DataView(bytes.buffer);
+        const vector = Array.from({ length: bytes.length / 4 }, (_, i) => view.getFloat32(i * 4, true));
+        return vector.every(Number.isFinite) ? vector : [];
+    } catch { return []; }
+}
+
+export function hydrateVectorRecords(vectorMemory) {
+    for (const record of vectorMemory?.records || []) {
+        if (typeof record.embedding !== 'string') continue;
+        record.embedding = decodeEmbedding(record.embedding);
+        if (!record.embedding.length) {
+            vectorMemory.dirty = true;
+            vectorMemory.lastIndexedSignature = '';
+        }
     }
-    const compact = [];
-    for (let index = 0; index < targetSize; index++) {
-        const start = Math.floor(index * source.length / targetSize);
-        const end = Math.max(start + 1, Math.floor((index + 1) * source.length / targetSize));
-        const slice = source.slice(start, end);
-        const average = slice.reduce((sum, value) => sum + value, 0) / slice.length;
-        compact.push(average);
-    }
-    return normalize(compact);
+}
+
+export function serializeVectorMemory(vectorMemory) {
+    return { ...vectorMemory, embeddingCache: {},
+        records: (vectorMemory.records || []).map(record => ({
+            ...record, embedding: typeof record.embedding === 'string' ? record.embedding : encodeEmbedding(record.embedding),
+        })),
+    };
 }
 
 export function getClippedVectorText(value, limit = fallbackVectorDefaults.maxStoredTextChars) {
@@ -46,7 +76,7 @@ export function slimVectorMemoryForSave(vectorMemory = null, defaults = fallback
             ...record,
             text: getClippedVectorText(record.text, textLimit),
             matchedText: getClippedVectorText(record.matchedText, Math.min(textLimit, 480)),
-            embedding: compactEmbedding(record.embedding, dimensions),
+            embedding: record.embeddingFormat === 'native-v1' ? record.embedding : compactEmbedding(record.embedding, dimensions),
         }))
         : [];
     vectorMemory.lastHits = Array.isArray(vectorMemory.lastHits)

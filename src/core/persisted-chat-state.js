@@ -1,3 +1,5 @@
+import { serializeVectorMemory, hydrateVectorRecords } from '../vector/storage.js';
+
 const rebuildableStateKeys = new Set(['blocks', 'scanPreview', 'memoryRecords']);
 
 function compactHistoryEntry(entry, index, keepPromptsFor = 8) {
@@ -18,10 +20,10 @@ function compactHistoryEntry(entry, index, keepPromptsFor = 8) {
 
 function compactTaskQueue(tasks, limit = 80) {
     const source = Array.isArray(tasks) ? tasks : [];
-    const active = source.filter(task => ['queued', 'running', 'failed'].includes(task?.status));
+    const active = source.filter(task => ['queued', 'running', 'failed', 'partial'].includes(task?.status));
     const completedLimit = Math.max(0, limit - active.length);
     const completed = completedLimit
-        ? source.filter(task => !['queued', 'running', 'failed'].includes(task?.status)).slice(-completedLimit)
+        ? source.filter(task => !['queued', 'running', 'failed', 'partial'].includes(task?.status)).slice(-completedLimit)
         : [];
     return [...active, ...completed]
         .map(task => task?.status === 'done'
@@ -37,6 +39,10 @@ export function buildPersistedChatState(state, options = {}) {
 
     for (const [key, value] of Object.entries(state || {})) {
         if (rebuildableStateKeys.has(key)) continue;
+        if (key === 'vectorMemory' && value) {
+            snapshot.vectorMemory = serializeVectorMemory(value);
+            continue;
+        }
         if (key === 'injection' && value && typeof value === 'object') {
             snapshot.injection = { ...value };
             delete snapshot.injection.content;
@@ -59,6 +65,7 @@ export function buildPersistedChatState(state, options = {}) {
 
 export function installCompactStateSerializer(state, options = {}) {
     if (!state || typeof state !== 'object') return state;
+    hydrateVectorRecords(state.vectorMemory);
     Object.defineProperty(state, 'toJSON', {
         configurable: true,
         enumerable: false,

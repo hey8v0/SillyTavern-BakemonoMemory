@@ -330,7 +330,7 @@ export function createSummaryDraftService({
     function removeMissingSummaryDraftsAndTasks() {
         const state = ensureState();
         const draftCount = state.drafts.filter(draft => draft.metadata?.appendMode === 'missing_summary').length;
-        const removableTaskStatuses = new Set(['queued', 'failed', 'done']);
+        const removableTaskStatuses = new Set(['queued', 'failed', 'partial', 'done']);
         const taskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && removableTaskStatuses.has(task.status)).length;
         if (!draftCount && !taskCount) {
             toastr.info('没有可移除的缺失摘要草稿或批次任务。');

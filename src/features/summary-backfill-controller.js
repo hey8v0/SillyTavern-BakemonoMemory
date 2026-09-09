@@ -216,6 +216,31 @@ export function createSummaryBackfillController({
         return rendered.trim();
     }
 
+    async function rebuildMissingTask(task) {
+        const state = getState();
+        const sourceChat = getContext().chat || getFallbackChat() || [];
+        const completed = new Set((task.metadata?.completedMessageIds || []).map(Number));
+        const targets = (task.metadata?.missingTargets || []).filter(target => !completed.has(Number(target.messageId)));
+        if (!targets.length) throw new Error('这一批已没有缺失楼层，请检查草稿箱。');
+        const excludeTags = unique([...parseList(state.scanRules.excludeTags), ...getConfiguredSummaryTags(state)]);
+        const blocks = targets.map(target => {
+            const raw = String(sourceChat[target.messageId]?.mes || '');
+            if (!raw || !target.targetMessageHash || getHash(raw) !== target.targetMessageHash) {
+                throw new Error(`第 ${target.messageId} 楼正文已变化，请重新选择缺失楼层补写。`);
+            }
+            const content = stripConfiguredTags(stripPostProcessNoise(raw), excludeTags).trim();
+            if (!content) throw new Error(`第 ${target.messageId} 楼没有可补写的正文。`);
+            return { ...target, type: blockTypes.STORY, content };
+        });
+        const ids = blocks.map(block => block.messageId);
+        const metadata = { ...task.metadata, missingTargets: targets,
+            sourceRange: formatSourceRange(ids), sourceStart: getSourceStart(ids),
+            sourceEnd: getSourceEnd(ids), sourceSortKey: getSourceStart(ids) };
+        return { prompt: buildMissingSummaryBatchPrompt(blocks, metadata, state),
+            systemPrompt: await buildTurnReferenceSystemPrompt(blocks, 'summary', state),
+            sourceHashes: blocks.map(block => block.hash), sourceMessageIds: ids, metadata };
+    }
+
     function createMissingSummaryDraftFromBatchItem(item, task) {
         return createDraft({
             kind: blockTypes.STORY,
@@ -366,6 +391,7 @@ export function createSummaryBackfillController({
     }
 
     return {
+        rebuildMissingTask,
         buildBackfillBatches,
         buildMissingSummaryBatches,
         buildMissingSummaryBatchPrompt,

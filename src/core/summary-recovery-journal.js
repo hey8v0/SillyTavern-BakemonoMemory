@@ -11,6 +11,7 @@ const recoveryStateKeys = [
     'autoHideRecent',
     'autoSummaryTransactions',
     'taskQueue',
+    'taskQueuePaused',
     'turnSummary',
     'tableDatabase',
 ];
@@ -109,10 +110,10 @@ function compactRecoveryHistory(value) {
 
 function compactRecoveryTasks(value) {
     const source = Array.isArray(value) ? value : [];
-    const active = source.filter(task => ['queued', 'running', 'failed'].includes(task?.status));
+    const active = source.filter(task => ['queued', 'running', 'failed', 'partial'].includes(task?.status));
     const completedLimit = Math.max(0, 80 - active.length);
     const completed = completedLimit
-        ? source.filter(task => !['queued', 'running', 'failed'].includes(task?.status)).slice(-completedLimit)
+        ? source.filter(task => !['queued', 'running', 'failed', 'partial'].includes(task?.status)).slice(-completedLimit)
         : [];
     return [...active, ...completed].map(task => task?.status === 'done'
         ? { ...task, prompt: '', blocks: [], rawResult: '' }
@@ -137,7 +138,7 @@ function makeRecoveryState(state, { clone = true, recoveryLevel = 'full' } = {})
     for (const key of recoveryStateKeys) {
         if (recoveryLevel === 'essential' && !essentialRecoveryStateKeys.has(key)) continue;
         const value = state?.[key];
-        const selected = key === 'history'
+        const selected = key === 'taskQueuePaused' ? value === true : key === 'history'
             ? compactRecoveryHistory(value)
             : key === 'taskQueue'
                 ? compactRecoveryTasks(value)
@@ -307,7 +308,8 @@ export function createSummaryRecoveryJournal({
 
         const changedStateKeys = recoveryStateKeys.filter(key => (
             Object.hasOwn(payload.state || {}, key)
-            && stableValueHash(payload.state[key]) !== stableValueHash(state?.[key])
+            && stableValueHash(key === 'taskQueuePaused' ? payload.state[key] === true : payload.state[key])
+                !== stableValueHash(key === 'taskQueuePaused' ? state?.[key] === true : state?.[key])
         ));
         const changedMessageIds = [];
         for (const patch of payload.messagePatches || []) {
