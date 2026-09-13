@@ -117,6 +117,7 @@ test('changing the vector enable switch persists globally and requests an immedi
     let saved = 0;
     const state = { vectorMemory: { enabled: false, records: [], lastHits: [] } };
     const query = () => ({
+        prop: () => true,
         off() { return this; },
         on(_event, handler) { changeHandler = handler; return this; },
     });

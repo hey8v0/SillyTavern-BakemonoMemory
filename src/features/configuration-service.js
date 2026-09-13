@@ -26,7 +26,6 @@ export function createConfigurationService({
     makePresetId,
     getStageSourceMode,
     setTableSchemaScope,
-    readVectorMemoryFieldsFromUi,
     createSharedInlineGenerationConfig,
     createSharedVectorConfig,
     getTableSchemasForPreset,
@@ -184,7 +183,6 @@ export function createConfigurationService({
         readPromptFieldsFromUi(state);
         readTurnSummaryFieldsFromUi(state);
         readInjectionFieldsFromUi(state);
-        readVectorMemoryFieldsFromUi(state);
         return state;
     }
 

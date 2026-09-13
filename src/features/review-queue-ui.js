@@ -6,6 +6,7 @@ export function createReviewQueueUi({
     getKindLabel,
     blockTypes,
     historyPageSize = 10,
+    renderRpReview,
 }) {
     const historyState = { page: 0 };
     let activeView = 'drafts';
@@ -23,7 +24,7 @@ export function createReviewQueueUi({
     }
 
     function renderTabs(state = getState()) {
-        const counts = { drafts: state.drafts.length, tasks: state.taskQueue.length, history: state.history.length };
+        const counts = { drafts: state.drafts.length + (state.rpCore?.candidates?.filter(item => item.status === 'pending').length || 0), tasks: state.taskQueue.length, history: state.history.length };
         query('#bakemono-memory-review-draft-count').text(counts.drafts);
         query('#bakemono-memory-review-task-count').text(counts.tasks);
         query('#bakemono-memory-review-history-count').text(counts.history);
@@ -43,6 +44,7 @@ export function createReviewQueueUi({
         const container = documentRef.querySelector('#bakemono-memory-draft-list');
         if (!container) return;
         renderTabs(state);
+        renderRpReview?.(state);
         container.innerHTML = '';
         const missingDraftCount = state.drafts.filter(draft => draft.metadata?.appendMode === 'missing_summary').length;
         const missingTaskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && ['queued', 'failed', 'partial', 'done'].includes(task.status)).length;

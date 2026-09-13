@@ -940,7 +940,9 @@ test('vector model fetch preserves unsaved fields and reports failures accuratel
     assert.doesNotMatch(operationSource, /renderAll\(/);
     assert.match(persistSource, /readVectorMemoryFieldsFromUi\(state\)/);
     assert.match(persistSource, /persistSharedConfigurationFromState\(state\)/);
-    assert.equal((actionSource.match(/persistVectorMemoryFieldsFromUi\(\)/g) || []).length, 2);
+    assert.doesNotMatch(actionSource, /persistVectorMemoryFieldsFromUi\(\)/);
+    assert.doesNotMatch(embeddingSource, /persistSharedConfigurationFromState|readVectorMemoryFieldsFromUi/);
+    assert.doesNotMatch(querySource, /persistSharedConfigurationFromState|readVectorMemoryFieldsFromUi/);
     assert.match(embeddingSource, /if \(!baseUrl\)[\s\S]*?return false;/);
     assert.match(querySource, /if \(!baseUrl\)[\s\S]*?return false;/);
     assert.match(embeddingSource, /return true;[\s\S]*?catch \(error\)[\s\S]*?return false;/);

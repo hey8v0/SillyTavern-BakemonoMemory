@@ -45,6 +45,17 @@ function vectorFixture(count = 150, overrides = {}) {
         calls: () => calls, yields: () => yields, cleaned: () => cleaned };
 }
 
+test('background indexing never reads a hidden settings form', async () => {
+    const f = vectorFixture(2, {
+        readVectorMemoryFieldsFromUi() { throw new Error('background task read the form'); },
+    });
+    const before = structuredClone(f.state.vectorMemory.customApi);
+    await f.service.buildVectorMemoryIndex({ silent: true });
+    assert.equal(f.state.vectorMemory.enabled, true);
+    assert.equal(f.state.vectorMemory.embeddingProvider, 'custom-openai');
+    assert.deepEqual(f.state.vectorMemory.customApi, before);
+});
+
 test('excluded trailing widget leaves index current; retrieval refreshes changed text before evaluating recall', async () => {
     const f = vectorFixture(2, { stripConfiguredTags, stripHtml: text => text.replace(/<[^>]*>/g, ''), setTimer: () => 1, clearTimer() {} });
     f.state.vectorMemory.excludeTags = 'widget';

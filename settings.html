@@ -250,9 +250,9 @@
         <section class="bakemono-memory-hub-group">
           <div class="bakemono-memory-hub-group-title"><span>记忆结构</span><i></i></div>
           <div class="bakemono-memory-hub-list">
-            <button type="button" class="menu_button bakemono-memory-hub-link" data-bakemono-nav="tables">
+            <button type="button" class="menu_button bakemono-memory-hub-link" data-bakemono-nav="rp-state">
               <span class="bakemono-memory-hub-icon"><i class="fa-solid fa-table"></i></span>
-              <span class="bakemono-memory-hub-copy"><strong>剧情表格</strong><small>角色、地点与关系</small></span>
+              <span class="bakemono-memory-hub-copy"><strong>剧情状态</strong><small>人物关系与世界状态</small></span>
               <em id="bakemono-memory-data-hub-table-count" class="bakemono-memory-hub-count">0</em>
               <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
             </button>
@@ -1076,6 +1076,9 @@
 
       </section>
 
+      <section class="bakemono-workbench-panel" data-bakemono-panel="rp-state">
+        <div id="bakemono-rp-root" class="rp-core-ui"></div>
+      </section>
       <section class="bakemono-workbench-panel" data-bakemono-panel="preview">
         <header class="bakemono-memory-page-intro">
           <span class="bakemono-memory-next-kicker">剧情回看</span>
@@ -1217,6 +1220,7 @@
         </div>
 
         <section class="bakemono-memory-review-view is-active" data-bakemono-review-panel="drafts" role="tabpanel">
+          <div id="bakemono-rp-review" class="rp-core-ui" hidden></div>
           <div class="bakemono-memory-review-section-head bakemono-memory-section-head">
             <div>
               <span class="bakemono-memory-next-kicker">等待决定</span>
@@ -2166,7 +2170,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.6.1 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.7.0-alpha.1 · 开发测试版。先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

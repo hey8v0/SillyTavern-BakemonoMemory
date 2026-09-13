@@ -15,6 +15,7 @@ export function createTableWorkflowController({
     applyTableOperations,
     formatSourceRange,
     switchWorkbenchTab,
+    rpExtractionFlow,
 } = {}) {
     async function processLatestTableEdit(options = {}) {
         const state = ensureState();
@@ -45,10 +46,15 @@ export function createTableWorkflowController({
         }
     
         await runGeneration(options.manual ? '正在单独生成表格修改草稿...' : '正在自动生成表格修改草稿...', async () => {
+            const rpTicket = rpExtractionFlow?.capture(turn.assistantMessage.messageId, 'reply');
             const tableResult = await callGenerationModel({
                 prompt: buildTableEditPrompt(blocks, state),
-                systemPrompt: await buildTurnReferenceSystemPrompt(blocks, 'table', state),
+                systemPrompt: await buildTurnReferenceSystemPrompt(blocks, 'table', state, { includeRp: true }),
             });
+            rpExtractionFlow?.assertCurrent(rpTicket);
+            if (ensureState() !== state) throw new Error('提取期间聊天已变化');
+            await rpExtractionFlow?.consume(rpTicket, tableResult, { manual: !!options.manual });
+            if (ensureState() !== state) throw new Error('提取期间聊天已变化');
             const draft = createTableEditDraft(tableResult, blocks, state);
             if (!draft) {
                 state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;

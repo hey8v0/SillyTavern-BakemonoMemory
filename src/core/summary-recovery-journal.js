@@ -1,4 +1,5 @@
 const recoveryStateKeys = [
+    'rpCore',
     'chronicle',
     'storySummaries',
     'stageSummaries',
@@ -18,6 +19,7 @@ const recoveryStateKeys = [
 ];
 
 const essentialRecoveryStateKeys = new Set([
+    'rpCore',
     'chronicle',
     'storySummaries',
     'stageSummaries',
@@ -146,7 +148,7 @@ function makeRecoveryState(state, { clone = true, recoveryLevel = 'full' } = {})
                 ? compactRecoveryTasks(value)
                 : key === 'tableDatabase'
                     ? compactRecoveryTableDatabase(value, recoveryLevel)
-                : value ?? (key === 'chronicle' ? null : key === 'turnSummary' ? {} : []);
+                : value ?? (['chronicle', 'rpCore'].includes(key) ? null : key === 'turnSummary' ? {} : []);
         snapshot[key] = clone ? cloneSerializable(selected) : selected;
     }
     snapshot.persistenceRevision = Math.max(0, Number(state?.persistenceRevision || 0));
@@ -311,7 +313,7 @@ export function createSummaryRecoveryJournal({
         const changedStateKeys = recoveryStateKeys.filter(key => (
             Object.hasOwn(payload.state || {}, key)
             && stableValueHash(key === 'taskQueuePaused' ? payload.state[key] === true : payload.state[key])
-                !== stableValueHash(key === 'taskQueuePaused' ? state?.[key] === true : key === 'chronicle' ? state?.[key] ?? null : state?.[key])
+                !== stableValueHash(key === 'taskQueuePaused' ? state?.[key] === true : ['chronicle', 'rpCore'].includes(key) ? state?.[key] ?? null : state?.[key])
         ));
         const changedMessageIds = [];
         for (const patch of payload.messagePatches || []) {

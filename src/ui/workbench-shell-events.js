@@ -23,9 +23,10 @@ export function createWorkbenchShellEvents({
     renderWorkbenchScope,
     logError = (...args) => console.error(...args),
 } = {}) {
+    const onResize = () => syncMobileCollapsibles();
     function bind() {
-        windowRef.removeEventListener('resize', syncMobileCollapsibles);
-        windowRef.addEventListener('resize', syncMobileCollapsibles);
+        windowRef.removeEventListener('resize', onResize);
+        windowRef.addEventListener('resize', onResize);
         const rootElement = documentRef.getElementById('bakemono-workbench-root');
         const root = query(rootElement);
         operationFeedback.bindCapture(rootElement);

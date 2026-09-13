@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { rpMemorySources, renderRpStateMemory } from '../src/rp-core/memory.js';
+import { createProjection } from '../src/rp-core/domain.js';
+import { createLedger } from '../src/rp-core/ledger.js';
+test('formal memory preserves track and validity and never indexes candidate guesses', () => {
+    const projection = createProjection(), core = createLedger(projection);
+    core.settings = { inject: true };
+    core.facts.push({ id: 'f', floor: 2, action: 'person_created', data: { name: '甲' } });
+    core.claims.push({ id: 'c', floor: 2, action: 'claim', data: { description: '乙说戒指属于他' } });
+    core.observations.push({ id: 'o', floor: 3, action: 'observation', data: { description: '甲怀疑这是梦' } });
+    core.candidates.push({ id: 'candidate', data: { description: '不应注入的猜测' } });
+    const state = { rpCore: core }, view = { projection, applied: ['f'] };
+    const sources = rpMemorySources(state, view);
+    assert.equal(sources.length, 3);
+    assert.match(sources[1].text, /角色说法，未作为事实确认/);
+    assert.doesNotMatch(JSON.stringify(sources), /不应注入/);
+    const invalid = rpMemorySources(state, { ...view, applied: [] });
+    assert.notEqual(sources[0].hash, invalid[0].hash);
+    assert.match(invalid[0].text, /不作为当前事实/);
+    assert.doesNotMatch(renderRpStateMemory(state, view), /戒指属于他/);
+    core.settings.inject = false;
+    assert.equal(renderRpStateMemory(state, view), '');
+});
+test('state injection is bounded and prioritizes named people without dumping the ledger', () => {
+    const projection = createProjection();
+    projection.people = Array.from({ length: 200 }, (_, i) => ({ id: String(i), name: '人物' + i }));
+    const text = renderRpStateMemory({ rpCore: { settings: { inject: true } } }, { projection }, '人物199', 400);
+    assert.match(text, /人物199/);
+    assert.ok(text.length < 500);
+});

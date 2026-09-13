@@ -1,5 +1,6 @@
 import { getHash } from '../shared/text.js';
 import { messageRevision, replayChronicle } from './story-state.js';
+import { exportRpBackup, importRpBackup, validateRpBackup } from '../rp-core/backup.js';
 
 const arrays = ['storySummaries', 'stageSummaries', 'epicSummaries', 'drafts', 'coveredBlockHashes', 'coveredStageHashes'];
 const recordFields = ['id', 'hash', 'title', 'content', 'type', 'kind', 'level', 'sourceKind', 'sourceMessageIds', 'sourceHashes', 'sourceStageHashes', 'sourceStart', 'sourceEnd', 'messageId', 'createdAt', 'trigger'];
@@ -42,7 +43,8 @@ export function createMemoryBackup(state, { chatKey = '', chat = [], scanned = [
     if (activeProfile) activeProfile.tables = memory.tableDatabase.tables;
     memory.tableDatabase.profileRows[`chat:default:${memory.tableDatabase.activeProfileId}`] = memory.tableDatabase.tables;
     if (state.chronicle) memory.chronicle = state.chronicle;
-    const payload = clone({ format: 'bakemono-memory-backup', formatVersion: 1, pluginVersion: version,
+    if (state.rpCore) memory.rpCore = exportRpBackup(state.rpCore);
+    const payload = clone({ format: 'bakemono-memory-backup', formatVersion: state.rpCore ? 2 : 1, pluginVersion: version,
         createdAt: new Date().toISOString(), chatKeyHash: getHash(chatKey), sources: chat.map(messageRevision), memory });
     return { ...payload, checksum: getHash(JSON.stringify(payload)) };
 }
@@ -72,7 +74,7 @@ export function validateMemoryBackup(raw) {
     if (typeof raw === 'string' && raw.length > 50 * 1024 * 1024) throw new Error('恢复包超过 50 MB，请拆分聊天后备份');
     const data = typeof raw === 'string' ? JSON.parse(raw) : clone(raw);
     inspectJson(data);
-    if (data?.format !== 'bakemono-memory-backup' || data.formatVersion !== 1) throw new Error('不是支持的记忆恢复包');
+    if (data?.format !== 'bakemono-memory-backup' || ![1, 2].includes(data.formatVersion)) throw new Error('不是支持的记忆恢复包');
     const { checksum, ...payload } = data;
     if (!checksum || checksum !== getHash(JSON.stringify(payload))) throw new Error('恢复包校验失败，文件可能不完整');
     const memory = data.memory;
@@ -89,6 +91,10 @@ export function validateMemoryBackup(raw) {
     if (!Array.isArray(db.chatProfiles) || !db.profileRows || typeof db.profileRows !== 'object' || Array.isArray(db.profileRows) || !Array.isArray(db.editDrafts)) throw new Error('表格组结构无效');
     db.chatProfiles.forEach(profile => { if (!object(profile) || typeof profile.id !== 'string') throw new Error('表格组身份无效'); validateTables(profile.tables); });
     Object.values(db.profileRows).forEach(validateTables);
+    if (memory.rpCore !== undefined) {
+        if (data.formatVersion !== 2) throw new Error('剧情账本需要新版恢复包');
+        validateRpBackup(memory.rpCore);
+    }
     if (memory.chronicle) {
         const c = memory.chronicle;
         if (c.version !== 1 || !Array.isArray(c.events) || !Array.isArray(c.entities) || !Array.isArray(c.sources) || !c.clock || !c.links || !c.baseline) throw new Error('剧情账本格式无效');
@@ -116,7 +122,9 @@ export function previewMemoryBackup(data, { chatKey = '', chat = [] } = {}) {
     const matchingSources = data.sources.every((revision, floor) => chat[floor] && messageRevision(chat[floor]) === revision);
     return { sameChat: chatKey ? sameKey : matchingSources, matchingSources,
         summaries: ['storySummaries', 'stageSummaries', 'epicSummaries'].reduce((n, key) => n + data.memory[key].length, 0),
-        drafts: data.memory.drafts.length, tableRows: rowsCount(data.memory.tableDatabase.tables), events: data.memory.chronicle?.events.length || 0 };
+        drafts: data.memory.drafts.length, tableRows: rowsCount(data.memory.tableDatabase.tables), events: data.memory.chronicle?.events.length || 0,
+        rpFacts: data.memory.rpCore?.facts.length || 0, rpClaims: data.memory.rpCore?.claims.length || 0,
+        rpObservations: data.memory.rpCore?.observations.length || 0 };
 }
 
 export function restoreMemoryBackup(state, validated) {
@@ -127,6 +135,7 @@ export function restoreMemoryBackup(state, validated) {
         history: [], undoStack: [], redoStack: [], rollbackHistory: [], lastAppliedSourceMessageIds: [] };
     if (memory.chronicle) state.chronicle = memory.chronicle;
     else delete state.chronicle;
+    if (memory.rpCore !== undefined) state.rpCore = importRpBackup(memory.rpCore);
     state.blocks = []; state.scanPreview = []; state.memoryRecords = [];
     state.generatedMemory = '';
     state.taskQueue = []; state.taskQueuePaused = true; state.autoSummaryTransactions = [];
@@ -142,6 +151,9 @@ export function createDiagnosticReport(state, { version = '1.6.1', storage = {} 
             epic: state.epicSummaries?.length || 0, drafts: state.drafts?.length || 0,
             tables: state.tableDatabase?.tables?.length || 0, rows: rowsCount(state.tableDatabase?.tables),
             events: state.chronicle?.events?.length || 0, entities: state.chronicle?.entities?.length || 0,
+            rpFacts: state.rpCore?.facts?.length || 0, rpClaims: state.rpCore?.claims?.length || 0,
+            rpObservations: state.rpCore?.observations?.length || 0,
+            rpPending: state.rpCore?.candidates?.filter(item => item.status === 'pending').length || 0,
             staleMemories: Object.values(state.chronicle?.links || {}).filter(item => item.stale).length,
             vectorRecords: state.vectorMemory?.records?.length || 0 },
         persistenceRevision: Number(state.persistenceRevision) || 0,

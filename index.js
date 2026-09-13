@@ -56,6 +56,11 @@ import { createInjectionService } from './src/features/injection-service.js';
 import { createArchiveController } from './src/features/archive-controller.js';
 import { createMemoryOrchestrator } from './src/features/memory-orchestrator.js';
 import { createTurnProcessingController } from './src/features/turn-processing-controller.js';
+import { createRpCoreService } from './src/rp-core/service.js';
+import { createRpExtractionFlow } from './src/rp-core/extraction-flow.js';
+import { createRpStateUi } from './src/features/rp-state-ui.js';
+import { findChatSource } from './src/rp-core/chat-sources.js';
+import { rpMemorySources, renderRpStateMemory } from './src/rp-core/memory.js';
 import { shouldRunTurnProcessing } from './src/features/turn-trigger-policy.js';
 import { createGenerationClient } from './src/features/generation-client.js';
 import { createSummaryDraftService } from './src/features/summary-draft-service.js';
@@ -865,7 +870,23 @@ const {
     renderInjectedTablesSection,
 } = tableMemoryModel;
 
+const rpCoreService = createRpCoreService({
+    getState: ensureState,
+    getChat: () => chat,
+    saveState,
+    saveChat: () => saveChatConditional(),
+});
+const rpExtractionFlow = createRpExtractionFlow({
+    callGenerationModel: options => callGenerationModel(options),
+    runGeneration: (label, run) => runVisibleOperation(label, run, '剧情事件提取完成'),
+    isBusy: () => isBusy,
+    getState: ensureState,
+    getChat: () => chat,
+    service: rpCoreService,
+});
+
 const tableWorkflowController = createTableWorkflowController({
+    rpExtractionFlow,
     getState: ensureState,
     findLatestAssistantTurn: (...args) => findLatestAssistantTurn(...args),
     toastr,
@@ -952,6 +973,10 @@ const vectorSettingsModel = createVectorSettingsModel({
 const {
     persistVectorMemoryFieldsFromUi,
     readVectorMemoryFieldsFromUi,
+    markVectorFormRendered,
+    assertVectorFormCurrent,
+    canKeepVectorForm,
+    readVectorFormDraft,
 } = vectorSettingsModel;
 
 const configurationService = createConfigurationService({
@@ -982,7 +1007,6 @@ const configurationService = createConfigurationService({
     makePresetId,
     getStageSourceMode,
     setTableSchemaScope,
-    readVectorMemoryFieldsFromUi,
     createSharedInlineGenerationConfig,
     createSharedVectorConfig,
     getTableSchemasForPreset,
@@ -1101,6 +1125,7 @@ const {
 } = memoryRecordsUi;
 
 const vectorMemoryService = createVectorMemoryService({
+    getRpMemorySources: state => state.rpCore ? rpMemorySources(state, rpCoreService.memoryView(state)) : [],
     formatApiFailure,
     defaultVectorMemory,
     getState: ensureState,
@@ -1157,6 +1182,8 @@ const {
 } = vectorMemoryService;
 
 const vectorWorkbenchUi = createVectorWorkbenchUi({
+    canKeepVectorForm,
+    markVectorFormRendered,
     query: $,
     document,
     getState: ensureState,
@@ -1177,6 +1204,9 @@ const {
 } = vectorWorkbenchUi;
 
 const vectorActionsController = createVectorActionsController({
+    readVectorFormDraft,
+    markVectorFormRendered,
+    assertVectorFormCurrent,
     fetchCustomEmbedding: (...args) => vectorMemoryService.fetchCustomEmbedding(...args),
     extractEmbeddingModelCandidates,
     formatApiFailure,
@@ -1252,6 +1282,8 @@ const {
 } = archiveController;
 
 const injectionService = createInjectionService({
+    renderRpStateMemory: state => state.rpCore ? renderRpStateMemory(state, rpCoreService.memoryView(state), String(chat.at(-1)?.mes || '')) : '',
+    rpExtractionFlow,
     getChat: () => chat,
     ensureState,
     getActiveEpicMemoryBlocks,
@@ -1709,6 +1741,7 @@ const {
 } = summaryDraftService;
 
 const reviewQueueUi = createReviewQueueUi({
+    renderRpReview: state => rpStateUi.renderReview(state),
     documentRef: document,
     query: $,
     getState: ensureState,
@@ -1745,6 +1778,19 @@ const {
     renderAutoSummaryTransactions,
     renderOverview: renderMaintenanceOverview,
 } = maintenanceUi;
+
+const rpStateUi = createRpStateUi({
+    documentRef: document, getState: ensureState, service: rpCoreService, flow: rpExtractionFlow,
+    escapeHtml, navigate: switchWorkbenchTab,
+    refresh: () => updateInjectionFromSummaries(),
+    locateSource: evidence => {
+        const source = evidence && findChatSource(chat, ensureState(), evidence.messageId + '|' + evidence.variantId);
+        if (!source) throw new Error('正文来源已变化或丢失');
+        const element = document.querySelector(`#chat .mes[mesid="${source.floor}"]`);
+        if (!element) throw new Error('该楼层尚未显示，请先在聊天中载入');
+        element.scrollIntoView({ block: 'center', behavior: 'auto' });
+    },
+});
 
 const storyToolsUi = createStoryToolsUi({
     documentRef: document, getState: ensureState, getChat: () => chat,
@@ -1795,6 +1841,7 @@ const summaryBrowserEvents = createSummaryBrowserEvents({
 });
 
 const turnProcessingController = createTurnProcessingController({
+    rpExtractionFlow,
     getContext,
     getChat: () => chat,
     getChatMetadata: () => chat_metadata,
@@ -1853,6 +1900,7 @@ const {
 } = turnProcessingController;
 
 const memoryOrchestrator = createMemoryOrchestrator({
+    rpExtractionFlow,
     ensureState,
     isBusy: () => isBusy,
     scanBakemonoBlocks,
@@ -1979,6 +2027,7 @@ const reviewQueueEvents = createReviewQueueEvents({
 });
 
 workbenchRenderer = createWorkbenchRenderer({
+    renderRpState: state => rpStateUi.render(state),
     documentRef: document,
     globalRef: globalThis,
     query: $,
@@ -2119,6 +2168,7 @@ function bindSettingsEvents() {
     bindPromptEvents();
     bindMaintenanceEvents();
     storyToolsUi.bind();
+    rpStateUi.bind();
     tableEditorEvents.bind();
     tableManagementEvents.bind();
     contentConfigurationEvents.bind();

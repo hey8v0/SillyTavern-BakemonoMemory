@@ -17,6 +17,7 @@ export function createWorkbenchHeaderUi({
             preview: '总结',
             records: '记忆库',
             tables: '表格',
+            'rp-state': '剧情状态',
             'turn-summary': '自动记忆',
             drafts: '待确认',
             timeline: '摘要树',

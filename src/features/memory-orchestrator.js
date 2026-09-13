@@ -23,6 +23,7 @@ export function createMemoryOrchestrator({
     syncInjection,
     scheduleRenderAll,
     shouldRunTurnProcessing,
+    rpExtractionFlow,
 } = {}) {
     async function maybeRunAutoSummary() {
         const state = ensureState();
@@ -89,6 +90,9 @@ export function createMemoryOrchestrator({
         const triggerMatches = shouldRunTurnProcessing?.(state.turnSummary, turnTrigger) !== false;
 
         if (options.turnOnly) {
+            await rpExtractionFlow?.runIndependent?.();
+            await rpExtractionFlow?.captureInline();
+            if (ensureState() !== state) return { index: floorIndex, plan };
             if (triggerMatches) await maybeRunTurnSummary();
             syncInjection();
             if (options.render) scheduleRenderAll();
@@ -101,6 +105,7 @@ export function createMemoryOrchestrator({
         if (options.scheduleInlineCapture) {
             scheduleInlineGenerationCapture(reason);
         }
+        await rpExtractionFlow?.runIndependent?.();
     
         state = ensureState();
         floorIndex = getCurrentFloorMemoryIndex(state);

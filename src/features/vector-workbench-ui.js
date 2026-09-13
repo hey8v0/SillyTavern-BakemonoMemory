@@ -7,8 +7,15 @@ export function createVectorWorkbenchUi({
     getVectorQueryText,
     escapeHtml,
     formatSourceRange,
+    markVectorFormRendered,
+    canKeepVectorForm,
 } = {}) {
     function renderVectorMemoryPanel(state = ensureState()) {
+        if (!canKeepVectorForm?.(state)) renderVectorConfigurationFields(state);
+        renderVectorRuntime(state);
+    }
+
+    function renderVectorConfigurationFields(state) {
         query('#bakemono-memory-vector-enabled').prop('checked', !!state.vectorMemory.enabled);
         query('#bakemono-memory-vector-auto-index').prop('checked', state.vectorMemory.autoIndex !== false);
         query('#bakemono-memory-vector-include-hidden').prop('checked', state.vectorMemory.includeHidden !== false);
@@ -34,11 +41,11 @@ export function createVectorWorkbenchUi({
         query('#bakemono-memory-vector-skip-context').prop('checked', state.vectorMemory.skipIfAllInContext !== false);
         query('#bakemono-memory-vector-context-window').val(state.vectorMemory.contextWindowMessages ?? defaultVectorMemory.contextWindowMessages);
         query('#bakemono-memory-vector-keywords').val(state.vectorMemory.keywordTriggers || '');
-        query('#bakemono-memory-vector-exclude-tags').val(state.vectorMemory.excludeTags || defaultVectorMemory.excludeTags);
-        query('#bakemono-memory-vector-summary-tags').val(state.vectorMemory.summaryTags || defaultVectorMemory.summaryTags);
+        query('#bakemono-memory-vector-exclude-tags').val(state.vectorMemory.excludeTags ?? defaultVectorMemory.excludeTags);
+        query('#bakemono-memory-vector-summary-tags').val(state.vectorMemory.summaryTags ?? defaultVectorMemory.summaryTags);
         query('#bakemono-memory-vector-query-mode').val(state.vectorMemory.queryMode || defaultVectorMemory.queryMode);
         query('#bakemono-memory-vector-query-provider').val(state.vectorMemory.queryRewriteProvider || defaultVectorMemory.queryRewriteProvider);
-        query('#bakemono-memory-vector-query-prompt').val(state.vectorMemory.queryRewritePrompt || defaultVectorMemory.queryRewritePrompt);
+        query('#bakemono-memory-vector-query-prompt').val(state.vectorMemory.queryRewritePrompt ?? defaultVectorMemory.queryRewritePrompt);
         query('#bakemono-memory-vector-query-base-url').val(state.vectorMemory.queryCustomApi?.baseUrl || '');
         query('#bakemono-memory-vector-query-api-key').val(state.vectorMemory.queryCustomApi?.apiKey || '');
         query('#bakemono-memory-vector-query-model').val(state.vectorMemory.queryCustomApi?.model || '');
@@ -49,6 +56,10 @@ export function createVectorWorkbenchUi({
         query('#bakemono-memory-vector-api-key').val(state.vectorMemory.customApi?.apiKey || '');
         query('#bakemono-memory-vector-model').val(state.vectorMemory.customApi?.model || '');
         renderVectorModelOptions(state.vectorMemory.customApi?.models || []);
+        markVectorFormRendered?.(state);
+    }
+
+    function renderVectorRuntime(state) {
         const messageRecordCount = unique((state.vectorMemory.records || []).map(record => String(record.messageId))).length;
         const bodyRecordCount = (state.vectorMemory.records || []).filter(record => record.kind !== 'summary').length;
         const summaryRecordCount = (state.vectorMemory.records || []).filter(record => record.kind === 'summary').length;

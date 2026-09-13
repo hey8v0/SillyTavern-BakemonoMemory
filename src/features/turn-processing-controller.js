@@ -1,4 +1,5 @@
 import { storyTimeContext } from '../memory/story-state.js';
+import { stripRpProtocol } from '../rp-core/extraction-flow.js';
 
 export function createTurnProcessingController({
     getContext,
@@ -42,6 +43,7 @@ export function createTurnProcessingController({
     callGenerationModel,
     extractTaggedContent,
     buildTableEditPrompt,
+    rpExtractionFlow,
 } = {}) {
     let inlineCaptureTimer = null;
 
@@ -135,6 +137,8 @@ export function createTurnProcessingController({
     
     async function captureInlineGenerationFromLatestMessage() {
         const state = ensureState();
+        const capturedRp = await rpExtractionFlow?.captureInline() || false;
+        if (ensureState() !== state) throw new Error('提取期间聊天已变化');
         if (!state.inlineGeneration?.summaryEnabled && !state.inlineGeneration?.tableEnabled) {
             return false;
         }
@@ -149,11 +153,11 @@ export function createTurnProcessingController({
         }
         const signature = getHash(`inline|${turn.assistantMessage.messageId}|${text}`);
         if (state.inlineGeneration.lastProcessedSignature === signature) {
-            return false;
+            return capturedRp;
         }
         const sourceMessageIds = turn.sourceMessageIds || [turn.assistantMessage.messageId];
         let changedMessage = false;
-        let capturedSomething = false;
+        let capturedSomething = capturedRp;
     
         if (state.inlineGeneration.summaryEnabled) {
             for (const content of extractAllTaggedBlocks(text, 'bakemono')) {
@@ -347,7 +351,7 @@ export function createTurnProcessingController({
         }
     }
     
-    async function buildTurnReferenceSystemPrompt(blocks, purpose = 'summary', state = ensureState()) {
+    async function buildTurnReferenceSystemPrompt(blocks, purpose = 'summary', state = ensureState(), { includeRp = purpose === 'summary' } = {}) {
         const sections = [];
         if (state.turnSummary.includeCharacterContext !== false) {
             const characterContext = getCharacterReferenceContext();
@@ -363,9 +367,10 @@ export function createTurnProcessingController({
         if (manual) {
             sections.push(`## 用户手动参考资料\n${manual}`);
         }
-        const base = purpose === 'table'
-            ? '你是剧情剪辑台的表格整理助手。只输出 tableThink 和 tableEdit，不写正文。'
-            : '你是剧情剪辑台的正文摘要器。只总结输入正文，不续写剧情。输出必须包含 summaryDraft 标签。';
+        const rpPrompt = includeRp ? rpExtractionFlow?.prompt('reply', state) || '' : '';
+        const base = (purpose === 'table'
+            ? `你是剧情剪辑台的表格整理助手。只输出 tableThink 和 tableEdit${rpPrompt ? ' 以及 rpEvents' : ''}，不写正文。`
+            : '你是剧情剪辑台的正文摘要器。只总结输入正文，不续写剧情。输出必须包含 summaryDraft 标签。') + (rpPrompt ? '\n\n' + rpPrompt : '');
         return sections.length
             ? `${base}\n\n以下是摘要/填表时必须参考的人设与世界观资料。它们只用于理解正文，不代表本轮新发生事件；不要把参考资料当成本轮剧情直接写入。\n\n${sections.join('\n\n')}`
             : base;
@@ -421,11 +426,18 @@ export function createTurnProcessingController({
         }
     
         await runGeneration(options.manual ? '正在处理最新正文...' : '正在自动生成正文摘要草稿...', async () => {
+            const rpTicket = rpExtractionFlow?.capture(turn.assistantMessage.messageId, 'reply');
             const summaryResult = await callGenerationModel({
                 prompt: buildTurnSummaryPrompt(blocks, state),
                 systemPrompt: await buildTurnReferenceSystemPrompt(blocks, 'summary', state),
             });
-            const summaryContent = normalizeGeneratedBakemono(extractTaggedContent(summaryResult, 'summaryDraft') || summaryResult);
+            rpExtractionFlow?.assertCurrent(rpTicket);
+            if (ensureState() !== state) throw new Error('提取期间聊天已变化');
+            const summaryText = stripRpProtocol(summaryResult);
+            const summaryContent = normalizeGeneratedBakemono(extractTaggedContent(summaryText, 'summaryDraft') || summaryText);
+            if (!String(summaryContent).trim()) throw new Error('本轮未返回摘要内容');
+            await rpExtractionFlow?.consume(rpTicket, summaryResult, { manual: !!options.manual });
+            if (ensureState() !== state) throw new Error('提取期间聊天已变化');
             const summaryDraft = createDraft({
                 kind: blockTypes.STORY,
                 content: summaryContent,

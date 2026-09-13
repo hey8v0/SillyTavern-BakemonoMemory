@@ -52,6 +52,7 @@ export function createVectorMemoryService({
     clearTimer = globalThis.clearTimeout,
     embeddingCache = createEmbeddingCache(),
     yieldToUi = () => new Promise(resolve => setTimeout(resolve, 0)),
+    getRpMemorySources = () => [],
 } = {}) {
     let vectorIndexTimer = null;
     let indexRun = null;
@@ -484,7 +485,7 @@ export function createVectorMemoryService({
             .forEach(summary => addSummary(summary, blockTypes.STORY));
         (state.stageSummaries || []).forEach(summary => addSummary(summary, blockTypes.STAGE));
         (state.epicSummaries || []).forEach(summary => addSummary(summary, blockTypes.EPIC));
-        return sources;
+        return [...sources, ...getRpMemorySources(state)];
     }
     
     function markVectorIndexDirty(reason = 'changed', state = ensureState()) {
@@ -619,7 +620,6 @@ export function createVectorMemoryService({
 
     async function performIndexBuild({ silent = false, signal } = {}) {
         const state = ensureState();
-        readVectorMemoryFieldsFromUi(state);
         const signature = getVectorSourceSignature(state);
         const space = getEmbeddingSpaceKey(state);
         if (silent && !state.vectorMemory.dirty && state.vectorMemory.lastIndexedSignature === signature) {
@@ -1002,9 +1002,12 @@ export function createVectorMemoryService({
         const perMessageMaxChars = Math.max(200, Number(state.vectorMemory.perMessageMaxChars || defaultVectorMemory.perMessageMaxChars));
         let used = 0;
         const lines = [];
+        const rpHashes = new Set(getRpMemorySources(state).map(source => source.hash));
         for (const hit of hits) {
             const memoryHash = hit.memoryHash || (hit.isSavedSummary ? summaryItems(state).find(item => String(hit.id || '').endsWith(`-${item.hash}`))?.hash : '');
-            if (memoryHash && !isMemoryCurrent(state, { hash: memoryHash })) continue;
+            if (String(memoryHash).startsWith('rp:')) {
+                if (!rpHashes.has(memoryHash)) continue;
+            } else if (memoryHash && !isMemoryCurrent(state, { hash: memoryHash })) continue;
             if (hit.isSavedSummary && !memoryHash && state.chronicle) continue;
             const source = String(hit.text || '').trim();
             const snippet = hit.kind === 'message' && source.length > perMessageMaxChars

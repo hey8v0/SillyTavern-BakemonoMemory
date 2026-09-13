@@ -100,10 +100,8 @@ export function createWorkbenchActionController({
         } else if (action === 'vector-test-embedding') {
             await runVisibleOperation('正在验证嵌入接口...', () => testEmbeddingConnection(), '嵌入接口验证通过');
         } else if (action === 'vector-fetch-models') {
-            persistVectorMemoryFieldsFromUi();
             await runVisibleOperation('正在拉取嵌入向量模型...', () => fetchVectorEmbeddingModels(), '嵌入模型列表已更新');
         } else if (action === 'vector-fetch-query-models') {
-            persistVectorMemoryFieldsFromUi();
             await runVisibleOperation('正在拉取查询改写模型...', () => fetchVectorQueryModels(), '查询模型列表已更新');
         } else if (action === 'vector-clear') {
             clearVectorMemoryIndex();

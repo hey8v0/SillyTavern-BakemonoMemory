@@ -26,6 +26,8 @@ export function createInjectionService({
     inlinePromptKeys,
     defaultInjectionTemplate,
     renderInjectionTemplate,
+    rpExtractionFlow,
+    renderRpStateMemory = () => '',
 } = {}) {
     function updateInjectionFromSummaries() {
         const state = ensureState();
@@ -57,7 +59,7 @@ export function createInjectionService({
                 stageContents.length ? '## 阶段总结\n' + stageContents.join('\n\n') : '',
             ].filter(Boolean).join('\n\n'),
             memory: storyContents.length ? '## 普通剧情摘要\n' + storyContents.join('\n\n') : '',
-            table: [storyTimeContext(state), renderInjectedTablesSection(state)].filter(Boolean).join('\n\n'),
+            table: [renderRpStateMemory(state), state.rpCore ? '' : storyTimeContext(state), renderInjectedTablesSection(state)].filter(Boolean).join('\n\n'),
             vector: renderVectorMemorySection(state),
         };
         const sections = [sources.summary, sources.memory, sources.table, sources.vector].filter(Boolean);
@@ -105,13 +107,18 @@ export function createInjectionService({
     function syncInlineGenerationPrompts(state = ensureState()) {
         const depth = Math.max(0, Number(state.inlineGeneration?.depth ?? 1));
         const role = Number(state.inlineGeneration?.role ?? extensionPromptRoles.SYSTEM);
-        const summaryValue = state.inlineGeneration?.summaryEnabled
+        let summaryValue = state.inlineGeneration?.summaryEnabled
             ? renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state)
             : '';
         let tableValue = state.inlineGeneration?.tableEnabled
             ? renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state)
             : '';
         if (tableValue && !tableValue.includes(storyStateEditGuide)) tableValue += '\n\n' + [storyTimeContext(state), storyStateEditGuide].filter(Boolean).join('\n\n');
+        const rpPrompt = rpExtractionFlow?.prompt('inline', state) || '';
+        if (rpPrompt) {
+            if (state.inlineGeneration?.summaryEnabled) summaryValue += '\n\n' + rpPrompt;
+            else if (state.inlineGeneration?.tableEnabled) tableValue += '\n\n' + rpPrompt;
+        }
         setExtensionPrompt(inlinePromptKeys.SUMMARY, summaryValue, extensionPromptTypes.IN_CHAT, depth, false, role);
         setExtensionPrompt(inlinePromptKeys.TABLE, tableValue, extensionPromptTypes.IN_CHAT, depth, false, role);
     }

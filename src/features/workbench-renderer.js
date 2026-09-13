@@ -35,6 +35,7 @@ export function createWorkbenchRenderer({
     renderHistory,
     renderTaskQueue,
     renderTurnSummaryPanel,
+    renderRpState,
     renderInjectionOverview,
     renderPromptOverview,
     renderAutomationOverview,
@@ -191,7 +192,8 @@ export function createWorkbenchRenderer({
         else if (tabName === 'timeline') renderTimeline();
         else if (tabName === 'drafts') {
             renderDrafts(); renderHistory(); renderTaskQueue();
-        } else if (tabName === 'turn-summary' || tabName === 'tables') renderTurnSummaryPanel(state);
+        } else if (tabName === 'rp-state') renderRpState?.(state);
+        else if (tabName === 'turn-summary' || tabName === 'tables') renderTurnSummaryPanel(state);
         else if (tabName === 'injection') renderInjectionOverview(state);
         else if (tabName === 'prompts') renderPromptOverview(state);
         else if (tabName === 'vector') renderVectorMemoryPanel(state);
@@ -240,6 +242,7 @@ export function createWorkbenchRenderer({
         else if (activeTab === 'timeline') renderTimeline();
         else if (activeTab === 'drafts') { renderDrafts(); renderHistory(); renderTaskQueue(); }
         else if (activeTab === 'maintenance') renderMaintenanceOverview(state);
+        else if (activeTab === 'rp-state') renderRpState?.(state);
         else if (activeTab === 'turn-summary' || activeTab === 'tables') { renderActivePresetControls(activeTab); renderTurnSummaryPanel(state); }
     }
 
@@ -255,7 +258,8 @@ export function createWorkbenchRenderer({
             else if (activeTab === 'maintenance') renderMaintenanceOverview(state);
             else if (activeTab === 'data-hub' && options.refreshDataHub !== false) renderDataHubMemory(state);
         } else if (scope === workbenchRenderScopes.TABLES) {
-            if (activeTab === 'turn-summary' || activeTab === 'tables') { renderActivePresetControls(activeTab); renderTurnSummaryPanel(state); }
+            if (activeTab === 'rp-state') renderRpState?.(state);
+            else if (activeTab === 'turn-summary' || activeTab === 'tables') { renderActivePresetControls(activeTab); renderTurnSummaryPanel(state); }
             else if (activeTab === 'data-hub') renderDataHubMemory(state);
         } else if (scope === workbenchRenderScopes.SUMMARY) renderSummarySurface(activeTab, state);
         else if (scope === workbenchRenderScopes.SCAN) {

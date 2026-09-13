@@ -8,6 +8,7 @@ export function createWorkbenchNavigation({
     rootId = 'bakemono-workbench-root',
     menuButtonId = 'bakemono-memory-menu-toggle',
 } = {}) {
+    const mobileExpansion = new WeakMap();
     function getRoot() {
         return document.getElementById(rootId);
     }
@@ -25,7 +26,7 @@ export function createWorkbenchNavigation({
 
     function getMenuTab(tabName) {
         if (tabName === 'prompt-inspector') return 'overview';
-        if (['turn-summary', 'tables', 'automation', 'vector'].includes(tabName)) return 'data-hub';
+        if (['turn-summary', 'tables', 'rp-state', 'automation', 'vector'].includes(tabName)) return 'data-hub';
         if (['settings', 'scan', 'injection', 'generation', 'prompts', 'appearance', 'config', 'maintenance'].includes(tabName)) return 'settings-hub';
         if (tabName === 'timeline') return 'preview';
         return tabName;
@@ -50,16 +51,18 @@ export function createWorkbenchNavigation({
         const root = getRoot();
         if (!root) return;
         const isMobile = window.matchMedia?.('(max-width: 900px)').matches ?? false;
-        const target = scope || root;
+        const target = typeof scope?.querySelectorAll === 'function' ? scope : root;
         target.querySelectorAll('.bakemono-mobile-collapsible').forEach(panel => {
             if (!isMobile) {
+                if (panel.dataset.bakemonoMobileReady) mobileExpansion.set(panel, panel.classList.contains('is-mobile-expanded'));
                 panel.classList.remove('is-mobile-collapsed', 'is-mobile-expanded');
                 delete panel.dataset.bakemonoMobileReady;
                 return;
             }
             if (!panel.dataset.bakemonoMobileReady) {
-                panel.classList.add('is-mobile-collapsed');
-                panel.classList.remove('is-mobile-expanded');
+                const expanded = mobileExpansion.get(panel) === true;
+                panel.classList.toggle('is-mobile-collapsed', !expanded);
+                panel.classList.toggle('is-mobile-expanded', expanded);
                 panel.dataset.bakemonoMobileReady = '1';
             }
         });

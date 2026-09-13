@@ -46,12 +46,12 @@ test('stream API error after partial content is not returned as a successful sum
 
 function vectorController(overrides = {}) {
     const state = { vectorMemory: { enabled: true, customApi: { baseUrl: 'https://example.com/v1/embeddings', model: '' }, records: [{}] } };
-    const notices = [];
-    return { state, notices, controller: createVectorActionsController({
+    const notices = [], candidates = [];
+    return { state, notices, candidates, controller: createVectorActionsController({
         getState: () => state, readVectorMemoryFieldsFromUi: noop,
         persistSharedConfigurationFromState: noop, ...provider,
         query: () => ({ val: () => '寻找旧约定' }),
-        renderVectorModelOptions: noop, saveState: noop, syncInjection: noop,
+        renderVectorModelOptions: models => candidates.splice(0, candidates.length, ...models), saveState: noop, syncInjection: noop,
         renderWorkbenchScope: noop, workbenchRenderScopes: {},
         toastr: { ...toastr, success: message => notices.push(message), error: message => notices.push(message) },
         ...overrides,
@@ -59,17 +59,18 @@ function vectorController(overrides = {}) {
 }
 
 test('embedding model candidates do not auto-select a chat model or claim verified capability', async () => {
-    const { state, notices, controller } = vectorController({ fetchImpl: async () => new Response(JSON.stringify({ data: [{ id: 'chat-model' }, { id: 'text-embedding-3-small' }] })) });
+    const { state, notices, candidates, controller } = vectorController({ fetchImpl: async () => new Response(JSON.stringify({ data: [{ id: 'chat-model' }, { id: 'text-embedding-3-small' }] })) });
     assert.equal(await controller.fetchVectorEmbeddingModels(), true);
     assert.equal(state.vectorMemory.customApi.model, '');
-    assert.deepEqual(state.vectorMemory.customApi.models, ['text-embedding-3-small']);
+    assert.deepEqual(candidates, ['text-embedding-3-small']);
+    assert.equal(state.vectorMemory.customApi.models, undefined);
     assert.match(notices.join(' '), /候选/);
 });
 
 test('unknown model names remain manually selectable and HTTP failures have actionable explanations', async () => {
-    const { state, controller } = vectorController({ fetchImpl: async () => new Response(JSON.stringify({ data: [{ id: 'private-model' }] })) });
+    const { candidates, controller } = vectorController({ fetchImpl: async () => new Response(JSON.stringify({ data: [{ id: 'private-model' }] })) });
     await controller.fetchVectorEmbeddingModels();
-    assert.deepEqual(state.vectorMemory.customApi.models, ['private-model']);
+    assert.deepEqual(candidates, ['private-model']);
     const failed = vectorController({ fetchImpl: async () => new Response('', { status: 401 }) });
     assert.equal(await failed.controller.fetchVectorEmbeddingModels(), false);
     assert.match(failed.notices.join(' '), /401.*密钥/);
