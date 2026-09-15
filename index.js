@@ -883,6 +883,15 @@ const rpCoreService = createRpCoreService({
 const rpProtocolDisplay = createRpProtocolDisplay({ documentRef: document, getChat: () => chat });
 const rpExtractionFlow = createRpExtractionFlow({
     callGenerationModel: options => callGenerationModel(options),
+    getReferenceContext: async (state, floor) => {
+        const settings = state.rpCore.settings, sections = [];
+        if (settings.includeCharacterContext !== false) sections.push(getCharacterReferenceContext().slice(0, 6000));
+        if (settings.includeWorldInfo === true) sections.push((await turnProcessingController.getWorldInfoReferenceContext(
+            [{ messageId: floor, content: chat[floor]?.mes || '' }],
+            { ...state, turnSummary: { ...state.turnSummary, includeWorldInfo: true, worldInfoMaxContext: 2048 } },
+        )).slice(0, 6000));
+        return sections.filter(Boolean).join('\n\n');
+    },
     runGeneration: (label, run) => runVisibleOperation(label, run, '剧情事件提取完成'),
     isBusy: () => isBusy,
     getState: ensureState,

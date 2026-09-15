@@ -109,7 +109,7 @@ test('missing references can be registered and confirmed atomically with evidenc
     const { state, chat, service } = fixture();
     chat[0].mes = '甲来了。甲拿着一枚戒指。他把戒指放到了书房。';
     await service.enable();
-    await service.ingest(payload([{ track: 'facts', action: 'item_placed', data: { id: 'ring', from: '甲', location: '书房' }, excerpt: '他把戒指放到了书房。' }]), 0);
+    await service.ingest(payload([{ track: 'facts', action: 'item_placed', data: { id: 'ring', from: '甲', location: 'room' }, excerpt: '他把戒指放到了书房。' }]), 0);
     const id = state.rpCore.candidates[0].id, before = JSON.stringify(state.rpCore);
     const updates = [
         { field: 'from', name: '甲', excerpt: '甲来了。' },
@@ -131,7 +131,7 @@ test('reference repair never bypasses missing evidence, source revisions or acti
     const { state, chat, service } = fixture();
     chat[0].mes = '甲来了。戒指在桌上。';
     await service.enable();
-    await service.ingest(payload([{ track: 'facts', action: 'item_placed', data: { id: 'ring', from: '甲', location: '桌上' }, excerpt: '戒指在桌上。' }]), 0);
+    await service.ingest(payload([{ track: 'facts', action: 'item_placed', data: { id: 'ring', from: '甲', location: 'table' }, excerpt: '戒指在桌上。' }]), 0);
     const id = state.rpCore.candidates[0].id;
     const updates = [{ field: 'from', name: '甲', excerpt: '甲来了。' }, { field: 'id', name: '戒指', excerpt: '戒指在桌上。' }, { field: 'location', name: '桌上', excerpt: '戒指在桌上。' }];
     assert.throws(() => service.previewReferenceRepair(id, updates), /持有/);

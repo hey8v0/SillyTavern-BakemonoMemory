@@ -12882,3 +12882,49 @@ details[open] > summary > .bakemono-memory-help-trigger {
     #bakemono-workbench-root .rp-core-ui .rp-row { padding: 13px; gap: 10px; }
     #bakemono-workbench-root .rp-core-ui .rp-overview { padding: 20px 17px; }
 }
+
+/* Story sheet and internal destination pages. */
+#bakemono-workbench-root .rp-core-ui .rp-overview { padding: 16px 18px; background: var(--bk-paper-raised); }
+#bakemono-workbench-root .rp-core-ui .rp-overview::before { margin-bottom: 10px; width: 22px; height: 2px; }
+#bakemono-workbench-root .rp-core-ui .rp-overview h3 { font-size: 1.55em; margin-block: 6px; }
+#bakemono-workbench-root .rp-core-ui .rp-cast { padding-block: 8px 0; margin-top: 9px; }
+#bakemono-workbench-root .rp-core-ui .rp-story-sheet { width: 100%; max-width: 620px; min-width: 0; margin-inline: auto; padding: 20px; border: 1px solid var(--bk-line); border-radius: 16px; background: var(--bk-paper-raised); }
+#bakemono-workbench-root .rp-core-ui .rp-story-sheet button { display: inline-flex; align-items: center; gap: 8px; border: 0; text-align: left; padding: 8px 4px; font-size: .88em; min-height: 44px; min-width: 44px; white-space: normal; overflow-wrap: anywhere; }
+#bakemono-workbench-root .rp-core-ui .rp-story-scene::before { content: ''; display: block; width: 26px; height: 2px; background: var(--bk-accent); margin-bottom: 15px; }
+#bakemono-workbench-root .rp-core-ui .rp-story-heading { margin: 5px 0 0; }
+#bakemono-workbench-root .rp-core-ui button.rp-story-clock { display: flex; flex-direction: column; align-items: flex-start; width: 100%; gap: 3px; padding: 7px 0; font-weight: 400; font-size: 1em; }
+#bakemono-workbench-root .rp-core-ui .rp-story-date { font: 2em/1.4 var(--bk-display); letter-spacing: .03em; }
+#bakemono-workbench-root .rp-core-ui .rp-story-time { font-size: .82em; color: var(--bk-ink-soft); }
+#bakemono-workbench-root .rp-core-ui .rp-story-place { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; }
+#bakemono-workbench-root .rp-core-ui button.rp-story-place-link { flex: 1 1 170px; color: var(--rp-accent-strong); }
+#bakemono-workbench-root .rp-core-ui .rp-story-place-name { flex: 1; min-width: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-story-cast { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; padding-block: 10px 4px; }
+#bakemono-workbench-root .rp-core-ui button.rp-story-person { max-width: 100%; color: var(--rp-accent-strong); }
+#bakemono-workbench-root .rp-core-ui .rp-story-person .rp-avatar { width: 28px; height: 28px; flex-basis: 28px; font-size: 13px; }
+#bakemono-workbench-root .rp-core-ui .rp-story-person > span:last-child { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+#bakemono-workbench-root .rp-core-ui :is(.rp-story-relations, .rp-story-plans, .rp-story-items, .rp-story-recent) { padding-block: 10px; border-top: 1px solid var(--bk-line); margin-top: 10px; }
+#bakemono-workbench-root .rp-core-ui .rp-story-relations { border-top: 0; margin-top: 0; padding-block: 4px; }
+#bakemono-workbench-root .rp-core-ui button.rp-story-entry { display: flex; width: 100%; padding-block: 10px; gap: 10px; }
+#bakemono-workbench-root .rp-core-ui .rp-story-copy { flex: 1; min-width: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-story-copy strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-weight: 550; font-size: 1em; }
+#bakemono-workbench-root .rp-core-ui .rp-story-copy small { margin-top: 3px; }
+#bakemono-workbench-root .rp-core-ui :is(.rp-story-plan, .rp-story-item) > i { color: var(--bk-accent); flex: 0 0 18px; }
+#bakemono-workbench-root .rp-core-ui .rp-story-items { display: flex; gap: 2px 9px; flex-wrap: wrap; align-items: center; }
+#bakemono-workbench-root .rp-core-ui button.rp-story-item { color: var(--rp-accent-strong); }
+#bakemono-workbench-root .rp-core-ui .rp-story-item > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+#bakemono-workbench-root .rp-core-ui button.rp-story-more { font-size: .78em; color: var(--rp-accent-strong); font-weight: 400; }
+#bakemono-workbench-root .rp-core-ui .rp-story-recent { padding-bottom: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-story-recent .rp-change-row { width: 100%; display: flex; border: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-story-recent .rp-row-copy { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+#bakemono-workbench-root .rp-core-ui .rp-story-sheet .rp-chevron { flex: 0 0 auto; margin-inline-start: auto; color: var(--bk-ink-soft); }
+#bakemono-workbench-root .rp-core-ui .rp-breadcrumb { display: flex; gap: 15px; align-items: center; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--bk-line); }
+#bakemono-workbench-root .rp-core-ui .rp-breadcrumb button { border: 0; padding-inline: 0; color: var(--rp-accent-strong); }
+#bakemono-workbench-root .rp-core-ui .rp-breadcrumb h3 { font-size: 1.05em; }
+#bakemono-workbench-root .rp-core-ui .rp-attention { display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--bk-line); }
+#bakemono-workbench-root .rp-core-ui .rp-attention button { border: 0; padding-inline: 0; font-size: .82em; }
+#bakemono-workbench-root .rp-core-ui .rp-source-choice { display: grid; gap: 8px; margin-block: 16px; }
+#bakemono-workbench-root .rp-core-ui .rp-source-choice select { width: 100%; min-width: 0; min-height: 44px; }
+@container (max-width: 390px) {
+    #bakemono-workbench-root .rp-core-ui .rp-story-sheet { padding: 16px; }
+    #bakemono-workbench-root .rp-core-ui .rp-story-date { font-size: 1.85em; }
+}

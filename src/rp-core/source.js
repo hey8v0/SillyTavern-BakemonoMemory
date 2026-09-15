@@ -78,6 +78,18 @@ export function sourceSnapshot(raw, identity, options) {
 }
 
 export function locateEvidence(source, excerpt, hint = null) {
+    if (source.supplements?.length) {
+        const sources = [source, ...source.supplements];
+        if (hint?.variantId) {
+            const target = sources.find(item => item.variantId === hint.variantId && item.messageId === hint.messageId);
+            return target ? locateEvidence({ ...target, supplements: null }, excerpt, hint) : { status: 'missing' };
+        }
+        const matches = sources.map(item => locateEvidence({ ...item, supplements: null }, excerpt));
+        if (matches[0].status !== 'missing') return matches[0];
+        const located = matches.filter(item => item.status === 'located');
+        return located.length === 1 && !matches.some(item => item.status === 'ambiguous') ? located[0]
+            : { status: located.length || matches.some(item => item.status === 'ambiguous') ? 'ambiguous' : 'missing' };
+    }
     const needle = normalizeEvidenceText(excerpt).text;
     if (!needle) return { status: 'missing' };
     const matches = [];
@@ -95,7 +107,23 @@ export function locateEvidence(source, excerpt, hint = null) {
         normalizationVersion: source.normalizationVersion, start, end,
         rawStart: source.spans[start].start, rawEnd: source.spans[end - 1].end,
         spanHash: evidenceHash(needle), excerpt: String(excerpt),
+        ...(source.sourceKind ? { sourceKind: source.sourceKind } : {}),
     } };
+}
+
+export function evidenceSource(source, anchor) {
+    return [source, ...(source?.supplements || [])].find(item => item && item.messageId === anchor?.messageId && item.variantId === anchor?.variantId) || null;
+}
+
+export function sourceStamp(source) {
+    return source?.supplements?.length ? source.revision + '|' + source.supplements.map(item => item.variantId + ':' + item.revision).join('|') : source?.revision;
+}
+
+export function locateEventEvidence(source, event) {
+    if (event.source !== 'summary') return locateEvidence(source, event.excerpt, event.span);
+    const matches = (source.supplements || []).map(item => locateEvidence(item, event.excerpt, event.span));
+    const located = matches.filter(item => item.status === 'located');
+    return located.length === 1 && !matches.some(item => item.status === 'ambiguous') ? located[0] : { status: located.length ? 'ambiguous' : 'missing' };
 }
 
 // A suggestion expands omissions into the actual contiguous source. It is not

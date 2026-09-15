@@ -1,6 +1,7 @@
 import { assertLedgerVersion, appendRecord, retractFact, replayLedger } from './ledger.js';
 import { applyDomainFact } from './domain.js';
-import { locateEvidence, evidenceHash, normalizeEvidenceText } from './source.js';
+import { locateEvidence, evidenceHash, normalizeEvidenceText, locateEventEvidence, evidenceSource } from './source.js';
+import { prepareAutomaticRegistration } from './automatic-registration.js';
 import { normalizeEntityIdentities } from './identity.js';
 import { classifyCandidate } from './validation.js';
 import { atomicCandidateGroups } from './groups.js';
@@ -18,7 +19,7 @@ function inspect(value, depth = 0) {
         inspect(value[key], depth + 1);
     }
 }
-function parsePayload(value) {
+export function parsePayload(value) {
     if (typeof value !== 'string' || value.length > 200000) throw new Error('事件响应过大或无效');
     const wrapped = /<rpEvents\b[^>]*>\s*([\s\S]*?)\s*<\/rpEvents\s*>/i.exec(value);
     const parsed = JSON.parse(wrapped ? wrapped[1] : value);
@@ -40,29 +41,33 @@ function normalizeCandidate(event, source) {
         || !event.action || event.action.length > 100 || !event.data || typeof event.data !== 'object' || Array.isArray(event.data)) {
         throw new Error('候选事件结构无效');
     }
-    const located = locateEvidence(source, event.excerpt, event.span);
+    const located = locateEventEvidence(source, event);
+    const origin = located.anchor ? evidenceSource(source, located.anchor) : source;
     if (event.group != null && (typeof event.group !== 'string' || event.group.length > 100)) throw new Error('同批事件组无效');
     const candidate = {
         track: event.track, action: event.action, data: structuredClone(event.data),
         context: event.context ?? 'current',
         group: event.group || '',
-        sourceKey: sourceKey(source), sourceRevision: source.revision,
+        sourceKey: sourceKey(origin), sourceRevision: origin.revision, originSourceKey: sourceKey(source),
         evidence: located.anchor || null, evidenceStatus: located.status,
         excerpt: String(event.excerpt || ''), status: 'pending',
+        ...(event.resolutionIssue ? { blockedReason: event.resolutionIssue, reason: event.resolutionIssue } : {}),
     };
     if (located.status !== 'located') candidate.reason = located.status === 'ambiguous'
         ? '正文中有多处相同摘录，请补充前后文后重新定位。'
-        : '正文中未找到这段摘录；请引用原正文，而不是摘要或改写后的句子。';
+        : '正文与已识别摘要中未找到这段摘录；请选择连续原句，不要拼接或改写。';
     refreshCandidateFingerprint(candidate);
     return candidate;
 }
 
-export function prepareExtraction(original, raw, source, { floor, order = floor, autoApply = false, applyFact = applyDomainFact } = {}) {
+export function prepareExtraction(original, raw, source, { floor, order = floor, autoApply = false, automaticRegistration = false, allowNewOnRepeat = false, applyFact = applyDomainFact } = {}) {
     assertLedgerVersion(original);
     if (!Number.isSafeInteger(floor) || floor < original.baseline.floor || !Number.isFinite(order)) throw new Error('提取记录位置无效');
-    const events = normalizeEntityIdentities(parsePayload(raw), source, replayLedger(original, applyFact).projection);
+    const projection = replayLedger(original, applyFact).projection;
+    const parsed = parsePayload(raw);
+    const events = normalizeEntityIdentities(automaticRegistration ? prepareAutomaticRegistration(parsed, source, projection) : parsed, source, projection);
     let core = structuredClone(original);
-    const previous = original.candidates.filter(item => item.sourceKey === sourceKey(source));
+    const previous = original.candidates.filter(item => (item.originSourceKey || item.sourceKey) === sourceKey(source));
     const repeat = original.batches.some(batch => batch.sourceKey === sourceKey(source));
     const items = [], seen = new Set();
     const matched = new Set();
@@ -70,7 +75,7 @@ export function prepareExtraction(original, raw, source, { floor, order = floor,
         const candidate = normalizeCandidate(event, source);
         if (seen.has(candidate.fingerprint)) continue;
         seen.add(candidate.fingerprint);
-        const exact = previous.find(item => item.fingerprint === candidate.fingerprint && item.sourceRevision === source.revision);
+        const exact = previous.find(item => item.fingerprint === candidate.fingerprint && item.sourceRevision === candidate.sourceRevision);
         if (exact) {
             matched.add(exact.id);
             items.push({ change: 'unchanged', candidate: structuredClone(exact) });
@@ -104,9 +109,10 @@ export function prepareExtraction(original, raw, source, { floor, order = floor,
             if (group.cyclic && candidate.status === 'pending') candidate.reason = '同批行为前提形成循环，请修改候选';
         });
     });
-    if (autoApply && !repeat) {
+    if (autoApply && (!repeat || allowNewOnRepeat)) {
         for (const group of groups) {
-            if (group.cyclic || group.candidates.some(candidate => candidate.status !== 'pending' || !candidate.evidence || classifyCandidate(candidate).status !== 'valid')) continue;
+            if (repeat && group.candidates.some(candidate => candidate.change !== 'added' || candidate.previousIds.length)) continue;
+            if (group.cyclic || group.candidates.some(candidate => candidate.status !== 'pending' || candidate.blockedReason || !candidate.evidence || classifyCandidate(candidate).status !== 'valid')) continue;
             try { core = decideCandidate(core, group.candidates[0].id, 'accept', source, { floor, applyFact }); }
             catch (error) {
                 for (const candidate of group.candidates) core.candidates.find(item => item.id === candidate.id).reason = String(error?.message || error);
@@ -149,8 +155,10 @@ function decideSingleCandidate(original, candidateId, decision, source, { floor,
         return core;
     }
     if (decision !== 'accept') throw new Error('未知审核决定');
+    if (candidate.blockedReason) throw new Error(candidate.blockedReason);
     const classification = classifyCandidate(candidate);
     if (classification.status !== 'valid') throw new Error(classification.reason);
+    source = evidenceSource(source, candidate.evidence) || source;
     if (candidate.sourceKey !== sourceKey(source) || candidate.sourceRevision !== source.revision) throw new Error('正文来源已变化，请重新提取');
     const located = locateEvidence(source, candidate.excerpt, candidate.evidence);
     if (located.status !== 'located' || !candidate.evidence

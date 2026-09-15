@@ -1,5 +1,6 @@
 const requirements = {
     person_created: ['id', 'name'], person_renamed: ['id', 'name'], person_trait_recorded: ['id', 'trait'],
+    person_registered: ['id', 'name'], relationship_recorded: ['id', 'from', 'to', 'kind'], scene_recorded: ['location'],
     person_age_recorded: ['id', 'age'], person_moved: ['id', 'location'],
     person_state_started: ['id', 'stateId', 'description'], person_state_ended: ['id', 'stateId'],
     relationship_established: ['id', 'from', 'to', 'kind'], relationship_ended: ['id'],

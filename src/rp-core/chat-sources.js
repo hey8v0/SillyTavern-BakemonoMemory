@@ -1,4 +1,5 @@
 import { sourceSnapshot } from './source.js';
+import { readSummarySources } from './summary-source.js';
 
 function newIdentity() {
     if (!globalThis.crypto?.randomUUID) throw new Error('当前环境无法建立可靠的来源身份');
@@ -52,16 +53,20 @@ export function readChatSource(message, state, { allocate = false, makeId = newI
             message.bakemonoRpVariants[swipe] = structuredClone(identity);
         }
     }
-    return sourceSnapshot(message.mes || '', {
+    const source = sourceSnapshot(message.mes || '', {
         messageId: identity.messageId, variantId,
     }, sourceOptions(state));
+    source.supplements = readSummarySources(message.mes || '', { messageId: identity.messageId, variantId }, state);
+    return source;
 }
 
 export function findChatSource(chat, state, key) {
     const matches = [];
     for (let floor = 0; floor < chat.length; floor++) {
         const source = readChatSource(chat[floor], state);
-        if (source && source.messageId + '|' + source.variantId === key) matches.push({ ...source, floor });
+        for (const item of source ? [source, ...(source.supplements || [])] : []) {
+            if (item.messageId + '|' + item.variantId === key) matches.push({ ...item, floor });
+        }
     }
     return matches.length === 1 ? matches[0] : null;
 }
@@ -71,8 +76,10 @@ export function currentChatSources(chat, state) {
     for (let floor = 0; floor < chat.length; floor++) {
         const source = readChatSource(chat[floor], state);
         if (!source) continue;
-        const key = source.messageId + '|' + source.variantId;
-        sources.set(key, sources.has(key) ? null : { ...source, floor });
+        for (const item of [source, ...(source.supplements || [])]) {
+            const key = item.messageId + '|' + item.variantId;
+            sources.set(key, sources.has(key) ? null : { ...item, floor });
+        }
     }
     return sources;
 }

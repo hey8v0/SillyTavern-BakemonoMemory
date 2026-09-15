@@ -1,6 +1,7 @@
 export const trackLabels = { facts: '事实', claims: '角色说法', observations: '观察', pending: '待确认' };
 export const stateLabels = { active: '持续中', ended: '已结束', proposed: '提议中', accepted: '已接受', completed: '已完成', cancelled: '已取消', failed: '明确失败', available: '可用', damaged: '损坏', destroyed: '已销毁', pending: '待确认', ignored: '已忽略', rejected: '已拒绝' };
 export const actionLabels = {
+    person_registered: '登记人物', relationship_recorded: '记录已有关系', scene_recorded: '当前场景',
     person_created: '登记人物', person_renamed: '人物改名', person_trait_recorded: '记录特征', person_age_recorded: '记录年龄', person_moved: '人物移动',
     person_state_started: '开始临时状态', person_state_ended: '结束临时状态',
     relationship_established: '建立关系', relationship_ended: '结束关系', relationship_conflict: '发生冲突', relationship_milestone: '关系节点',
@@ -22,7 +23,7 @@ export function relationshipName(projection, relation) {
 export function describeRecord(record, projection) {
     const data = record.data || {}, relation = projection.relationships?.find(item => item.id === data.id);
     const subject = relation ? relationshipName(projection, relation) : data.name || data.title
-        || (data.id ? entityName(projection, data.id) : '');
+        || (data.id ? entityName(projection, data.id) : record.action === 'scene_recorded' ? entityName(projection, data.location) : '');
     return [actionLabels[record.action] || '信息记录', subject, data.description || data.trait || data.date || ''].filter(Boolean).join(' · ');
 }
 export function createStateNavigation() {

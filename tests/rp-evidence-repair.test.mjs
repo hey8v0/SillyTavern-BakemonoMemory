@@ -4,7 +4,7 @@ import { createRpCoreService } from '../src/rp-core/service.js';
 import { validateRpBackup } from '../src/rp-core/backup.js';
 
 async function fixture() {
-    const state = {}, chat = [{ mes: '甲走进花园。<bakemono>甲来到花园</bakemono>' }];
+    const state = {}, chat = [{ mes: '甲走进花园。<bakemono>【第四面墙】甲来到花园</bakemono>' }];
     const service = createRpCoreService({ getState: () => state, getChat: () => chat, saveState() {}, saveChat: async () => {} });
     await service.enable();
     await service.ingest(JSON.stringify({ version: 1, events: [{ track: 'facts', action: 'person_created', data: { id: 'a', name: '甲' }, excerpt: '甲来到花园' }] }), 0);

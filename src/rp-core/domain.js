@@ -53,7 +53,7 @@ export function applyDomainFact(projection, event) {
     const state = structuredClone(projection);
     const data = event.data || {};
     const action = event.action;
-    if (action === 'person_created') {
+    if (action === 'person_created' || action === 'person_registered') {
         insert(state.people, { id: data.id, name: text(data.name, '姓名'), aliases: [], location: null,
             birthDate: dateOrNull(data.birthDate), ageEvidence: ageEvidence(data, state.clock.date), traits: [], states: [] });
     } else if (action === 'person_age_recorded') {
@@ -77,14 +77,17 @@ export function applyDomainFact(projection, event) {
         requireValue(!temporary.ended && temporary.endedAt == null, '临时状态已经结束');
         temporary.ended = true;
         temporary.endedAt = state.clock.date;
-    } else if (action === 'relationship_established') {
+    } else if (action === 'scene_recorded') {
+        find(state.locations, data.location);
+        state.scene = { location: data.location };
+    } else if (action === 'relationship_established' || action === 'relationship_recorded') {
         find(state.people, data.from); find(state.people, data.to);
         const kind = text(data.kind, '关系类型');
         requireValue(!['romantic', 'partner', 'married'].includes(kind) || data.mutual === true, '关系尚缺双方确认');
         requireValue(!state.relationships.some(item => item.from === data.from && item.to === data.to
             && item.kind === kind && item.status === 'active'), '关系已经建立');
         insert(state.relationships, { id: data.id, from: data.from, to: data.to, kind,
-            mutual: data.mutual === true, status: 'active', since: state.clock.date, milestones: [], conflicts: [] });
+            mutual: data.mutual === true, status: 'active', since: action === 'relationship_recorded' ? null : state.clock.date, milestones: [], conflicts: [], recordedExisting: action === 'relationship_recorded' });
     } else if (action === 'relationship_ended') {
         const relation = find(state.relationships, data.id);
         requireValue(relation.status === 'active', '关系并未处于持续状态');

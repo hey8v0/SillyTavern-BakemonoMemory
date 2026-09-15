@@ -78,7 +78,7 @@ export function validateRpBackup(core) {
 
 export function exportRpBackup(core) {
     validateRpBackup(core);
-    return structuredClone({ ...pick(core, fields), settings: pick(core.settings, ['enabled', 'autoApply', 'inject', 'mode']) });
+    return structuredClone({ ...pick(core, fields), settings: pick(core.settings, ['enabled', 'autoApply', 'inject', 'mode', 'includeCharacterContext', 'includeWorldInfo']) });
 }
 
 export function importRpBackup(core) {

@@ -28,6 +28,7 @@ export function renderRpStateMemory(state, view, query = '', budget = 2400) {
         .sort((a, b) => b.score - a.score || a.index - b.index).map(item => item.value);
     const people = relevant(p.people).slice(0, 8), ids = new Set(people.map(item => item.id));
     const lines = [`剧情时间：${p.clock.date || p.clock.description || '未知'}`];
+    if (p.scene?.location) lines.push(`当前场景：${entityName(p, p.scene.location)}`);
     for (const person of people) lines.push(`人物：${person.name}；位置：${entityName(p, person.location)}${person.age?.value != null ? `；年龄：${person.age.value}（${person.age.basis === 'reported' ? '正文年龄依据，非推算生日' : '按生日计算'}）` : ''}`);
     for (const relation of p.relationships.filter(item => ids.has(item.from) || ids.has(item.to)).slice(0, 8)) lines.push(`关系：${relationshipName(p, relation)}；${stateLabels[relation.status] || relation.status}`);
     for (const plan of relevant(p.plans.filter(item => ['proposed', 'accepted'].includes(item.status))).slice(0, 6)) lines.push(`约定：${plan.title}；${stateLabels[plan.status]}；期限：${plan.due || '未定'}${plan.timing?.status === 'overdue' ? '（逾期不代表已失败）' : ''}`);
