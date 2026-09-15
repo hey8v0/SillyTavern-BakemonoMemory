@@ -25,8 +25,30 @@ export function createVectorActionsController({
     assertVectorFormCurrent,
     markVectorFormRendered,
     readVectorFormDraft,
+    confirmGlobalConfiguration = async () => ({ status: 'unconfirmed' }),
+    cancelVectorRecall = () => {},
+    clearVectorRecall = () => {},
 } = {}) {
     const modelRequests = { embedding: 0, query: 0 };
+    let saveRequest = 0;
+    async function saveVectorConfiguration(state, label) {
+        const request = ++saveRequest;
+        cancelVectorRecall(); clearVectorRecall('', state);
+        const config = persistSharedConfigurationFromState(state);
+        const revision = state.activeConfigSignature;
+        markVectorFormRendered?.(state);
+        syncInjection();
+        const [global, chat] = await Promise.allSettled([
+            confirmGlobalConfiguration(config), saveChatConditional(),
+        ]);
+        if (ensureState() !== state || state.activeConfigSignature !== revision || request !== saveRequest) return false;
+        const confirmed = global.status === 'fulfilled' && global.value?.status === 'confirmed';
+        const chatDone = chat.status === 'fulfilled';
+        const message = `${label}：${confirmed ? '共享配置已核验保存' : '共享配置尚未确认保存，请保持页面并重试应用'}；${chatDone ? '聊天保存请求已完成' : '聊天保存失败，请检查酒馆连接后重试'}。`;
+        renderWorkbenchScope(workbenchRenderScopes.VECTOR, message);
+        if (!confirmed || !chatDone) toastr?.warning?.(message, '配置保存状态');
+        return confirmed && chatDone;
+    }
     function modelDraftTicket(kind, state) {
         const draft = readVectorFormDraft ? readVectorFormDraft(state) : state;
         const signature = value => JSON.stringify([value.vectorMemory.customApi, value.vectorMemory.queryCustomApi]);
@@ -144,12 +166,7 @@ export function createVectorActionsController({
                 markVectorIndexDirty('配置已变更', state);
             }
         }
-        persistSharedConfigurationFromState(state);
-        markVectorFormRendered?.(state);
-        await saveChatConditional();
-        if (ensureState() !== state) return;
-        syncInjection();
-        renderWorkbenchScope(workbenchRenderScopes.VECTOR, '向量记忆配置已保存，并同步到所有角色卡。');
+        return saveVectorConfiguration(state, '向量配置');
     }
 
     async function persistVectorEnabledFromUi() {
@@ -160,14 +177,7 @@ export function createVectorActionsController({
         if (state.vectorMemory.enabled && !wasEnabled) {
             markVectorIndexDirty('向量开关已开启', state);
         }
-        persistSharedConfigurationFromState(state);
-        markVectorFormRendered?.(state);
-        await saveChatConditional();
-        if (ensureState() !== state) return;
-        syncInjection();
-        renderWorkbenchScope(workbenchRenderScopes.VECTOR, state.vectorMemory.enabled
-            ? '向量记忆已开启并立即保存。'
-            : '向量记忆已关闭并立即保存。');
+        return saveVectorConfiguration(state, state.vectorMemory.enabled ? '向量记忆已开启' : '向量记忆已关闭');
     }
 
     function bind() {
@@ -196,8 +206,9 @@ export function createVectorActionsController({
             return false;
         }
         const queryText = String(query('#bakemono-memory-vector-test-query').val() || '').trim();
-        const hits = await retrieveVectorMemoryHits(queryText, state);
-        if (ensureState() !== state) return false;
+        let ownsRequest = () => true;
+        const hits = await retrieveVectorMemoryHits(queryText, state, { onStart: owns => { ownsRequest = owns; } });
+        if (ensureState() !== state || !ownsRequest()) return false;
         saveState();
         syncInjection();
         renderWorkbenchScope(workbenchRenderScopes.VECTOR, hits.length ? `向量召回完成：命中 ${hits.length} 条记忆。` : (state.vectorMemory.lastRecallSkippedReason || '向量召回完成：没有命中。'));
@@ -218,6 +229,8 @@ export function createVectorActionsController({
             return;
         }
         state.vectorMemory.records = [];
+        cancelVectorRecall();
+        clearVectorRecall('', state);
         state.vectorMemory.lastHits = [];
         state.vectorMemory.lastQuery = '';
         state.vectorMemory.lastIndexAt = null;

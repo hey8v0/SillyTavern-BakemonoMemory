@@ -55,6 +55,9 @@ import { createPresetRegistry } from './src/features/preset-registry.js';
 import { createInjectionService } from './src/features/injection-service.js';
 import { createArchiveController } from './src/features/archive-controller.js';
 import { createMemoryOrchestrator } from './src/features/memory-orchestrator.js';
+import { createVectorAutoRecall } from './src/features/vector-auto-recall.js';
+import * as tavernHost from '../../../../script.js';
+import { createGlobalConfigSaveVerifier } from './src/core/global-config-save.js';
 import { createTurnProcessingController } from './src/features/turn-processing-controller.js';
 import { createRpCoreService } from './src/rp-core/service.js';
 import { createRpExtractionFlow } from './src/rp-core/extraction-flow.js';
@@ -1180,8 +1183,23 @@ const {
     markVectorIndexDirty,
     renderVectorMemorySection,
     retrieveVectorMemoryHits,
+    cancelVectorRecall,
+    clearVectorRecall,
     scheduleVectorAutoIndex,
 } = vectorMemoryService;
+
+const confirmGlobalConfiguration = createGlobalConfigSaveVerifier({
+    getCurrentConfig: getActiveGlobalConfig,
+    requestSave: () => typeof tavernHost.saveSettings === 'function' ? tavernHost.saveSettings() : saveSettingsDebounced(),
+    readSavedConfig: async signal => {
+        const response = await fetch('/api/settings/get', { method: 'POST',
+            headers: tavernHost.getRequestHeaders(), body: '{}', cache: 'no-store', signal });
+        if (!response.ok) throw new Error('settings-read-failed');
+        const data = await response.json();
+        const settings = typeof data.settings === 'string' ? JSON.parse(data.settings) : data.settings;
+        return settings?.extension_settings?.[STORAGE_KEY]?.activeConfig || null;
+    },
+});
 
 const vectorWorkbenchUi = createVectorWorkbenchUi({
     canKeepVectorForm,
@@ -1206,6 +1224,9 @@ const {
 } = vectorWorkbenchUi;
 
 const vectorActionsController = createVectorActionsController({
+    confirmGlobalConfiguration,
+    cancelVectorRecall,
+    clearVectorRecall,
     readVectorFormDraft,
     markVectorFormRendered,
     assertVectorFormCurrent,
@@ -2259,6 +2280,11 @@ function scheduleForegroundRuntimeResume(reason = '恢复前台') {
     }, 500);
 }
 
+const vectorAutoRecall = createVectorAutoRecall({
+    getState: ensureState, retrieve: retrieveVectorMemoryHits, clear: clearVectorRecall,
+    cancelRecall: cancelVectorRecall, syncInjection, saveState, refresh: scheduleRenderAll,
+});
+
 async function init() {
     ensureGlobalSettings();
     const initialState = ensureState();
@@ -2267,6 +2293,8 @@ async function init() {
     bootstrapSharedConfigurationFromCurrentChat(initialState);
     syncGlobalActiveConfigToState(initialState, { force: true });
     await initWorkbench();
+    globalThis.bakemonoMemoryRecallInterceptor = vectorAutoRecall.intercept;
+    vectorAutoRecall.bind(eventSource, event_types);
     syncInjection();
     if (ensureState().vectorMemory.enabled) {
         const state = ensureState();

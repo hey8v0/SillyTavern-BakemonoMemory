@@ -5,6 +5,127 @@ import { enrichHybridLexicalScores, selectHybridCandidates, computeHybridRerankS
 import * as text from '../src/shared/text.js';
 import * as math from '../src/vector/math.js';
 import { compactEmbedding, getClippedVectorText, slimVectorMemoryForSave } from '../src/vector/storage.js';
+import { groupRecallCandidates, selectRecallPlan } from '../src/vector/recall-plan.js';
+import { createVectorAutoRecall } from '../src/features/vector-auto-recall.js';
+
+const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
+
+test('automatic generation uses committed settings and writes actual retrieved content into the prompt', async () => {
+    const f = fixture([{ body: 1, text: '旧剧情钥匙在书柜。' }], {}, { createLocalEmbedding: () => [1, 0] });
+    let injected = '', saves = 0;
+    const auto = createVectorAutoRecall({ getState: () => f.state,
+        retrieve: f.service.retrieveVectorMemoryHits, cancelRecall: f.service.cancelVectorRecall, clear: f.service.clearVectorRecall,
+        syncInjection: () => { injected = f.service.renderVectorMemorySection(); }, saveState: () => saves++,
+    });
+    f.chat.push({ is_user: true, mes: '钥匙在哪里？' });
+    await auto.intercept([], 8000, () => {}, 'normal');
+    assert.match(injected, /钥匙在书柜/); assert.ok(f.state.vectorMemory.lastQuery.includes('钥匙在哪里'));
+    assert.ok(f.state.vectorMemory.records.length); assert.equal(saves, 1);
+    auto.dispose();
+});
+
+test('service preserves real chunk choices after metadata serialization and reload', async () => {
+    const f = fixture([{ body: 1, text: '前半旧事。'.repeat(55) + '后半戒指。'.repeat(55) }],
+        { injectMode: 'chunk', indexMode: 'chunk', chunkSize: 240, overlap: 0, maxPerMessage: 2, fullRecallCount: 0 },
+        { createLocalEmbedding: () => [1, 0] });
+    await f.run();
+    assert.equal(f.state.vectorMemory.lastHits.length, 2);
+    assert.ok(f.state.vectorMemory.lastHits.every(h => h.recallTier === 'chunk'));
+    slimVectorMemoryForSave(f.state.vectorMemory);
+    const reloaded = JSON.parse(JSON.stringify(f.state));
+    const service = createVectorMemoryService({ ...f.dependencies, getState: () => reloaded });
+    const rendered = service.renderVectorMemorySection();
+    assert.match(rendered, /正文片段/); assert.equal(reloaded.vectorMemory.lastHits.length, 2);
+    assert.ok(reloaded.vectorMemory.lastHits.every(h => h.recallTier === 'chunk'));
+});
+
+test('saved summaries in message/chunk modes never expand into unrelated bodies', () => {
+    const records = [{ id: 'saved', memoryHash: 'm1', messageId: 1, kind: 'summary', text: '跨楼阶段总结', score: .9 }];
+    for (const injectMode of ['message', 'chunk']) {
+        const config = { injectMode };
+        const groups = groupRecallCandidates(records, records, new Map([[1, '不该插入的正文']]), 20, config);
+        const result = selectRecallPlan(groups, config);
+        assert.equal(result.hits[0].recallTier, 'summary'); assert.doesNotMatch(result.text, /不该插入/);
+    }
+});
+
+test('whole-floor indexes with clipped stored text still locate a queried detail at the end after reload', async () => {
+    const f = fixture([{ body: 1, text: '开场场景。'.repeat(400) + '戒指藏在书柜之后。' + '后续叙述。'.repeat(50) }],
+        { injectMode: 'message', perMessageMaxChars: 260 }, { createLocalEmbedding: () => [1, 0] });
+    await f.service.buildVectorMemoryIndex(); slimVectorMemoryForSave(f.state.vectorMemory);
+    assert.doesNotMatch(f.state.vectorMemory.records[0].text, /戒指藏在/);
+    await f.service.retrieveVectorMemoryHits('戒指藏在哪里');
+    const expected = f.state.vectorMemory.lastHits[0];
+    assert.match(expected.text, /戒指藏在书柜/); assert.ok(expected.sourceTextStart > 1000);
+    const reloaded = JSON.parse(JSON.stringify(f.state));
+    const service = createVectorMemoryService({ ...f.dependencies, getState: () => reloaded });
+    assert.match(service.renderVectorMemorySection(), /戒指藏在书柜/);
+    assert.equal(reloaded.vectorMemory.lastHits[0].sourceTextStart, expected.sourceTextStart);
+});
+
+test('a late recall success or failure cannot replace a newer successful query', async () => {
+    for (const fail of [false, true]) {
+        const requests = [];
+        const f = fixture([{ body: 1, summary: .5 }], { queryMode: 'model-required' }, {
+            rewriteWithTavern: () => { const d = deferred(); requests.push(d); return d.promise; },
+            parseVectorQueryRewritePayload: s => ({ intent: s, queries: [s] }), createLocalEmbedding: () => [1, 0],
+        });
+        await f.service.buildVectorMemoryIndex();
+        const a = f.service.retrieveVectorMemoryHits('old');
+        const b = f.service.retrieveVectorMemoryHits('new');
+        requests[1].resolve('NEW'); await b;
+        const expected = JSON.stringify(f.state.vectorMemory);
+        if (fail) requests[0].reject(new Error('old failure')); else requests[0].resolve('OLD');
+        assert.deepEqual(await a, []);
+        assert.equal(JSON.stringify(f.state.vectorMemory), expected);
+    }
+});
+
+test('changing recall-only settings or cancelling invalidates a pending query', async () => {
+    for (const change of ['config', 'cancel', 'signal']) {
+        const d = deferred(), controller = new AbortController();
+        const f = fixture([{ body: 1 }], { queryMode: 'model-required' }, {
+            rewriteWithTavern: () => d.promise,
+            parseVectorQueryRewritePayload: s => ({ queries: [s] }), createLocalEmbedding: () => [1, 0],
+        });
+        await f.service.buildVectorMemoryIndex();
+        const result = f.service.retrieveVectorMemoryHits('old', f.state, { signal: controller.signal });
+        if (change === 'config') f.state.vectorMemory.fullRecallCount = 0;
+        if (change === 'cancel') f.service.cancelVectorRecall();
+        if (change === 'signal') controller.abort();
+        const expected = JSON.stringify(f.state.vectorMemory);
+        d.resolve('OLD'); assert.deepEqual(await result, []);
+        assert.equal(JSON.stringify(f.state.vectorMemory), expected);
+    }
+});
+
+test('message mode ignores tiered full quota while chunk mode obeys per-floor cap', async () => {
+    const f = fixture([{ body: 1, summary: .5 }], { injectMode: 'message', fullRecallCount: 0, rerankThreshold: 1 });
+    assert.equal((await f.run())[0]?.recallTier, 'full');
+    const candidates = Array.from({ length: 3 }, (_, i) => ({ id: `c${i}`, kind: 'chunk', messageId: 1,
+        text: `片段${i}具体内容。`, score: .9 - i * .1 }));
+    const config = { injectMode: 'chunk', maxPerMessage: 2, fullRecallCount: 0, maxInjectChars: 3000 };
+    const groups = groupRecallCandidates(candidates, candidates, new Map([[1, '原楼正文']]), 20, config);
+    const result = selectRecallPlan(groups, config);
+    assert.equal(result.hits.length, 2);
+    assert.ok(result.hits.every(h => h.recallTier === 'chunk'));
+    assert.match(result.text, /片段0/); assert.match(result.text, /片段1/); assert.doesNotMatch(result.text, /片段2具体/);
+});
+
+test('long text keeps the matched tail with exact cleaned-source offsets under both budgets', () => {
+    const body = '开场背景。'.repeat(300) + '关键证据：戒指藏在书柜后。' + '后续场景。'.repeat(200);
+    const match = '关键证据：戒指藏在书柜后。';
+    const candidates = [{ id: 'tail', messageId: 1, kind: 'chunk', text: match, score: .95 }];
+    const groups = groupRecallCandidates(candidates, candidates, new Map([[1, body]]), 20);
+    for (const budget of [3000, 280]) {
+        const result = selectRecallPlan(groups, { perMessageMaxChars: 350, maxInjectChars: budget });
+        const hit = result.hits[0];
+        assert.match(hit.text, /戒指藏在书柜后/);
+        assert.ok(hit.sourceTextStart > 0); assert.ok(hit.sourceTextEnd <= body.length);
+        assert.equal(body.slice(hit.sourceTextStart, hit.sourceTextEnd), hit.text.replace(/^…|…$/g, ''));
+        assert.ok(result.text.length <= budget);
+    }
+});
 
 const noop = () => {};
 function fixture(rows, settings = {}, overrides = {}) {

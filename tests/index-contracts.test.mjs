@@ -628,7 +628,7 @@ test('vector, draft, and table actions use page-scoped rendering', () => {
     }
     for (const [moduleSource, name] of [
         [vectorMemoryServiceSource, 'performIndexBuild'],
-        [vectorActionsControllerSource, 'applyVectorMemorySettings'],
+        [vectorActionsControllerSource, 'saveVectorConfiguration'],
         [vectorActionsControllerSource, 'testVectorMemoryRetrieval'],
         [vectorActionsControllerSource, 'clearVectorMemoryIndex'],
     ]) {
@@ -880,9 +880,10 @@ test('saved settings become shared defaults while vector runtime remains chat-lo
     const vectorPersist = extractFunctionFrom(vectorSettingsModelSource, 'persistVectorMemoryFieldsFromUi');
     const vectorApply = extractFunctionFrom(vectorActionsControllerSource, 'applyVectorMemorySettings');
     assert.match(vectorPersist, /persistSharedConfigurationFromState\(state/);
-    assert.match(vectorApply, /persistSharedConfigurationFromState\(state/);
+    assert.match(vectorApply, /saveVectorConfiguration\(state/);
+    assert.match(extractFunctionFrom(vectorActionsControllerSource, 'saveVectorConfiguration'), /persistSharedConfigurationFromState\(state/);
     assert.match(vectorActionsControllerSource, /bakemono-memory-vector-enabled/);
-    assert.match(vectorActionsControllerSource, /await saveChatConditional\(\)/);
+    assert.match(vectorActionsControllerSource, /await Promise\.allSettled\(\[\s*confirmGlobalConfiguration\(config\), saveChatConditional\(\)/);
     assert.match(source, /vectorActionsController\.bind\(\)/);
 });
 

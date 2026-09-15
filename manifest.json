@@ -4,9 +4,10 @@
   "requires": [],
   "optional": [],
   "js": "index.js",
+  "generate_interceptor": "bakemonoMemoryRecallInterceptor",
   "css": "style.css",
   "author": "Codex",
-  "version": "1.7.0-alpha.5",
+  "version": "1.7.0-alpha.6",
   "homePage": "https://github.com/hey8v0/SillyTavern-BakemonoMemory",
   "auto_update": false
 }

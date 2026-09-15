@@ -1692,8 +1692,8 @@
               <span>注入方式</span>
               <select id="bakemono-memory-vector-inject-mode" class="text_pole">
                 <option value="tiered">分档召回：高分全文，低分摘要</option>
-                <option value="message">兼容楼层召回</option>
-                <option value="chunk">兼容片段召回</option>
+                <option value="message">按楼层召回</option>
+                <option value="chunk">按命中片段召回</option>
               </select>
             </label>
             <label class="bakemono-memory-field">
@@ -1732,15 +1732,15 @@
                 <input id="bakemono-memory-vector-max-recall-messages" class="text_pole" type="number" min="1" step="1">
               </label>
               <label class="bakemono-memory-field">
-                <span>其中最多全文条数</span>
+                <span>其中最多全文条数（分档模式）</span>
                 <input id="bakemono-memory-vector-full-recall-count" class="text_pole" type="number" min="0" step="1">
               </label>
               <label class="bakemono-memory-field">
-                <span>每楼层最多片段</span>
+                <span>每楼层最多片段（片段模式）</span>
                 <input id="bakemono-memory-vector-max-per-message" class="text_pole" type="number" min="1" step="1">
               </label>
               <label class="bakemono-memory-field">
-                <span>单楼注入上限</span>
+                <span>正文单条注入上限</span>
                 <input id="bakemono-memory-vector-per-message-max-chars" class="text_pole" type="number" min="200" step="100">
               </label>
               <label class="bakemono-memory-field">
@@ -2173,7 +2173,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.7.0-alpha.5 · 开发测试版。先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.7.0-alpha.6 · 开发测试版。先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

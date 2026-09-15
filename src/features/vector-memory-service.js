@@ -2,6 +2,7 @@ import { createEmbeddingCache, getEmbeddingCacheKey } from '../vector/embedding-
 import { runApiRequest } from '../shared/request-policy.js';
 import { createBm25Index } from '../vector/bm25-index.js';
 import { groupRecallCandidates, selectRecallPlan } from '../vector/recall-plan.js';
+import { vectorRuntimeFieldNames } from '../core/config-sync.js';
 import { isMemoryCurrent, activeStoryCoverage, summaryItems, storyTimeContext } from '../memory/story-state.js';
 
 const sourceUpdatingMessage = '正文仍在更新，待稳定后自动刷新索引。';
@@ -61,6 +62,15 @@ export function createVectorMemoryService({
 } = {}) {
     let vectorIndexTimer = null;
     const recallPlans = new WeakMap();
+    let recallRevision = 0, recallController = null;
+    const runtimeFields = new Set(vectorRuntimeFieldNames);
+    const recallConfigKey = state => JSON.stringify(Object.fromEntries(Object.entries(state.vectorMemory || {})
+        .filter(([key]) => !runtimeFields.has(key))));
+    function cancelVectorRecall() {
+        recallRevision++;
+        recallController?.abort();
+        recallController = null;
+    }
     const recallOutputKey = hits => JSON.stringify(hits.map(hit => [hit.id, hit.memoryHash, hit.recallTier, hit.text]));
     let indexRun = null;
     const lexicalIndex = createBm25Index();
@@ -195,7 +205,7 @@ export function createVectorMemoryService({
         return toPlainPreview(lastLine.replace(/^(?:用户|助手)\s*#?\d*\s*[:：]\s*/, '').trim(), 220);
     }
     
-    async function callVectorQueryRewriteModel(prompt, systemPrompt, state = ensureState()) {
+    async function callVectorQueryRewriteModel(prompt, systemPrompt, state = ensureState(), options = {}) {
         const provider = String(state.vectorMemory.queryRewriteProvider || defaultVectorMemory.queryRewriteProvider);
         if (provider === 'custom') {
             const queryConfig = state.vectorMemory.queryCustomApi || {};
@@ -206,7 +216,7 @@ export function createVectorMemoryService({
             if (!baseUrl || !model) {
                 throw new Error('查询重写需要聊天模型。请填写改写模型；接口地址和密钥可留空复用嵌入向量接口。');
             }
-            const data = await runApiRequest({ url: getCustomChatCompletionsUrl(baseUrl), fetchImpl, timeoutMs: 120000,
+            const data = await runApiRequest({ url: getCustomChatCompletionsUrl(baseUrl), fetchImpl, timeoutMs: 120000, signal: options.signal,
                 formatError: response => formatApiFailure(response, '查询重写请求失败'), init: {
                 method: 'POST',
                 headers: {
@@ -235,10 +245,10 @@ export function createVectorMemoryService({
             }
             return content;
         }
-        return await rewriteWithTavern({ prompt, systemPrompt });
+        return await rewriteWithTavern({ prompt, systemPrompt, signal: options.signal });
     }
     
-    async function prepareVectorQueries(explicitQuery = '', state = ensureState()) {
+    async function prepareVectorQueries(explicitQuery = '', state = ensureState(), options = {}) {
         const baseQuery = getVectorQueryText(state, explicitQuery);
         const mode = String(state.vectorMemory.queryMode || defaultVectorMemory.queryMode);
         state.vectorMemory.lastRewriteIntent = getVectorRewriteIntentText(baseQuery);
@@ -269,7 +279,7 @@ export function createVectorMemoryService({
     Q3: 第三条旧记忆检索线索
     Q4: 第四条旧记忆检索线索
     Q5: 第五条旧记忆检索线索`;
-        const rewritten = await callVectorQueryRewriteModel(prompt, systemPrompt, state);
+        const rewritten = await callVectorQueryRewriteModel(prompt, systemPrompt, state, options);
         const payload = parseVectorQueryRewritePayload(rewritten);
         if (payload.intent) {
             state.vectorMemory.lastRewriteIntent = payload.intent;
@@ -400,6 +410,8 @@ export function createVectorMemoryService({
             recallTier: options.recallTier || item.recallTier || '',
             messageId: item.messageId,
             chunkIndex: item.chunkIndex,
+            sourceTextStart: item.sourceTextStart,
+            sourceTextEnd: item.sourceTextEnd,
             role: item.role,
             isHidden: !!item.isHidden,
             isSavedSummary: !!item.isSavedSummary,
@@ -754,6 +766,8 @@ export function createVectorMemoryService({
                 records.push({
                     id: `vec-${getHash(`${messageId}|${variantKey}|${chunkIndex}|${text}`)}`,
                     kind: 'chunk',
+                    chunkStart: chunk.start,
+                    chunkEnd: chunk.end,
                     messageId,
                     chunkIndex,
                     role,
@@ -812,7 +826,19 @@ export function createVectorMemoryService({
         return records;
     }
     
-    async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState()) {
+    async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(), options = {}) {
+        cancelVectorRecall();
+        const requestRevision = recallRevision, configKey = recallConfigKey(state);
+        const controller = new AbortController();
+        recallController = controller;
+        const abort = () => controller.abort();
+        if (options.signal?.aborted) abort();
+        options.signal?.addEventListener('abort', abort, { once: true });
+        const ownsRequest = () => requestRevision === recallRevision && ensureState() === state && configKey === recallConfigKey(state);
+        const isCurrent = () => ownsRequest() && !controller.signal.aborted;
+        options.onStart?.(ownsRequest);
+        try {
+        if (!isCurrent()) return [];
         if (!state.vectorMemory?.enabled) {
             return clearVectorRecall('', state);
         }
@@ -821,9 +847,9 @@ export function createVectorMemoryService({
             clearTimer(vectorIndexTimer);
             try {
                 await buildVectorMemoryIndex({ silent: true });
-                if (ensureState() !== state) return [];
+                if (!isCurrent()) return [];
             } catch (error) {
-                if (ensureState() !== state) return [];
+                if (!isCurrent()) return [];
                 return clearVectorRecall(`召回前刷新索引失败：${error?.message || error}`, state);
             }
         }
@@ -847,14 +873,16 @@ export function createVectorMemoryService({
             return clearVectorRecall(`可召回内容都还在可见最近 ${contextWindowMessages} 楼内，已跳过向量召回。`, state);
         }
         let queries = [];
+        // Query preparation writes its diagnostics only into this request's draft.
+        const requestState = { ...state, vectorMemory: JSON.parse(configKey) };
         try {
-            queries = await prepareVectorQueries(explicitQuery, state);
+            queries = await prepareVectorQueries(explicitQuery, requestState, { signal: controller.signal });
         } catch (error) {
-            if (ensureState() !== state) return [];
+            if (!isCurrent()) return [];
             console.warn('[BakemonoMemory] vector query rewrite failed', error);
             return clearVectorRecall(`查询重写失败，本轮不召回：${error?.message || error}`, state);
         }
-        if (ensureState() !== state) return [];
+        if (!isCurrent()) return [];
         if (!queries.length) {
             return clearVectorRecall('查询重写没有生成有效检索句，本轮不召回。', state);
         }
@@ -862,13 +890,14 @@ export function createVectorMemoryService({
         const queryEmbeddings = [];
         try {
             for (const query of queries) {
-                queryEmbeddings.push(await getEmbeddingForText(query, state));
+                queryEmbeddings.push(await getEmbeddingForText(query, state, { signal: controller.signal }));
+                if (!isCurrent()) return [];
             }
         } catch (error) {
-            if (ensureState() !== state) return [];
+            if (!isCurrent()) return [];
             return clearVectorRecall(`嵌入请求失败，本轮未使用旧召回：${error?.message || error}`, state);
         }
-        if (ensureState() !== state) return [];
+        if (!isCurrent()) return [];
         if (signature !== getVectorSourceSignature(state)) {
             if (configuration === indexConfigurationKey(state)) return deferSourceUpdate(state);
             return clearVectorRecall('召回期间正文或配置发生变化，请刷新索引后重试。', state);
@@ -894,9 +923,9 @@ export function createVectorMemoryService({
     
         const preparedLexicalIndex = getLexicalIndex(state);
         const prepared = await preparedLexicalIndex.prepare(scored, {
-            yieldToUi, isCurrent: () => ensureState() === state && lexicalState === state,
+            yieldToUi, isCurrent: () => isCurrent() && lexicalState === state,
         });
-        if (!prepared || ensureState() !== state) return [];
+        if (!prepared || !isCurrent()) return [];
         if (signature !== getVectorSourceSignature(state)) {
             if (configuration === indexConfigurationKey(state)) return deferSourceUpdate(state);
             return clearVectorRecall('词索引准备期间正文或配置发生变化，请刷新后重试。', state);
@@ -924,14 +953,19 @@ export function createVectorMemoryService({
             .slice(0, rerankCandidateCount)
             .map(item => serializeVectorRecallItem(item, { previewLimit: 240, textLimit: 480 }));
         const bodies = new Map(getVectorSourceMessages(state).map(item => [Number(item.messageId), item.cleanedText]));
-        const groups = groupRecallCandidates(embeddingCandidates, recallRecords, bodies, rerankCandidateCount);
+        const groups = groupRecallCandidates(embeddingCandidates, recallRecords, bodies, rerankCandidateCount, state.vectorMemory, queries);
         state.vectorMemory.lastQuery = queries.join('\n');
         state.vectorMemory.lastQueries = queries;
+        state.vectorMemory.lastRewriteIntent = requestState.vectorMemory.lastRewriteIntent || '';
         const plan = { groups, signature, lastHits: null };
         recallPlans.set(state, plan);
         applyRecallPlan(state, plan);
         state.vectorMemory.lastRecallSkippedReason = state.vectorMemory.lastHits.length ? '' : '没有内容通过当前召回规则或字数预算。';
         return state.vectorMemory.lastHits;
+        } finally {
+            options.signal?.removeEventListener('abort', abort);
+            if (recallController === controller) recallController = null;
+        }
     }
 
     function isRecallMemoryCurrent(hit, state, rpHashes) {
@@ -977,19 +1011,21 @@ export function createVectorMemoryService({
             return '';
         }
         if (!plan) {
-            // Old/reloaded results can be re-budgeted, but cannot invent a lost body or summary.
-            plan = { signature, groups: hits.map(hit => ({
-                ...hit, rerankScore: Number(hit.rerankScore ?? hit.score ?? 0),
-                sourceGroup: hit.sourceGroup || hit.memoryHash || hit.id,
-                bodyText: hit.recallTier === 'full' ? hit.text : '', bodyTitle: hit.title,
-                summaryText: hit.recallTier !== 'full' ? hit.text : '', summaryTitle: hit.title,
-            })) };
+            // Rebuild the saved selection against verified current sources, not
+            // a previously truncated preview. No new candidates are retrieved.
+            const byId = new Map(state.vectorMemory.records.map(record => [record.id, record]));
+            const candidates = hits.filter(hit => byId.has(hit.id)).map(hit => ({ ...byId.get(hit.id), ...hit,
+                kind: byId.get(hit.id).kind, text: byId.get(hit.id).text, summary: byId.get(hit.id).summary,
+            }));
+            const bodies = new Map(getVectorSourceMessages(state).map(item => [Number(item.messageId), item.cleanedText]));
+            plan = { signature, groups: groupRecallCandidates(candidates, state.vectorMemory.records, bodies, hits.length, state.vectorMemory, state.vectorMemory.lastQueries || []) };
             recallPlans.set(state, plan);
         }
         return applyRecallPlan(state, plan);
     }
 
     return {
+        cancelVectorRecall,
         pruneVectorRuntimeCache,
         splitTextIntoChunks,
         getVectorSummaryTags,

@@ -65,8 +65,9 @@ export function createVectorWorkbenchUi({
         const summaryRecordCount = (state.vectorMemory.records || []).filter(record => record.kind === 'summary').length;
         const maxIndexed = Number(state.vectorMemory.maxIndexedMessages || 0);
         const fullHitCount = (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier === 'full').length;
-        const summaryHitCount = (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier !== 'full').length;
-        const hitCount = fullHitCount + summaryHitCount;
+        const summaryHitCount = (state.vectorMemory.lastHits || []).filter(hit => !['full', 'chunk'].includes(hit.recallTier)).length;
+        const chunkHitCount = (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier === 'chunk').length;
+        const hitCount = fullHitCount + summaryHitCount + chunkHitCount;
         const indexReady = messageRecordCount > 0 && !state.vectorMemory.dirty;
         const indexTime = state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '';
         const providerLabel = state.vectorMemory.embeddingProvider === 'custom-openai' ? '自定义向量' : '本地向量';
@@ -88,7 +89,7 @@ export function createVectorWorkbenchUi({
             .toggleClass('is-dirty', messageRecordCount > 0 && !indexReady);
         query('#bakemono-memory-vector-result-count').text(`${hitCount} 条`);
         query('#bakemono-memory-vector-config-summary').text(`${providerLabel} · 候选 ${state.vectorMemory.rerankCandidateCount ?? state.vectorMemory.topK ?? defaultVectorMemory.rerankCandidateCount} · 最终 ${state.vectorMemory.finalRecallCount ?? state.vectorMemory.maxRecallMessages ?? defaultVectorMemory.finalRecallCount}`);
-        query('#bakemono-memory-vector-stats').text(`索引 ${messageRecordCount} 楼 / 正文 ${bodyRecordCount} 条 / 摘要 ${summaryRecordCount} 条 / 召回全文 ${fullHitCount} 条 / 召回摘要 ${summaryHitCount} 条 / 预计 ${state.vectorMemory.estimatedChars || 0} 字 / 裁剪 ${state.vectorMemory.trimmedHitCount || 0} 个 / ${maxIndexed > 0 ? `最多索引最近 ${maxIndexed} 楼 / ` : ''}${state.vectorMemory.lastRecallSkippedReason ? `跳过：${state.vectorMemory.lastRecallSkippedReason}` : state.vectorMemory.dirty ? `待刷新：${state.vectorMemory.dirtyReason || '有变更'}` : state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '尚未建索引'}`);
+        query('#bakemono-memory-vector-stats').text(`索引 ${messageRecordCount} 楼 / 正文 ${bodyRecordCount} 条 / 摘要 ${summaryRecordCount} 条 / 召回全文 ${fullHitCount} 条 / 召回摘要 ${summaryHitCount} 条 / 召回片段 ${chunkHitCount} 条 / 预计 ${state.vectorMemory.estimatedChars || 0} 字 / 裁剪 ${state.vectorMemory.trimmedHitCount || 0} 个 / ${maxIndexed > 0 ? `最多索引最近 ${maxIndexed} 楼 / ` : ''}${state.vectorMemory.lastRecallSkippedReason ? `跳过：${state.vectorMemory.lastRecallSkippedReason}` : state.vectorMemory.dirty ? `待刷新：${state.vectorMemory.dirtyReason || '有变更'}` : state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '尚未建索引'}`);
         query('#bakemono-memory-vector-query-preview').val((state.vectorMemory.lastQueries || []).join('\n') || state.vectorMemory.lastQuery || getVectorQueryText(state));
         renderVectorResultList(state);
         renderVectorRecallDetails(state);
@@ -112,7 +113,7 @@ export function createVectorWorkbenchUi({
                 return `<div class="bakemono-memory-empty">${escapeHtml(emptyText)}</div>`;
             }
             return items.map(item => {
-                const tier = item.recallTier === 'full'
+                const tier = item.recallTier === 'chunk' ? '正文片段' : item.recallTier === 'full'
                     ? '全文'
                     : item.recallTier === 'summary'
                         ? '摘要'
@@ -143,7 +144,8 @@ export function createVectorWorkbenchUi({
                         <span>${escapeHtml(meta)}</span>
                       </div>
                       ${matchedTerms}
-                      ${item.decisionReason ? `<small>${escapeHtml(item.decisionReason)}</small>` : ''}
+                    ${item.decisionReason ? `<small>${escapeHtml(item.decisionReason)}</small>` : ''}
+                      ${Number.isSafeInteger(item.sourceTextStart) && Number.isSafeInteger(item.sourceTextEnd) ? `<small>清洗后正文位置：${item.sourceTextStart + 1}–${item.sourceTextEnd}</small>` : ''}
                       <div class="bakemono-memory-vector-detail-text">${escapeHtml(showInjectedText ? item.text || '' : item.preview || item.text || '')}</div>
                       ${lexicalDetails}
                     </article>
@@ -206,7 +208,7 @@ export function createVectorWorkbenchUi({
         hits.forEach(hit => {
             const item = document.createElement('section');
             item.className = 'bakemono-memory-vector-hit';
-            const tierLabel = hit.recallTier === 'full' ? '全文' : '摘要';
+            const tierLabel = hit.recallTier === 'full' ? '全文' : hit.recallTier === 'chunk' ? '正文片段' : '摘要';
             const matchedTerms = Array.isArray(hit.matchedPhrases) && hit.matchedPhrases.length
                 ? ` · 匹配 ${hit.matchedPhrases.slice(0, 4).join('、')}`
                 : '';
@@ -285,7 +287,7 @@ export function createVectorWorkbenchUi({
             const score = Math.max(0, Math.min(100, Math.round(normalizedScore <= 1 ? normalizedScore * 100 : normalizedScore)));
             const item = document.createElement('article');
             item.className = 'bakemono-memory-vector-result-item';
-            const tier = hit.recallTier === 'full' ? '全文' : '摘要';
+            const tier = hit.recallTier === 'full' ? '全文' : hit.recallTier === 'chunk' ? '正文片段' : '摘要';
             const sourceRange = formatSourceRange(hit.sourceMessageIds || [hit.messageId]);
             item.innerHTML = `
                 <span class="bakemono-memory-vector-result-score">${score}%</span>
