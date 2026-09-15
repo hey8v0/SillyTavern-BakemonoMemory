@@ -883,8 +883,14 @@ const rpCoreService = createRpCoreService({
 });
 const rpProtocolDisplay = createRpProtocolDisplay({ documentRef: document, getChat: () => chat });
 const rpPromptLibrary = createRpPromptLibrary({
-    read: () => ensureGlobalSettings().rpPromptLibrary,
-    write: value => { ensureGlobalSettings().rpPromptLibrary = value; },
+    read: () => {
+        ensureGlobalSettings();
+        return extension_settings[STORAGE_KEY].rpPromptLibrary;
+    },
+    write: value => {
+        ensureGlobalSettings();
+        extension_settings[STORAGE_KEY].rpPromptLibrary = value;
+    },
     confirmSave: value => confirmRpPromptConfiguration(value),
 });
 const rpExtractionFlow = createRpExtractionFlow({
@@ -1218,7 +1224,10 @@ const confirmGlobalConfiguration = createGlobalConfigSaveVerifier({
 });
 
 const confirmRpPromptConfiguration = createGlobalConfigSaveVerifier({
-    getCurrentConfig: () => ensureGlobalSettings().rpPromptLibrary,
+    getCurrentConfig: () => {
+        ensureGlobalSettings();
+        return extension_settings[STORAGE_KEY].rpPromptLibrary;
+    },
     requestSave: () => typeof tavernHost.saveSettings === 'function' ? tavernHost.saveSettings() : saveSettingsDebounced(),
     readSavedConfig: async signal => {
         const response = await fetch('/api/settings/get', { method: 'POST', headers: tavernHost.getRequestHeaders(), body: '{}', cache: 'no-store', signal });

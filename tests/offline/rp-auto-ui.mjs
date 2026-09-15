@@ -3,12 +3,12 @@ import { readFile } from 'node:fs/promises';
 import { createRpStateUi } from '../../src/features/rp-state-ui.js';
 import { createRpCoreService } from '../../src/rp-core/service.js';
 import { createRpExtractionFlow } from '../../src/rp-core/extraction-flow.js';
-import { createRpPromptLibrary } from '../../src/rp-core/prompt-library.js';
+import { createRpPromptHost } from '../helpers/rp-prompt-host.mjs';
 const { parseHTML } = await import(process.env.BAKEMONO_TEST_LINKEDOM || 'linkedom');
 const { document, window } = parseHTML(await readFile(new URL('../../settings.html', import.meta.url), 'utf8'));
 // Linkedom has no checked IDL property; provide checkbox behavior for interaction tests.
 Object.defineProperty(window.HTMLInputElement.prototype, 'checked', { get() { return this.hasAttribute('checked'); }, set(value) { this.toggleAttribute('checked', !!value); }, configurable: true });
-let state = {}, fail = false, persisted, confirmation = 'confirmed', focused;
+let state = {}, fail = false, focused;
 window.HTMLElement.prototype.focus = function () { focused = this; };
 const chat = [{ mes: '甲来到书店。' }];
 const service = createRpCoreService({ getState: () => state, getChat: () => chat, saveState() {}, saveChat: async () => { if (fail) throw Error('保存失败'); } });
@@ -17,7 +17,8 @@ const payload = { version: 1, state: { clock: { date: '2024-04-12T23:45' }, scen
     relationships: [{ from: '甲', to: '乙', kind: '朋友' }], plans: [{ title: '看海', participants: ['甲', '乙'], status: 'accepted' }], items: [{ name: '钥匙', holder: '甲', quantity: 1 }] },
     claims: [{ speaker: '乙', description: '否认交往' }] };
 await service.ingest(JSON.stringify(payload), 0);
-const library = createRpPromptLibrary({ read: () => persisted, write: value => { persisted = value; }, confirmSave: async () => ({ status: confirmation }) });
+const promptHost = createRpPromptHost();
+const library = promptHost.library;
 const flow = createRpExtractionFlow({ getState: () => state, getChat: () => chat, service, getPrompt: () => library.current() });
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const ui = createRpStateUi({ documentRef: document, getState: () => state, service, flow, navigate() {}, escapeHtml: esc, promptLibrary: library });
@@ -83,11 +84,11 @@ fill('[data-rp-prompt-text]', '修改后的预设'); await click('[data-rp-actio
 assert.equal(library.list().length, 2); assert.equal(library.current(), '修改后的预设');
 select('[data-rp-prompt-select]', 'default'); await click('[data-rp-action=prompt-load]');
 assert.equal(library.current(), '修改后的预设'); assert.ok(root.querySelector('[data-rp-action=prompt-delete]').disabled);
-fill('[data-rp-prompt-text]', '暂未验证保存'); confirmation = 'unconfirmed'; await click('[data-rp-action=prompt-apply]');
+fill('[data-rp-prompt-text]', '暂未验证保存'); promptHost.setSaveMode('ignore'); await click('[data-rp-action=prompt-apply]');
 assert.match(root.textContent, /未核验/); assert.doesNotMatch(root.querySelector('[role=status]').textContent, /已保存/);
 const selectedId = library.list().find(item => item.id !== 'default').id;
 select('[data-rp-prompt-select]', selectedId); await click('[data-rp-action=prompt-load]');
-confirmation = 'confirmed'; await click('[data-rp-action=prompt-delete]'); assert.equal(library.list().length, 1);
+promptHost.setSaveMode('persist'); await click('[data-rp-action=prompt-delete]'); assert.equal(library.list().length, 1);
 const stale = root.querySelector('[data-rp-action=prompt-apply]'); state = {}; const unchanged = library.current();
 stale.dispatchEvent(new window.Event('click', { bubbles: true })); await new Promise(resolve => setTimeout(resolve, 5)); assert.equal(library.current(), unchanged);
 ui.render(); assert.equal(root.querySelector('.rp-edit-form, .rp-prompt-editor'), null);
