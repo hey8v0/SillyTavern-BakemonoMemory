@@ -102,6 +102,8 @@ export function createMemoryOrchestrator({
         if (options.captureInline !== false && plan.actions.captureInline) {
             await captureInlineGenerationFromLatestMessage();
         }
+        if (options.captureInline !== false) await rpExtractionFlow?.captureInline();
+        if (ensureState() !== state) return { index: floorIndex, plan };
         if (options.scheduleInlineCapture) {
             scheduleInlineGenerationCapture(reason);
         }

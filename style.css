@@ -12722,29 +12722,67 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root [data-story-action] > span { white-space: nowrap; }
 #bakemono-workbench-root .bakemono-story-actions { display: flex; flex-wrap: wrap; gap: 0.5em; }
 #bakemono-workbench-root .bakemono-story-correction { margin-block: 0.75em; }
-/* RP Core: independent state-reading surface. */
-#bakemono-workbench-root .rp-core-ui { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
-#bakemono-workbench-root .rp-core-ui .rp-toolbar { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
-#bakemono-workbench-root .rp-core-ui .rp-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-block: 12px; }
-#bakemono-workbench-root .rp-core-ui button { min-height: 44px; min-width: 44px; width: auto; max-width: 100%; white-space: normal; word-break: normal; writing-mode: horizontal-tb; cursor: pointer; }
-#bakemono-workbench-root .rp-core-ui button span { display: inline; min-width: 0; word-break: normal; }
+/* Story-state reading surface; inherit the workbench theme. */
+#bakemono-workbench-root .rp-core-ui { min-width: 0; max-width: 100%; overflow-wrap: anywhere; color: var(--SmartThemeBodyColor); font-size: 0.95em; line-height: 1.65; }
+#bakemono-workbench-root .rp-core-ui h3 { font-family: var(--bk-display); font-weight: 650; margin: 0; }
+#bakemono-workbench-root .rp-core-ui button { min-height: 44px; min-width: 44px; width: auto; max-width: 100%; margin: 0; padding: 8px 13px; white-space: normal; word-break: normal; writing-mode: horizontal-tb; cursor: pointer; border: 1px solid var(--bk-line-strong); border-radius: 9px; background: transparent; color: inherit; box-shadow: none; }
+#bakemono-workbench-root .rp-core-ui button:active { background: var(--bk-paper-soft); }
+#bakemono-workbench-root .rp-core-ui button:disabled { cursor: default; opacity: .5; }
+#bakemono-workbench-root .rp-core-ui button span { min-width: 0; word-break: normal; }
+#bakemono-workbench-root .rp-core-ui .rp-primary { background: var(--SmartThemeBodyColor); color: var(--bk-paper); border-color: var(--SmartThemeBodyColor); font-weight: 650; }
+#bakemono-workbench-root .rp-core-ui .rp-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 5px; gap: 4px; margin: 0 0 18px; border: 1px solid var(--bk-line); border-radius: 11px; background: var(--bk-paper-raised); }
+#bakemono-workbench-root .rp-core-ui .rp-tabs button { padding: 9px 2px; border: 0; border-radius: 7px; color: var(--bk-ink-soft); font-weight: 600; }
 #bakemono-workbench-root .rp-core-ui button[aria-current="page"],
-#bakemono-workbench-root .rp-core-ui button[aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: -3px; font-weight: 700; }
-#bakemono-workbench-root .rp-core-ui button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
-#bakemono-workbench-root .rp-core-ui .rp-filters,
-#bakemono-workbench-root .rp-core-ui .rp-pager,
-#bakemono-workbench-root .rp-core-ui .rp-search { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-block: 12px; }
+#bakemono-workbench-root .rp-core-ui button[aria-pressed="true"] { background: var(--bk-paper-soft); color: var(--bk-accent); box-shadow: inset 0 -2px var(--bk-accent); }
+#bakemono-workbench-root .rp-core-ui :is(button, input, select, textarea, summary):focus-visible { outline: 2px solid var(--bk-accent); outline-offset: 3px; }
+#bakemono-workbench-root .rp-core-ui :is(.rp-toolbar, .rp-section-head, .rp-controls, .rp-pager, .rp-search, .rp-filters) { display: flex; align-items: center; gap: 10px; }
+#bakemono-workbench-root .rp-core-ui .rp-toolbar { justify-content: space-between; margin: 14px 0 18px; flex-wrap: wrap; }
+#bakemono-workbench-root .rp-core-ui small { display: block; color: var(--bk-ink-soft); font-size: .82em; }
+#bakemono-workbench-root .rp-core-ui .rp-controls { flex-wrap: wrap; }
+#bakemono-workbench-root .rp-core-ui .rp-section-head { justify-content: space-between; margin: 24px 0 10px; }
+#bakemono-workbench-root .rp-core-ui .rp-section-head h3 { font-size: 1.22em; }
+#bakemono-workbench-root .rp-core-ui .rp-section-head button { color: var(--bk-accent); border: 0; padding-inline: 4px; font-size: .85em; }
+#bakemono-workbench-root .rp-core-ui .rp-sheet { border: 1px solid var(--bk-line-strong); border-radius: 12px; background: var(--bk-paper-raised); overflow: hidden; }
+#bakemono-workbench-root .rp-core-ui .rp-overview { position: relative; padding: 22px; background: linear-gradient(120deg, var(--bk-paper-raised), var(--bk-paper)); }
+#bakemono-workbench-root .rp-core-ui .rp-overview::before { content: ''; position: absolute; top: 0; right: 20px; height: 5px; width: 90px; opacity: .7; background: repeating-linear-gradient(-45deg, var(--bk-accent) 0 10px, transparent 10px 19px); }
+#bakemono-workbench-root .rp-core-ui .rp-eyebrow { color: var(--bk-accent); font-size: .76em; letter-spacing: .1em; font-weight: 700; }
+#bakemono-workbench-root .rp-core-ui .rp-overview h3 { font-size: 1.7em; line-height: 1.4; margin: 7px 0; }
+#bakemono-workbench-root .rp-core-ui .rp-overview p { margin: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-scene-foot { border-top: 1px solid var(--bk-line); padding-top: 12px; margin-top: 18px; color: var(--bk-ink-soft); font-size: .82em; }
+#bakemono-workbench-root .rp-core-ui .rp-row { display: flex; flex-direction: row; align-items: center; gap: 12px; width: 100%; padding: 15px 17px; text-align: left; border: 0; border-bottom: 1px solid var(--bk-line); border-radius: 0; background: transparent; }
+#bakemono-workbench-root .rp-core-ui .rp-row:last-child { border-bottom: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-row-copy { flex: 1; min-width: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-row strong { display: block; font-size: .97em; font-weight: 600; }
+#bakemono-workbench-root .rp-core-ui .rp-row small { margin-top: 4px; }
+#bakemono-workbench-root .rp-core-ui .rp-row .rp-seal { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; border: 1px solid var(--bk-line); border-radius: 50%; color: var(--bk-accent); font-family: var(--bk-display); }
+#bakemono-workbench-root .rp-core-ui .rp-chevron { color: var(--bk-ink-soft); font-size: 1.3em; }
+#bakemono-workbench-root .rp-core-ui .rp-notice { display: flex; align-items: center; gap: 12px; border: 1px solid var(--bk-accent); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; background: var(--bk-paper-raised); }
+#bakemono-workbench-root .rp-core-ui .rp-notice > div { flex: 1; min-width: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-notice strong { font-size: .92em; }
+#bakemono-workbench-root .rp-core-ui .rp-error { border-color: var(--bakemono-theme-danger, #a14f45); }
+#bakemono-workbench-root .rp-core-ui [role="alert"] { padding: 12px; border: 1px solid var(--bakemono-theme-danger, #a14f45); border-radius: 10px; }
+#bakemono-workbench-root .rp-core-ui :is(.rp-pager, .rp-search, .rp-filters) { flex-wrap: wrap; margin-block: 14px; }
+#bakemono-workbench-root .rp-core-ui .rp-filters button { border-radius: 50px; font-size: .87em; }
 #bakemono-workbench-root .rp-core-ui .rp-search label { flex: 1 1 160px; min-width: 0; }
-#bakemono-workbench-root .rp-core-ui input { min-height: 44px; max-width: 100%; box-sizing: border-box; }
-#bakemono-workbench-root .rp-core-ui input[type="checkbox"] { min-height: auto; width: auto; }
-#bakemono-workbench-root .rp-core-ui .rp-settings label { display: flex; align-items: center; min-height: 44px; gap: 10px; }
-#bakemono-workbench-root .rp-core-ui .rp-row { display: flex; flex-direction: column; align-items: start; gap: 5px; width: 100%; padding: 12px 6px; text-align: left; border: 0; border-bottom: 1px solid currentColor; border-radius: 0; background: transparent; color: inherit; }
-#bakemono-workbench-root .rp-core-ui .rp-row span { opacity: .8; font-size: .9em; }
-#bakemono-workbench-root .rp-core-ui .rp-detail,
-#bakemono-workbench-root .rp-core-ui .rp-preview { padding: 12px; margin-block: 12px; border: 1px solid currentColor; border-radius: 12px; }
-#bakemono-workbench-root .rp-core-ui .rp-detail h3 { font-size: 1.15em; }
-#bakemono-workbench-root .rp-core-ui blockquote { margin: 12px 0; padding-inline: 12px; border-inline-start: 3px solid currentColor; white-space: pre-wrap; }
-#bakemono-workbench-root .rp-core-ui summary { min-height: 44px; cursor: pointer; }
+#bakemono-workbench-root .rp-core-ui :is(input, select, textarea) { min-height: 44px; max-width: 100%; box-sizing: border-box; }
+#bakemono-workbench-root .rp-core-ui textarea { width: 100%; resize: vertical; }
+#bakemono-workbench-root .rp-core-ui .rp-choice { display: flex; align-items: flex-start; min-height: 44px; gap: 10px; padding: 15px; border-bottom: 1px solid var(--bk-line); cursor: pointer; }
+#bakemono-workbench-root .rp-core-ui .rp-choice:last-child { border-bottom: 0; }
+#bakemono-workbench-root .rp-core-ui input:is([type="checkbox"], [type="radio"]) { min-height: 0; width: 18px; height: 18px; flex: 0 0 18px; margin-top: 4px; accent-color: var(--bk-accent); }
+#bakemono-workbench-root .rp-core-ui :is(.rp-detail, .rp-preview) { padding: 18px; margin-block: 15px; }
+#bakemono-workbench-root .rp-core-ui .rp-preview { border: 1px solid var(--bk-line-strong); border-radius: 10px; background: var(--bk-paper-soft); }
+#bakemono-workbench-root .rp-core-ui .rp-detail h3 { font-size: 1.5em; margin: 0 0 15px; }
+#bakemono-workbench-root .rp-core-ui .rp-detail-head { margin: 18px 0; }
+#bakemono-workbench-root .rp-core-ui blockquote { margin: 15px 0; padding-inline: 13px; border-inline-start: 2px solid var(--bk-accent); white-space: pre-wrap; color: var(--bk-ink-soft); }
+#bakemono-workbench-root .rp-core-ui summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; color: var(--bk-ink-soft); font-size: .88em; }
+#bakemono-workbench-root .rp-core-ui :is(.rp-more, .rp-snapshot, .rp-evidence-editor) { margin-block: 15px; padding-top: 8px; border-top: 1px solid var(--bk-line); }
+#bakemono-workbench-root .rp-core-ui .rp-empty { padding: 20px; text-align: center; color: var(--bk-ink-soft); }
+#bakemono-workbench-root .rp-core-ui .rp-run-controls { margin-top: 20px; }
+@media (hover: hover) and (pointer: fine) {
+    #bakemono-workbench-root .rp-core-ui button:not(:disabled):hover { background: var(--bk-paper-soft); color: var(--SmartThemeBodyColor); }
+}
 @media (max-width: 430px) {
     #bakemono-workbench-root .rp-core-ui .rp-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #bakemono-workbench-root .rp-core-ui .rp-row { padding: 13px; gap: 10px; }
+    #bakemono-workbench-root .rp-core-ui .rp-overview { padding: 20px 17px; }
 }

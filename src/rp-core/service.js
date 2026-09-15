@@ -1,6 +1,6 @@
 import { createLedger, replayLedger, assertLedgerVersion } from './ledger.js';
 import { createProjection, applyDomainFact } from './domain.js';
-import { prepareExtraction, decideCandidate } from './extraction.js';
+import { prepareExtraction, decideCandidate, refreshCandidateFingerprint } from './extraction.js';
 import { readChatSource, findChatSource } from './chat-sources.js';
 import { createRpTransactions } from './transaction.js';
 import { locateEvidence } from './source.js';
@@ -35,13 +35,13 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         const state = getState();
         if (state.rpCore) throw new Error('当前聊天已经启用剧情状态');
         const core = createLedger(projection, lastFloor());
-        core.settings = { enabled: true, autoApply: true, inject: true, mode: 'reuse' };
+        core.settings = { enabled: true, autoApply: true, inject: true, mode: 'inline' };
         await transactions.commit(state, null, core);
         return core;
     }
-    async function ingest(raw, sourceFloor, { manual = false, expectedSource = null, channel = 'reuse', inputHash = '' } = {}) {
+    async function ingest(raw, sourceFloor, { manual = false, expectedSource = null, channel = null, inputHash = '' } = {}) {
         const state = getState(), core = state.rpCore;
-        if (!core?.settings?.enabled || core.settings.mode !== channel) return null;
+        if (!core?.settings?.enabled || (channel !== null && core.settings.mode !== channel)) return null;
         assertLedgerVersion(core);
         const message = getChat()[sourceFloor];
         if (!message || message.is_user) throw new Error('提取来源不是助手正文');
@@ -50,7 +50,7 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
             || expectedSource.revision !== source.revision)) throw new Error('生成期间正文来源已变化');
         const prepared = prepareExtraction(core, raw, source, {
             floor: lastFloor(), order: sourceFloor,
-            autoApply: core.settings.autoApply === true && !manual,
+            autoApply: core.settings.autoApply === true,
             applyFact: factReducer(state),
         });
         if (inputHash) prepared.core.batches.at(-1).inputHash = String(inputHash);
@@ -82,13 +82,35 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         await previewReview(candidateId, decision, options).commit();
         return getState().rpCore;
     }
+    function previewEvidenceRepair(candidateId, excerpt) {
+        const state = getState(), core = state.rpCore;
+        assertLedgerVersion(core);
+        const candidate = core.candidates.find(item => item.id === candidateId);
+        if (!candidate || candidate.status !== 'pending') throw new Error('只可校正尚未确认的候选');
+        const source = findChatSource(getChat(), state, candidate.sourceKey);
+        if (!source || source.revision !== candidate.sourceRevision) throw new Error('正文来源已变化，请重新提取');
+        if (typeof excerpt !== 'string' || excerpt.length > 6000) throw new Error('正文摘录过长或无效');
+        const located = locateEvidence(source, excerpt);
+        if (located.status !== 'located') throw new Error(located.status === 'ambiguous'
+            ? '正文有多处相同摘录，请再选取一些前后文' : '正文中仍未找到该摘录；不接受摘要或改写作为原文证据');
+        const next = structuredClone(core), repaired = next.candidates.find(item => item.id === candidateId);
+        repaired.evidence = located.anchor;
+        repaired.evidenceStatus = 'located';
+        repaired.excerpt = excerpt;
+        refreshCandidateFingerprint(repaired);
+        repaired.reason = '来源已校正，确认前仍需核对行为与影响。';
+        next.decisions.push({ sequence: ++next.revision, floor: lastFloor(), candidateId, action: 'repair_evidence',
+            before: { evidence: candidate.evidence, excerpt: candidate.excerpt }, after: { evidence: located.anchor, excerpt }, recordedAt: new Date().toISOString() });
+        return { excerpt, floor: source.floor, commit: () => transactions.commit(state, core.revision, next,
+            () => findChatSource(getChat(), state, candidate.sourceKey)?.revision === source.revision) };
+    }
     async function configure(patch) {
         const state = getState(), core = state.rpCore;
         assertLedgerVersion(core);
         const next = structuredClone(core);
         for (const [key, value] of Object.entries(patch)) {
             if (['enabled', 'autoApply', 'inject'].includes(key) && typeof value === 'boolean') next.settings[key] = value;
-            else if (key === 'mode' && ['reuse', 'independent'].includes(value)) next.settings.mode = value;
+            else if (key === 'mode' && ['reuse', 'inline', 'reply', 'independent'].includes(value)) next.settings.mode = value;
             else throw new Error('剧情状态设置无效');
         }
         next.revision++;
@@ -110,5 +132,5 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         // An unsupported ledger remains untouched; legacy memories must still work.
         try { return view(state); } catch { return null; }
     }
-    return { enable, ingest, review, previewReview, configure, setExtractionJob, view, memoryView };
+    return { enable, ingest, review, previewReview, previewEvidenceRepair, configure, setExtractionJob, view, memoryView };
 }

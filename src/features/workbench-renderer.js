@@ -255,6 +255,7 @@ export function createWorkbenchRenderer({
             else if (activeTab === 'data-hub') renderHubPanels(state);
         } else if (scope === workbenchRenderScopes.DRAFTS) {
             if (activeTab === 'drafts') { renderDrafts(); renderHistory(); renderTaskQueue(); }
+            else if (activeTab === 'rp-state') renderRpState?.(state);
             else if (activeTab === 'maintenance') renderMaintenanceOverview(state);
             else if (activeTab === 'data-hub' && options.refreshDataHub !== false) renderDataHubMemory(state);
         } else if (scope === workbenchRenderScopes.TABLES) {

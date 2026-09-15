@@ -29,6 +29,12 @@ function parsePayload(value) {
 }
 const sourceKey = source => source.messageId + '|' + source.variantId;
 
+export function refreshCandidateFingerprint(candidate) {
+    candidate.matchKey = canonical([candidate.sourceKey, candidate.track, candidate.action,
+        candidate.evidence?.start ?? null, candidate.evidence?.end ?? null]);
+    candidate.fingerprint = canonical([candidate.matchKey, candidate.data, candidate.context]);
+}
+
 function normalizeCandidate(event, source) {
     if (!['facts', 'claims', 'observations'].includes(event?.track) || typeof event.action !== 'string'
         || !event.action || event.action.length > 100 || !event.data || typeof event.data !== 'object' || Array.isArray(event.data)) {
@@ -44,9 +50,10 @@ function normalizeCandidate(event, source) {
         evidence: located.anchor || null, evidenceStatus: located.status,
         excerpt: String(event.excerpt || ''), status: 'pending',
     };
-    candidate.matchKey = canonical([candidate.sourceKey, candidate.track, candidate.action,
-        candidate.evidence?.start ?? null, candidate.evidence?.end ?? null]);
-    candidate.fingerprint = canonical([candidate.matchKey, candidate.data, candidate.context]);
+    if (located.status !== 'located') candidate.reason = located.status === 'ambiguous'
+        ? '正文中有多处相同摘录，请补充前后文后重新定位。'
+        : '正文中未找到这段摘录；请引用原正文，而不是摘要或改写后的句子。';
+    refreshCandidateFingerprint(candidate);
     return candidate;
 }
 

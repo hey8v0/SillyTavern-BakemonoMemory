@@ -125,7 +125,7 @@ export function createVectorMemoryService({
             ...parseList(state.vectorMemory.excludeTags || defaultVectorMemory.excludeTags),
         ]);
         const summaryTags = getVectorSummaryTags(state);
-        return normalizeLineEndings(stripHtml(stripConfiguredTags(text, unique([...excludeTags, ...summaryTags, 'script', 'style'])))).trim();
+        return normalizeLineEndings(stripHtml(stripConfiguredTags(text, unique([...excludeTags, ...summaryTags, 'script', 'style', 'rpEvents'])))).trim();
     }
     
     function getVectorSourceMessages(state = ensureState()) {
@@ -166,7 +166,7 @@ export function createVectorMemoryService({
             .map((message, messageId) => ({ message, messageId }))
             .filter(({ message }) => message?.mes && !message.is_system)
             .slice(-Math.max(1, Number(maxMessages || 8)))
-            .map(({ message, messageId }) => `${message.is_user ? '用户' : '助手'} #${messageId}: ${stripHtml(message.mes || '')}`)
+            .map(({ message, messageId }) => `${message.is_user ? '用户' : '助手'} #${messageId}: ${stripHtml(stripConfiguredTags(message.mes || '', ['rpEvents']))}`)
             .join('\n')
             .trim();
     }

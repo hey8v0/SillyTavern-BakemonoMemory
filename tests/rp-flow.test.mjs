@@ -14,6 +14,7 @@ async function fixture() {
     let afterSave = () => {};
     const service = createRpCoreService({ getState, getChat: () => chat, saveState: () => ({}), saveChat: async () => { saves++; afterSave(); }, makeSourceId: () => String(++id) });
     await service.enable();
+    await service.configure({ mode: 'reuse' });
     const flow = createRpExtractionFlow({ getState, getChat: () => chat, service, makeSourceId: () => String(++id) });
     return { flow, service, chat, getState, switchChat: () => { state = { ...state }; }, saves: () => saves,
         onSave: callback => { afterSave = callback; } };
@@ -21,6 +22,22 @@ async function fixture() {
 const response = '<summaryDraft>摘要</summaryDraft><rpEvents>' + JSON.stringify({ version: 1, events: [
     { track: 'facts', action: 'person_created', data: { id: 'temporary', name: '甲' }, excerpt: '甲来到这里' },
 ] }) + '</rpEvents>';
+
+test('new activation defaults to inline and does not turn on legacy post-processing', async () => {
+    const state = { turnSummary: { enabled: false }, tableDatabase: { enabled: true, tables: [{}] } };
+    const before = JSON.stringify(state);
+    const service = createRpCoreService({ getState: () => state, getChat: () => [], saveState() {}, saveChat: async () => {} });
+    await service.enable();
+    const flow = createRpExtractionFlow({ getState: () => state, getChat: () => [], service });
+    assert.equal(flow.channel(), 'inline');
+    assert.equal(state.rpCore.settings.mode, 'inline');
+    const { rpCore, ...legacy } = state;
+    assert.equal(JSON.stringify(legacy), before);
+    await service.configure({ mode: 'reply' });
+    assert.equal(flow.channel(), 'reply');
+    state.tableDatabase.enabled = false;
+    assert.equal(flow.channel(), null);
+});
 
 test('unknown ledger versions disable extraction and memory projection without changing saved data', async () => {
     const f = await fixture();
@@ -79,13 +96,17 @@ test('inline and reply reuse select one channel and delay stays bound to the ori
     assert.equal(f.getState().rpCore.facts[0].floor, 1);
 });
 
-test('no compatible workflow is reported as unavailable and missing protocol does not create a batch', async () => {
+test('preset-only chats get inline events without enabling legacy summary or reply processing', async () => {
     const f = await fixture();
     assert.equal((await f.flow.consume(f.flow.capture(0, 'reply'), '只有摘要')).status, 'missing');
     assert.equal(f.getState().rpCore.batches.length, 0);
     f.getState().turnSummary.enabled = false;
-    assert.equal(f.flow.channel(), null);
+    assert.equal(f.flow.channel(), 'inline');
     assert.equal(f.flow.prompt('reply'), '');
+    f.chat[0].mes += '<bakemono>预设自带摘要</bakemono>' + response;
+    assert.equal(await f.flow.captureInline(), true);
+    assert.equal(f.getState().rpCore.facts.length, 1);
+    assert.match(f.chat[0].mes, /<bakemono>预设自带摘要<\/bakemono>/);
 });
 
 test('the real summary controller reuses one response and rejects changed source before creating a draft', async () => {
@@ -155,6 +176,11 @@ test('inline prompts use exactly one existing slot, including when both legacy o
         assert.equal([...prompts.values()].filter(text => text.includes('<rpEvents>')).length, 1);
         assert.match(prompts.get(summaryEnabled ? 'summary' : 'table'), /rpEvents/);
     }
+    Object.assign(state.inlineGeneration, { summaryEnabled: false, tableEnabled: false });
+    state.turnSummary.enabled = false;
+    injection.syncInlineGenerationPrompts();
+    assert.match(prompts.get('summary'), /rpEvents/);
+    assert.equal(prompts.get('table'), '');
     state.rpCore.settings.enabled = false;
     injection.syncInlineGenerationPrompts();
     assert.equal([...prompts.values()].some(text => text.includes('<rpEvents>')), false);
@@ -193,8 +219,21 @@ test('independent extraction is opt-in, records progress and never silently retr
     assert.equal(await flow.runIndependent({ manual: true }), true);
     assert.equal(f.getState().rpCore.extractionJobs[0].status, 'done');
     assert.equal(f.getState().rpCore.candidates.length, 1);
+    assert.equal(f.getState().rpCore.facts.length, 1, 'first successful manual extraction honors auto-apply');
+    await flow.runIndependent({ manual: true });
+    assert.equal(f.getState().rpCore.facts.length, 1, 're-extraction never duplicates confirmed facts');
     assert.equal(await flow.runIndependent(), false);
-    assert.equal(requests, 2);
+    assert.equal(requests, 3);
+});
+
+test('normal orchestration captures preset inline events even when legacy plan says no inline work', async () => {
+    const f = await fixture(), state = f.getState();
+    state.turnSummary.enabled = false;
+    f.chat[0].mes += response;
+    const orchestrator = createMemoryOrchestrator({ ensureState: f.getState, rpExtractionFlow: f.flow,
+        getCurrentFloorMemoryIndex: () => ({}), getMemoryOrchestrationPlan: () => ({ actions: {} }), syncInjection() {} });
+    await orchestrator.runMemoryOrchestrator('正文完成', { scan: false });
+    assert.equal(state.rpCore.facts.length, 1);
 });
 
 test('stopping an independent request rejects a late host response without facts', async () => {

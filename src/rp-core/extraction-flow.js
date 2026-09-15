@@ -5,7 +5,7 @@ import { assertLedgerVersion } from './ledger.js';
 const guide = `## 剧情事件提取
 完成本请求原本要求的输出后，另输出一个 <rpEvents>{"version":1,"events":[]}</rpEvents> JSON 块。不要执行或输出代码。
 只从本轮助手正文提取事件，参考资料和已有状态不是本轮新事件。没有可提取事件就输出空数组。
-每个候选包含 track（facts/claims/observations）、action、data、excerpt（本轮正文中的最小充分证据摘录）。
+每个候选包含 track（facts/claims/observations）、action、data、excerpt（逐字引用本轮剧情正文，不改写，不从 bakemono 摘要、推理或操作块引用）。保留用户预设原有的 bakemono 摘要格式；rpEvents 必须单独放在 bakemono 块外，不替换摘要。
 context 必须标明 current/dream/hypothetical/flashback，后三种只能进入说法或观察，不得标为 facts。
 角色说法放 claims；怀疑、推断和主观观察放 observations。回忆、梦境、假设不能写成当前事实。不得把小剧场、推理或旧操作块当作证据。
 facts 行为及 data 字段：
@@ -31,10 +31,12 @@ export function createRpExtractionFlow({ getState, getChat, service, makeSourceI
         if (!state.rpCore?.settings?.enabled) return null;
         try { assertLedgerVersion(state.rpCore); } catch { return null; }
         if (state.rpCore.settings.mode === 'independent') return 'independent';
+        if (state.rpCore.settings.mode === 'inline') return 'inline';
+        if (state.rpCore.settings.mode === 'reply') return state.turnSummary?.enabled || (state.tableDatabase?.enabled && state.tableDatabase.tables?.length) ? 'reply' : null;
         if (state.rpCore.settings.mode !== 'reuse') return null;
         if (state.inlineGeneration?.summaryEnabled || state.inlineGeneration?.tableEnabled) return 'inline';
         if (state.turnSummary?.enabled || (state.tableDatabase?.enabled && state.tableDatabase.tables?.length)) return 'reply';
-        return null;
+        return 'inline';
     }
     function prompt(requested, state = getState()) {
         if (channel(state) !== requested) return '';
@@ -85,7 +87,7 @@ export function createRpExtractionFlow({ getState, getChat, service, makeSourceI
     }
     async function captureInline() {
         const state = getState(), chat = getChat();
-        if (channel(state) !== 'inline') return false;
+        if (channel(state) !== 'inline' || isBusy()) return false;
         const latestVisible = [...chat].reverse().find(message => message && !message.is_system);
         if (state.turnSummary?.triggerTiming === 'next_user' && !latestVisible?.is_user) return false;
         let floor = chat.length - 1;

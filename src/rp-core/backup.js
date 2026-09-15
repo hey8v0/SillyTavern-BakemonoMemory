@@ -54,7 +54,7 @@ export function validateRpBackup(core) {
     }
     for (const candidate of core.candidates) if (candidate.previousIds.some(id => !candidates.has(id))) fail();
     for (const decision of core.decisions) {
-        if (!object(decision) || !['accept', 'ignore', 'reject', 'retract'].includes(decision.action)) fail();
+        if (!object(decision) || !['accept', 'ignore', 'reject', 'retract', 'repair_evidence'].includes(decision.action)) fail();
         position(decision);
         if (decision.action === 'retract' ? !core.facts.some(fact => fact.id === decision.factId) : !candidates.has(decision.candidateId)) fail();
     }

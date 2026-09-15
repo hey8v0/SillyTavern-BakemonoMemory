@@ -77,6 +77,7 @@ export function renderGenerationPrompt(template, blocks, context = {}) {
 
 export function stripPostProcessNoise(text) {
     return String(text || '')
+        .replace(/<rpEvents\b[^>]*>[\s\S]*?(?:<\/rpEvents\s*>|$)/gi, '')
         .replace(/<tableThink>[\s\S]*?<\/tableThink>/gi, '')
         .replace(/<tableEdit>[\s\S]*?<\/tableEdit>/gi, '')
         .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')

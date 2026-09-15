@@ -118,6 +118,7 @@ export function createInjectionService({
         if (rpPrompt) {
             if (state.inlineGeneration?.summaryEnabled) summaryValue += '\n\n' + rpPrompt;
             else if (state.inlineGeneration?.tableEnabled) tableValue += '\n\n' + rpPrompt;
+            else summaryValue = rpPrompt;
         }
         setExtensionPrompt(inlinePromptKeys.SUMMARY, summaryValue, extensionPromptTypes.IN_CHAT, depth, false, role);
         setExtensionPrompt(inlinePromptKeys.TABLE, tableValue, extensionPromptTypes.IN_CHAT, depth, false, role);
