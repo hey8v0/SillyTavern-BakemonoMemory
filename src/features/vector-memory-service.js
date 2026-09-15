@@ -3,6 +3,9 @@ import { runApiRequest } from '../shared/request-policy.js';
 import { createBm25Index } from '../vector/bm25-index.js';
 import { isMemoryCurrent, activeStoryCoverage, summaryItems, storyTimeContext } from '../memory/story-state.js';
 
+const sourceUpdatingMessage = '正文仍在更新，待稳定后自动刷新索引。';
+class VectorSourceChanged extends Error {}
+
 export function createVectorMemoryService({
     defaultVectorMemory,
     getState: ensureState,
@@ -52,6 +55,7 @@ export function createVectorMemoryService({
     clearTimer = globalThis.clearTimeout,
     embeddingCache = createEmbeddingCache(),
     yieldToUi = () => new Promise(resolve => setTimeout(resolve, 0)),
+    waitForSourceSettle = () => new Promise(resolve => setTimeout(resolve, 350)),
     getRpMemorySources = () => [],
 } = {}) {
     let vectorIndexTimer = null;
@@ -512,7 +516,8 @@ export function createVectorMemoryService({
         }
         clearTimer(vectorIndexTimer);
         vectorIndexTimer = setTimer(async () => {
-            if (ensureState() !== state || pausedIndexStates.has(state)) return;
+            if (ensureState() !== state || pausedIndexStates.has(state)
+                || !state.vectorMemory.enabled || state.vectorMemory.autoIndex === false) return;
             try {
                 await buildVectorMemoryIndex({ silent: true, reason });
             } catch (error) {
@@ -521,6 +526,16 @@ export function createVectorMemoryService({
                 toastr.warning(`向量自动索引失败：${error?.message || error}`);
             }
         }, 1200);
+    }
+
+    function deferSourceUpdate(state) {
+        state.vectorMemory.dirty = true;
+        state.vectorMemory.dirtyReason = '正文仍在更新';
+        clearVectorRecall(sourceUpdatingMessage, state);
+        saveState();
+        renderWorkbenchScope(workbenchRenderScopes.VECTOR, sourceUpdatingMessage);
+        scheduleVectorAutoIndex('正文稳定后刷新');
+        return [];
     }
     
     function getEmbeddingSpaceKey(state) {
@@ -600,8 +615,28 @@ export function createVectorMemoryService({
         if (indexRun) return indexRun.promise;
         const controller = new AbortController();
         const run = { controller, state };
+        const configuration = indexConfigurationKey(state);
         indexRun = run;
-        run.promise = performIndexBuild({ silent, signal: controller.signal }).catch(error => {
+        run.promise = (async () => {
+            // Keep this build's completed embeddings across source-only retries.
+            const reusable = new Map();
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    if (configuration !== indexConfigurationKey(state)) throw new Error('向量配置已变化，本次索引未覆盖原索引。');
+                    return await performIndexBuild({ silent, signal: controller.signal, reusable, configuration });
+                }
+                catch (error) {
+                    if (!(error instanceof VectorSourceChanged) || ensureState() !== state || controller.signal.aborted) throw error;
+                    if (attempt < 2) {
+                        await waitForSourceSettle();
+                        if (ensureState() !== state || controller.signal.aborted) throw new Error('索引已暂停或聊天已切换。');
+                        continue;
+                    }
+                    deferSourceUpdate(state);
+                    return false;
+                }
+            }
+        })().catch(error => {
             if (controller.signal.aborted && pausedIndexStates.has(state) && ensureState() === state) return false;
             throw error;
         }).finally(() => {
@@ -618,7 +653,14 @@ export function createVectorMemoryService({
         renderWorkbenchScope(workbenchRenderScopes.VECTOR, '索引已暂停；点击建立 / 刷新索引继续。已完成片段会尽可能复用。');
     }
 
-    async function performIndexBuild({ silent = false, signal } = {}) {
+    function indexConfigurationKey(state) {
+        return JSON.stringify([getEmbeddingSpaceKey(state), state.scanRules?.excludeTags,
+            ...['enabled', 'indexMode', 'chunkSize', 'overlap', 'longMessageThreshold', 'summaryMaxChars',
+                'maxIndexedMessages', 'includeHidden', 'includeUser', 'excludeTags', 'summaryTags']
+                .map(key => state.vectorMemory[key] ?? defaultVectorMemory[key])]);
+    }
+
+    async function performIndexBuild({ silent = false, signal, reusable = new Map(), configuration } = {}) {
         const state = ensureState();
         const signature = getVectorSourceSignature(state);
         const space = getEmbeddingSpaceKey(state);
@@ -626,9 +668,9 @@ export function createVectorMemoryService({
             return state.vectorMemory.records || [];
         }
         const records = [];
-        const reusable = new Map((state.vectorMemory.records || [])
+        for (const [key, embedding] of (state.vectorMemory.records || [])
             .filter(record => record.embeddingFormat === 'native-v1' && record.embeddingKey && Array.isArray(record.embedding) && record.embedding.length)
-            .map(record => [record.embeddingKey, record.embedding]));
+            .map(record => [record.embeddingKey, record.embedding])) reusable.set(key, embedding);
         let processed = 0, reused = 0, checkedDimensions = 0;
         const embeddingForRecord = async text => {
             if (signal.aborted || ensureState() !== state || space !== getEmbeddingSpaceKey(state)) throw new Error('索引已暂停或聊天配置已切换，已完成片段会在继续时复用。');
@@ -742,16 +784,18 @@ export function createVectorMemoryService({
             });
         }
     
-        if (signal.aborted || ensureState() !== state || signature !== getVectorSourceSignature(state)) {
-            throw new Error('聊天、正文或向量配置已变化，本次索引未覆盖原索引，请在当前聊天重新建立索引。');
+        if (signal.aborted || ensureState() !== state || configuration !== indexConfigurationKey(state)) {
+            throw new Error('聊天或向量配置已变化，本次索引未覆盖原索引。');
         }
+        if (signature !== getVectorSourceSignature(state)) throw new VectorSourceChanged('正文或索引参数已变化');
         state.vectorMemory.records = records;
         state.vectorMemory.embeddingCache = {};
         state.vectorMemory.lastIndexAt = new Date().toISOString();
         state.vectorMemory.lastIndexedSignature = signature;
         state.vectorMemory.dirty = false;
         state.vectorMemory.dirtyReason = '';
-        if (String(state.vectorMemory.lastRecallSkippedReason || '').startsWith('索引待刷新：')) state.vectorMemory.lastRecallSkippedReason = '';
+        if (String(state.vectorMemory.lastRecallSkippedReason || '').startsWith('索引待刷新：')
+            || state.vectorMemory.lastRecallSkippedReason === sourceUpdatingMessage) state.vectorMemory.lastRecallSkippedReason = '';
         saveState();
         syncInjection();
         renderWorkbenchScope(workbenchRenderScopes.VECTOR, silent ? '' : `向量索引完成：${records.length} 个片段，复用 ${reused} 个。`);
@@ -769,27 +813,19 @@ export function createVectorMemoryService({
             && state.vectorMemory.autoIndex !== false && !pausedIndexStates.has(state)) {
             clearTimer(vectorIndexTimer);
             try {
-                // A pending build may have captured the message before a late widget update.
-                // Retry once with the newest source; never inject known-stale records.
-                for (let attempt = 0; attempt < 2; attempt++) {
-                    try { await buildVectorMemoryIndex({ silent: true }); }
-                    catch (error) {
-                        if (ensureState() !== state) return [];
-                        if (attempt || pausedIndexStates.has(state)) throw error;
-                        if (state.vectorMemory.lastIndexedSignature === getVectorSourceSignature(state)) break;
-                        if (!/正文|聊天.*变化/.test(String(error?.message))) throw error;
-                    }
-                    if (ensureState() !== state) return [];
-                    if (state.vectorMemory.lastIndexedSignature === getVectorSourceSignature(state)) break;
-                }
+                await buildVectorMemoryIndex({ silent: true });
+                if (ensureState() !== state) return [];
             } catch (error) {
+                if (ensureState() !== state) return [];
                 return clearVectorRecall(`召回前刷新索引失败：${error?.message || error}`, state);
             }
         }
         const signature = getVectorSourceSignature(state);
         if (state.vectorMemory.lastIndexedSignature !== signature) {
+            if (state.vectorMemory.lastRecallSkippedReason === sourceUpdatingMessage) return [];
             return clearVectorRecall('正文或向量配置已变化，请先建立/刷新索引，避免混用旧向量。', state);
         }
+        const configuration = indexConfigurationKey(state);
         const minAiMessages = Math.max(0, Number(state.vectorMemory.startAfterAiMessages || 0));
         if (minAiMessages > 0 && getAssistantMessageCount() < minAiMessages) {
             return clearVectorRecall(`当前 AI 楼数少于 ${minAiMessages}，已跳过召回。`, state);
@@ -827,6 +863,7 @@ export function createVectorMemoryService({
         }
         if (ensureState() !== state) return [];
         if (signature !== getVectorSourceSignature(state)) {
+            if (configuration === indexConfigurationKey(state)) return deferSourceUpdate(state);
             return clearVectorRecall('召回期间正文或配置发生变化，请刷新索引后重试。', state);
         }
         if (recallRecords.some(record => !Array.isArray(record.embedding) || queryEmbeddings.some(vector => vector.length !== record.embedding.length))) {
@@ -857,6 +894,7 @@ export function createVectorMemoryService({
         });
         if (!prepared || ensureState() !== state) return [];
         if (signature !== getVectorSourceSignature(state)) {
+            if (configuration === indexConfigurationKey(state)) return deferSourceUpdate(state);
             return clearVectorRecall('词索引准备期间正文或配置发生变化，请刷新后重试。', state);
         }
         let embeddingCandidates = selectHybridCandidates(scored, queries, keywords, {

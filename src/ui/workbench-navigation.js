@@ -26,7 +26,7 @@ export function createWorkbenchNavigation({
 
     function getMenuTab(tabName) {
         if (tabName === 'prompt-inspector') return 'overview';
-        if (['turn-summary', 'tables', 'rp-state', 'automation', 'vector'].includes(tabName)) return 'data-hub';
+        if (['turn-summary', 'tables', 'automation', 'vector'].includes(tabName)) return 'data-hub';
         if (['settings', 'scan', 'injection', 'generation', 'prompts', 'appearance', 'config', 'maintenance'].includes(tabName)) return 'settings-hub';
         if (tabName === 'timeline') return 'preview';
         return tabName;

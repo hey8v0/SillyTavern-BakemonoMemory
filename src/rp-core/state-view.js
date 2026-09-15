@@ -43,7 +43,7 @@ export function buildStatePage(core, view, navigation = {}) {
             ? `持有：${entityName(projection, item.holder)} · 数量：${item.quantity ?? '未知'}`
             : key === 'plans' ? `期限：${item.due || '未定'}${item.timing?.status === 'overdue' ? ' · 已逾期' : ''}`
                 : key === 'people' ? `位置：${entityName(projection, item.location)}` : '', record: item }));
-    if (tab === 'people') rows = [...entityRows('people', projection.people), ...entityRows('relationships', projection.relationships)];
+    if (tab === 'people') rows = [...(filter !== 'relationships' ? entityRows('people', projection.people) : []), ...(filter !== 'people' ? entityRows('relationships', projection.relationships) : [])];
     else if (tab === 'world') {
         const selected = ['plans', 'items', 'locations'].includes(filter) ? filter : 'plans';
         rows = entityRows(selected, projection[selected]);

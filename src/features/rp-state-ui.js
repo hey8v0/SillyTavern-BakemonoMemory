@@ -1,19 +1,18 @@
-import { buildStatePage, createStateNavigation, describeRecord, entityName, relationshipName, stateLabels, trackLabels } from '../rp-core/state-view.js';
+import { buildStatePage, createStateNavigation, describeRecord, relationshipName, stateLabels, trackLabels } from '../rp-core/state-view.js';
 import { buildBaselinePreview, suggestBaselineMappings, migrationFields, migrationLabels } from '../rp-core/migration.js';
+import { createRpStatePresentation } from './rp-state-presentation.js';
 
 export function createRpStateUi({ documentRef: document, getState, service, flow, navigate, refresh, escapeHtml: esc, locateSource }) {
     const navigation = createStateNavigation(), previews = new WeakMap(), repairs = new WeakMap(), renderedStates = new WeakMap();
+    const presentation = createRpStatePresentation({ escapeHtml: esc });
     let busy = false;
     const tabs = { overview: '概览', people: '人物关系', world: '世界状态', history: '历史' };
-    const button = (action, label, extra = '') => `<button type="button" class="menu_button${['save-settings', 'review-confirm', 'repair-confirm', 'enable-confirm', 'migration-confirm'].includes(action) ? ' rp-primary' : ''}" data-rp-action="${action}" ${extra}><span>${esc(label)}</span></button>`;
+    const button = (action, label, extra = '') => `<button type="button" class="menu_button${['save-settings', 'review-confirm', 'repair-confirm', 'enable-preview', 'enable-confirm', 'migration-confirm'].includes(action) ? ' rp-primary' : ''}" data-rp-action="${action}" ${extra}><span>${esc(label)}</span></button>`;
     const help = text => `<button type="button" class="bakemono-memory-help-trigger" aria-label="使用说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">${esc(text)}</span></button>`;
-    const names = (view, values) => (values || []).map(id => entityName(view, id)).join('、');
     const line = (label, value) => `<p><span>${esc(label)}</span>：${esc(value ?? '未知')}</p>`;
     const sectionHead = (title, action = '', extra = '') => `<div class="rp-section-head"><h3>${esc(title)}</h3>${action ? button(action, '查看全部', extra) : ''}</div>`;
-    function rowsMarkup(rows) {
-        const marks = { people: '人', relationships: '缘', plans: '约', items: '物', locations: '地', facts: '记', claims: '言', observations: '察', candidate: '?' };
-        return `<div class="rp-list rp-sheet">${rows.length ? rows.map(row => `<button type="button" class="rp-row" data-rp-action="detail" data-rp-kind="${row.kind}" data-rp-id="${esc(row.id)}"><span class="rp-seal" aria-hidden="true">${marks[row.kind] || '记'}</span><span class="rp-row-copy"><strong>${esc(row.title)}</strong><small>${esc([row.status, row.detail].filter(Boolean).join(' · '))}</small></span><span class="rp-chevron" aria-hidden="true">›</span></button>`).join('') : '<p class="rp-empty">暂无记录</p>'}</div>`;
-    }
+    const scrollSurface = root => root?.closest('.bakemono-workbench-main') || root;
+    const detailOrigin = element => ({ kind: element.dataset.rpKind, id: element.dataset.rpId });
     function renderSettings(root, state, nav) {
         const core = state.rpCore;
         const settings = nav.settingsDraft || core.settings;
@@ -51,10 +50,8 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
             root.innerHTML = `<p role="alert">${esc(error.message)}</p>${button('legacy', '打开原表格')}`;
             return;
         }
-        const more = `<details class="rp-more"><summary>更多</summary>${button('legacy', '原表格编辑器')}</details>`;
-        const header = `<div class="rp-toolbar">${help('AI 提出事件，插件校验后记录。说法和观察不改变世界事实。历史按当时已知状态显示；展开事件查看证据。旧表格仍在更多中。')}${more}</div>`;
         if (!core) {
-            root.innerHTML = `${header}<h3>开启剧情状态</h3><p>人物、关系、约定、物品和地点</p>${button('enable-preview', '启用 RP Core')}`;
+            root.innerHTML = `<section class="rp-blank"><span class="rp-blank-mark"><i class="fa-solid fa-book-open" aria-hidden="true"></i></span><span class="rp-eyebrow">剧情状态 · 尚未启用</span><h3>让故事，有迹可循。</h3><p>随着每一轮对话，整理人物关系、当下的处境，以及还没赴的约。</p><ul class="rp-onboarding-list"><li>谁和谁，有怎样的关系</li><li>接下来，有哪些约定</li><li>每次变化，都能回看来源</li></ul><div class="rp-controls">${button('enable-preview', '从这一轮开始')}${help('默认随正文维护，不额外发送请求。需要模型输出 rpEvents；普通 bakemono 摘要继续按原流程读取，不会直接变成事实。可以空白开始，也可预览导入旧表的已知状态。')}</div></section>`;
             if (nav.error) root.insertAdjacentHTML('beforeend', `<p role="alert">${esc(nav.error)}</p>`);
             if (nav.setup) {
                 root.insertAdjacentHTML('beforeend', `<section class="rp-preview"><h4>空白开始</h4><p>从当前楼层建立基线；已有摘要、自定义表格和聊天正文保持不变。</p>${button('enable-confirm', '确认空白启用')}${button('migration', '预览导入已有状态')}${button('setup-cancel', '返回')}</section>`);
@@ -62,9 +59,13 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
             }
             return;
         }
-        const navMarkup = `<nav class="rp-tabs" aria-label="剧情状态页面">${Object.entries(tabs).map(([key, label]) => button('tab', label, `data-rp-tab="${key}" aria-current="${nav.tab === key ? 'page' : 'false'}"`)).join('')}</nav>`;
+        const hasData = core.facts.length + core.claims.length + core.observations.length
+            + (view?.projection ? ['people', 'relationships', 'plans', 'items', 'locations'].reduce((sum, key) => sum + view.projection[key].length, 0) + Number(!!(view.projection.clock.date || view.projection.clock.description)) : 0);
+        const navMarkup = `<nav class="rp-tabs" aria-label="剧情状态页面" ${!hasData && !nav.selected && nav.tab === 'overview' ? 'hidden' : ''}>${Object.entries(tabs).map(([key, label]) => button('tab', label, `data-rp-tab="${key}" aria-current="${nav.tab === key ? 'page' : 'false'}"`)).join('')}</nav>`;
         root.innerHTML = navMarkup;
+        if (nav.notice) root.insertAdjacentHTML('beforeend', `<p role="status">${esc(nav.notice)}</p>`);
         if (nav.error) root.insertAdjacentHTML('beforeend', `<p role="alert">${esc(nav.error)}</p>`);
+        if (nav.floor != null) root.insertAdjacentHTML('beforeend', `<div class="rp-read-only"><span>第 ${nav.floor} 楼时已知状态 · 只读</span>${button('current', '返回当前')}</div>`);
         if (nav.settings) { renderSettings(root, state, nav); return; }
         if (!view?.projection) { root.insertAdjacentHTML('beforeend', `<p>所选楼层早于基线，没有可用状态。</p>${button('current', '返回当前状态')}`); return; }
         const projection = view.projection;
@@ -72,30 +73,35 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         const pending = core.candidates.filter(item => item.status === 'pending').length;
         const channel = flow.channel(state), lastBatch = core.batches.at(-1);
         const maintenance = !core.settings.enabled ? '自动维护已暂停' : !channel ? '尚未运行：回复后处理未开启' : channel === 'inline' ? '随正文维护' : channel === 'reply' ? '复用回复后处理' : '独立提取';
-        root.insertAdjacentHTML('beforeend', `<div class="rp-toolbar"><small>${esc(maintenance)}${lastBatch ? ` · 已处理到 ${lastBatch.floor} 楼` : ' · 尚未处理正文'}</small><div class="rp-controls">${button('settings', '维护设置')}${help('新内容明确、来源可靠且无冲突时自动保存，只有例外需要审核。处理完成不等于全部确认；缺少证据的项不会改变当前状态。')}</div></div>`);
-        if (pending) root.insertAdjacentHTML('beforeend', `<div class="rp-notice"><span aria-hidden="true">?</span><div><strong>${pending} 项需要处理</strong><small>已保存内容不受待确认项影响</small></div>${button('pending', '查看')}</div>`);
+        const footer = `<footer class="rp-footer"><small>${nav.floor == null ? esc(maintenance) + (lastBatch ? ` · 已处理到 ${lastBatch.floor} 楼` : ' · 尚未处理正文') : '历史快照 · 只读'}</small><div class="rp-controls">${nav.floor == null ? button('settings', '维护设置') : ''}${help('明确的新内容经过校验后自动保存，例外进入待确认。随正文需要额外的 rpEvents，不必开启回复后处理。说法、观察与事实分别保存；关闭维护不删除记录。')}</div></footer>`;
+        if (pending && nav.floor == null) root.insertAdjacentHTML('beforeend', `<div class="rp-notice"><span aria-hidden="true">?</span><div><strong>${pending} 项需要确认</strong><small>其余已确认内容照常保存</small></div>${button('pending', '查看')}</div>`);
         if (view.pending.length) root.insertAdjacentHTML('beforeend', `<div class="rp-notice rp-error"><div><strong>${view.pending.length} 项事实需要复核</strong><small>这些记录暂不参与当前状态</small></div>${button('facts', '查看')}</div>`);
         if (nav.tab === 'overview') {
-            const positions = projection.people.filter(person => person.location).slice(0, 4).map(person => `${person.name} · ${entityName(projection, person.location)}`);
-            root.insertAdjacentHTML('beforeend', `<section class="rp-overview rp-sheet"><span class="rp-eyebrow">此刻 · 当前故事</span><h3>${esc(projection.clock.date || projection.clock.description || '剧情时间未知')}</h3><p>${esc(positions.join('；') || '人物位置尚未记录')}</p><div class="rp-scene-foot">${projection.people.length} 位人物 · ${projection.relationships.length} 段关系</div></section>`);
+            if (!hasData) {
+                root.insertAdjacentHTML('beforeend', `<section class="rp-blank"><span class="rp-blank-mark"><i class="fa-solid fa-film" aria-hidden="true"></i></span><h3>${nav.floor != null ? '当时尚无状态记录' : core.settings.enabled ? '等故事写下下一页' : '自动维护已暂停'}</h3><p>${!channel && core.settings.enabled ? '尚未运行：请在维护设置中选择可用的方式。' : '人物、关系与约定，会随着确认的剧情进展出现在这里。'}</p><div class="rp-controls">${nav.floor != null ? '' : channel === 'inline' ? button('capture', '检查最新正文') : channel === 'independent' ? button('extract', '处理最新正文') + button('stop', '停止提取') : ''}</div></section>${footer}`);
+                return;
+            }
+            root.insertAdjacentHTML('beforeend', presentation.scene(projection, lastBatch, nav.floor));
             const overview = buildStatePage(core, view, { tab: 'overview' }).rows;
-            root.insertAdjacentHTML('beforeend', sectionHead('人物关系', 'people') + rowsMarkup(overview.filter(row => row.kind === 'relationships'))
-                + sectionHead('接下来的约定', 'plans') + rowsMarkup(overview.filter(row => row.kind === 'plans'))
-                + sectionHead('最近变化', 'history') + rowsMarkup(buildStatePage(core, view, { tab: 'history', filter: 'facts' }).rows.slice(0, 3)));
-            if (channel === 'independent') root.insertAdjacentHTML('beforeend', `<div class="rp-controls rp-run-controls">${button('extract', '处理最新正文')}${button('stop', '停止提取')}</div>${core.extractionJobs?.some(job => ['running', 'paused', 'failed'].includes(job.status)) ? '<p role="status">有未完成提取；可手动重试，不会自动重复计费。</p>' : ''}`);
-            if (channel === 'inline' && !lastBatch) root.insertAdjacentHTML('beforeend', `<p class="rp-empty">等待下一轮正文中的事件块。${button('capture', '检查最新正文')}</p>`);
-            root.insertAdjacentHTML('beforeend', more); return;
+            root.insertAdjacentHTML('beforeend', `<div class="rp-overview-grid"><section>${sectionHead('人物关系', 'people')}${presentation.rows(overview.filter(row => row.kind === 'relationships'), projection)}</section><section>${sectionHead('接下来的约定', 'plans')}${presentation.rows(overview.filter(row => row.kind === 'plans'), projection)}</section><section class="rp-wide">${sectionHead('最近变化', 'history')}${presentation.rows(buildStatePage(core, view, { tab: 'history', filter: 'facts', floor: nav.floor }).rows.slice(0, 3), projection, { recent: true })}</section></div>`);
+            if (channel === 'independent' && nav.floor == null) root.insertAdjacentHTML('beforeend', `<div class="rp-controls rp-run-controls">${button('extract', '处理最新正文')}${button('stop', '停止提取')}</div>${core.extractionJobs?.some(job => ['running', 'paused', 'failed'].includes(job.status)) ? '<p role="status">有未完成提取；可手动重试，不会自动重复计费。</p>' : ''}`);
+            if (channel === 'inline' && !lastBatch && nav.floor == null) root.insertAdjacentHTML('beforeend', `<div class="rp-controls rp-run-controls">${button('capture', '检查最新正文')}</div>`);
+            root.insertAdjacentHTML('beforeend', footer); return;
         }
+        if (nav.tab === 'people') root.insertAdjacentHTML('beforeend', `<div class="rp-filters">${Object.entries({ '': '全部', people: '人物', relationships: '关系' }).map(([key, label]) => button('filter', label, `data-rp-filter="${key}" aria-pressed="${nav.filter === key}"`)).join('')}</div>`);
         if (nav.tab === 'world') root.insertAdjacentHTML('beforeend', `<div class="rp-filters">${Object.entries({ plans: '约定', items: '物品', locations: '地点' }).map(([key, label]) => button('filter', label, `data-rp-filter="${key}" aria-pressed="${(nav.filter || 'plans') === key}"`)).join('')}</div>`);
-        if (nav.tab === 'history') root.insertAdjacentHTML('beforeend', `<div class="rp-filters">${Object.entries({ '': '全部', ...trackLabels }).map(([key, label]) => button('filter', label, `data-rp-filter="${key}" aria-pressed="${nav.filter === key}"`)).join('')}</div><details class="rp-snapshot"><summary>查看过去某一楼的状态</summary><label>楼层<input class="text_pole" type="number" min="0" data-rp-floor value="${nav.floor ?? ''}"></label>${button('snapshot', '查看快照')}</details>${nav.floor == null ? '' : button('current', '返回当前状态')}`);
-        if (nav.floor != null) root.insertAdjacentHTML('beforeend', `<p role="status">第 ${nav.floor} 楼时已知状态 · 只读</p>`);
-        if (nav.tab !== 'overview') root.insertAdjacentHTML('beforeend', `<form class="rp-search"><label>搜索<input class="text_pole" data-rp-search type="search" value="${esc(nav.search)}"></label>${button('search', '查找')}</form>`);
+        if (nav.tab === 'history') root.insertAdjacentHTML('beforeend', `<div class="rp-filters">${Object.entries({ '': '全部', ...trackLabels }).map(([key, label]) => button('filter', label, `data-rp-filter="${key}" aria-pressed="${nav.filter === key}"`)).join('')}</div><details class="rp-snapshot"><summary>查看过去某一楼的状态</summary><label>楼层<input class="text_pole" type="number" min="0" data-rp-floor value="${nav.floor ?? ''}"></label>${button('snapshot', '查看快照')}</details>`);
+        if (nav.tab !== 'overview') root.insertAdjacentHTML('beforeend', `<form class="rp-search"><label><span class="rp-sr-only">搜索当前列表</span><input class="text_pole" data-rp-search type="search" placeholder="${nav.tab === 'people' ? '查找人物、关系…' : '查找当前列表…'}" value="${esc(nav.search)}"></label>${button('search', '查找')}</form>`);
         const page = buildStatePage(core, view, nav);
         nav.page = page.page;
-        root.insertAdjacentHTML('beforeend', rowsMarkup(page.rows));
+        if (nav.tab === 'people' && page.rows.length) {
+            for (const [kind, title] of Object.entries({ people: '故事里的人', relationships: '人物关系' })) {
+                const rows = page.rows.filter(row => row.kind === kind);
+                if (rows.length) root.insertAdjacentHTML('beforeend', sectionHead(title) + presentation.rows(rows, projection));
+            }
+        } else root.insertAdjacentHTML('beforeend', presentation.rows(page.rows, projection));
         if (page.pages > 1) root.insertAdjacentHTML('beforeend', `<div class="rp-pager">${button('prev', '上一页', page.page ? '' : 'disabled')}<span>${page.page + 1} / ${page.pages}</span>${button('next', '下一页', page.page === page.pages - 1 ? 'disabled' : '')}</div>`);
-        root.scrollTop = nav.scroll || 0;
-        root.insertAdjacentHTML('beforeend', more);
+        root.insertAdjacentHTML('beforeend', footer);
     }
     function readMappings(root, nav) {
         for (const mapping of nav.mappings || []) {
@@ -119,7 +125,6 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         const collection = kind === 'candidate' ? core.candidates : core[kind] || projection[kind] || [];
         const item = collection.find(value => value.id === id && (nav.floor == null || !['facts', 'claims', 'observations', 'candidate'].includes(kind) || value.floor <= nav.floor));
         root.insertAdjacentHTML('beforeend', button('back', '返回列表'));
-        if (nav.floor != null) root.insertAdjacentHTML('beforeend', `<p role="status">第 ${nav.floor} 楼时已知状态 · 只读</p>`);
         if (!item) { root.insertAdjacentHTML('beforeend', '<p>记录不在当前视图中。</p>'); return; }
         const record = ['facts', 'claims', 'observations', 'candidate'].includes(kind);
         const title = record ? describeRecord(item, projection) : kind === 'relationships' ? relationshipName(projection, item) : item.name || item.title;
@@ -140,34 +145,35 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
                 const preview = previews.get(state);
                 if (preview?.candidateId === id) content += `<section class="rp-preview"><h4>确认后的影响</h4>${esc(preview.description)}${button('review-confirm', '确认入账')}${button('preview-cancel', '取消')}</section>`;
             }
-        } else if (kind === 'people') {
-            content += line('当前位置', entityName(projection, item.location)) + line('年龄', item.age?.value)
-                + line('别名', (item.aliases || []).join('、') || '无') + line('特征', (item.traits || []).join('；') || '未知');
-        } else if (kind === 'relationships') {
-            content += line('状态', stateLabels[item.status]) + line('开始', item.since) + line('持续天数', item.elapsedDays)
-                + line('下一纪念日', item.anniversary?.nextDate);
-            for (const event of [...(item.milestones || []), ...(item.conflicts || [])].slice(-20)) content += line(event.date || '时间未定', event.description);
-        } else if (kind === 'plans') {
-            content += line('参与者', names(projection, item.participants)) + line('履约状态', stateLabels[item.status]) + line('期限', item.due) + line('结果', item.outcome || '尚无结果');
-        } else if (kind === 'items') {
-            content += line('所有者', entityName(projection, item.owner)) + line('持有者', entityName(projection, item.holder)) + line('存放地点', entityName(projection, item.location)) + line('数量', item.quantity) + line('状态', stateLabels[item.status]);
-        } else content += line('上级地点', entityName(projection, item.parent));
-        root.insertAdjacentHTML('beforeend', `<section class="rp-detail rp-sheet">${content}</section>`);
+        } else content = presentation.entityDetail(kind, item, core, projection, nav.floor);
+        root.insertAdjacentHTML('beforeend', `<section class="rp-detail${record ? ' rp-review-detail' : ''}">${content}</section>`);
     }
     async function action(element) {
         const state = getState(), nav = navigation.get(state), root = document.querySelector('#bakemono-rp-root');
         if (renderedStates.get(element.closest('#bakemono-rp-root, #bakemono-rp-review')) !== state) throw new Error('聊天已切换，请重新打开剧情状态');
         const name = element.dataset.rpAction;
+        nav.notice = '';
         if (name === 'legacy') { navigate('tables'); return; }
-        if (name === 'tab') Object.assign(nav, { tab: element.dataset.rpTab, page: 0, filter: '', selected: null, search: '', scroll: 0, settings: false, evidenceDraft: null, floor: null });
-        if (['people', 'plans', 'history', 'facts'].includes(name)) Object.assign(nav, { tab: name === 'plans' ? 'world' : name === 'facts' ? 'history' : name, filter: name === 'plans' ? 'plans' : name === 'facts' ? 'facts' : '', page: 0, selected: null, search: '', floor: null });
+        if (name === 'tab') Object.assign(nav, { tab: element.dataset.rpTab, page: 0, filter: '', selected: null, search: '', scroll: 0, settings: false, evidenceDraft: null, trail: [] });
+        if (['people', 'plans', 'history', 'facts'].includes(name)) Object.assign(nav, { tab: name === 'plans' ? 'world' : name === 'facts' ? 'history' : name, filter: name === 'plans' ? 'plans' : name === 'facts' ? 'facts' : '', page: 0, selected: null, search: '', trail: [] });
         if (name === 'filter') Object.assign(nav, { filter: element.dataset.rpFilter, page: 0, search: '', scroll: 0 });
         if (name === 'search') Object.assign(nav, { search: root.querySelector('[data-rp-search]')?.value || '', page: 0, scroll: 0 });
         if (name === 'prev') nav.page = Math.max(0, nav.page - 1);
         if (name === 'next') nav.page++;
-        if (name === 'detail' || name === 'review-open') { nav.scroll = root?.scrollTop || 0; nav.evidenceDraft = null; repairs.delete(state); previews.delete(state); nav.selected = { kind: element.dataset.rpKind || 'candidate', id: element.dataset.rpId }; if (name === 'review-open') { nav.floor = null; nav.settings = false; } navigate('rp-state'); }
-        if (name === 'pending') { Object.assign(nav, { tab: 'history', filter: 'pending', selected: null, page: 0, floor: null, settings: false }); navigate('rp-state'); }
-        if (name === 'back') { nav.selected = null; nav.evidenceDraft = null; previews.delete(state); repairs.delete(state); }
+        if (name === 'detail' || name === 'review-open') {
+            if (name === 'review-open') { nav.trail = []; nav.selected = null; nav.floor = null; nav.settings = false; }
+            nav.trail ||= [];
+            nav.trail.push({ selected: nav.selected, tab: nav.tab, filter: nav.filter, page: nav.page, search: nav.search, floor: nav.floor,
+                scroll: scrollSurface(root)?.scrollTop || 0, origin: detailOrigin(element) });
+            nav.evidenceDraft = null; repairs.delete(state); previews.delete(state);
+            nav.selected = { kind: element.dataset.rpKind || 'candidate', id: element.dataset.rpId }; navigate('rp-state');
+        }
+        if (name === 'pending') { Object.assign(nav, { tab: 'history', filter: 'pending', selected: null, page: 0, floor: null, settings: false, trail: [] }); navigate('rp-state'); }
+        if (name === 'back') {
+            const previous = nav.trail?.pop();
+            Object.assign(nav, previous || { selected: null, scroll: 0 });
+            nav.evidenceDraft = null; previews.delete(state); repairs.delete(state);
+        }
         if (name === 'settings') { nav.settings = !nav.settings; nav.settingsDraft = null; }
         if (name === 'enable-preview') nav.setup = true;
         if (name === 'setup-cancel') nav.setup = false;
@@ -192,11 +198,16 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         if (name === 'snapshot') {
             const value = root.querySelector('[data-rp-floor]')?.value;
             if (value === '' || !Number.isSafeInteger(Number(value)) || Number(value) < 0) throw new Error('请输入有效楼层');
-            Object.assign(nav, { floor: Number(value), page: 0 });
+            Object.assign(nav, { floor: Number(value), page: 0, tab: 'overview', filter: '', selected: null, trail: [] });
         }
-        if (name === 'current') nav.floor = null;
+        if (name === 'current') { nav.floor = null; nav.selected = null; nav.trail = []; }
         if (name === 'extract') await flow.runIndependent({ manual: true });
-        if (name === 'capture' && !await flow.captureInline()) throw new Error('本轮尚无可处理事件块，或延迟模式正在等待下一轮。普通 bakemono 摘要不会直接变成事实。');
+        if (name === 'capture') {
+            const result = await flow.captureInline({ detailed: true });
+            nav.notice = ({ processed: '本轮事件已处理，请查看当前状态和待确认项。', unchanged: '本轮事件已处理过，没有新增内容。',
+                delayed: '延迟一轮已开启，发送下一条消息后处理上一轮。', busy: '当前任务正在运行，请稍后再试。',
+                inactive: '请先在维护设置中开启随正文维护。', missing: '最新回复没有完整的 rpEvents 事件块。' })[result.status];
+        }
         if (name === 'repair-preview') {
             nav.evidenceDraft = root.querySelector('[data-rp-excerpt]')?.value || '';
             previews.delete(state); repairs.delete(state);
@@ -220,9 +231,9 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         if (name === 'review-confirm') {
             const preview = previews.get(state);
             if (!preview || preview.candidateId !== nav.selected.id) throw new Error('请重新预览');
-            await preview.commit(); previews.delete(state); nav.selected = null;
+            await preview.commit(); previews.delete(state); nav.selected = null; nav.trail = []; nav.notice = '记录已保存。';
         }
-        if (name === 'ignore') { await service.review(nav.selected.id, 'ignore'); nav.selected = null; }
+        if (name === 'ignore') { await service.review(nav.selected.id, 'ignore'); nav.selected = null; nav.trail = []; }
         if (name === 'preview-cancel') previews.delete(state);
         if (name === 'source') {
             const item = (nav.selected.kind === 'candidate' ? state.rpCore.candidates : state.rpCore[nav.selected.kind]).find(value => value.id === nav.selected.id);
@@ -230,7 +241,16 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         }
         if (getState() !== state) return;
         nav.error = ''; render(state); renderReview(state); refresh?.();
-        if (['detail', 'review-open'].includes(name)) root.querySelector('.rp-detail-title')?.focus();
+        if (['detail', 'review-open'].includes(name)) { scrollSurface(root).scrollTop = 0; root.querySelector('.rp-detail-title')?.focus({ preventScroll: true }); }
+        if (name === 'back') {
+            [...root.querySelectorAll('[data-rp-action="detail"]')].find(node => node.dataset.rpKind === nav.origin?.kind && node.dataset.rpId === nav.origin?.id)?.focus({ preventScroll: true });
+            scrollSurface(root).scrollTop = nav.scroll || 0;
+        }
+        if (['tab', 'filter', 'prev', 'next', 'search', 'snapshot', 'current'].includes(name)) {
+            const selector = name === 'tab' ? `[data-rp-tab="${nav.tab}"]` : name === 'filter' ? `[data-rp-filter="${nav.filter}"]` : '[data-rp-search]';
+            root.querySelector(selector)?.focus({ preventScroll: true });
+            scrollSurface(root).scrollTop = 0;
+        }
     }
     const click = async event => {
         const element = event.target.closest?.('[data-rp-action]');
@@ -263,7 +283,13 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         document.removeEventListener('change', change); document.addEventListener('change', change);
         document.removeEventListener('submit', submit); document.addEventListener('submit', submit);
         document.removeEventListener('input', input); document.addEventListener('input', input);
+        document.removeEventListener('keydown', keydown); document.addEventListener('keydown', keydown);
     }
+    const keydown = event => {
+        if (event.key !== 'Escape' || !event.target.closest?.('#bakemono-rp-root') || !navigation.get(getState()).selected) return;
+        const back = document.querySelector('#bakemono-rp-root [data-rp-action="back"]');
+        if (back) { event.preventDefault(); event.stopPropagation(); void click({ target: back, preventDefault() {} }); }
+    };
     const input = event => {
         if (!event.target.matches?.('[data-rp-excerpt]') || renderedStates.get(event.target.closest('#bakemono-rp-root')) !== getState()) return;
         const state = getState();

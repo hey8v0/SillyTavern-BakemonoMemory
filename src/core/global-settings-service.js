@@ -1,3 +1,5 @@
+import { refreshBuiltInThemePresets } from '../theme/theme-schema.js';
+
 export function createGlobalSettingsService({
     extensionSettings,
     storageKey,
@@ -51,11 +53,7 @@ export function createGlobalSettingsService({
             : storedCustomTheme
                 ? [normalizeCustomThemePreset({ ...storedCustomTheme, id: storedCustomTheme.id || 'bakemono-legacy-custom-theme' })]
                 : [];
-        for (const builtInTheme of [...builtInCustomThemeDefinitions].reverse()) {
-            if (!settings.ui.themePresets.some(preset => preset.id === builtInTheme.id)) {
-                settings.ui.themePresets.unshift(normalizeCustomThemePreset(builtInTheme));
-            }
-        }
+        refreshBuiltInThemePresets(settings.ui, builtInCustomThemeDefinitions, { sanitizeCustomTheme, normalizeCustomThemePreset });
         if (!settings.ui.selectedThemePresetId || !settings.ui.themePresets.some(preset => preset.id === settings.ui.selectedThemePresetId)) {
             settings.ui.selectedThemePresetId = 'bakemono-warm-paper-day';
         }

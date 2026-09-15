@@ -37,7 +37,7 @@ function vectorFixture(count = 150, overrides = {}) {
         getClippedVectorText: String, readVectorMemoryFieldsFromUi: noop, syncInjection: noop,
         renderWorkbenchScope: noop, workbenchRenderScopes: {}, saveState: noop, toastr,
         embeddingCache: { get: async key => cache.get(key), put: async (key, value) => cache.set(key, value) },
-        yieldToUi: async () => { yields++; },
+        yieldToUi: async () => { yields++; }, waitForSourceSettle: async () => {},
         fetchImpl: async () => { calls++; return new Response(JSON.stringify({ data: [{ embedding: [0.2, 0.8, 0.4] }] })); },
         ...overrides,
     };
@@ -101,11 +101,123 @@ test('recall retries the newest source after a pending build is invalidated by a
     f.chat[0].mes += '追加内容';
     const recall = service.retrieveVectorMemoryHits('线索');
     release();
-    assert.ok(await pending instanceof Error);
+    assert.ok(Array.isArray(await pending));
     await recall;
     assert.equal(f.state.vectorMemory.lastIndexedSignature, service.getVectorSourceSignature());
     assert.equal(f.state.vectorMemory.records[0].text, '第一版变化追加内容');
     assert.equal(calls, 2);
+});
+
+test('automatic indexing follows late appends without reporting an API failure', async () => {
+    let timer, requests = 0;
+    const warnings = [];
+    const f = vectorFixture(1, { setTimer: fn => { timer = fn; return 1; }, clearTimer() {},
+        toastr: { ...toastr, warning: text => warnings.push(text) },
+        fetchImpl: async () => {
+            if (++requests <= 2) f.chat[0].mes += '追加' + requests;
+            return new Response(JSON.stringify({ data: [{ embedding: [1, 2, 3] }] }));
+        } });
+    f.service.scheduleVectorAutoIndex();
+    await timer();
+    assert.equal(requests, 3);
+    assert.deepEqual(warnings, []);
+    assert.equal(f.state.vectorMemory.records[0].text, f.chat[0].mes);
+    assert.equal(f.state.vectorMemory.lastIndexedSignature, f.service.getVectorSourceSignature());
+});
+
+test('continued source changes defer a bounded build, preserve old index and retry after quiet', async () => {
+    const f = vectorFixture(1);
+    await f.service.buildVectorMemoryIndex();
+    const previous = f.state.vectorMemory.records;
+    f.chat[0].mes += '开始变化';
+    let timer, changing = true, requests = 0;
+    const service = createVectorMemoryService({ ...f.dependencies, setTimer: fn => { timer = fn; return 1; }, clearTimer() {},
+        fetchImpl: async () => {
+            requests++;
+            if (changing) f.chat[0].mes += '继续变化';
+            return new Response(JSON.stringify({ data: [{ embedding: [1, 2, 3] }] }));
+        } });
+    assert.equal(await service.buildVectorMemoryIndex(), false);
+    assert.equal(requests, 3);
+    assert.equal(f.state.vectorMemory.records, previous);
+    assert.equal(f.state.vectorMemory.dirty, true);
+    assert.match(f.state.vectorMemory.lastRecallSkippedReason, /正文仍在更新/);
+    changing = false;
+    await timer();
+    assert.equal(service.getVectorSourceSignature(), f.state.vectorMemory.lastIndexedSignature);
+    assert.equal(f.state.vectorMemory.lastRecallSkippedReason, '');
+});
+
+test('source retry keeps all completed embeddings even beyond the short runtime cache', async () => {
+    const f = vectorFixture(140);
+    let first = true;
+    const service = createVectorMemoryService({ ...f.dependencies,
+        embeddingCache: { get: async () => null, put: async () => {} },
+        yieldToUi: async () => { if (first && f.calls() === 140) { first = false; f.chat[139].mes += '尾部追加'; } },
+    });
+    await service.buildVectorMemoryIndex();
+    assert.equal(f.calls(), 141);
+    assert.equal(f.state.vectorMemory.records.length, 140);
+});
+
+test('real API errors are not retried as source churn', async () => {
+    let requests = 0;
+    const f = vectorFixture(1, { fetchImpl: async () => { requests++; throw Error('network disconnected'); } });
+    await assert.rejects(f.service.buildVectorMemoryIndex(), /network disconnected/);
+    assert.equal(requests, 1);
+});
+
+test('excluded widgets added during embedding neither cancel nor retry the build', async () => {
+    let requests = 0;
+    const f = vectorFixture(1, { stripConfiguredTags, stripHtml: text => text.replace(/<[^>]*>/g, ''),
+        fetchImpl: async () => {
+            requests++;
+            f.chat[0].mes += '<widget>控件</widget><rpEvents>{"version":1,"events":[]}</rpEvents>';
+            return new Response(JSON.stringify({ data: [{ embedding: [1, 2, 3] }] }));
+        } });
+    f.state.vectorMemory.excludeTags = 'widget';
+    await f.service.buildVectorMemoryIndex();
+    assert.equal(requests, 1);
+    assert.equal(f.state.vectorMemory.records[0].text, '剧情 0');
+});
+
+test('pause or chat switch during source settling prevents a retry from writing', async () => {
+    for (const mode of ['pause', 'chat', 'configuration']) {
+        const f = vectorFixture(1);
+        let current = f.state, calls = 0, service;
+        service = createVectorMemoryService({ ...f.dependencies, getState: () => current,
+            fetchImpl: async () => {
+                calls++; f.chat[0].mes += '追加';
+                return new Response(JSON.stringify({ data: [{ embedding: [1, 2, 3] }] }));
+            },
+            waitForSourceSettle: async () => {
+                if (mode === 'pause') service.pauseVectorIndex();
+                else if (mode === 'chat') current = structuredClone(f.state);
+                else f.state.vectorMemory.chunkSize = 450;
+            },
+        });
+        if (mode === 'pause') assert.equal(await service.buildVectorMemoryIndex(), false);
+        else await assert.rejects(service.buildVectorMemoryIndex(), /聊天|配置/);
+        assert.equal(calls, 1);
+        assert.equal(f.state.vectorMemory.records.length, 0);
+        assert.equal(current.vectorMemory.records.length, 0);
+    }
+});
+
+test('a late append during query embedding schedules refresh without injecting stale hits', async () => {
+    let timer;
+    const f = vectorFixture(1, { setTimer: fn => { timer = fn; return 1; }, clearTimer() {},
+        fetchImpl: async (_url, options) => {
+            if (JSON.parse(options.body).input === 'search') f.chat[0].mes += '追加组件';
+            return new Response(JSON.stringify({ data: [{ embedding: [1, 2, 3] }] }));
+        } });
+    Object.assign(f.state.vectorMemory, { queryMode: 'off', skipIfAllInContext: false, contextWindowMessages: 0 });
+    await f.service.buildVectorMemoryIndex();
+    assert.deepEqual(await f.service.retrieveVectorMemoryHits('search'), []);
+    assert.match(f.state.vectorMemory.lastRecallSkippedReason, /正文仍在更新/);
+    assert.deepEqual(f.state.vectorMemory.lastHits, []);
+    await timer();
+    assert.equal(f.state.vectorMemory.lastIndexedSignature, f.service.getVectorSourceSignature());
 });
 
 test('150 indexed fragments are reused across scans and reload; one appended fragment costs one request', async () => {

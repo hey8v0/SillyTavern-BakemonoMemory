@@ -1,3 +1,16 @@
+export function refreshBuiltInThemePresets(ui, definitions, { sanitizeCustomTheme, normalizeCustomThemePreset }) {
+    for (const definition of [...definitions].reverse()) {
+        const index = ui.themePresets.findIndex(preset => preset.id === definition.id);
+        const previous = ui.themePresets[index];
+        const wasActive = ui.selectedThemePresetId === definition.id && previous
+            && JSON.stringify(sanitizeCustomTheme(ui.customTheme)) === JSON.stringify(sanitizeCustomTheme(previous));
+        const next = normalizeCustomThemePreset(definition);
+        if (index < 0) ui.themePresets.unshift(next);
+        else ui.themePresets[index] = next;
+        if (wasActive) ui.customTheme = sanitizeCustomTheme(next);
+    }
+}
+
 export function createThemeSchema({ getHash } = {}) {
     const CUSTOM_THEME_SCHEMA = 'bakemono-memory-theme/v1';
     const CUSTOM_THEME_LIBRARY_SCHEMA = 'bakemono-memory-theme-library/v1';
@@ -19,22 +32,22 @@ export function createThemeSchema({ getHash } = {}) {
         name: '暖纸日间',
         appearance: 'light',
         tokens: {
-            paper: '#eee4ce',
-            paperRaised: '#f8f1df',
-            paperSoft: '#ddd0b5',
-            ink: '#40382b',
-            muted: '#7c715f',
-            accent: '#81734a',
-            secondary: '#6d775e',
-            accentStrong: '#5f5638',
-            line: '#c8baa0',
-            backdrop: '#302b25',
-            danger: '#a14f45',
+            paper: '#f6f3eb',
+            paperRaised: '#fcfaf5',
+            paperSoft: '#e9eaf0',
+            ink: '#303238',
+            muted: '#656870',
+            accent: '#616a88',
+            secondary: '#486b59',
+            accentStrong: '#434e70',
+            line: '#d8d5ce',
+            backdrop: '#272b38',
+            danger: '#9d4a46',
         },
         effects: {
-            gradientStrength: 10,
+            gradientStrength: 0,
             gradientAngle: 145,
-            grain: 4,
+            grain: 0,
             shadow: 18,
             radius: 12,
         },
@@ -59,22 +72,22 @@ export function createThemeSchema({ getHash } = {}) {
             name: '暖纸夜间',
             appearance: 'dark',
             tokens: {
-                paper: '#211e1a',
-                paperRaised: '#2b2721',
-                paperSoft: '#383126',
-                ink: '#eee3ce',
-                muted: '#b8aa92',
-                accent: '#c19a63',
-                secondary: '#87917a',
-                accentStrong: '#ddb67d',
-                line: '#51483b',
-                backdrop: '#12110f',
-                danger: '#c9796c',
+                paper: '#27292c',
+                paperRaised: '#2d3034',
+                paperSoft: '#353b49',
+                ink: '#e8e6df',
+                muted: '#b0b1b5',
+                accent: '#a3afcd',
+                secondary: '#b0ccb7',
+                accentStrong: '#c0cbe4',
+                line: '#484b50',
+                backdrop: '#191b1e',
+                danger: '#e0a29d',
             },
             effects: {
-                gradientStrength: 12,
+                gradientStrength: 0,
                 gradientAngle: 150,
-                grain: 5,
+                grain: 0,
                 shadow: 22,
                 radius: 12,
             },

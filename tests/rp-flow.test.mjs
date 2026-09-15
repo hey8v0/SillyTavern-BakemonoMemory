@@ -109,6 +109,18 @@ test('preset-only chats get inline events without enabling legacy summary or rep
     assert.match(f.chat[0].mes, /<bakemono>预设自带摘要<\/bakemono>/);
 });
 
+test('inline capture distinguishes an already processed tagged block from missing and delayed input', async () => {
+    const f = await fixture();
+    f.getState().turnSummary.enabled = false;
+    assert.equal((await f.flow.captureInline({ detailed: true })).status, 'missing');
+    f.chat[0].mes += response;
+    assert.equal((await f.flow.captureInline({ detailed: true })).status, 'processed');
+    assert.equal((await f.flow.captureInline({ detailed: true })).status, 'unchanged');
+    assert.equal(f.getState().rpCore.batches.length, 1);
+    f.getState().turnSummary.triggerTiming = 'next_user';
+    assert.equal((await f.flow.captureInline({ detailed: true })).status, 'delayed');
+});
+
 test('the real summary controller reuses one response and rejects changed source before creating a draft', async () => {
     for (const stale of [false, true]) {
         const f = await fixture(), state = f.getState();

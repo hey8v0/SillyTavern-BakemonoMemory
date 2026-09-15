@@ -4,6 +4,23 @@ import { createWorkbenchNavigation } from '../src/ui/workbench-navigation.js';
 import { createVectorActionsController } from '../src/features/vector-actions-controller.js';
 import { createVectorSettingsModel } from '../src/features/vector-settings-model.js';
 import { createConfigurationService } from '../src/features/configuration-service.js';
+import { readFile } from 'node:fs/promises';
+
+test('RP state has a menu entry while tables and vectors remain in the data hub', async () => {
+    const navigation = createWorkbenchNavigation();
+    assert.equal(navigation.getMenuTab('tables'), 'data-hub');
+    assert.equal(navigation.getMenuTab('vector'), 'data-hub');
+    assert.equal(navigation.getMenuTab('rp-state'), 'rp-state');
+    const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
+    assert.doesNotMatch(html, /data-bakemono-tab="tables"/);
+    assert.doesNotMatch(html, /data-bakemono-tab="vector"/);
+    assert.match(html, /data-bakemono-nav="tables"/);
+    assert.match(html, /data-bakemono-nav="vector"/);
+    assert.match(html, /data-bakemono-tab="rp-state"/);
+    assert.doesNotMatch(html, /id="bakemono-story-state"/);
+    assert.match(html, /id="bakemono-story-backup"/);
+    assert.match(html, /id="bakemono-memory-table-list"/);
+});
 
 test('saving another configuration page preserves committed vector settings', () => {
     const state = { vectorMemory: { enabled: true, customApi: { model: 'saved' } } };

@@ -85,16 +85,18 @@ export function createRpExtractionFlow({ getState, getChat, service, makeSourceI
         assertCurrent(ticket);
         return { status: 'processed', result };
     }
-    async function captureInline() {
+    async function captureInline({ detailed = false } = {}) {
         const state = getState(), chat = getChat();
-        if (channel(state) !== 'inline' || isBusy()) return false;
+        const report = result => detailed ? result : result.status === 'processed';
+        if (channel(state) !== 'inline') return report({ status: 'inactive' });
+        if (isBusy()) return report({ status: 'busy' });
         const latestVisible = [...chat].reverse().find(message => message && !message.is_system);
-        if (state.turnSummary?.triggerTiming === 'next_user' && !latestVisible?.is_user) return false;
+        if (state.turnSummary?.triggerTiming === 'next_user' && !latestVisible?.is_user) return report({ status: 'delayed' });
         let floor = chat.length - 1;
         while (floor >= 0 && (!chat[floor] || chat[floor].is_user || chat[floor].is_system)) floor--;
-        if (floor < 0 || !/<rpEvents\b/i.test(chat[floor].mes || '')) return false;
+        if (floor < 0 || !/<rpEvents\b/i.test(chat[floor].mes || '')) return report({ status: 'missing' });
         const result = await consume(capture(floor, 'inline'), chat[floor].mes);
-        return result.status === 'processed';
+        return report(result);
     }
     async function runIndependent({ manual = false, sourceFloor = null } = {}) {
         const state = getState();
