@@ -1,4 +1,5 @@
 import { createBm25Index, normalizeLexicalText, tokenizeBm25Text } from './bm25-index.js';
+import { getMatchedPhrases } from './matched-phrases.js';
 
 function unique(values = []) {
     return [...new Set(values.filter(Boolean))];
@@ -31,6 +32,7 @@ export function enrichHybridLexicalScores(records = [], queries = [], keywordTer
         return {
             ...record,
             ...score,
+            matchedPhrases: options.deferMatchedPhrases ? [] : getMatchedPhrases(record, queries, explicitKeywords),
             matchedTerms: matchedTerms
                 .slice()
                 .sort((a, b) => b.length - a.length || a.localeCompare(b))
@@ -65,7 +67,7 @@ export function selectHybridCandidates(records = [], queries = [], keywordTerms 
     const candidateCount = Math.max(1, Number(options.candidateCount || 20));
     const embeddingThreshold = Math.max(0, Number(options.embeddingThreshold || 0));
     const explicitKeywordCount = createHybridQueryTerms([], keywordTerms, options).explicitKeywords.length;
-    const enriched = enrichHybridLexicalScores(records, queries, keywordTerms, options);
+    const enriched = enrichHybridLexicalScores(records, queries, keywordTerms, { ...options, deferMatchedPhrases: true });
     const vectorRanked = enriched
         .filter(record => Number(record.embeddingScore || 0) >= embeddingThreshold)
         .slice()
@@ -116,5 +118,6 @@ export function selectHybridCandidates(records = [], queries = [], keywordTerms 
             || Number(b.reciprocalRankScore || 0) - Number(a.reciprocalRankScore || 0)
             || Number(b.embeddingScore || 0) - Number(a.embeddingScore || 0)
             || Number(b.messageId || 0) - Number(a.messageId || 0))
-        .slice(0, candidateCount * 2);
+        .slice(0, candidateCount * 2)
+        .map(record => ({ ...record, matchedPhrases: getMatchedPhrases(record, queries, keywordTerms) }));
 }

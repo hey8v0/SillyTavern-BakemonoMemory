@@ -1,6 +1,7 @@
 import { createEmbeddingCache, getEmbeddingCacheKey } from '../vector/embedding-cache.js';
 import { runApiRequest } from '../shared/request-policy.js';
 import { createBm25Index } from '../vector/bm25-index.js';
+import { groupRecallCandidates, selectRecallPlan } from '../vector/recall-plan.js';
 import { isMemoryCurrent, activeStoryCoverage, summaryItems, storyTimeContext } from '../memory/story-state.js';
 
 const sourceUpdatingMessage = '正文仍在更新，待稳定后自动刷新索引。';
@@ -59,6 +60,8 @@ export function createVectorMemoryService({
     getRpMemorySources = () => [],
 } = {}) {
     let vectorIndexTimer = null;
+    const recallPlans = new WeakMap();
+    const recallOutputKey = hits => JSON.stringify(hits.map(hit => [hit.id, hit.memoryHash, hit.recallTier, hit.text]));
     let indexRun = null;
     const lexicalIndex = createBm25Index();
     let lexicalState = null;
@@ -309,7 +312,7 @@ export function createVectorMemoryService({
     
     function getVectorRecallSourceRecords(state = ensureState()) {
         const records = Array.isArray(state.vectorMemory.records) ? state.vectorMemory.records : [];
-        const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
+        const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages ?? defaultVectorMemory.contextWindowMessages));
         if (state.vectorMemory.skipIfAllInContext === false || contextWindowMessages <= 0) {
             return records;
         }
@@ -321,7 +324,7 @@ export function createVectorMemoryService({
     }
     
     function shouldSkipVectorRecallForRecentWindow(state = ensureState()) {
-        const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
+        const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages ?? defaultVectorMemory.contextWindowMessages));
         if (state.vectorMemory.skipIfAllInContext === false || contextWindowMessages <= 0) {
             return false;
         }
@@ -371,6 +374,7 @@ export function createVectorMemoryService({
     }
     
     function clearVectorRecall(reason = '', state = ensureState()) {
+        recallPlans.delete(state);
         if (lexicalState !== state || !state.vectorMemory.records?.length) {
             lexicalIndex.clear();
             lexicalState = state;
@@ -408,7 +412,10 @@ export function createVectorMemoryService({
             keywordHits: item.keywordHitsTotal || item.keywordHits || 0,
             lexicalScore: Number((item.lexicalScore || 0).toFixed(4)),
             matchedTerms: Array.isArray(item.matchedTerms) ? item.matchedTerms.slice(0, 8) : [],
+            matchedPhrases: Array.isArray(item.matchedPhrases) ? item.matchedPhrases.slice(0, 8) : [],
             matchedKeywords: Array.isArray(item.matchedKeywords) ? item.matchedKeywords.slice(0, 8) : [],
+            decisionReason: item.decisionReason || '',
+            truncated: !!item.truncated,
             score,
             similarity,
             rerankScore: Number((item.rerankScore ?? score).toFixed(4)),
@@ -691,7 +698,7 @@ export function createVectorMemoryService({
         };
         const indexMode = String(state.vectorMemory.indexMode || defaultVectorMemory.indexMode);
         const chunkSize = Math.max(240, Number(state.vectorMemory.chunkSize || defaultVectorMemory.chunkSize));
-        const overlap = Math.max(0, Number(state.vectorMemory.overlap || defaultVectorMemory.overlap));
+        const overlap = Math.max(0, Number(state.vectorMemory.overlap ?? defaultVectorMemory.overlap));
         const longMessageThreshold = Math.max(240, Number(state.vectorMemory.longMessageThreshold || defaultVectorMemory.longMessageThreshold));
     
         for (const { message, messageId, cleanedText, summaryText } of getVectorSourceMessages(state)) {
@@ -831,12 +838,12 @@ export function createVectorMemoryService({
             return clearVectorRecall(`当前 AI 楼数少于 ${minAiMessages}，已跳过召回。`, state);
         }
         if (!explicitQuery && shouldSkipVectorRecallForRecentWindow(state)) {
-            const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
+            const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages ?? defaultVectorMemory.contextWindowMessages));
             return clearVectorRecall(`已索引内容都还在可见最近 ${contextWindowMessages} 楼内，已跳过向量召回。`, state);
         }
         const recallRecords = getVectorRecallSourceRecords(state);
         if (!recallRecords.length) {
-            const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
+            const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages ?? defaultVectorMemory.contextWindowMessages));
             return clearVectorRecall(`可召回内容都还在可见最近 ${contextWindowMessages} 楼内，已跳过向量召回。`, state);
         }
         let queries = [];
@@ -871,10 +878,7 @@ export function createVectorMemoryService({
         }
         const keywords = parseList(state.vectorMemory.keywordTriggers);
         const embeddingThreshold = Math.max(0, Number(state.vectorMemory.embeddingThreshold ?? state.vectorMemory.minScore ?? defaultVectorMemory.embeddingThreshold));
-        const rerankThreshold = Math.max(0, Number(state.vectorMemory.rerankThreshold ?? defaultVectorMemory.rerankThreshold));
         const rerankCandidateCount = Math.max(1, Number(state.vectorMemory.rerankCandidateCount || state.vectorMemory.topK || defaultVectorMemory.rerankCandidateCount));
-        const finalRecallCount = Math.max(1, Number(state.vectorMemory.finalRecallCount || state.vectorMemory.maxRecallMessages || defaultVectorMemory.finalRecallCount));
-        const fullRecallCount = Math.max(0, Number(state.vectorMemory.fullRecallCount ?? defaultVectorMemory.fullRecallCount));
         const scored = recallRecords.map(record => {
             const similarities = queryEmbeddings.map(embedding => cosineSimilarity(embedding, record.embedding || []));
             const similarity = similarities.length ? Math.max(...similarities) : 0;
@@ -904,7 +908,7 @@ export function createVectorMemoryService({
             keywordBoost: state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost,
         });
         if (!embeddingCandidates.length) {
-            const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages || defaultVectorMemory.contextWindowMessages));
+            const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages ?? defaultVectorMemory.contextWindowMessages));
             const recentVisibleIds = getRecentVisibleConversationMessageIds(contextWindowMessages);
             const fallbackCandidates = scored.filter(item => item.isHidden || !recentVisibleIds.has(Number(item.messageId)));
             if (fallbackCandidates.length) {
@@ -919,153 +923,70 @@ export function createVectorMemoryService({
         state.vectorMemory.lastEmbeddingCandidates = embeddingCandidates
             .slice(0, rerankCandidateCount)
             .map(item => serializeVectorRecallItem(item, { previewLimit: 240, textLimit: 480 }));
-        const byMessage = new Map();
-        for (const item of embeddingCandidates.slice(0, Math.max(rerankCandidateCount * 2, rerankCandidateCount))) {
-            const key = String(item.messageId);
-            const existing = byMessage.get(key);
-            const rerankScore = Number.isFinite(Number(item.hybridScore))
-                ? Number(item.hybridScore)
-                : computeVectorRerankScore(item, queries, state);
-            const enriched = {
-                ...item,
-                rerankScore,
-                score: rerankScore,
-                matchedChunks: 1,
-                keywordHitsTotal: item.keywordHits,
-            };
-            if (!existing || enriched.rerankScore > existing.rerankScore || enriched.embeddingScore > existing.embeddingScore) {
-                if (existing) {
-                    enriched.matchedChunks = existing.matchedChunks + 1;
-                    enriched.keywordHitsTotal = existing.keywordHitsTotal + item.keywordHits;
-                }
-                byMessage.set(key, enriched);
-            } else {
-                existing.matchedChunks += 1;
-                existing.keywordHitsTotal += item.keywordHits;
-            }
-        }
-    
-        const reranked = [...byMessage.values()]
-            .sort((a, b) => (b.rerankScore - a.rerankScore) || (b.embeddingScore - a.embeddingScore) || (b.keywordHitsTotal - a.keywordHitsTotal) || (Number(b.messageId) - Number(a.messageId)))
-            .slice(0, rerankCandidateCount);
-        state.vectorMemory.lastRerankCandidates = reranked.map(item => {
-            const recallTier = item.kind !== 'summary' && item.rerankScore >= rerankThreshold
-                ? 'full'
-                : (item.kind === 'summary' || item.summary ? 'summary' : 'dropped');
-            return serializeVectorRecallItem(item, { recallTier, previewLimit: 260, textLimit: 520 });
-        });
-        const fullHits = [];
-        const summaryHits = [];
-        for (const item of reranked) {
-            const fullText = getVectorCleanedMessageText(item.messageId, state) || item.text || '';
-            const base = {
-                ...item,
-                kind: item.kind === 'summary' ? 'summary' : 'message',
-                matchedText: item.text,
-                title: item.kind === 'summary'
-                    ? item.isSavedSummary
-                        ? item.title
-                        : `${item.role === 'user' ? '用户摘要' : item.isHidden ? '隐藏摘要' : '助手摘要'} #${item.messageId}`
-                    : `${item.role === 'user' ? '用户' : item.isHidden ? '隐藏楼层' : '助手'} #${item.messageId}`,
-                keywordHits: item.keywordHitsTotal || item.keywordHits,
-            };
-            if (item.kind !== 'summary' && item.rerankScore >= rerankThreshold && fullHits.length < fullRecallCount) {
-                fullHits.push({
-                    ...base,
-                    recallTier: 'full',
-                    text: fullText,
-                    preview: toPlainPreview(fullText, 220),
-                });
-            } else {
-                const summaryText = String(item.kind === 'summary' ? item.text : item.summary || '').trim();
-                if (summaryText) {
-                    summaryHits.push({
-                        ...base,
-                        recallTier: 'summary',
-                        text: summaryText,
-                        preview: toPlainPreview(summaryText, 220),
-                    });
-                }
-            }
-        }
-        const seenText = new Set();
-        const hits = [...fullHits, ...summaryHits].filter(item => {
-            const text = String(item.text || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
-            if (!text || seenText.has(text)) return false;
-            seenText.add(text); return true;
-        })
-            .slice(0, finalRecallCount)
-            .sort((a, b) => (
-                Number(a.messageId) - Number(b.messageId)
-                || Number(a.chunkIndex || 0) - Number(b.chunkIndex || 0)
-                || String(a.recallTier || '').localeCompare(String(b.recallTier || ''))
-            ));
+        const bodies = new Map(getVectorSourceMessages(state).map(item => [Number(item.messageId), item.cleanedText]));
+        const groups = groupRecallCandidates(embeddingCandidates, recallRecords, bodies, rerankCandidateCount);
         state.vectorMemory.lastQuery = queries.join('\n');
         state.vectorMemory.lastQueries = queries;
-        state.vectorMemory.lastRecallSkippedReason = hits.length ? '' : '没有内容通过当前向量阈值和重排规则。';
-        const textLimit = Math.max(240, Number(state.vectorMemory.maxStoredTextChars || defaultVectorMemory.maxStoredTextChars));
-        const hitTextLimit = Math.max(textLimit, Number(state.vectorMemory.perMessageMaxChars || defaultVectorMemory.perMessageMaxChars));
-        state.vectorMemory.lastHits = hits.map(hit => ({
-            id: hit.id,
-            kind: hit.kind || 'message',
-            recallTier: hit.recallTier || 'summary',
-            messageId: hit.messageId,
-            chunkIndex: hit.chunkIndex,
-            role: hit.role,
-            isHidden: hit.isHidden,
-            isSavedSummary: !!hit.isSavedSummary,
-            summaryType: hit.summaryType || '',
-            memoryHash: hit.memoryHash || '',
-            title: hit.title,
-            text: getClippedVectorText(hit.text, hit.recallTier === 'full' ? hitTextLimit : Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars))),
-            matchedText: getClippedVectorText(hit.matchedText || '', Math.min(textLimit, 480)),
-            matchedChunks: hit.matchedChunks || 1,
-            preview: hit.preview,
-            score: Number((hit.rerankScore ?? hit.score ?? 0).toFixed(4)),
-            similarity: Number((hit.embeddingScore ?? hit.similarity ?? 0).toFixed(4)),
-            rerankScore: Number((hit.rerankScore ?? hit.score ?? 0).toFixed(4)),
-            keywordHits: hit.keywordHits,
-            lexicalScore: Number((hit.lexicalScore || 0).toFixed(4)),
-            matchedTerms: Array.isArray(hit.matchedTerms) ? hit.matchedTerms.slice(0, 8) : [],
-            matchedKeywords: Array.isArray(hit.matchedKeywords) ? hit.matchedKeywords.slice(0, 8) : [],
-        }));
-        state.vectorMemory.estimatedChars = state.vectorMemory.lastHits.reduce((sum, hit) => sum + String(hit.text || '').length, 0);
-        state.vectorMemory.trimmedHitCount = Math.max(0, embeddingCandidates.length - hits.length);
+        const plan = { groups, signature, lastHits: null };
+        recallPlans.set(state, plan);
+        applyRecallPlan(state, plan);
+        state.vectorMemory.lastRecallSkippedReason = state.vectorMemory.lastHits.length ? '' : '没有内容通过当前召回规则或字数预算。';
         return state.vectorMemory.lastHits;
     }
-    
-    function renderVectorMemorySection(state = ensureState()) {
-        const hits = Array.isArray(state.vectorMemory.lastHits) ? state.vectorMemory.lastHits : [];
-        const maxChars = Math.max(200, Number(state.vectorMemory.maxInjectChars || defaultVectorMemory.maxInjectChars));
-        const perMessageMaxChars = Math.max(200, Number(state.vectorMemory.perMessageMaxChars || defaultVectorMemory.perMessageMaxChars));
-        let used = 0;
-        const lines = [];
+
+    function isRecallMemoryCurrent(hit, state, rpHashes) {
+        const memoryHash = hit.memoryHash || (hit.isSavedSummary ? summaryItems(state).find(item => String(hit.id || '').endsWith(`-${item.hash}`))?.hash : '');
+        if (String(memoryHash).startsWith('rp:')) return rpHashes.has(memoryHash);
+        if (memoryHash && !isMemoryCurrent(state, { hash: memoryHash })) return false;
+        return !(hit.isSavedSummary && !memoryHash && state.chronicle);
+    }
+
+    function applyRecallPlan(state, plan) {
         const rpHashes = new Set(getRpMemorySources(state).map(source => source.hash));
-        for (const hit of hits) {
-            const memoryHash = hit.memoryHash || (hit.isSavedSummary ? summaryItems(state).find(item => String(hit.id || '').endsWith(`-${item.hash}`))?.hash : '');
-            if (String(memoryHash).startsWith('rp:')) {
-                if (!rpHashes.has(memoryHash)) continue;
-            } else if (memoryHash && !isMemoryCurrent(state, { hash: memoryHash })) continue;
-            if (hit.isSavedSummary && !memoryHash && state.chronicle) continue;
-            const source = String(hit.text || '').trim();
-            const snippet = hit.kind === 'message' && source.length > perMessageMaxChars
-                ? `${source.slice(0, perMessageMaxChars)}...`
-                : source;
-            if (!snippet) {
-                continue;
-            }
-            const remaining = maxChars - used;
-            if (remaining <= 0) {
-                break;
-            }
-            const clipped = snippet.length > remaining ? `${snippet.slice(0, remaining)}...` : snippet;
-            used += clipped.length;
-            const tierLabel = hit.recallTier === 'full' ? '全文' : '摘要';
-            lines.push(`- 来源：${hit.title}（${tierLabel}，重排 ${hit.rerankScore ?? hit.score ?? 0}，相似度 ${hit.similarity ?? 0}${hit.keywordHits ? `，关键词命中 ${hit.keywordHits}` : ''}${hit.matchedChunks > 1 ? `，命中片段 ${hit.matchedChunks}` : ''}）\n${clipped}`);
+        const result = selectRecallPlan(plan.groups, { ...defaultVectorMemory, ...state.vectorMemory }, {
+            isCurrent: hit => isRecallMemoryCurrent(hit, state, rpHashes),
+        });
+        state.vectorMemory.lastRerankCandidates = result.decisions.map(item => serializeVectorRecallItem(item, {
+            recallTier: item.recallTier, previewLimit: 260, textLimit: 520,
+        }));
+        state.vectorMemory.lastHits = result.hits.map(hit => ({
+            ...serializeVectorRecallItem(hit),
+            memoryHash: hit.memoryHash || '',
+            sourceMessageIds: hit.sourceMessageIds,
+            sourceGroup: hit.sourceGroup,
+            text: hit.text, preview: hit.preview,
+            matchedText: getClippedVectorText(hit.matchedText || '', 480),
+        }));
+        state.vectorMemory.estimatedChars = result.text.length;
+        state.vectorMemory.trimmedHitCount = result.decisions.filter(item => item.recallTier === 'dropped').length;
+        plan.outputKey = recallOutputKey(state.vectorMemory.lastHits);
+        return result.text;
+    }
+
+    function renderVectorMemorySection(state = ensureState()) {
+        if (!state.vectorMemory?.enabled) return '';
+        const hits = state.vectorMemory.lastHits || [];
+        let plan = recallPlans.get(state);
+        // Explicit clearing, chat cleanup or imported state must not resurrect a cached plan.
+        if (plan && plan.outputKey !== recallOutputKey(hits)) { recallPlans.delete(state); plan = null; }
+        if (!hits.length && !plan) return '';
+        if (!state.vectorMemory.records?.length) { clearVectorRecall('', state); return ''; }
+        const signature = getVectorSourceSignature(state);
+        if ((plan?.signature || state.vectorMemory.lastIndexedSignature) !== signature) {
+            clearVectorRecall('召回来源已变化，请刷新后重新召回。', state);
+            return '';
         }
-        state.vectorMemory.estimatedChars = used;
-        state.vectorMemory.trimmedHitCount = Math.max(0, (state.vectorMemory.lastHits?.length || 0) - lines.length);
-        return lines.length ? `## 向量召回记忆\n${lines.join('\n\n')}` : '';
+        if (!plan) {
+            // Old/reloaded results can be re-budgeted, but cannot invent a lost body or summary.
+            plan = { signature, groups: hits.map(hit => ({
+                ...hit, rerankScore: Number(hit.rerankScore ?? hit.score ?? 0),
+                sourceGroup: hit.sourceGroup || hit.memoryHash || hit.id,
+                bodyText: hit.recallTier === 'full' ? hit.text : '', bodyTitle: hit.title,
+                summaryText: hit.recallTier !== 'full' ? hit.text : '', summaryTitle: hit.title,
+            })) };
+            recallPlans.set(state, plan);
+        }
+        return applyRecallPlan(state, plan);
     }
 
     return {

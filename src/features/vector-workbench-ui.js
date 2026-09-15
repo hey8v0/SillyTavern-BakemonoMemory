@@ -107,7 +107,7 @@ export function createVectorWorkbenchUi({
         const intent = String(state.vectorMemory.lastRewriteIntent || '').trim();
         const embeddingCandidates = state.vectorMemory.lastEmbeddingCandidates || [];
         const rerankCandidates = state.vectorMemory.lastRerankCandidates || [];
-        const renderRecallItems = (items = [], emptyText = '暂无内容。') => {
+        const renderRecallItems = (items = [], emptyText = '暂无内容。', showInjectedText = false) => {
             if (!items.length) {
                 return `<div class="bakemono-memory-empty">${escapeHtml(emptyText)}</div>`;
             }
@@ -123,15 +123,19 @@ export function createVectorWorkbenchUi({
                                 : '候选';
                 const meta = [
                     tier,
+                    item.truncated ? '已截断' : '',
                     `重排 ${item.rerankScore ?? item.score ?? 0}`,
                     `相似 ${item.similarity ?? 0}`,
                     item.lexicalScore ? `词项 ${item.lexicalScore}` : '',
                     item.keywordHits ? `关键词 ${item.keywordHits}` : '',
                     item.matchedChunks > 1 ? `命中片段 ${item.matchedChunks}` : '',
                 ].filter(Boolean).join(' · ');
-                const matchedTerms = Array.isArray(item.matchedTerms) && item.matchedTerms.length
-                    ? `<small>命中词：${escapeHtml(item.matchedTerms.join('、'))}</small>`
+                const phrases = Array.isArray(item.matchedPhrases) ? item.matchedPhrases : [];
+                const matchedTerms = phrases.length
+                    ? `<small>匹配短语：${escapeHtml(phrases.join('、'))}</small>`
                     : '';
+                const lexicalDetails = item.matchedTerms?.length
+                    ? `<details><summary>检索字片段</summary><small>${escapeHtml(item.matchedTerms.join('、'))}</small></details>` : '';
                 return `
                     <article class="bakemono-memory-vector-detail-item">
                       <div class="bakemono-memory-vector-detail-head">
@@ -139,7 +143,9 @@ export function createVectorWorkbenchUi({
                         <span>${escapeHtml(meta)}</span>
                       </div>
                       ${matchedTerms}
-                      <div class="bakemono-memory-vector-detail-text">${escapeHtml(item.preview || item.text || '')}</div>
+                      ${item.decisionReason ? `<small>${escapeHtml(item.decisionReason)}</small>` : ''}
+                      <div class="bakemono-memory-vector-detail-text">${escapeHtml(showInjectedText ? item.text || '' : item.preview || item.text || '')}</div>
+                      ${lexicalDetails}
                     </article>
                 `;
             }).join('');
@@ -166,7 +172,7 @@ export function createVectorWorkbenchUi({
             },
             {
                 title: `最终注入 · ${hits.length || 0} 条`,
-                body: renderRecallItems(hits, state.vectorMemory.lastRecallSkippedReason || '暂无最终注入。'),
+                body: renderRecallItems(hits, state.vectorMemory.lastRecallSkippedReason || '暂无最终注入。', true),
             },
         ];
         const fragment = document.createDocumentFragment();
@@ -201,8 +207,8 @@ export function createVectorWorkbenchUi({
             const item = document.createElement('section');
             item.className = 'bakemono-memory-vector-hit';
             const tierLabel = hit.recallTier === 'full' ? '全文' : '摘要';
-            const matchedTerms = Array.isArray(hit.matchedTerms) && hit.matchedTerms.length
-                ? ` · 命中 ${hit.matchedTerms.slice(0, 4).join('、')}`
+            const matchedTerms = Array.isArray(hit.matchedPhrases) && hit.matchedPhrases.length
+                ? ` · 匹配 ${hit.matchedPhrases.slice(0, 4).join('、')}`
                 : '';
             item.innerHTML = `
                 <div class="bakemono-memory-vector-hit-head">
@@ -264,7 +270,7 @@ export function createVectorWorkbenchUi({
             return;
         }
         container.innerHTML = '';
-        const hits = (state.vectorMemory.lastHits || []).slice(0, 4);
+        const hits = state.vectorMemory.lastHits || [];
         if (!hits.length) {
             const empty = document.createElement('div');
             empty.className = 'bakemono-memory-vector-result-empty';
