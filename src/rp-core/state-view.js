@@ -5,7 +5,7 @@ export const actionLabels = {
     person_state_started: '开始临时状态', person_state_ended: '结束临时状态',
     relationship_established: '建立关系', relationship_ended: '结束关系', relationship_conflict: '发生冲突', relationship_milestone: '关系节点',
     plan_proposed: '提出计划', promise_created: '作出承诺', plan_accepted: '接受约定', plan_modified: '修改约定', plan_completed: '履行约定', plan_cancelled: '取消约定', plan_failed: '约定失败',
-    item_acquired: '获得物品', item_lent: '借出物品', item_returned: '归还物品', item_gifted: '赠送物品', item_placed: '放置物品', item_consumed: '消耗物品', item_quantity_changed: '数量变化', item_damaged: '物品损坏', item_destroyed: '物品销毁',
+    item_acquired: '获得物品', item_registered: '登记物品', item_lent: '借出物品', item_returned: '归还物品', item_gifted: '赠送物品', item_placed: '放置物品', item_consumed: '消耗物品', item_quantity_changed: '数量变化', item_damaged: '物品损坏', item_destroyed: '物品销毁',
     location_created: '登记地点', location_reparented: '调整地点层级', clock_set: '设置剧情时间', clock_advanced: '推进剧情时间',
 };
 const kinds = { romantic: '恋爱', partner: '伴侣', married: '婚姻' };
@@ -34,6 +34,10 @@ export function createStateNavigation() {
     return { get, update(state, patch) { Object.assign(get(state), patch); return get(state); } };
 }
 
+export function isCurrentRpRecord(view, item) {
+    return !view?.sourceStates?.[item.id] || view.sourceStates[item.id] === 'current';
+}
+
 export function buildStatePage(core, view, navigation = {}) {
     const projection = view.projection, { tab = 'overview', filter = '', search = '' } = navigation;
     let rows = [];
@@ -50,16 +54,18 @@ export function buildStatePage(core, view, navigation = {}) {
     } else if (tab === 'history') {
         const visible = item => navigation.floor == null || item.floor <= navigation.floor;
         const retracted = new Set(core.decisions.filter(visible).filter(item => item.action === 'retract').map(item => item.factId));
-        if (filter === 'pending') rows = core.candidates.filter(item => visible(item) && item.status === 'pending').map(item => ({ kind: 'candidate', id: item.id,
+        if (filter === 'pending') rows = core.candidates.filter(item => visible(item) && isCurrentRpRecord(view, item) && item.status === 'pending').map(item => ({ kind: 'candidate', id: item.id,
             title: describeRecord(item, projection), status: '待确认', detail: item.reason || '等待审核', record: item, track: item.track }));
         else {
             const applied = new Set(view.applied);
             for (const track of ['facts', 'claims', 'observations']) {
-                if (filter && filter !== track) continue;
-                for (const item of core[track].filter(visible)) rows.push({ kind: track, id: item.id, title: describeRecord(item, projection),
-                    status: track === 'facts' ? retracted.has(item.id) ? '已撤回' : !applied.has(item.id) ? '待复核' : trackLabels[track] : trackLabels[track],
+                if (filter && filter !== 'source-history' && filter !== track) continue;
+                for (const item of core[track].filter(visible).filter(item => filter === 'source-history' ? !isCurrentRpRecord(view, item) : isCurrentRpRecord(view, item))) rows.push({ kind: track, id: item.id, title: describeRecord(item, projection),
+                    status: filter === 'source-history' ? '旧回复记录' : track === 'facts' ? retracted.has(item.id) ? '已撤回' : !applied.has(item.id) ? '待复核' : trackLabels[track] : trackLabels[track],
                     detail: `第 ${item.floor} 楼`, record: item, track });
             }
+            if (filter === 'source-history') rows.push(...core.candidates.filter(item => visible(item) && item.status === 'pending' && !isCurrentRpRecord(view, item)).map(item => ({ kind: 'candidate', id: item.id,
+                title: describeRecord(item, projection), status: '旧回复候选', detail: '不参与当前审核', record: item, track: item.track })));
             rows.sort((a, b) => b.record.sequence - a.record.sequence);
         }
     } else {

@@ -12776,6 +12776,11 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .rp-core-ui blockquote { margin: 15px 0; padding-inline: 13px; border-inline-start: 2px solid var(--bk-accent); white-space: pre-wrap; color: var(--bk-ink-soft); }
 #bakemono-workbench-root .rp-core-ui summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; color: var(--bk-ink-soft); font-size: .88em; }
 #bakemono-workbench-root .rp-core-ui :is(.rp-snapshot, .rp-evidence-editor) { margin-block: 15px; padding-top: 8px; border-top: 1px solid var(--bk-line); }
+#bakemono-workbench-root .rp-core-ui .rp-reference-editor { margin-block: 18px; padding-top: 12px; border-top: 1px solid var(--bk-line); }
+#bakemono-workbench-root .rp-core-ui .rp-reference-editor label { display: grid; gap: 7px; min-width: 0; margin-block: 12px; }
+#bakemono-workbench-root .rp-core-ui .rp-reference-editor :is(input, select) { width: 100%; min-width: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-reference-editor small { color: var(--bk-ink-soft); overflow-wrap: anywhere; }
+#bakemono-workbench-root .rp-core-ui .rp-reference-editor [hidden] { display: none !important; }
 #bakemono-workbench-root .rp-core-ui .rp-empty { padding: 20px; text-align: center; color: var(--bk-ink-soft); }
 #bakemono-workbench-root .rp-core-ui .rp-run-controls { margin-top: 20px; }
 #bakemono-workbench-root .rp-core-ui :is(.rp-scene-top, .rp-cast, .rp-relation-top, .rp-relation-bottom, .rp-item-title, .rp-change-row, .rp-detail-hero, .rp-footer, .rp-read-only) { display: flex; align-items: center; gap: 10px; }

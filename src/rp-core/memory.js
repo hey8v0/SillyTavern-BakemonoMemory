@@ -1,4 +1,4 @@
-import { describeRecord, entityName, relationshipName, stateLabels, trackLabels } from './state-view.js';
+import { describeRecord, entityName, relationshipName, stateLabels, trackLabels, isCurrentRpRecord } from './state-view.js';
 import { evidenceHash } from './source.js';
 
 export function rpMemorySources(state, view) {
@@ -8,6 +8,7 @@ export function rpMemorySources(state, view) {
     const result = [];
     for (const track of ['facts', 'claims', 'observations']) {
         for (const record of state.rpCore[track]) {
+            if (!isCurrentRpRecord(view, record)) continue;
             const validity = track === 'facts' ? retracted.has(record.id) ? '已撤回，不是当前事实' : applied.has(record.id) ? '有效事实' : '待复核，不作为当前事实'
                 : track === 'claims' ? '角色说法，未作为事实确认' : '主观观察，不作为世界事实';
             const title = `${trackLabels[track]} · ${describeRecord(record, projection)}`;

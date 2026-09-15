@@ -1,21 +1,23 @@
 import { createLedger, replayLedger, assertLedgerVersion } from './ledger.js';
 import { createProjection, applyDomainFact } from './domain.js';
 import { prepareExtraction, decideCandidate, refreshCandidateFingerprint } from './extraction.js';
-import { readChatSource, findChatSource } from './chat-sources.js';
+import { readChatSource, findChatSource, currentChatSources } from './chat-sources.js';
 import { createRpTransactions } from './transaction.js';
-import { locateEvidence } from './source.js';
+import { locateEvidence, suggestEvidenceRepair } from './source.js';
 import { deriveTimeViews } from './time-views.js';
+import { missingReferences } from './references.js';
+import { prepareReferenceRepair } from './reference-repair.js';
 
 export function createRpCoreService({ getState, getChat, saveState, saveChat, makeSourceId }) {
     const transactions = createRpTransactions({ getState, saveState, saveChat });
     const lastFloor = () => Math.max(0, getChat().length - 1);
 
-    function factReducer(state) {
+    function factReducer(state, currentSources = null) {
         const sources = new Map();
         return (projection, fact) => {
             if (fact.evidence) {
                 const key = fact.evidence.messageId + '|' + fact.evidence.variantId;
-                if (!sources.has(key)) sources.set(key, findChatSource(getChat(), state, key));
+                if (!sources.has(key)) sources.set(key, currentSources ? currentSources.get(key) : findChatSource(getChat(), state, key));
                 const source = sources.get(key);
                 if (!source || source.revision !== fact.evidence.revision) throw new Error('事实来源已变化，需要重新确认');
                 const anchor = locateEvidence(source, fact.evidence.excerpt, fact.evidence).anchor;
@@ -28,8 +30,18 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
     }
     function view(state = getState(), options = {}) {
         if (!state.rpCore) return null;
-        const result = replayLedger(state.rpCore, options.asOfFloor === undefined ? factReducer(state) : applyDomainFact, options);
-        return { ...result, projection: result.projection ? deriveTimeViews(result.projection) : null };
+        const sources = options.asOfFloor === undefined ? currentChatSources(getChat(), state) : null;
+        const result = replayLedger(state.rpCore, options.asOfFloor === undefined ? factReducer(state, sources) : applyDomainFact, options);
+        const sourceStates = {};
+        if (options.asOfFloor === undefined) {
+            for (const item of ['facts', 'claims', 'observations', 'candidates'].flatMap(track => state.rpCore[track])) {
+                const key = item.sourceKey || (item.evidence && item.evidence.messageId + '|' + item.evidence.variantId);
+                if (!key) continue;
+                const source = sources.get(key), revision = item.sourceRevision || item.evidence?.revision;
+                sourceStates[item.id] = !source ? 'inactive' : source.revision !== revision ? 'changed' : 'current';
+            }
+        }
+        return { ...result, sourceStates, projection: result.projection ? deriveTimeViews(result.projection) : null };
     }
     async function enable({ projection = createProjection() } = {}) {
         const state = getState();
@@ -104,6 +116,29 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         return { excerpt, floor: source.floor, commit: () => transactions.commit(state, core.revision, next,
             () => findChatSource(getChat(), state, candidate.sourceKey)?.revision === source.revision) };
     }
+    function evidenceSuggestion(candidateId) {
+        const state = getState(), candidate = state.rpCore?.candidates.find(item => item.id === candidateId);
+        if (!candidate || candidate.status !== 'pending') return null;
+        const source = findChatSource(getChat(), state, candidate.sourceKey);
+        if (!source || source.revision !== candidate.sourceRevision) return null;
+        return suggestEvidenceRepair(source, candidate.excerpt);
+    }
+    function referenceIssues(candidateId, state = getState()) {
+        const candidate = state.rpCore?.candidates.find(item => item.id === candidateId);
+        return candidate ? missingReferences(candidate, view(state).projection) : [];
+    }
+    function previewReferenceRepair(candidateId, updates) {
+        const state = getState(), core = state.rpCore;
+        assertLedgerVersion(core);
+        const candidate = core.candidates.find(item => item.id === candidateId);
+        const source = candidate && findChatSource(getChat(), state, candidate.sourceKey);
+        if (!source || source.revision !== candidate.sourceRevision) throw new Error('正文来源已变化，请回到当前回复处理');
+        const before = view(state);
+        const repaired = prepareReferenceRepair(core, candidateId, updates, source, { floor: lastFloor(), applyFact: factReducer(state), projection: before.projection });
+        return { descriptions: repaired.descriptions, before, after: view({ ...state, rpCore: repaired.core }),
+            commit: () => transactions.commit(state, core.revision, repaired.core,
+                () => findChatSource(getChat(), state, candidate.sourceKey)?.revision === source.revision) };
+    }
     async function configure(patch) {
         const state = getState(), core = state.rpCore;
         assertLedgerVersion(core);
@@ -132,5 +167,5 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         // An unsupported ledger remains untouched; legacy memories must still work.
         try { return view(state); } catch { return null; }
     }
-    return { enable, ingest, review, previewReview, previewEvidenceRepair, configure, setExtractionJob, view, memoryView };
+    return { enable, ingest, review, previewReview, previewEvidenceRepair, evidenceSuggestion, referenceIssues, previewReferenceRepair, configure, setExtractionJob, view, memoryView };
 }

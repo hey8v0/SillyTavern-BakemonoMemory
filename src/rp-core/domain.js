@@ -114,7 +114,7 @@ export function applyDomainFact(projection, event) {
             plan.outcome = typeof data.outcome === 'string' ? data.outcome : '';
             plan.endedAt = state.clock.date;
         }
-    } else if (action === 'item_acquired') {
+    } else if (action === 'item_acquired' || action === 'item_registered') {
         requireValue(data.quantity == null || (Number.isFinite(data.quantity) && data.quantity >= 0), '物品数量无效');
         if (data.location != null) find(state.locations, data.location);
         insert(state.items, { id: data.id, name: text(data.name, '物品名称'),

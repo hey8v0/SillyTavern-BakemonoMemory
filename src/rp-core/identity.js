@@ -1,12 +1,13 @@
 import { locateEvidence } from './source.js';
+import { resolveKnownReferences } from './references.js';
 
 const creations = {
     person_created: 'person', relationship_established: 'relationship',
-    plan_proposed: 'plan', promise_created: 'plan', item_acquired: 'item', location_created: 'location',
+    plan_proposed: 'plan', promise_created: 'plan', item_acquired: 'item', item_registered: 'item', location_created: 'location',
 };
 
 // Model IDs are aliases within one response, never permanent entity identities.
-export function normalizeEntityIdentities(events, source) {
+export function normalizeEntityIdentities(events, source, projection = null) {
     const copies = structuredClone(events), aliases = new Map();
     for (const event of copies) {
         const kind = creations[event?.action];
@@ -38,6 +39,7 @@ export function normalizeEntityIdentities(events, source) {
         }
         if (data.location !== undefined) data.location = resolve('location', data.location);
         if (kind === 'location' && data.parent !== undefined) data.parent = resolve('location', data.parent);
+        if (projection) resolveKnownReferences(event, projection);
     }
     return copies;
 }

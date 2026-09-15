@@ -20,7 +20,7 @@ function inspect(value, depth = 0) {
 }
 function parsePayload(value) {
     if (typeof value !== 'string' || value.length > 200000) throw new Error('事件响应过大或无效');
-    const wrapped = /<rpEvents>\s*([\s\S]*?)\s*<\/rpEvents>/i.exec(value);
+    const wrapped = /<rpEvents\b[^>]*>\s*([\s\S]*?)\s*<\/rpEvents\s*>/i.exec(value);
     const parsed = JSON.parse(wrapped ? wrapped[1] : value);
     inspect(parsed);
     if (parsed.version !== 1) throw new Error('不支持的事件协议版本');
@@ -60,7 +60,7 @@ function normalizeCandidate(event, source) {
 export function prepareExtraction(original, raw, source, { floor, order = floor, autoApply = false, applyFact = applyDomainFact } = {}) {
     assertLedgerVersion(original);
     if (!Number.isSafeInteger(floor) || floor < original.baseline.floor || !Number.isFinite(order)) throw new Error('提取记录位置无效');
-    const events = normalizeEntityIdentities(parsePayload(raw), source);
+    const events = normalizeEntityIdentities(parsePayload(raw), source, replayLedger(original, applyFact).projection);
     let core = structuredClone(original);
     const previous = original.candidates.filter(item => item.sourceKey === sourceKey(source));
     const repeat = original.batches.some(batch => batch.sourceKey === sourceKey(source));

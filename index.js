@@ -59,6 +59,7 @@ import { createTurnProcessingController } from './src/features/turn-processing-c
 import { createRpCoreService } from './src/rp-core/service.js';
 import { createRpExtractionFlow } from './src/rp-core/extraction-flow.js';
 import { createRpStateUi } from './src/features/rp-state-ui.js';
+import { createRpProtocolDisplay } from './src/features/rp-protocol-display.js';
 import { findChatSource } from './src/rp-core/chat-sources.js';
 import { rpMemorySources, renderRpStateMemory } from './src/rp-core/memory.js';
 import { shouldRunTurnProcessing } from './src/features/turn-trigger-policy.js';
@@ -876,6 +877,7 @@ const rpCoreService = createRpCoreService({
     saveState,
     saveChat: () => saveChatConditional(),
 });
+const rpProtocolDisplay = createRpProtocolDisplay({ documentRef: document, getChat: () => chat });
 const rpExtractionFlow = createRpExtractionFlow({
     callGenerationModel: options => callGenerationModel(options),
     runGeneration: (label, run) => runVisibleOperation(label, run, '剧情事件提取完成'),
@@ -1742,6 +1744,7 @@ const {
 
 const reviewQueueUi = createReviewQueueUi({
     renderRpReview: state => rpStateUi.renderReview(state),
+    getRpPendingCount: state => rpStateUi.getPendingCount(state),
     documentRef: document,
     query: $,
     getState: ensureState,
@@ -2180,6 +2183,7 @@ function bindSettingsEvents() {
 
 
 async function initWorkbench() {
+    rpProtocolDisplay.bind();
     const response = await fetch(`${extensionFolderPath}/settings.html`);
     if (!response.ok) {
         throw new Error(`Failed to load settings.html: ${response.status} ${response.statusText}`);
@@ -2290,6 +2294,9 @@ async function init() {
     }));
     if (event_types.CHAT_LOADED) {
         eventSource.on(event_types.CHAT_LOADED, () => scheduleForegroundRuntimeResume('聊天已载入'));
+    }
+    for (const event of [event_types.CHAT_CHANGED, event_types.CHAT_LOADED, event_types.CHARACTER_MESSAGE_RENDERED].filter(Boolean)) {
+        eventSource.on(event, () => rpProtocolDisplay.bind());
     }
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') scheduleForegroundRuntimeResume('返回前台');

@@ -1,6 +1,6 @@
 const created = event => {
     if (event.track !== 'facts') return null;
-    if (['person_created', 'relationship_established', 'plan_proposed', 'promise_created', 'item_acquired', 'location_created'].includes(event.action)) return event.data.id;
+    if (['person_created', 'relationship_established', 'plan_proposed', 'promise_created', 'item_acquired', 'item_registered', 'location_created'].includes(event.action)) return event.data.id;
     if (event.action === 'item_lent') return event.data.loanId;
     if (event.action === 'person_state_started') return event.data.stateId;
     return null;

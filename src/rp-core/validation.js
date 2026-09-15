@@ -6,7 +6,7 @@ const requirements = {
     relationship_conflict: ['id', 'description'], relationship_milestone: ['id', 'description'],
     plan_proposed: ['id', 'title', 'participants'], promise_created: ['id', 'title', 'participants'],
     plan_accepted: ['id'], plan_modified: ['id'], plan_completed: ['id'], plan_cancelled: ['id'], plan_failed: ['id'],
-    item_acquired: ['id', 'name'], item_lent: ['id', 'from', 'to', 'loanId'], item_gifted: ['id', 'from', 'to'],
+    item_acquired: ['id', 'name'], item_registered: ['id', 'name'], item_lent: ['id', 'from', 'to', 'loanId'], item_gifted: ['id', 'from', 'to'],
     item_returned: ['id', 'loanId'], item_placed: ['id', 'from', 'location'], item_consumed: ['id', 'quantity'],
     item_quantity_changed: ['id', 'delta'], item_damaged: ['id'], item_destroyed: ['id'],
     location_created: ['id', 'name'], location_reparented: ['id', 'parent'],

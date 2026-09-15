@@ -97,3 +97,21 @@ export function locateEvidence(source, excerpt, hint = null) {
         spanHash: evidenceHash(needle), excerpt: String(excerpt),
     } };
 }
+
+// A suggestion expands omissions into the actual contiguous source. It is not
+// evidence until the user reviews and confirms that full excerpt.
+export function suggestEvidenceRepair(source, excerpt) {
+    const text = normalizeEvidenceText(excerpt).text;
+    const parts = text.split(/\s*(?:…{2,}|\.{3,})\s*/u);
+    if (parts.length < 2 || parts.length > 4 || parts.some(part => part.length < 6)) return null;
+    let first = null, end = 0;
+    for (const part of parts) {
+        const start = source.text.indexOf(part);
+        if (start < end || start < 0 || source.text.indexOf(part, start + 1) >= 0
+            || (first !== null && start - end > 1000)) return null;
+        first ??= start; end = start + part.length;
+    }
+    const full = source.text.slice(first, end);
+    if (full.length > 6000 || locateEvidence(source, full).status !== 'located') return null;
+    return { excerpt: full };
+}

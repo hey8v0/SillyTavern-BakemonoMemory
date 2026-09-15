@@ -6,6 +6,7 @@ const guide = `## 剧情事件提取
 完成本请求原本要求的输出后，另输出一个 <rpEvents>{"version":1,"events":[]}</rpEvents> JSON 块。不要执行或输出代码。
 只从本轮助手正文提取事件，参考资料和已有状态不是本轮新事件。没有可提取事件就输出空数组。
 每个候选包含 track（facts/claims/observations）、action、data、excerpt（逐字引用本轮剧情正文，不改写，不从 bakemono 摘要、推理或操作块引用）。保留用户预设原有的 bakemono 摘要格式；rpEvents 必须单独放在 bakemono 块外，不替换摘要。
+excerpt 必须是一段连续原文，不用省略号拼接相隔的句子；可以引用包含中间叙述的完整段落。每个事件只输出一次。
 context 必须标明 current/dream/hypothetical/flashback，后三种只能进入说法或观察，不得标为 facts。
 角色说法放 claims；怀疑、推断和主观观察放 observations。回忆、梦境、假设不能写成当前事实。不得把小剧场、推理或旧操作块当作证据。
 facts 行为及 data 字段：
@@ -13,9 +14,11 @@ person_created: id,name,birthDate? 或 age?,ageDate?；person_renamed: id,name�
 relationship_established: id,from,to,kind,mutual；relationship_ended: id；relationship_conflict / relationship_milestone: id,description。
 plan_proposed / promise_created: id,title,participants,due?；plan_accepted / plan_cancelled: id；plan_completed / plan_failed: id,outcome；plan_modified: id,title?,due?。
 item_acquired: id,name,owner?,holder?,location?,quantity?；item_lent: id,from,to,loanId；item_gifted: id,from,to；item_returned: id,from,loanId；item_placed: id,from,location；item_consumed: id,quantity；item_quantity_changed: id,delta；item_damaged / item_destroyed: id。
+item_registered: id,name,owner?,holder?,location?,quantity?（首次明确出现的已有物品，不代表本轮获得）；没有明确所有权、持有或数量依据时对应字段留 null。
 location_created: id,name,parent?；location_reparented: id,parent；clock_set: date 或 description；clock_advanced: from,days,to。
 person_state_started: id,stateId,description,expiresAt?；person_state_ended: id,stateId。
 已有对象必须使用下方 ID，新对象使用同批唯一临时 ID，插件将分配正式身份。不得自行合并同名人物；不确定对象则留下候选说明，不猜测 ID。
+首次出现的人物、地点、物品，必须先在同一个事件块中用 person_created、location_created、item_registered 登记，再用同批临时 ID 引用。不能只在移动或放置行为里填一个未登记的名字。一个房间中的身体姿势或朝向变化不必另建地点；翻转桌上的物品不等于此前由角色持有，不可捏造 item_placed 的 from。只记录正文明确的变化。
 表白不等于交往，争执不等于分手，道歉不等于恢复信任；romantic/partner/married 必须有双方确认且 mutual=true。
 想做某事用 plan_proposed，明确承诺用 promise_created；到期不等于完成或失败。借用不转移所有权。未知数量用 null，不猜零。
 日期只用明确公历 YYYY-MM-DD 或 YYYY-MM-DDTHH:mm；相对推进必须提供当时已知的 from 与算出的 to。不确定时间不能臆造日期。

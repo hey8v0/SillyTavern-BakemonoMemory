@@ -1,9 +1,9 @@
-import { buildStatePage, createStateNavigation, describeRecord, relationshipName, stateLabels, trackLabels } from '../rp-core/state-view.js';
+import { buildStatePage, createStateNavigation, describeRecord, relationshipName, stateLabels, trackLabels, isCurrentRpRecord } from '../rp-core/state-view.js';
 import { buildBaselinePreview, suggestBaselineMappings, migrationFields, migrationLabels } from '../rp-core/migration.js';
 import { createRpStatePresentation } from './rp-state-presentation.js';
 
 export function createRpStateUi({ documentRef: document, getState, service, flow, navigate, refresh, escapeHtml: esc, locateSource }) {
-    const navigation = createStateNavigation(), previews = new WeakMap(), repairs = new WeakMap(), renderedStates = new WeakMap();
+    const navigation = createStateNavigation(), previews = new WeakMap(), repairs = new WeakMap(), referencePreviews = new WeakMap(), renderedStates = new WeakMap();
     const presentation = createRpStatePresentation({ escapeHtml: esc });
     let busy = false;
     const tabs = { overview: '概览', people: '人物关系', world: '世界状态', history: '历史' };
@@ -25,16 +25,18 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         const root = document.querySelector('#bakemono-rp-review');
         if (!root) return;
         renderedStates.set(root, state);
-        const candidates = state.rpCore?.candidates?.filter(item => item.status === 'pending') || [];
+        let candidates = state.rpCore?.candidates?.filter(item => item.status === 'pending') || [];
         root.hidden = !candidates.length;
         if (!candidates.length) { root.innerHTML = ''; return; }
         let projection;
-        try { projection = service.view(state)?.projection; }
+        try { const view = service.view(state); projection = view?.projection; candidates = candidates.filter(item => isCurrentRpRecord(view, item)); }
         catch {
             root.hidden = false;
             root.innerHTML = '<p role="alert">剧情账本暂不可审核，请在剧情状态中查看错误。已有摘要不受此审核入口影响。</p>';
             return;
         }
+        root.hidden = !candidates.length;
+        if (!candidates.length) { root.innerHTML = ''; return; }
         root.innerHTML = `<h4>剧情状态 · ${candidates.length} 项待确认</h4>` + candidates.slice(0, 20).map(item =>
             button('review-open', projection ? describeRecord(item, projection) : '查看候选', `data-rp-id="${esc(item.id)}"`)).join('')
             + (candidates.length > 20 ? button('pending', '查看全部') : '');
@@ -70,12 +72,13 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         if (!view?.projection) { root.insertAdjacentHTML('beforeend', `<p>所选楼层早于基线，没有可用状态。</p>${button('current', '返回当前状态')}`); return; }
         const projection = view.projection;
         if (nav.selected) { renderDetail(root, state, view, nav); return; }
-        const pending = core.candidates.filter(item => item.status === 'pending').length;
+        const pending = core.candidates.filter(item => item.status === 'pending' && isCurrentRpRecord(view, item)).length;
         const channel = flow.channel(state), lastBatch = core.batches.at(-1);
         const maintenance = !core.settings.enabled ? '自动维护已暂停' : !channel ? '尚未运行：回复后处理未开启' : channel === 'inline' ? '随正文维护' : channel === 'reply' ? '复用回复后处理' : '独立提取';
         const footer = `<footer class="rp-footer"><small>${nav.floor == null ? esc(maintenance) + (lastBatch ? ` · 已处理到 ${lastBatch.floor} 楼` : ' · 尚未处理正文') : '历史快照 · 只读'}</small><div class="rp-controls">${nav.floor == null ? button('settings', '维护设置') : ''}${help('明确的新内容经过校验后自动保存，例外进入待确认。随正文需要额外的 rpEvents，不必开启回复后处理。说法、观察与事实分别保存；关闭维护不删除记录。')}</div></footer>`;
         if (pending && nav.floor == null) root.insertAdjacentHTML('beforeend', `<div class="rp-notice"><span aria-hidden="true">?</span><div><strong>${pending} 项需要确认</strong><small>其余已确认内容照常保存</small></div>${button('pending', '查看')}</div>`);
-        if (view.pending.length) root.insertAdjacentHTML('beforeend', `<div class="rp-notice rp-error"><div><strong>${view.pending.length} 项事实需要复核</strong><small>这些记录暂不参与当前状态</small></div>${button('facts', '查看')}</div>`);
+        const invalidFacts = view.pending.filter(item => isCurrentRpRecord(view, { id: item.factId }));
+        if (invalidFacts.length) root.insertAdjacentHTML('beforeend', `<div class="rp-notice rp-error"><div><strong>${invalidFacts.length} 项事实需要复核</strong><small>这些记录暂不参与当前状态</small></div>${button('facts', '查看')}</div>`);
         if (nav.tab === 'overview') {
             if (!hasData) {
                 root.insertAdjacentHTML('beforeend', `<section class="rp-blank"><span class="rp-blank-mark"><i class="fa-solid fa-film" aria-hidden="true"></i></span><h3>${nav.floor != null ? '当时尚无状态记录' : core.settings.enabled ? '等故事写下下一页' : '自动维护已暂停'}</h3><p>${!channel && core.settings.enabled ? '尚未运行：请在维护设置中选择可用的方式。' : '人物、关系与约定，会随着确认的剧情进展出现在这里。'}</p><div class="rp-controls">${nav.floor != null ? '' : channel === 'inline' ? button('capture', '检查最新正文') : channel === 'independent' ? button('extract', '处理最新正文') + button('stop', '停止提取') : ''}</div></section>${footer}`);
@@ -90,7 +93,7 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         }
         if (nav.tab === 'people') root.insertAdjacentHTML('beforeend', `<div class="rp-filters">${Object.entries({ '': '全部', people: '人物', relationships: '关系' }).map(([key, label]) => button('filter', label, `data-rp-filter="${key}" aria-pressed="${nav.filter === key}"`)).join('')}</div>`);
         if (nav.tab === 'world') root.insertAdjacentHTML('beforeend', `<div class="rp-filters">${Object.entries({ plans: '约定', items: '物品', locations: '地点' }).map(([key, label]) => button('filter', label, `data-rp-filter="${key}" aria-pressed="${(nav.filter || 'plans') === key}"`)).join('')}</div>`);
-        if (nav.tab === 'history') root.insertAdjacentHTML('beforeend', `<div class="rp-filters">${Object.entries({ '': '全部', ...trackLabels }).map(([key, label]) => button('filter', label, `data-rp-filter="${key}" aria-pressed="${nav.filter === key}"`)).join('')}</div><details class="rp-snapshot"><summary>查看过去某一楼的状态</summary><label>楼层<input class="text_pole" type="number" min="0" data-rp-floor value="${nav.floor ?? ''}"></label>${button('snapshot', '查看快照')}</details>`);
+        if (nav.tab === 'history') root.insertAdjacentHTML('beforeend', `<div class="rp-filters">${Object.entries({ '': '全部', ...trackLabels, ...(nav.floor == null ? { 'source-history': '旧回复' } : {}) }).map(([key, label]) => button('filter', label, `data-rp-filter="${key}" aria-pressed="${nav.filter === key}"`)).join('')}</div><details class="rp-snapshot"><summary>查看过去某一楼的状态</summary><label>楼层<input class="text_pole" type="number" min="0" data-rp-floor value="${nav.floor ?? ''}"></label>${button('snapshot', '查看快照')}</details>`);
         if (nav.tab !== 'overview') root.insertAdjacentHTML('beforeend', `<form class="rp-search"><label><span class="rp-sr-only">搜索当前列表</span><input class="text_pole" data-rp-search type="search" placeholder="${nav.tab === 'people' ? '查找人物、关系…' : '查找当前列表…'}" value="${esc(nav.search)}"></label>${button('search', '查找')}</form>`);
         const page = buildStatePage(core, view, nav);
         nav.page = page.page;
@@ -130,6 +133,11 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         const title = record ? describeRecord(item, projection) : kind === 'relationships' ? relationshipName(projection, item) : item.name || item.title;
         let content = `<h3 tabindex="-1" class="rp-detail-title">${esc(title)}</h3>`;
         if (record) {
+            if (!isCurrentRpRecord(view, item)) {
+                content += `<p role="status">这条记录来自旧回复或修改前的正文，不参与当前状态与待确认。</p><blockquote>${esc(item.evidence?.excerpt || item.excerpt || '')}</blockquote>`;
+                root.insertAdjacentHTML('beforeend', `<section class="rp-detail">${content}</section>`);
+                return;
+            }
             content += line('类型', trackLabels[item.track || kind]) + line('状态', stateLabels[item.status] || (view.applied.includes(id) ? '有效' : kind === 'facts' ? '待复核' : '已记录'));
             if (item.reason) content += `<p role="status">${esc(item.reason)}</p>`;
             content += `<blockquote>${esc(item.evidence?.excerpt || item.excerpt || '没有证据摘录')}</blockquote>`;
@@ -138,15 +146,42 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
                 const members = item.atomicGroup ? core.candidates.filter(candidate => candidate.atomicGroup === item.atomicGroup) : [item];
                 if (members.length > 1) content += `<section><h4>一起处理的 ${members.length} 项</h4><ul>${members.map(member => `<li>${esc(describeRecord(member, projection))} · ${esc(stateLabels[member.status] || member.status)}<blockquote>${esc(member.evidence?.excerpt || member.excerpt || '没有证据摘录')}</blockquote>${member.reason ? `<p>${esc(member.reason)}</p>` : ''}</li>`).join('')}</ul></section>`;
                 if (!item.evidence || item.evidenceStatus !== 'located') content += `<div class="rp-notice rp-error"><div><strong>暂未写入：来源需要校正</strong><small>输入能够在原正文找到的摘录；重复句请带上前后文。</small></div></div>`;
+                if (!item.evidence && service.evidenceSuggestion?.(id)) content += `<div class="rp-controls">${button('repair-suggest', '预览完整原句')}</div>`;
                 content += `<details class="rp-evidence-editor" ${item.evidence ? '' : 'open'}><summary>校正原文摘录</summary><label>原文摘录<textarea class="text_pole" data-rp-excerpt rows="4" maxlength="6000">${esc(nav.evidenceDraft ?? item.excerpt ?? '')}</textarea></label>${button('repair-preview', '检查定位')}`;
                 const repair = repairs.get(state);
                 if (repair?.candidateId === id) content += `<section class="rp-preview"><h4>已定位到第 ${repair.floor} 楼</h4><blockquote>${esc(repair.excerpt)}</blockquote><p>只校正来源，不直接确认事件。</p>${button('repair-confirm', '确认校正来源')}</section>`;
                 content += `</details><div class="rp-controls">${button('review-preview', '预览确认', item.evidence ? '' : 'disabled')}${button('ignore', '暂不记录')}</div>`;
+                content += renderReferences(state, item, projection, nav);
                 const preview = previews.get(state);
                 if (preview?.candidateId === id) content += `<section class="rp-preview"><h4>确认后的影响</h4>${esc(preview.description)}${button('review-confirm', '确认入账')}${button('preview-cancel', '取消')}</section>`;
             }
         } else content = presentation.entityDetail(kind, item, core, projection, nav.floor);
         root.insertAdjacentHTML('beforeend', `<section class="rp-detail${record ? ' rp-review-detail' : ''}">${content}</section>`);
+    }
+    function readReferenceUpdates(root) {
+        return [...root.querySelectorAll('[data-rp-reference]')].map(row => {
+            const choice = row.querySelector('[data-rp-ref-choice]')?.value || '';
+            return { field: row.dataset.rpReference, id: choice === '__new' ? '' : choice,
+                ...(choice === '__new' ? { name: row.querySelector('[data-rp-ref-name]')?.value || '', excerpt: row.querySelector('[data-rp-ref-excerpt]')?.value || '', holder: row.querySelector('[data-rp-ref-holder]')?.value || '' } : {}) };
+        });
+    }
+    function renderReferences(state, item, projection, nav) {
+        const refs = service.referenceIssues?.(item.id, state) || [];
+        if (!refs.length) return '';
+        const drafts = nav.referenceDraft?.candidateId === item.id ? nav.referenceDraft.updates : [];
+        const options = (values, chosen) => values.map(value => `<option value="${esc(value.id)}" ${value.id === chosen ? 'selected' : ''}>${esc(value.name || value.title || relationshipName(projection, value))}</option>`).join('');
+        let html = `<details class="rp-reference-editor" open><summary>校正对象 · ${refs.length} 项</summary>${help('选择已登记对象，或用原文证据补充登记人物、地点、已有物品。这里只处理本条及其关联组，不会批量合并同名角色。物品所有权、数量不明确就保持未知；初始持有者也必须由所填摘录支持。')}`;
+        for (const ref of refs) {
+            const draft = drafts.find(value => value.field === ref.field), create = draft && !draft.id && draft.name !== undefined;
+            const canCreate = ['people', 'locations', 'items'].includes(ref.collection);
+            html += `<section data-rp-reference="${esc(ref.field)}"><label>${esc(ref.label)}<small>模型引用：${esc(ref.value)}</small><select class="text_pole" data-rp-ref-choice><option value="">选择已登记对象</option>${options(projection[ref.collection], draft?.id)}${canCreate ? `<option value="__new" ${create ? 'selected' : ''}>补充登记新对象</option>` : ''}</select></label>`;
+            if (canCreate) html += `<div data-rp-ref-new ${create ? '' : 'hidden'}><label>名称<input class="text_pole" data-rp-ref-name maxlength="200" value="${esc(draft?.name || '')}"></label><label>登记依据 · 连续原文<textarea class="text_pole" data-rp-ref-excerpt rows="3" maxlength="6000">${esc(draft?.excerpt || '')}</textarea></label>${ref.collection === 'items' ? `<label>此前持有者<select class="text_pole" data-rp-ref-holder><option value="">尚不明确</option>${options(projection.people, draft?.holder)}${refs.filter(value => value.collection === 'people').map(value => `<option value="@${esc(value.field)}" ${draft?.holder === '@' + value.field ? 'selected' : ''}>本次校正的${esc(value.label)}</option>`).join('')}</select></label>` : ''}</div>`;
+            html += '</section>';
+        }
+        html += button('references-preview', '预览对象校正');
+        const preview = referencePreviews.get(state);
+        if (preview?.candidateId === item.id) html += `<section class="rp-preview"><h4>校正并入账</h4>${preview.descriptions.map(value => `<p>${esc(value.label)}：${esc(value.name)}</p>${value.excerpt ? `<blockquote>${esc(value.excerpt)}</blockquote>` : ''}`).join('')}<p>有效事实 ${preview.before.applied.length} → ${preview.after.applied.length}</p>${button('references-confirm', '确认校正并入账')}</section>`;
+        return html + '</details>';
     }
     async function action(element) {
         const state = getState(), nav = navigation.get(state), root = document.querySelector('#bakemono-rp-root');
@@ -213,6 +248,25 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
             previews.delete(state); repairs.delete(state);
             repairs.set(state, { ...service.previewEvidenceRepair(nav.selected.id, nav.evidenceDraft), candidateId: nav.selected.id });
         }
+        if (name === 'repair-suggest') {
+            const suggestion = service.evidenceSuggestion(nav.selected.id);
+            if (!suggestion) throw new Error('没有可唯一定位的完整原句，请手动校正');
+            nav.evidenceDraft = suggestion.excerpt;
+            previews.delete(state);
+            repairs.set(state, { ...service.previewEvidenceRepair(nav.selected.id, suggestion.excerpt), candidateId: nav.selected.id });
+        }
+        if (name === 'references-preview') {
+            const updates = readReferenceUpdates(root);
+            nav.referenceDraft = { candidateId: nav.selected.id, updates };
+            referencePreviews.delete(state); previews.delete(state);
+            referencePreviews.set(state, { ...service.previewReferenceRepair(nav.selected.id, updates), candidateId: nav.selected.id, input: JSON.stringify(updates) });
+        }
+        if (name === 'references-confirm') {
+            const preview = referencePreviews.get(state);
+            if (!preview || preview.candidateId !== nav.selected.id || preview.input !== JSON.stringify(readReferenceUpdates(root))) throw new Error('对象选择已变化，请重新预览');
+            await preview.commit(); referencePreviews.delete(state); previews.delete(state);
+            nav.referenceDraft = null; nav.selected = null; nav.trail = []; nav.notice = '校正与记录已保存。';
+        }
         if (name === 'repair-confirm') {
             const repair = repairs.get(state);
             if (!repair || repair.candidateId !== nav.selected.id || root.querySelector('[data-rp-excerpt]')?.value !== repair.excerpt) throw new Error('摘录已变化，请重新检查定位');
@@ -263,6 +317,7 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         finally { busy = false; element.disabled = false; }
     };
     const change = event => {
+        if (event.target.closest?.('[data-rp-reference]')) { updateReferenceDraft(event); return; }
         if (event.target.matches?.('[data-rp-setting], [data-rp-mode]')) {
             const state = getState(), root = event.target.closest('#bakemono-rp-root');
             if (renderedStates.get(root) !== state) return;
@@ -291,17 +346,36 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         if (back) { event.preventDefault(); event.stopPropagation(); void click({ target: back, preventDefault() {} }); }
     };
     const input = event => {
+        if (event.target.closest?.('[data-rp-reference]')) { updateReferenceDraft(event); return; }
         if (!event.target.matches?.('[data-rp-excerpt]') || renderedStates.get(event.target.closest('#bakemono-rp-root')) !== getState()) return;
         const state = getState();
         navigation.get(state).evidenceDraft = event.target.value;
         repairs.delete(state);
         event.target.closest('.rp-evidence-editor')?.querySelector('.rp-preview')?.remove();
     };
+    function updateReferenceDraft(event) {
+        const root = event.target.closest('#bakemono-rp-root'), state = getState();
+        if (!root || renderedStates.get(root) !== state) return;
+        const nav = navigation.get(state);
+        nav.referenceDraft = { candidateId: nav.selected?.id, updates: readReferenceUpdates(root) };
+        referencePreviews.delete(state);
+        root.querySelector('.rp-reference-editor .rp-preview')?.remove();
+        if (event.target.matches('[data-rp-ref-choice]')) {
+            const area = event.target.closest('[data-rp-reference]').querySelector('[data-rp-ref-new]');
+            if (area) area.hidden = event.target.value !== '__new';
+        }
+    }
     const submit = event => {
         if (!event.target.matches?.('#bakemono-rp-root .rp-search')) return;
         event.preventDefault();
         const element = event.target.querySelector('[data-rp-action="search"]');
         if (element) void click({ target: element, preventDefault() {} });
     };
-    return { render, renderReview, bind, navigation };
+    function getPendingCount(state = getState()) {
+        try {
+            const view = service.view(state);
+            return state.rpCore?.candidates?.filter(item => item.status === 'pending' && isCurrentRpRecord(view, item)).length || 0;
+        } catch { return 0; }
+    }
+    return { render, renderReview, getPendingCount, bind, navigation };
 }
