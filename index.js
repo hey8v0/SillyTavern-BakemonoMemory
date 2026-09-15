@@ -63,7 +63,7 @@ import { createRpCoreService } from './src/rp-core/service.js';
 import { createRpPromptLibrary } from './src/rp-core/prompt-library.js';
 import { createRpExtractionFlow } from './src/rp-core/extraction-flow.js';
 import { createRpStateUi } from './src/features/rp-state-ui.js';
-import { createRpProtocolDisplay } from './src/features/rp-protocol-display.js';
+import { createRpProtocolDisplay, ensureRpDisplayFilter } from './src/features/rp-protocol-display.js';
 import { findChatSource } from './src/rp-core/chat-sources.js';
 import { rpMemorySources, renderRpStateMemory } from './src/rp-core/memory.js';
 import { shouldRunTurnProcessing } from './src/features/turn-trigger-policy.js';
@@ -881,7 +881,12 @@ const rpCoreService = createRpCoreService({
     saveState,
     saveChat: () => saveChatConditional(),
 });
-const rpProtocolDisplay = createRpProtocolDisplay({ documentRef: document, getChat: () => chat });
+const rpProtocolDisplay = createRpProtocolDisplay({
+    documentRef: document, getChat: () => chat,
+    installDisplayFilter: () => ensureRpDisplayFilter(extension_settings, saveSettingsDebounced),
+    // A synthetic ID keeps the host's greeting macro substitution away from stored chat[0].
+    renderProtocol: (text, message) => tavernHost.messageFormatting(text, message.name, false, false, -1),
+});
 const rpPromptLibrary = createRpPromptLibrary({
     read: () => {
         ensureGlobalSettings();
