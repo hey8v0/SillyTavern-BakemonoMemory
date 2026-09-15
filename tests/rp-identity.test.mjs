@@ -27,5 +27,8 @@ test('two occurrences stay separate and duplicate temporary identity is rejected
     const result = prepareExtraction(createLedger(createProjection()), JSON.stringify({ version: 1, events }), source, { floor: 0, autoApply: true });
     assert.equal(new Set(result.projection.projection.people.map(item => item.id)).size, 2);
     events[1].data.id = events[0].data.id;
-    assert.throws(() => prepareExtraction(createLedger(createProjection()), JSON.stringify({ version: 1, events }), source, { floor: 0 }), /临时身份/);
+    const invalid = prepareExtraction(createLedger(createProjection()), JSON.stringify({ version: 1, events }), source, { floor: 0, autoApply: true });
+    assert.equal(invalid.core.facts.length, 0);
+    assert.equal(invalid.projection.projection.people.length, 0);
+    assert.deepEqual(invalid.core.batches[0].protocolIssues.map(issue => issue.code), ['duplicate_identity', 'duplicate_identity']);
 });

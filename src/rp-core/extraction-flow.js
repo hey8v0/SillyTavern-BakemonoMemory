@@ -4,11 +4,24 @@ import { summaryStateEvents } from './summary-source.js';
 import { parsePayload } from './extraction.js';
 import { assertLedgerVersion } from './ledger.js';
 
-const guide = `## 剧情事件提取
-完成本请求原本要求的输出后，另输出一个 <rpEvents>{"version":1,"events":[]}</rpEvents> JSON 块。不要执行或输出代码。
-你负责判断本轮剧情中的明确状态与变化。参考资料用于理解身份和设定，不当作本轮新发生的事件。没有变化就输出空数组。
-每项包含 track（facts/claims/observations）、action、data、excerpt（优先引用足以定位的一小段连续原文，不复述整个段落、不用省略号拼句）。可引用本楼已写出的摘要中的明确状态，注明 source:"summary"；不能引用小剧场、第四面墙、推理或操作块。保留原 bakemono 摘要格式；rpEvents 单独放在块外。
-context 必须标明 current/dream/hypothetical/flashback，后三种只能进入说法或观察，不得标为 facts。
+export const RP_EVENT_GUIDE = `## 剧情事件提取
+你负责记录本轮剧情中有依据的状态与变化。完成原请求的正文或摘要后，在 bakemono 块外输出且只输出一个 rpEvents JSON 块；独立提取请求则只输出该块。不要输出代码围栏、注释、解释或未闭合 JSON。
+没有需要记录的内容时输出：<rpEvents>{"version":1,"events":[]}</rpEvents>
+
+### 最简格式
+facts（事实）：track、action、data、excerpt 四项必填。action 必须选下方事实行为，不能省略或猜测。
+claims（角色说法）：只需 track、data、excerpt；action 可省略，插件固定补为 claim_made。
+observations（观察或推测）：只需 track、data、excerpt；action 可省略，插件固定补为 observation_recorded。
+说法与观察的 data 必须有 description；speaker、subject 有明确依据时再填。省略 action 只表示记录说法或观察，不会将其变成事实。
+context 默认为 current，可省略；梦境、假设、回忆必须分别标明 dream、hypothetical、flashback，且不能放在 facts。
+excerpt 使用本楼中能定位的一小段连续原句，保留原词和否定词；不要复述整段，不用省略号拼句。若信息来自本楼已识别摘要，加 source:"summary"。不能引用小剧场、第四面墙、推理或操作块。
+data 字段后的 ? 表示可省略，不是字段名的一部分。仅填该行为需要的字段；不要为了凑格式编造对象、数量、关系或日期。关联操作可使用相同 group 字符串，必须一起成立；无关联的操作不加 group。
+
+以下仅是格式示例，不是真实剧情或可用证据，不要照搬人物与事件：
+示例原文：2024-04-12T23:45。林晚说：“钥匙不在我这里。”沈砚猜测钥匙在书店。
+<rpEvents>{"version":1,"events":[{"track":"facts","action":"clock_set","data":{"date":"2024-04-12T23:45"},"excerpt":"2024-04-12T23:45"},{"track":"claims","data":{"speaker":"林晚","description":"声称钥匙不在自己这里"},"excerpt":"钥匙不在我这里。"},{"track":"observations","data":{"speaker":"沈砚","description":"猜测钥匙在书店"},"excerpt":"沈砚猜测钥匙在书店。"}]}</rpEvents>
+
+### 事实行为
 角色说法放 claims；怀疑、推断和主观观察放 observations。回忆、梦境、假设不能写成当前事实。不得把小剧场、推理或旧操作块当作证据。
 facts 行为及 data 字段：
 person_registered: id,name,birthDate? 或 age?,ageDate?（登记已有的人，不是出生事件）；person_created 同义兼容；person_renamed: id,name；person_trait_recorded: id,trait；person_age_recorded: id,age,ageDate?；person_moved: id,location。
@@ -23,7 +36,8 @@ person_state_started: id,stateId,description,expiresAt?；person_state_ended: id
 表白不等于交往，争执不等于分手，道歉不等于恢复信任；romantic/partner/married 必须有双方确认且 mutual=true。
 想做某事用 plan_proposed，明确承诺用 promise_created；到期不等于完成或失败。借用不转移所有权。未知数量用 null，不猜零。
 日期只用明确公历 YYYY-MM-DD 或 YYYY-MM-DDTHH:mm；相对推进必须提供当时已知的 from 与算出的 to。不确定时间不能臆造日期。
-claims/observations 的 data 使用 speaker?、subject?、description，说明谁说了什么或谁作何观察，不能夹带世界状态修改。`;
+参考资料仅用于理解身份和设定，不是本轮新事件的证据。claims/observations 不改变世界状态；角色声称某事发生不等于该事属实。
+输出前检查：JSON 可解析、标签成对、每条 facts 有 action、每条有 data 和连续 excerpt。尽量少而完整，先记录重要变化，不要开始写无法完整结束的事件。`;
 
 export function stripRpProtocol(value) {
     return String(value || '').replace(/<rpEvents\b[^>]*>[\s\S]*?(?:<\/rpEvents\s*>|$)/gi, '').trim();
@@ -53,7 +67,7 @@ export function createRpExtractionFlow({ getState, getChat, service, makeSourceI
             plans: ['id', 'title', 'participants', 'due', 'status'], items: ['id', 'name', 'owner', 'holder', 'location', 'quantity', 'loan'],
             locations: ['id', 'name', 'parent'],
         })) context[key] = projection[key].slice(0, 100).map(item => pick(item, fields));
-        return guide + '\n\n已有对象参考（仅用于引用，非新证据；列表最多展示各类 100 项）：\n' + JSON.stringify(context);
+        return RP_EVENT_GUIDE + '\n\n已有对象参考（仅用于引用，非新证据；列表最多展示各类 100 项）：\n' + JSON.stringify(context);
     }
     function capture(floor, requested) {
         const state = getState();

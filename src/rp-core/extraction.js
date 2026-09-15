@@ -5,6 +5,7 @@ import { prepareAutomaticRegistration } from './automatic-registration.js';
 import { normalizeEntityIdentities } from './identity.js';
 import { classifyCandidate } from './validation.js';
 import { atomicCandidateGroups } from './groups.js';
+import { normalizeProtocolEvents } from './protocol.js';
 
 function canonical(value) {
     if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
@@ -22,9 +23,11 @@ function inspect(value, depth = 0) {
 export function parsePayload(value) {
     if (typeof value !== 'string' || value.length > 200000) throw new Error('事件响应过大或无效');
     const wrapped = /<rpEvents\b[^>]*>\s*([\s\S]*?)\s*<\/rpEvents\s*>/i.exec(value);
-    const parsed = JSON.parse(wrapped ? wrapped[1] : value);
+    let parsed;
+    try { parsed = JSON.parse(wrapped ? wrapped[1] : value); }
+    catch { throw new Error('剧情事件 JSON 格式不完整或无效；请重新生成完整事件块'); }
     inspect(parsed);
-    if (parsed.version !== 1) throw new Error('不支持的事件协议版本');
+    if (!parsed || Array.isArray(parsed) || parsed.version !== 1) throw new Error('不支持的事件协议版本');
     if (!Array.isArray(parsed.events) || parsed.events.length > 100) throw new Error('事件列表无效');
     return parsed.events;
 }
@@ -64,7 +67,8 @@ export function prepareExtraction(original, raw, source, { floor, order = floor,
     assertLedgerVersion(original);
     if (!Number.isSafeInteger(floor) || floor < original.baseline.floor || !Number.isFinite(order)) throw new Error('提取记录位置无效');
     const projection = replayLedger(original, applyFact).projection;
-    const parsed = parsePayload(raw);
+    const protocol = normalizeProtocolEvents(parsePayload(raw));
+    const parsed = protocol.events;
     const events = normalizeEntityIdentities(automaticRegistration ? prepareAutomaticRegistration(parsed, source, projection) : parsed, source, projection);
     let core = structuredClone(original);
     const previous = original.candidates.filter(item => (item.originSourceKey || item.sourceKey) === sourceKey(source));
@@ -124,7 +128,8 @@ export function prepareExtraction(original, raw, source, { floor, order = floor,
         if (!matched.has(candidate.id)) items.push({ change: 'not_detected', candidate: structuredClone(candidate) });
     }
     core.batches.push({ id: 'batch-' + (++core.revision), sourceKey: sourceKey(source), sourceRevision: source.revision,
-        floor, candidateIds: items.filter(item => item.change !== 'not_detected').map(item => item.candidate.id) });
+        floor, candidateIds: items.filter(item => item.change !== 'not_detected').map(item => item.candidate.id),
+        protocolIssues: protocol.issues, protocolRepairs: protocol.repairs });
     return { core, baseRevision: original.revision, sourceRevision: source.revision, repeat, items,
         projection: replayLedger(core, applyFact) };
 }

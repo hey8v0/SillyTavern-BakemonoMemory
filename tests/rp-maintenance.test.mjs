@@ -167,10 +167,13 @@ test('summary changes during reference preparation reject a stale independent re
     assert.equal(f.state.rpCore.facts.length, 0);
 });
 
-test('invalid candidate structure cannot partially apply the metadata fallback', async () => {
+test('invalid candidate is isolated while independent explicit summary metadata still applies', async () => {
     const f = await fixture(summary + protocol([null]));
-    await assert.rejects(f.flow.captureInline(), /结构无效/);
-    assert.equal(f.state.rpCore.facts.length, 0);
+    assert.equal(await f.flow.captureInline(), true);
+    assert.equal(f.service.view().projection.clock.date, '1889-10-15T20:00');
+    assert.equal(f.service.view().projection.locations[0].name, '宅邸客厅');
+    assert.deepEqual(f.state.rpCore.batches[0].protocolIssues.map(issue => issue.index), [1]);
+    assert.ok(f.state.rpCore.candidates.every(candidate => candidate.sourceKey.includes('|')));
 });
 
 test('summary headers accept canonical date lines and newline-separated labels without reading narrative guesses', async () => {

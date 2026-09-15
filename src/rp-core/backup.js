@@ -61,6 +61,16 @@ export function validateRpBackup(core) {
     for (const batch of core.batches) {
         if (!object(batch) || typeof batch.sourceKey !== 'string' || typeof batch.sourceRevision !== 'string'
             || !Array.isArray(batch.candidateIds) || batch.candidateIds.some(id => !candidates.has(id))) fail();
+        for (const field of ['protocolIssues', 'protocolRepairs']) {
+            if (batch[field] === undefined) continue;
+            if (!Array.isArray(batch[field]) || batch[field].length > 100) fail();
+            for (const item of batch[field]) {
+                if (!object(item) || !integer(item.index) || item.index < 1 || item.index > 100
+                    || typeof item.code !== 'string' || !/^[a-z_]{1,100}$/.test(item.code)
+                    || typeof item.field !== 'string' || item.field.length > 100
+                    || field === 'protocolIssues' && (typeof item.reason !== 'string' || item.reason.length > 300)) fail();
+            }
+        }
     }
     if (core.extractionJobs !== undefined) {
         if (!Array.isArray(core.extractionJobs)) fail();
