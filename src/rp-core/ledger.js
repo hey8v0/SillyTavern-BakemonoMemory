@@ -1,7 +1,7 @@
 const TRACKS = ['facts', 'claims', 'observations'];
 
 export function assertLedgerVersion(core) {
-    if (core?.schemaVersion !== 1 || core?.ruleVersion !== 1) throw new Error('不支持的剧情账本版本，只能只读查看');
+    if (core?.schemaVersion !== 1 || ![1, 2].includes(core?.ruleVersion)) throw new Error('不支持的剧情账本版本，只能只读查看');
     if (!core.baseline || !TRACKS.every(track => Array.isArray(core[track])) || !Array.isArray(core.decisions)) {
         throw new Error('剧情账本结构无效');
     }
@@ -41,6 +41,7 @@ export function appendRecord(core, event, context) {
         action: event.action, data: structuredClone(event.data || {}),
         context: event.context ?? 'current',
         evidence: event.evidence ? structuredClone(event.evidence) : null,
+        ...(event.origin ? { origin: structuredClone(event.origin) } : {}),
         storyTime: event.storyTime || null, recordedAt: new Date().toISOString(),
     };
     core[event.track].push(record);

@@ -1,4 +1,4 @@
-import { describeRecord, entityName, relationshipName, stateLabels, trackLabels, isCurrentRpRecord } from './state-view.js';
+import { describeRecord, describeStateValues, entityName, relationshipName, stateLabels, trackLabels, isCurrentRpRecord } from './state-view.js';
 import { evidenceHash } from './source.js';
 
 export function rpMemorySources(state, view) {
@@ -12,7 +12,8 @@ export function rpMemorySources(state, view) {
             const validity = track === 'facts' ? retracted.has(record.id) ? '已撤回，不是当前事实' : applied.has(record.id) ? '有效事实' : '待复核，不作为当前事实'
                 : track === 'claims' ? '角色说法，未作为事实确认' : '主观观察，不作为世界事实';
             const title = `${trackLabels[track]} · ${describeRecord(record, projection)}`;
-            const text = `[${validity}] ${title}\n${record.data.description || ''}\n来源：第 ${record.floor} 楼${record.context && record.context !== 'current' ? ' · ' + record.context : ''}\n摘录：${record.evidence?.excerpt || '无正文摘录'}`;
+            const detail = record.action === 'state_updated' ? describeStateValues(record.data, projection).join('\n') : record.data.description || '';
+            const text = `[${validity}] ${title}\n${detail}\n来源：第 ${record.floor} 楼${record.context && record.context !== 'current' ? ' · ' + record.context : ''}\n${record.evidence?.excerpt ? '摘录：' + record.evidence.excerpt : record.origin?.kind === 'model' ? '由模型根据所属回复整理' : record.origin?.kind === 'user' ? '用户修改' : '无正文摘录'}`;
             result.push({ id: `vec-rp-${track}-${record.id}`, hash: `rp:${track}:${record.id}:${evidenceHash(text)}`,
                 type: `rp-${track}`, messageId: record.floor, sourceStart: record.floor, sourceEnd: record.floor,
                 sourceMessageIds: [record.floor], title, text, preview: text.slice(0, 180), createdAt: record.recordedAt || '' });
@@ -29,7 +30,10 @@ export function renderRpStateMemory(state, view, query = '', budget = 2400) {
     const people = relevant(p.people).slice(0, 8), ids = new Set(people.map(item => item.id));
     const lines = [`剧情时间：${p.clock.date || p.clock.description || '未知'}`];
     if (p.scene?.location) lines.push(`当前场景：${entityName(p, p.scene.location)}`);
-    for (const person of people) lines.push(`人物：${person.name}；位置：${entityName(p, person.location)}${person.age?.value != null ? `；年龄：${person.age.value}（${person.age.basis === 'reported' ? '正文年龄依据，非推算生日' : '按生日计算'}）` : ''}`);
+    for (const person of people) {
+        const active = (person.states || []).filter(item => item.active !== false).slice(0, 4).map(item => item.description).join('、').slice(0, 240);
+        lines.push(`人物：${person.name}；位置：${entityName(p, person.location)}${active ? '；状态：' + active : ''}${person.age?.value != null ? `；年龄：${person.age.value}（${person.age.basis === 'reported' ? '正文年龄依据，非推算生日' : '按生日计算'}）` : ''}`);
+    }
     for (const relation of p.relationships.filter(item => ids.has(item.from) || ids.has(item.to)).slice(0, 8)) lines.push(`关系：${relationshipName(p, relation)}；${stateLabels[relation.status] || relation.status}`);
     for (const plan of relevant(p.plans.filter(item => ['proposed', 'accepted'].includes(item.status))).slice(0, 6)) lines.push(`约定：${plan.title}；${stateLabels[plan.status]}；期限：${plan.due || '未定'}${plan.timing?.status === 'overdue' ? '（逾期不代表已失败）' : ''}`);
     for (const item of relevant(p.items.filter(item => item.status !== 'destroyed')).slice(0, 6)) lines.push(`物品：${item.name}；所有者：${entityName(p, item.owner)}；持有者：${entityName(p, item.holder)}；数量：${item.quantity ?? '未知'}`);

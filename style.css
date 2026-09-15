@@ -12922,6 +12922,12 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .rp-core-ui .rp-breadcrumb h3 { font-size: 1.05em; }
 #bakemono-workbench-root .rp-core-ui .rp-attention { display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--bk-line); }
 #bakemono-workbench-root .rp-core-ui .rp-attention button { border: 0; padding-inline: 0; font-size: .82em; }
+#bakemono-workbench-root .rp-core-ui .rp-edit-field { display: grid; gap: 8px; min-width: 0; margin-block: 16px; }
+#bakemono-workbench-root .rp-core-ui .rp-edit-field :is(input:not([type="checkbox"]), select, textarea) { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; min-height: 44px; }
+#bakemono-workbench-root .rp-core-ui .rp-edit-form fieldset { min-width: 0; padding: 12px; border: 1px solid var(--bk-line); }
+#bakemono-workbench-root .rp-core-ui .rp-prompt-editor { margin-top: 20px; border-top: 1px solid var(--bk-line); padding-top: 16px; }
+#bakemono-workbench-root .rp-core-ui .rp-prompt-editor textarea { font-family: inherit; line-height: 1.6; resize: vertical; overflow-wrap: anywhere; }
+#bakemono-workbench-root .rp-core-ui :is(.rp-edit-form, .rp-prompt-editor) .rp-controls button { flex: 0 0 auto; min-height: 44px; width: auto; white-space: nowrap; }
 #bakemono-workbench-root .rp-core-ui .rp-source-choice { display: grid; gap: 8px; margin-block: 16px; }
 #bakemono-workbench-root .rp-core-ui .rp-source-choice select { width: 100%; min-width: 0; min-height: 44px; }
 @container (max-width: 390px) {

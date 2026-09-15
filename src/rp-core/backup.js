@@ -34,6 +34,12 @@ export function validateRpBackup(core) {
                 || !Number.isFinite(record.order)) fail();
             position(record);
             ids.add(record.id);
+            if (record.origin != null) {
+                if (!object(record.origin) || !['model', 'user'].includes(record.origin.kind) || core.ruleVersion !== 2) fail();
+                if (record.origin.kind === 'model' && !['messageId', 'variantId', 'revision', 'stamp'].every(key => typeof record.origin[key] === 'string' && record.origin[key])) fail();
+            }
+            if (record.action === 'state_updated' && (!record.origin || core.ruleVersion !== 2)) fail();
+            if (record.replaces != null && (track === 'facts' || !core[track].some(item => item.id === record.replaces && item.sequence < record.sequence))) fail();
             if (record.evidence != null) {
                 const evidence = record.evidence;
                 if (!object(evidence) || !['messageId', 'variantId', 'revision', 'spanHash', 'excerpt'].every(key => typeof evidence[key] === 'string')

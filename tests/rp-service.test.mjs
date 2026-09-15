@@ -17,7 +17,7 @@ test('enabled chat ingests grounded facts through one channel and invalidates ed
     assert.equal(state.rpCore.facts.length, 1);
     const originalExcerpt = state.rpCore.facts[0].evidence.excerpt;
     state.rpCore.facts[0].evidence.excerpt = '不存在的来源';
-    assert.equal(service.view().projection.people.length, 0);
+    assert.equal(service.view().projection.people.length, 1, 'optional excerpt text is not a model-recording gate');
     state.rpCore.facts[0].evidence.excerpt = originalExcerpt;
     chat[0].mes = '另一段正文';
     assert.equal(service.view().projection.people.length, 0);

@@ -10,14 +10,16 @@ import { rpDisplayPayloads } from '../src/features/rp-protocol-display.js';
 import { createProjection } from '../src/rp-core/domain.js';
 import { createRpStateUi } from '../src/features/rp-state-ui.js';
 import { createReviewQueueUi } from '../src/features/review-queue-ui.js';
+import { seedLegacyExtraction } from './helpers/legacy-rp-extraction.mjs';
 
 const payload = events => JSON.stringify({ version: 1, events });
-function fixture() {
+function fixture({ legacy = false } = {}) {
     const state = {}, chat = [{ mes: '甲说：我会回来。', swipe_id: 0, swipes: ['甲说：我会回来。', '甲说：我会回来。'], swipe_info: [{ extra: {} }, { extra: {} }] }];
     let n = 0;
     const service = createRpCoreService({ getState: () => state, getChat: () => chat,
         saveState: () => ({}), saveChat: async () => {}, makeSourceId: () => 'id-' + ++n });
     const swipe = index => { chat[0].swipe_id = index; chat[0].mes = chat[0].swipes[index]; chat[0].extra = structuredClone(chat[0].swipe_info[index].extra); };
+    if (legacy) service.ingest = async (raw, floor) => seedLegacyExtraction(state, chat, raw, floor);
     return { state, chat, service, swipe };
 }
 const claim = { track: 'claims', action: 'claim_made', data: { speaker: '甲', description: '会回来' }, excerpt: '甲说：我会回来。' };
@@ -78,7 +80,7 @@ test('current history, pending count and RAG isolate inactive swipes while retai
     const view = service.view();
     assert.equal(buildStatePage(state.rpCore, view, { tab: 'history' }).total, 1);
     assert.equal(buildStatePage(state.rpCore, view, { tab: 'history', filter: 'pending' }).total, 0);
-    assert.equal(buildStatePage(state.rpCore, view, { tab: 'history', filter: 'source-history' }).total, 2);
+    assert.equal(buildStatePage(state.rpCore, view, { tab: 'history', filter: 'source-history' }).total, 1);
     assert.equal(rpMemorySources(state, view).length, 1);
     assert.equal(state.rpCore.claims.length, 2);
     const ui = createRpStateUi({ documentRef: {}, getState: () => state, service, escapeHtml: String });
@@ -89,9 +91,9 @@ test('current history, pending count and RAG isolate inactive swipes while retai
     queue.renderTabs(state);
     assert.equal(counts['#bakemono-memory-review-draft-count'], 0);
     swipe(0);
-    assert.equal(buildStatePage(state.rpCore, service.view(), { tab: 'history', filter: 'pending' }).total, 1);
+    assert.equal(buildStatePage(state.rpCore, service.view(), { tab: 'history', filter: 'pending' }).total, 0);
     queue.renderTabs(state);
-    assert.equal(counts['#bakemono-memory-review-draft-count'], 1);
+    assert.equal(counts['#bakemono-memory-review-draft-count'], 0);
 });
 test('excerpt omission offers a full-source correction, never auto-validates an invented quote', () => {
     const source = evidence.sourceSnapshot('他说：“明天把笔记还给他。”他停了一下，补充说：“明天哪都不许去。”', { messageId: 'm', variantId: 'v' });
@@ -106,7 +108,7 @@ test('excerpt omission offers a full-source correction, never auto-validates an 
 });
 
 test('missing references can be registered and confirmed atomically with evidence, not guessed ownership', async () => {
-    const { state, chat, service } = fixture();
+    const { state, chat, service } = fixture({ legacy: true });
     chat[0].mes = '甲来了。甲拿着一枚戒指。他把戒指放到了书房。';
     await service.enable();
     await service.ingest(payload([{ track: 'facts', action: 'item_placed', data: { id: 'ring', from: '甲', location: 'room' }, excerpt: '他把戒指放到了书房。' }]), 0);
@@ -128,7 +130,7 @@ test('missing references can be registered and confirmed atomically with evidenc
     validateRpBackup(state.rpCore);
 });
 test('reference repair never bypasses missing evidence, source revisions or action prerequisites', async () => {
-    const { state, chat, service } = fixture();
+    const { state, chat, service } = fixture({ legacy: true });
     chat[0].mes = '甲来了。戒指在桌上。';
     await service.enable();
     await service.ingest(payload([{ track: 'facts', action: 'item_placed', data: { id: 'ring', from: '甲', location: 'table' }, excerpt: '戒指在桌上。' }]), 0);
@@ -155,7 +157,7 @@ test('unique existing names resolve without registering duplicates', async () =>
     assert.equal(service.view().projection.people[0].location, service.view().projection.locations[0].id);
 });
 test('ambiguous names remain pending and reference previews expire after another state revision', async () => {
-    const { state, chat, service } = fixture();
+    const { state, chat, service } = fixture({ legacy: true });
     const projection = createProjection();
     projection.people = [{ id: 'p1', name: '甲', location: null }, { id: 'p2', name: '甲', location: null }];
     projection.locations = [{ id: 'room', name: '书房', parent: null }];

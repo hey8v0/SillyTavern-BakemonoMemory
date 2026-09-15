@@ -60,6 +60,7 @@ import * as tavernHost from '../../../../script.js';
 import { createGlobalConfigSaveVerifier } from './src/core/global-config-save.js';
 import { createTurnProcessingController } from './src/features/turn-processing-controller.js';
 import { createRpCoreService } from './src/rp-core/service.js';
+import { createRpPromptLibrary } from './src/rp-core/prompt-library.js';
 import { createRpExtractionFlow } from './src/rp-core/extraction-flow.js';
 import { createRpStateUi } from './src/features/rp-state-ui.js';
 import { createRpProtocolDisplay } from './src/features/rp-protocol-display.js';
@@ -881,7 +882,13 @@ const rpCoreService = createRpCoreService({
     saveChat: () => saveChatConditional(),
 });
 const rpProtocolDisplay = createRpProtocolDisplay({ documentRef: document, getChat: () => chat });
+const rpPromptLibrary = createRpPromptLibrary({
+    read: () => ensureGlobalSettings().rpPromptLibrary,
+    write: value => { ensureGlobalSettings().rpPromptLibrary = value; },
+    confirmSave: value => confirmRpPromptConfiguration(value),
+});
 const rpExtractionFlow = createRpExtractionFlow({
+    getPrompt: () => rpPromptLibrary.current(),
     callGenerationModel: options => callGenerationModel(options),
     getReferenceContext: async (state, floor) => {
         const settings = state.rpCore.settings, sections = [];
@@ -1207,6 +1214,18 @@ const confirmGlobalConfiguration = createGlobalConfigSaveVerifier({
         const data = await response.json();
         const settings = typeof data.settings === 'string' ? JSON.parse(data.settings) : data.settings;
         return settings?.extension_settings?.[STORAGE_KEY]?.activeConfig || null;
+    },
+});
+
+const confirmRpPromptConfiguration = createGlobalConfigSaveVerifier({
+    getCurrentConfig: () => ensureGlobalSettings().rpPromptLibrary,
+    requestSave: () => typeof tavernHost.saveSettings === 'function' ? tavernHost.saveSettings() : saveSettingsDebounced(),
+    readSavedConfig: async signal => {
+        const response = await fetch('/api/settings/get', { method: 'POST', headers: tavernHost.getRequestHeaders(), body: '{}', cache: 'no-store', signal });
+        if (!response.ok) throw new Error('settings-read-failed');
+        const data = await response.json();
+        const settings = typeof data.settings === 'string' ? JSON.parse(data.settings) : data.settings;
+        return settings?.extension_settings?.[STORAGE_KEY]?.rpPromptLibrary || null;
     },
 });
 
@@ -1813,6 +1832,7 @@ const {
 } = maintenanceUi;
 
 const rpStateUi = createRpStateUi({
+    promptLibrary: rpPromptLibrary,
     documentRef: document, getState: ensureState, service: rpCoreService, flow: rpExtractionFlow,
     escapeHtml, navigate: switchWorkbenchTab,
     refresh: () => updateInjectionFromSummaries(),

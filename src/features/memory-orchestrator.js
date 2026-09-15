@@ -84,6 +84,8 @@ export function createMemoryOrchestrator({
             scanBakemonoBlocks({ persist: false, render: false });
         }
         let state = ensureState();
+        await rpExtractionFlow?.reconcilePending?.();
+        if (ensureState() !== state) return;
         let floorIndex = getCurrentFloorMemoryIndex(state);
         let plan = getMemoryOrchestrationPlan(state, floorIndex);
         const turnTrigger = options.turnTrigger || 'assistant';

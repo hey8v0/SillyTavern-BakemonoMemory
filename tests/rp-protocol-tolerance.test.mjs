@@ -145,11 +145,11 @@ test('actual prompt includes valid minimal examples, automatic actions and bound
     await service.enable();
     const flow = createRpExtractionFlow({ getState: () => state, getChat: () => chat, service });
     const prompt = flow.prompt('inline');
-    assert.match(prompt, /claims.*action.*可省略/);
-    assert.match(prompt, /observations.*observation_recorded/);
-    assert.match(prompt, /不要.*编造|不能.*猜/);
+    assert.match(prompt, /插件自动记录/);
+    assert.match(prompt, /不必提供摘录/);
+    assert.match(prompt, /不猜生日/);
     assert.match(prompt, /已有对象参考/);
-    const examples = [...prompt.matchAll(/<rpEvents>([\s\S]*?)<\/rpEvents>/g)];
+    const examples = [...prompt.matchAll(/<rpEvents>(\{[\s\S]*?)<\/rpEvents>/g)];
     assert.ok(examples.length >= 2);
     for (const example of examples) assert.doesNotThrow(() => parsePayload(example[0]));
     const doc = await readFile(new URL('../RP_EVENTS_PROMPT.md', import.meta.url), 'utf8');

@@ -1,12 +1,16 @@
 const created = event => {
     if (event.track !== 'facts') return null;
+    if (event.action === 'state_updated' && event.data.create) return event.data.id;
     if (['person_created', 'person_registered', 'relationship_established', 'relationship_recorded', 'plan_proposed', 'promise_created', 'item_acquired', 'item_registered', 'location_created'].includes(event.action)) return event.data.id;
     if (event.action === 'item_lent') return event.data.loanId;
     if (event.action === 'person_state_started') return event.data.stateId;
     return null;
 };
-const refs = event => ['id', 'from', 'to', 'owner', 'holder', 'location', 'parent', 'loanId', 'stateId']
-    .flatMap(key => event.data[key] == null ? [] : [event.data[key]]).concat(event.data.participants || []);
+const refs = event => {
+    const data = event.action === 'state_updated' ? { ...event.data.values, id: event.data.id } : event.data;
+    return ['id', 'from', 'to', 'owner', 'holder', 'location', 'parent', 'loanId', 'stateId']
+        .flatMap(key => data[key] == null ? [] : [data[key]]).concat(data.participants || []);
+};
 
 // Dependencies are derived within this extraction batch, not persisted as a history-wide graph.
 export function atomicCandidateGroups(candidates) {

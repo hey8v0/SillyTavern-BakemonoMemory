@@ -5,7 +5,7 @@ const registrations = { people: 'person_registered', locations: 'location_create
 const creationCollections = { person_created: 'people', person_registered: 'people', location_created: 'locations', item_registered: 'items', item_acquired: 'items' };
 
 // Only literal names can be registered automatically. An invented opaque ID is not a name.
-export function prepareAutomaticRegistration(events, source, projection) {
+export function prepareAutomaticRegistration(events, source, projection, { modelOwned = false } = {}) {
     const copies = structuredClone(events), created = new Map(), before = [], after = [];
     if (copies.some(event => !event || typeof event !== 'object' || !event.data || typeof event.data !== 'object' || Array.isArray(event.data))) throw new Error('候选事件结构无效');
     const existing = (kind, value) => (projection[kind] || []).filter(item => item.id === value || [item.name, ...(item.aliases || [])].includes(value));
@@ -41,12 +41,12 @@ export function prepareAutomaticRegistration(events, source, projection) {
             }
         }
         const evidence = locateEventEvidence(source, event);
-        if (evidence.status === 'located') {
+        if (modelOwned || evidence.status === 'located') {
             for (const ref of entityReferences(event)) {
                 if (!registrations[ref.collection] || created.has(ref.collection + ':' + ref.value) || existing(ref.collection, ref.value).length) continue;
                 const name = typeof ref.value === 'string' ? ref.value.trim() : '';
                 if (!name || name.length > 100 || !/^[\p{L}\p{N}·・ -]+$/u.test(name)
-                    || !normalizeEvidenceText(event.excerpt).text.includes(name)) continue;
+                    || !modelOwned && !normalizeEvidenceText(event.excerpt).text.includes(name)) continue;
                 const registration = { track: 'facts', action: registrations[ref.collection], data: { id: name, name },
                     excerpt: event.excerpt, ...(event.source ? { source: event.source } : {}) };
                 created.set(ref.collection + ':' + name, registration);

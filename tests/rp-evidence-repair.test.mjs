@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRpCoreService } from '../src/rp-core/service.js';
 import { validateRpBackup } from '../src/rp-core/backup.js';
+import { seedLegacyExtraction } from './helpers/legacy-rp-extraction.mjs';
 
 async function fixture() {
     const state = {}, chat = [{ mes: '甲走进花园。<bakemono>【第四面墙】甲来到花园</bakemono>' }];
     const service = createRpCoreService({ getState: () => state, getChat: () => chat, saveState() {}, saveChat: async () => {} });
     await service.enable();
+    service.ingest = async (raw, floor) => seedLegacyExtraction(state, chat, raw, floor);
     await service.ingest(JSON.stringify({ version: 1, events: [{ track: 'facts', action: 'person_created', data: { id: 'a', name: '甲' }, excerpt: '甲来到花园' }] }), 0);
     return { service, state, chat, id: state.rpCore.candidates[0].id };
 }

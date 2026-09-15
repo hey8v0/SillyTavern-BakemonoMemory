@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { seedLegacyExtraction } from './helpers/legacy-rp-extraction.mjs';
 import assert from 'node:assert/strict';
 import { createRpCoreService } from '../src/rp-core/service.js';
 import { createRpExtractionFlow } from '../src/rp-core/extraction-flow.js';
@@ -99,7 +100,7 @@ test('same-source automatic additions do not duplicate summary facts or revive i
     const addition = { track: 'observations', action: 'observation', data: { description: '她看信' }, excerpt: '她看信。' };
     await f.service.configure({ autoApply: false });
     f.chat[0].mes = '她说好。她看信。' + summary + protocol([first, addition]);
-    await f.flow.captureInline();
+    seedLegacyExtraction(f.state, f.chat, JSON.stringify({ version: 1, events: [addition] }), 0);
     assert.equal(f.state.rpCore.facts.length, count);
     const candidate = f.state.rpCore.candidates.find(c => c.track === 'observations');
     await f.service.review(candidate.id, 'ignore');
@@ -117,12 +118,12 @@ test('an imprecise time in a later summary does not erase an already known date'
     assert.equal(f.service.view().projection.clock.date, '1889-10-15T20:00');
 });
 
-test('manual review can atomically accept a group with both body and summary evidence', async () => {
+test('automatic recording accepts a group with both body and summary evidence despite old autoApply setting', async () => {
     const f = await fixture('Nana微笑。' + summary + protocol([{ track: 'facts', action: 'person_created', data: { id: 'n', name: 'Nana' }, excerpt: 'Nana微笑。' }]));
     await f.service.configure({ autoApply: false });
     await f.flow.captureInline();
     const candidate = f.state.rpCore.candidates.find(c => c.action === 'person_moved' && c.data.id.includes('person'));
-    await f.service.review(candidate.id, 'accept');
+    assert.equal(candidate.status, 'accepted');
     assert.ok(f.service.view().projection.people.some(p => p.location));
     assert.ok(!f.service.view().pending.length);
 });
@@ -220,7 +221,7 @@ test('missing opaque IDs and ambiguous names are not silently merged or invented
     const f = await fixture('她来到客厅。' + protocol([{ track: 'facts', action: 'person_moved', data: { id: 'char_9', location: '客厅' }, excerpt: '她来到客厅。' }]));
     await f.flow.captureInline();
     assert.equal(f.service.view().projection.people.length, 0);
-    assert.ok(f.state.rpCore.candidates.some(c => c.status === 'pending'));
+    assert.ok(f.state.rpCore.candidates.some(c => c.status === 'rejected'));
 });
 
 test('incomplete protocol preserves independent explicit summary updates, but never applies a partial JSON event', async () => {

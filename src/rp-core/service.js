@@ -1,4 +1,5 @@
-import { createLedger, replayLedger, assertLedgerVersion } from './ledger.js';
+import { createLedger, replayLedger, assertLedgerVersion, appendRecord } from './ledger.js';
+import { applyStateUpdate } from './state-update.js';
 import { createProjection, applyDomainFact } from './domain.js';
 import { prepareExtraction, decideCandidate, refreshCandidateFingerprint } from './extraction.js';
 import { readChatSource, findChatSource, currentChatSources } from './chat-sources.js';
@@ -16,7 +17,10 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         const activeSources = currentSources || currentChatSources(getChat(), state);
         const sources = new Map();
         return (projection, fact) => {
-            if (fact.evidence) {
+            if (fact.origin?.kind === 'model') {
+                const source = activeSources.get(fact.origin.messageId + '|' + fact.origin.variantId);
+                if (!source || (fact.origin.scope === 'part' ? source.revision : sourceStamp(source)) !== fact.origin.stamp) throw new Error('所属回复已改变，本条记录不再用于当前状态');
+            } else if (fact.evidence && fact.origin?.kind !== 'user') {
                 const key = fact.evidence.messageId + '|' + fact.evidence.variantId;
                 if (!sources.has(key)) sources.set(key, activeSources.get(key));
                 const source = sources.get(key);
@@ -36,11 +40,14 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         const sourceStates = {};
         if (options.asOfFloor === undefined) {
             for (const item of ['facts', 'claims', 'observations', 'candidates'].flatMap(track => state.rpCore[track])) {
-                const key = item.sourceKey || (item.evidence && item.evidence.messageId + '|' + item.evidence.variantId);
+                const key = item.origin?.kind === 'model' ? item.origin.messageId + '|' + item.origin.variantId : item.sourceKey || (item.evidence && item.evidence.messageId + '|' + item.evidence.variantId);
                 if (!key) continue;
                 const source = sources.get(key), revision = item.sourceRevision || item.evidence?.revision;
-                sourceStates[item.id] = !source ? 'inactive' : source.revision !== revision ? 'changed' : 'current';
+                sourceStates[item.id] = !source ? 'inactive' : (item.origin?.kind === 'model' ? (item.origin.scope === 'part' ? source.revision : sourceStamp(source)) !== item.origin.stamp : source.revision !== revision) ? 'changed' : 'current';
             }
+        }
+        for (const track of ['claims', 'observations']) for (const item of state.rpCore[track]) {
+            if (item.replaces && (options.asOfFloor === undefined || item.floor <= options.asOfFloor)) sourceStates[item.replaces] = 'replaced';
         }
         return { ...result, sourceStates, projection: result.projection ? deriveTimeViews(result.projection) : null };
     }
@@ -48,6 +55,7 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         const state = getState();
         if (state.rpCore) throw new Error('当前聊天已经启用剧情状态');
         const core = createLedger(projection, lastFloor());
+        core.ruleVersion = 2;
         core.settings = { enabled: true, autoApply: true, inject: true, mode: 'inline' };
         await transactions.commit(state, null, core);
         return core;
@@ -61,11 +69,11 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         const source = readChatSource(message, state, { allocate: true, makeId: makeSourceId });
         if (expectedSource && (expectedSource.messageId !== source.messageId || expectedSource.variantId !== source.variantId
             || sourceStamp(expectedSource) !== sourceStamp(source))) throw new Error('生成期间正文来源已变化');
-        const prepared = prepareExtraction(core, raw, source, {
+        const prepared = prepareExtraction({ ...core, ruleVersion: 2 }, raw, source, {
             floor: lastFloor(), order: sourceFloor,
-            autoApply: core.settings.autoApply === true,
+            autoApply: true, modelOwned: true,
             automaticRegistration: true,
-            allowNewOnRepeat: !manual && core.batches.filter(batch => batch.sourceKey === source.messageId + '|' + source.variantId).every(batch => batch.sourceRevision === source.revision),
+            allowNewOnRepeat: true,
             applyFact: factReducer(state),
         });
         if (inputHash) prepared.core.batches.at(-1).inputHash = String(inputHash);
@@ -77,6 +85,57 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
             return sourceStamp(current) === sourceStamp(source);
         });
         return prepared;
+    }
+    async function editEntity(collection, id, values, { expectedRevision = getState().rpCore?.revision } = {}) {
+        const state = getState(), core = state.rpCore;
+        assertLedgerVersion(core);
+        if (core.revision !== expectedRevision) throw new Error('状态已变化，请重新打开编辑');
+        const projection = view(state).projection;
+        if (!['clock', 'scene'].includes(collection) && !projection[collection]?.some(item => item.id === id)) throw new Error('对象已变化或不存在');
+        applyStateUpdate(projection, { collection, id, values });
+        const next = structuredClone(core); next.ruleVersion = 2;
+        appendRecord(next, { track: 'facts', action: 'state_updated', data: { collection, id, values }, origin: { kind: 'user' } }, { floor: lastFloor() });
+        await transactions.commit(state, expectedRevision, next);
+        return view(state);
+    }
+    async function editInformation(track, id, values, { expectedRevision = getState().rpCore?.revision } = {}) {
+        const state = getState(), core = state.rpCore;
+        assertLedgerVersion(core);
+        if (!['claims', 'observations'].includes(track) || core.revision !== expectedRevision) throw new Error('记录已变化，请重新打开编辑');
+        const record = core[track].find(item => item.id === id);
+        if (!record || Object.keys(values).some(key => !['speaker', 'subject', 'description'].includes(key))
+            || Object.values(values).some(value => typeof value !== 'string' || value.length > 4000)
+            || !(values.description ?? record.data.description)?.trim()) throw new Error('信息记录格式无效');
+        const next = structuredClone(core); next.ruleVersion = 2;
+        const added = appendRecord(next, { track, action: record.action, data: { ...record.data, ...values }, origin: { kind: 'user' } }, { floor: lastFloor() });
+        next[track].find(item => item.id === added.id).replaces = id;
+        await transactions.commit(state, expectedRevision, next);
+        return view(state);
+    }
+    async function reconcilePending() {
+        const state = getState(), core = state.rpCore;
+        if (!core?.settings?.enabled || !core.candidates.some(item => item.status === 'pending')) return false;
+        assertLedgerVersion(core);
+        let next = structuredClone(core); next.ruleVersion = 2;
+        const keys = [...new Set(core.candidates.filter(item => item.status === 'pending').map(item => item.originSourceKey || item.sourceKey))];
+        const stamps = new Map();
+        for (const key of keys) {
+            const source = findChatSource(getChat(), state, key);
+            const candidates = core.candidates.filter(item => item.status === 'pending' && (item.originSourceKey || item.sourceKey) === key);
+            const current = candidates.filter(item => source && item.sourceRevision === findChatSource(getChat(), state, item.sourceKey)?.revision);
+            if (current.length) {
+                stamps.set(key, sourceStamp(source));
+                const events = current.map(({ track, action, data, context, excerpt, group }) => ({ track, action, data, context, excerpt, group }));
+                next = prepareExtraction(next, JSON.stringify({ version: 1, events }), source, { floor: lastFloor(), order: source.floor,
+                    autoApply: true, modelOwned: true, automaticRegistration: true, allowNewOnRepeat: true, applyFact: factReducer(state) }).core;
+            }
+            for (const candidate of next.candidates.filter(item => item.status === 'pending' && (item.originSourceKey || item.sourceKey) === key)) {
+                candidate.status = 'ignored'; candidate.reason = '旧回复已变化，本条不用于当前状态';
+                next.decisions.push({ sequence: ++next.revision, floor: lastFloor(), action: 'ignore', actor: 'system', candidateId: candidate.id });
+            }
+        }
+        await transactions.commit(state, core.revision, next, () => [...stamps].every(([key, stamp]) => sourceStamp(findChatSource(getChat(), state, key)) === stamp));
+        return true;
     }
     function previewReview(candidateId, decision, { replaceFactId = null } = {}) {
         const state = getState(), core = state.rpCore;
@@ -188,5 +247,5 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         // An unsupported ledger remains untouched; legacy memories must still work.
         try { return view(state); } catch { return null; }
     }
-    return { enable, ingest, review, previewReview, previewEvidenceRepair, evidenceChoices, evidenceSuggestion, referenceIssues, previewReferenceRepair, configure, setExtractionJob, view, memoryView };
+    return { enable, ingest, editEntity, editInformation, reconcilePending, review, previewReview, previewEvidenceRepair, evidenceChoices, evidenceSuggestion, referenceIssues, previewReferenceRepair, configure, setExtractionJob, view, memoryView };
 }

@@ -24,6 +24,8 @@ export function classifyCandidate(event) {
     if (!contexts.has(context)) return reject('不支持的叙事上下文');
     if (event.track !== 'facts') return { status: 'valid' };
     if (context !== 'current') return reject('梦境、假设或回忆不能直接成为当前事实；请保留为观察资料');
+    if (event.action === 'state_updated') return ['model', 'user'].includes(event.origin?.kind) && event.data?.values && typeof event.data.values === 'object'
+        ? { status: 'valid' } : reject('状态更新缺少受控写入来源');
     if (!Object.hasOwn(requirements, event.action)) return reject('不支持的事实行为');
     const data = event.data;
     if (!data || typeof data !== 'object' || Array.isArray(data)) return reject('行为参数结构无效');

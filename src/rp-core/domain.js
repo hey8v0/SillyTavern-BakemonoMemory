@@ -1,5 +1,6 @@
 import { readStoryDate, advanceStoryDate } from './clock.js';
 import { classifyCandidate } from './validation.js';
+import { applyStateUpdate } from './state-update.js';
 
 export function createProjection() {
     return { people: [], relationships: [], plans: [], items: [], locations: [],
@@ -50,6 +51,7 @@ function setParent(state, location, parent) {
 export function applyDomainFact(projection, event) {
     const classification = classifyCandidate({ ...event, track: 'facts' });
     requireValue(classification.status === 'valid', classification.reason);
+    if (event.action === 'state_updated') return applyStateUpdate(projection, event.data);
     const state = structuredClone(projection);
     const data = event.data || {};
     const action = event.action;
