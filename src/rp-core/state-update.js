@@ -3,12 +3,40 @@ import { readStoryDate } from './clock.js';
 export const stateFields = {
     people: ['name', 'aliases', 'location', 'birthDate', 'ageEvidence', 'traits', 'states'],
     relationships: ['from', 'to', 'kind', 'mutual', 'status', 'since', 'endedAt', 'milestones', 'conflicts'],
-    plans: ['title', 'participants', 'status', 'due', 'outcome'],
+    plans: ['title', 'participants', 'status', 'due', 'dueDescription', 'outcome'],
     items: ['name', 'owner', 'holder', 'location', 'quantity', 'status'],
-    locations: ['name', 'parent'], clock: ['date', 'description'], scene: ['location'],
+    locations: ['name', 'parent'], clock: ['date', 'description'], scene: ['location', 'present'],
 };
 const object = value => !!value && typeof value === 'object' && !Array.isArray(value);
 const requireValue = (condition, message) => { if (!condition) throw new Error(message); };
+export function validateStateFields(collection, values) {
+    requireValue(Object.hasOwn(stateFields, collection) && object(values) && Object.keys(values).every(key => stateFields[collection].includes(key)), '状态字段格式无效');
+    const text = (value, nullable = true) => requireValue(value == null ? nullable : typeof value === 'string' && value.length <= 4000, '状态文字无效');
+    const date = value => requireValue(value == null || value === '' || typeof value === 'string' && readStoryDate(value), '剧情日期无效');
+    for (const [key, value] of Object.entries(values)) {
+        if (['date', 'birthDate', 'since', 'endedAt', 'due'].includes(key)) date(value);
+        else if (key === 'quantity') requireValue(value == null || Number.isFinite(value) && value >= 0, '物品数量无效');
+        else if (key === 'mutual') requireValue(typeof value === 'boolean', '双向状态无效');
+        else if (['aliases', 'traits', 'participants', 'present'].includes(key)) {
+            requireValue(Array.isArray(value) && value.length <= 100, '状态列表无效'); value.forEach(item => text(item, false));
+        } else if (['states', 'milestones', 'conflicts'].includes(key)) {
+            requireValue(Array.isArray(value) && value.length <= 100, '状态列表无效');
+            const ids = new Set();
+            for (const item of value) {
+                requireValue(object(item), '状态项无效'); text(item.description, false);
+                if (key === 'states') {
+                    text(item.id, false); requireValue(item.id && !ids.has(item.id), '状态身份无效'); ids.add(item.id);
+                    text(item.target); requireValue(item.visibility == null || ['observable', 'private', 'author'].includes(item.visibility), '状态可见性无效');
+                    for (const flag of ['active', 'ended']) requireValue(item[flag] == null || typeof item[flag] === 'boolean', '状态结束标记无效');
+                }
+                for (const field of ['date', 'startedAt', 'expiresAt', 'endedAt']) date(item[field]);
+            }
+        } else if (key === 'ageEvidence') {
+            requireValue(value == null || object(value) && Number.isSafeInteger(value.years) && value.years >= 0, '年龄依据无效');
+            if (value) date(value.asOf);
+        } else text(value);
+    }
+}
 const defaults = {
     people: () => ({ name: '', aliases: [], location: null, birthDate: null, ageEvidence: null, traits: [], states: [] }),
     relationships: () => ({ from: null, to: null, kind: '', mutual: false, status: 'active', since: null, milestones: [], conflicts: [] }),
@@ -30,7 +58,7 @@ export function applyStateUpdate(projection, data) {
     const oldName = entity.name;
     Object.assign(entity, structuredClone(values));
     const string = (value, required = false) => requireValue(value == null ? !required : typeof value === 'string' && value.length <= 4000 && (!required || !!value.trim()), '状态文字无效');
-    for (const key of ['name', 'title', 'kind', 'outcome', 'description']) if (Object.hasOwn(entity, key)) string(entity[key], ['name', 'title', 'kind'].includes(key));
+    for (const key of ['name', 'title', 'kind', 'outcome', 'description', 'dueDescription']) if (Object.hasOwn(entity, key)) string(entity[key], ['name', 'title', 'kind'].includes(key));
     const date = value => requireValue(value == null || value === '' || readStoryDate(value), '剧情日期无效');
     for (const key of ['date', 'birthDate', 'since', 'endedAt', 'due']) if (Object.hasOwn(entity, key)) date(entity[key]);
     const ref = (key, target, required = false) => { string(entity[key], required); if (entity[key] != null) requireValue(state[target].some(item => item.id === entity[key]), '引用对象不存在：' + key); };
@@ -46,6 +74,8 @@ export function applyStateUpdate(projection, data) {
             requireValue(!ids.has(item.id), '人物状态身份重复'); ids.add(item.id);
             date(item.startedAt); date(item.expiresAt); date(item.endedAt);
             if (item.ended != null) requireValue(typeof item.ended === 'boolean', '人物状态结束标记无效');
+            if (item.visibility != null) requireValue(['observable', 'private', 'author'].includes(item.visibility), '状态可见性无效');
+            if (item.target != null) requireValue(state.people.some(person => person.id === item.target), '状态指向对象不存在');
         }
     }
     if (collection === 'relationships') {
@@ -70,7 +100,10 @@ export function applyStateUpdate(projection, data) {
         const seen = new Set([entity.id]); let next = entity.parent;
         while (next != null) { requireValue(!seen.has(next), '地点层级存在循环'); seen.add(next); next = state.locations.find(item => item.id === next)?.parent; }
     }
-    if (collection === 'scene') ref('location', 'locations');
+    if (collection === 'scene') {
+        ref('location', 'locations');
+        if (entity.present !== undefined) requireValue(Array.isArray(entity.present) && entity.present.every(id => state.people.some(person => person.id === id)), '在场人物无效');
+    }
     return state;
 }
 

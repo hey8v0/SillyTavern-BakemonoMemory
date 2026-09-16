@@ -1,6 +1,7 @@
 import { readStoryDate, advanceStoryDate } from './clock.js';
 import { classifyCandidate } from './validation.js';
 import { applyStateUpdate } from './state-update.js';
+import { applyLocalEvent } from './local-events.js';
 
 export function createProjection() {
     return { people: [], relationships: [], plans: [], items: [], locations: [],
@@ -51,6 +52,8 @@ function setParent(state, location, parent) {
 export function applyDomainFact(projection, event) {
     const classification = classifyCandidate({ ...event, track: 'facts' });
     requireValue(classification.status === 'valid', classification.reason);
+    const local = event.ruleVersion >= 3;
+    if (local) { const result = applyLocalEvent(projection, event); if (result) return result; }
     if (event.action === 'state_updated') return applyStateUpdate(projection, event.data);
     const state = structuredClone(projection);
     const data = event.data || {};
@@ -72,7 +75,9 @@ export function applyDomainFact(projection, event) {
         if (!person.traits.includes(trait)) person.traits.push(trait);
     } else if (action === 'person_state_started') {
         const person = find(state.people, data.id);
+        if (local && data.target != null) find(state.people, data.target);
         insert(person.states, { id: data.stateId, description: text(data.description, '状态'),
+            ...(local ? { visibility: data.visibility || 'observable', target: data.target ?? null } : {}),
             startedAt: state.clock.date, expiresAt: dateOrNull(data.expiresAt) });
     } else if (action === 'person_state_ended') {
         const temporary = find(find(state.people, data.id).states, data.stateId);
@@ -81,11 +86,12 @@ export function applyDomainFact(projection, event) {
         temporary.endedAt = state.clock.date;
     } else if (action === 'scene_recorded') {
         find(state.locations, data.location);
-        state.scene = { location: data.location };
+        if (local && data.present) data.present.forEach(id => find(state.people, id));
+        state.scene = { ...state.scene, location: data.location, ...(local && data.present ? { present: [...new Set(data.present)] } : {}) };
     } else if (action === 'relationship_established' || action === 'relationship_recorded') {
         find(state.people, data.from); find(state.people, data.to);
         const kind = text(data.kind, '关系类型');
-        requireValue(!['romantic', 'partner', 'married'].includes(kind) || data.mutual === true, '关系尚缺双方确认');
+        requireValue(local || !['romantic', 'partner', 'married'].includes(kind) || data.mutual === true, '关系尚缺双方确认');
         requireValue(!state.relationships.some(item => item.from === data.from && item.to === data.to
             && item.kind === kind && item.status === 'active'), '关系已经建立');
         insert(state.relationships, { id: data.id, from: data.from, to: data.to, kind,
@@ -103,7 +109,7 @@ export function applyDomainFact(projection, event) {
         data.participants.forEach(id => find(state.people, id));
         insert(state.plans, { id: data.id, title: text(data.title, '约定'),
             participants: [...new Set(data.participants)], status: action === 'promise_created' ? 'accepted' : 'proposed',
-            createdAt: state.clock.date, due: dateOrNull(data.due), outcome: '' });
+            createdAt: state.clock.date, due: dateOrNull(data.due), ...(local ? { dueDescription: data.dueDescription || '' } : {}), outcome: '' });
     } else if (['plan_accepted', 'plan_completed', 'plan_cancelled', 'plan_failed', 'plan_modified'].includes(action)) {
         const plan = find(state.plans, data.id);
         requireValue(['proposed', 'accepted'].includes(plan.status), '约定已经结束');
@@ -113,6 +119,7 @@ export function applyDomainFact(projection, event) {
         } else if (action === 'plan_modified') {
             if (data.title !== undefined) plan.title = text(data.title, '约定');
             if (data.due !== undefined) plan.due = dateOrNull(data.due);
+            if (local && data.dueDescription !== undefined) plan.dueDescription = String(data.dueDescription);
         } else {
             requireValue(action === 'plan_cancelled' || plan.status === 'accepted', '约定尚未接受');
             plan.status = action.slice(5);
@@ -147,11 +154,13 @@ export function applyDomainFact(projection, event) {
             item.location = data.location; item.holder = null;
         } else if (action === 'item_consumed' || action === 'item_quantity_changed') {
             const delta = action === 'item_consumed' ? -data.quantity : data.delta;
+            if (local && item.quantity === null && Number.isFinite(delta)) return state;
             requireValue(Number.isFinite(item.quantity) && Number.isFinite(delta)
                 && (action !== 'item_consumed' || data.quantity > 0) && item.quantity + delta >= 0, '物品数量不足或不明确');
             item.quantity += delta;
         } else if (action === 'item_destroyed') {
             item.status = 'destroyed'; item.quantity = 0;
+            if (local) { item.holder = null; item.loan = null; }
         } else if (action === 'item_damaged') {
             item.status = 'damaged';
         } else throw new Error('未知物品行为');
@@ -164,8 +173,10 @@ export function applyDomainFact(projection, event) {
     } else if (action === 'person_moved') {
         if (data.location != null) find(state.locations, data.location);
         find(state.people, data.id).location = data.location ?? null;
+        if (local) find(state.people, data.id).locationConfirmedAt = { floor: event.order ?? event.floor, date: state.clock.date };
     } else if (action === 'clock_set') {
-        state.clock = { date: dateOrNull(data.date), description: String(data.description || '') };
+        state.clock = { date: local && !Object.hasOwn(data, 'date') ? state.clock.date : dateOrNull(data.date),
+            description: local && !Object.hasOwn(data, 'description') ? state.clock.description : String(data.description || '') };
         requireValue(state.clock.date || state.clock.description.trim(), '剧情时间不明确');
     } else if (action === 'clock_advanced') {
         requireValue(state.clock.date === data.from && readStoryDate(data.from), '剧情时间依据已变化');

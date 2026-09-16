@@ -8,8 +8,8 @@ const created = event => {
 };
 const refs = event => {
     const data = event.action === 'state_updated' ? { ...event.data.values, id: event.data.id } : event.data;
-    return ['id', 'from', 'to', 'owner', 'holder', 'location', 'parent', 'loanId', 'stateId']
-        .flatMap(key => data[key] == null ? [] : [data[key]]).concat(data.participants || []);
+    return ['id', 'from', 'to', 'owner', 'holder', 'location', 'parent', 'loanId', 'stateId', 'target']
+        .flatMap(key => data[key] == null ? [] : [data[key]]).concat(data.participants || [], data.present || []);
 };
 
 // Dependencies are derived within this extraction batch, not persisted as a history-wide graph.

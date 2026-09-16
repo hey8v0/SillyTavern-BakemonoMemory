@@ -8,7 +8,7 @@ const creations = {
 
 // Model IDs are aliases within one response, never permanent entity identities.
 export function normalizeEntityIdentities(events, source, projection = null) {
-    const copies = structuredClone(events), aliases = new Map();
+    const copies = structuredClone(events), aliases = new Map(), stateAliases = new Map();
     // Resolve person aliases first so relationship identities never depend on model temporary IDs.
     const ordered = [...copies].sort((a, b) => Number(creations[a?.action] === 'relationship') - Number(creations[b?.action] === 'relationship'));
     for (const event of ordered) {
@@ -26,11 +26,20 @@ export function normalizeEntityIdentities(events, source, projection = null) {
         const identityName = event.data.name || [event.data.kind, aliases.get('person:' + event.data.from) || event.data.from, aliases.get('person:' + event.data.to) || event.data.to].join('|');
         const permanentId = anchor
             ? ['entity', kind, anchor.messageId, anchor.variantId, anchor.start, anchor.end, ...(needsName ? [evidenceHash(identityName)] : [])].map(value => encodeURIComponent(String(value))).join(':')
-            : temporaryId;
+            : source.policy?.version === 2 ? ['entity', kind, source.messageId, source.variantId, evidenceHash(identityName && !copies.some(other => other !== event && creations[other.action] === kind && other.data?.name === event.data.name) ? identityName : temporaryId)].map(value => encodeURIComponent(String(value))).join(':') : temporaryId;
         aliases.set(key, permanentId);
         event.data.id = permanentId;
     }
     const resolve = (kind, value) => typeof value === 'string' ? aliases.get(kind + ':' + value) ?? value : value;
+    for (const event of copies) {
+        if (source.policy?.version !== 2 || event.action !== 'person_state_started') continue;
+        const personId = resolve('person', event.data.id), token = event.data.stateId;
+        if (typeof token !== 'string' || !token) continue;
+        const key = personId + ':' + token;
+        if (stateAliases.has(key)) throw new Error('同批临时状态身份重复');
+        const existing = projection?.people.find(item => item.id === personId)?.states?.find(item => item.id === token);
+        stateAliases.set(key, existing?.id || ['temporary', personId, source.messageId, source.variantId, token].map(encodeURIComponent).join(':'));
+    }
     for (const event of copies) {
         if (!event?.data || typeof event.data !== 'object' || Array.isArray(event.data)) continue;
         const data = event.data, action = String(event.action || '');
@@ -40,10 +49,13 @@ export function normalizeEntityIdentities(events, source, projection = null) {
             if (data.from !== undefined) data.from = resolve('person', data.from);
             if (data.to !== undefined) data.to = resolve('person', data.to);
         }
-        if (kind === 'plan' && Array.isArray(data.participants)) data.participants = data.participants.map(id => resolve('person', id));
+        if (['plan', 'promise'].includes(kind) && Array.isArray(data.participants)) data.participants = data.participants.map(id => resolve('person', id));
         if (kind === 'item') {
             for (const key of ['owner', 'holder', 'from', 'to']) if (data[key] !== undefined) data[key] = resolve('person', data[key]);
         }
+        if (Array.isArray(data.present)) data.present = data.present.map(id => resolve('person', id));
+        if (data.target != null) data.target = resolve('person', data.target);
+        if (kind === 'person' && data.stateId) data.stateId = stateAliases.get(data.id + ':' + data.stateId) || data.stateId;
         if (data.location !== undefined) data.location = resolve('location', data.location);
         if (kind === 'location' && data.parent !== undefined) data.parent = resolve('location', data.parent);
         if (projection) resolveKnownReferences(event, projection);

@@ -105,7 +105,8 @@ test('state updates use stable references across rounds and preserve omitted fie
     f.chat.push({ mes: '她把钥匙放进书店。甲的胃痛好了。' });
     await f.service.ingest(JSON.stringify({ version: 1, state: { people: [{ name: '甲', states: [] }], items: [{ name: '钥匙', holder: null, location: '书店' }] } }), 1);
     const after = f.service.view().projection;
-    assert.equal(after.people.length, 2); assert.deepEqual(after.people[0].states, []);
+    assert.equal(after.people.length, 2); assert.equal(after.people[0].states[0].description, '胃痛');
+    assert.ok(f.state.rpCore.candidates.some(item => item.status === 'rejected' && /覆盖/.test(item.reason)));
     assert.equal(after.people[0].location, before.people[0].location);
     assert.equal(after.items.length, 1); assert.equal(after.items[0].quantity, 1);
     assert.equal(after.items[0].holder, null);
@@ -126,19 +127,14 @@ test('automatic state details enter typed memory and active person states enter 
     assert.ok(rpMemorySources(f.state, f.service.view()).some(item => /数量：1/.test(item.text)));
 });
 
-test('edited summary sources can be recorded again without reviving stale state or duplicating body facts', async () => {
-    const f = await fixture();
-    const body = f.chat[0].mes;
-    f.chat[0].mes = body + '<bakemono><details><summary>剧情摘要</summary>2024-04-12 书店</details></bakemono>';
+test('I07 summary edits do not invalidate body-owned state or trigger re-ingestion', async () => {
+    const f = await fixture(); const body = f.chat[0].mes;
+    f.chat[0].mes = body + '<bakemono>2024-04-12 书店</bakemono>';
     await f.service.ingest(JSON.stringify(simple), 0);
-    await f.service.ingest(raw([{ track: 'facts', action: 'person_created', data: { id: 'body-person', name: '丙' }, excerpt: '她来到书店。' }]), 0);
-    f.chat[0].mes = body + '<bakemono><details><summary>剧情摘要</summary>2024-04-13 书店</details></bakemono>';
-    assert.equal(f.service.view().projection.clock.date, null);
+    const revision = f.state.rpCore.revision;
+    f.chat[0].mes = body + '<bakemono>2024-04-13 书店</bakemono>';
+    assert.equal(f.service.view().projection.clock.date, '2024-04-12T23:45');
     await f.service.ingest(JSON.stringify({ ...simple, state: { ...simple.state, clock: { date: '2024-04-13T23:45' } } }), 0);
-    await f.service.ingest(raw([{ track: 'facts', action: 'person_created', data: { id: 'body-person', name: '丙' }, excerpt: '她来到书店。' }]), 0);
-    const current = f.service.view().projection;
-    assert.equal(current.clock.date, '2024-04-13T23:45');
-    assert.equal(current.relationships.length, 1); assert.equal(current.items.length, 1);
-    assert.equal(current.people.length, 3);
-    assert.equal(f.state.rpCore.facts.filter(fact => fact.action === 'person_created' && fact.data.name === '丙').length, 1);
+    assert.equal(f.state.rpCore.revision, revision);
+    assert.equal(f.service.view().projection.clock.date, '2024-04-12T23:45');
 });

@@ -1,7 +1,7 @@
 const TRACKS = ['facts', 'claims', 'observations'];
 
 export function assertLedgerVersion(core) {
-    if (core?.schemaVersion !== 1 || ![1, 2].includes(core?.ruleVersion)) throw new Error('不支持的剧情账本版本，只能只读查看');
+    if (core?.schemaVersion !== 1 || ![1, 2, 3].includes(core?.ruleVersion)) throw new Error('不支持的剧情账本版本，只能只读查看');
     if (!core.baseline || !TRACKS.every(track => Array.isArray(core[track])) || !Array.isArray(core.decisions)) {
         throw new Error('剧情账本结构无效');
     }
@@ -39,9 +39,11 @@ export function appendRecord(core, event, context) {
     const record = {
         id: 'rp-' + sequence, sequence, ...position,
         action: event.action, data: structuredClone(event.data || {}),
+        ...(event.ruleVersion ? { ruleVersion: event.ruleVersion, protocolVersion: event.protocolVersion || 1 } : {}),
         context: event.context ?? 'current',
         evidence: event.evidence ? structuredClone(event.evidence) : null,
         ...(event.origin ? { origin: structuredClone(event.origin) } : {}),
+        ...(event.change && typeof event.change === 'object' ? { change: structuredClone(event.change) } : {}),
         storyTime: event.storyTime || null, recordedAt: new Date().toISOString(),
     };
     core[event.track].push(record);
@@ -65,11 +67,12 @@ export function replayLedger(core, applyFact, { asOfFloor = Infinity, asOfSequen
     assertLedgerVersion(core);
     if (asOfFloor < core.baseline.floor) return { available: false, projection: null, pending: [], applied: [] };
     const visible = record => record.floor <= asOfFloor && record.sequence <= asOfSequence;
-    const retracted = new Set(core.decisions.filter(visible).filter(record => record.action === 'retract').map(record => record.factId));
+    const retracted = new Set(core.decisions.filter(visible).filter(record => record.action === 'retract' || record.action === 'supersede').map(record => record.factId));
     let projection = structuredClone(core.baseline.projection);
     const pending = [], applied = [];
-    const ordered = core.facts.filter(visible).filter(fact => !retracted.has(fact.id))
-        .sort((a, b) => a.order - b.order || a.sequence - b.sequence);
+    const effective = core.facts.filter(visible).filter(fact => !retracted.has(fact.id));
+    const newRuleOrders = new Set(effective.filter(fact => fact.ruleVersion >= 3).map(fact => fact.order));
+    const ordered = effective.sort((a, b) => a.order - b.order || (newRuleOrders.has(a.order) ? Number(a.origin?.kind === 'user') - Number(b.origin?.kind === 'user') : 0) || a.sequence - b.sequence);
     for (const event of ordered) {
         try {
             const candidate = applyFact(structuredClone(projection), structuredClone(event));

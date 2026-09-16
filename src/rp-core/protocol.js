@@ -10,7 +10,7 @@ const canonical = value => Array.isArray(value) ? '[' + value.map(canonical).joi
     : object(value) ? '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}' : JSON.stringify(value);
 
 // Called only after the complete payload has passed version, size and unsafe-key checks.
-export function normalizeProtocolEvents(events) {
+export function normalizeProtocolEvents(events, { preserveOccurrences = false } = {}) {
     const entries = events.map((value, offset) => ({ index: offset + 1, event: structuredClone(value), issue: null }));
     const repairs = [];
     const fail = (entry, code, field, reason) => { entry.issue ||= { index: entry.index, code, field, reason }; };
@@ -41,7 +41,7 @@ export function normalizeProtocolEvents(events) {
     for (const entry of entries) {
         if (entry.issue) continue;
         const key = canonical(entry.event);
-        if (seen.has(key)) { entry.duplicate = true; continue; }
+        if (seen.has(key) && (!preserveOccurrences || !['item_consumed', 'item_quantity_changed'].includes(entry.event.action))) { entry.duplicate = true; continue; }
         seen.add(key);
         const event = entry.event;
         if (event.track !== 'facts' || !Object.hasOwn(creations, event.action)) continue;

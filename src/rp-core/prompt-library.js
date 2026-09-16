@@ -4,16 +4,16 @@ export function createRpPromptLibrary({ read, write, confirmSave = async () => (
     const get = () => {
         const stored = read();
         if (stored && stored.version !== 1) throw new Error('提示词预设版本不支持');
-        return stored || { version: 1, revision: 0, activePrompt: RP_EVENT_GUIDE, selectedId: 'default', presets: [] };
+        return stored || { version: 1, revision: 0, promptVersion: 2, activePrompt: RP_EVENT_GUIDE, selectedId: 'default', presets: [] };
     };
     const list = () => [{ id: 'default', name: '默认剧情状态', prompt: RP_EVENT_GUIDE }, ...get().presets].map(item => ({ ...item }));
     const current = () => get().activePrompt;
     const draft = () => { const config = get(); return { revision: config.revision, selectedId: config.selectedId,
-        name: list().find(item => item.id === config.selectedId)?.name || '', prompt: config.activePrompt }; };
+        name: list().find(item => item.id === config.selectedId)?.name || '', prompt: config.activePrompt, promptVersion: config.promptVersion || 1 }; };
     function load(id) {
         const preset = list().find(item => item.id === id);
         if (!preset) throw new Error('预设不存在');
-        return { revision: get().revision, selectedId: id, name: preset.name, prompt: preset.prompt };
+        return { revision: get().revision, selectedId: id, name: preset.name, prompt: preset.prompt, promptVersion: preset.prompt === RP_EVENT_GUIDE ? 2 : 1 };
     }
     async function commit(action, value) {
         const config = get();
@@ -30,7 +30,7 @@ export function createRpPromptLibrary({ read, write, confirmSave = async () => (
         } else if (action === 'overwrite') { selected.name = value.name.trim(); selected.prompt = value.prompt; next.selectedId = selected.id; }
         else if (action === 'delete') { next.presets = next.presets.filter(item => item.id !== selected.id); if (next.selectedId === selected.id) next.selectedId = ''; }
         else next.selectedId = list().some(item => item.id === value.selectedId) ? value.selectedId : '';
-        if (action !== 'delete') next.activePrompt = value.prompt;
+        if (action !== 'delete') { next.activePrompt = value.prompt; next.promptVersion = value.prompt === RP_EVENT_GUIDE ? 2 : 1; }
         next.revision++;
         write(structuredClone(next));
         try { return await confirmSave(structuredClone(next)); }

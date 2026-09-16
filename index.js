@@ -876,6 +876,7 @@ const {
 } = tableMemoryModel;
 
 const rpCoreService = createRpCoreService({
+    getChatIdentity: getSummaryRecoveryChatIdentity,
     getState: ensureState,
     getChat: () => chat,
     saveState,
@@ -899,6 +900,11 @@ const rpPromptLibrary = createRpPromptLibrary({
     confirmSave: value => confirmRpPromptConfiguration(value),
 });
 const rpExtractionFlow = createRpExtractionFlow({
+    onBackgroundResult: () => { syncInjection(); scheduleRenderAll(); },
+    onBackgroundError: () => {
+        console.warn('[BakemonoMemory] RP maintenance deferred', { category: 'rp-maintenance', status: 'failed' });
+        scheduleRenderAll();
+    },
     getPrompt: () => rpPromptLibrary.current(),
     callGenerationModel: options => callGenerationModel(options),
     getReferenceContext: async (state, floor) => {
@@ -1846,6 +1852,7 @@ const {
 } = maintenanceUi;
 
 const rpStateUi = createRpStateUi({
+    getContextPreview: state => getInjectionMemoryParts(state).rpContext,
     promptLibrary: rpPromptLibrary,
     documentRef: document, getState: ensureState, service: rpCoreService, flow: rpExtractionFlow,
     escapeHtml, navigate: switchWorkbenchTab,
@@ -2385,7 +2392,7 @@ async function init() {
     if (event_types.MESSAGE_SENT) {
         eventSource.on(event_types.MESSAGE_SENT, async () => {
             const state = ensureState();
-            if (!shouldRunTurnProcessing(state.turnSummary, 'user')) return;
+            if (!shouldRunTurnProcessing(state.turnSummary, 'user') && !rpExtractionFlow.channel(state)) return;
             await runMemoryOrchestrator('开始新一轮', {
                 scan: false,
                 turnOnly: true,
@@ -2417,6 +2424,7 @@ async function init() {
                 state.inlineGeneration.lastProcessedMessageId = null;
                 state.inlineGeneration.lastProcessedSignature = '';
                 scheduleInlineGenerationCapture('消息更新');
+                rpExtractionFlow.scheduleCapture();
             } else {
                 rollbackLatestTableOperationForDeletedMessages(messageIds, ensureState());
             }

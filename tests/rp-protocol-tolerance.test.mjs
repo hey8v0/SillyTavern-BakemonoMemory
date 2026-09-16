@@ -97,7 +97,7 @@ test('missing evidence remains pending and unknown actions are not coerced into 
 });
 
 test('truncated JSON, dangerous keys and unsupported versions still fail closed', () => {
-    for (const payload of ['{"version":1,"events":[', '{"version":2,"events":[]}', '{"version":1,"events":[{"__proto__":{}}]}']) {
+    for (const payload of ['{"version":1,"events":[', '{"version":99,"events":[]}', '{"version":1,"events":[{"__proto__":{}}]}']) {
         assert.throws(() => prepareExtraction(createLedger(createProjection()), payload, source, { floor: 0 }));
     }
     assert.throws(() => parsePayload('<rpEvents>{"version":1,"events":[}</rpEvents>'), /JSON 格式/);
@@ -145,13 +145,13 @@ test('actual prompt includes valid minimal examples, automatic actions and bound
     await service.enable();
     const flow = createRpExtractionFlow({ getState: () => state, getChat: () => chat, service });
     const prompt = flow.prompt('inline');
-    assert.match(prompt, /插件自动记录/);
-    assert.match(prompt, /不必提供摘录/);
+    assert.match(prompt, /插件自动保存/);
+    assert.match(prompt, /无需摘录/);
     assert.match(prompt, /不猜生日/);
-    assert.match(prompt, /已有对象参考/);
+    assert.match(prompt, /已有状态参考/);
     const examples = [...prompt.matchAll(/<rpEvents>(\{[\s\S]*?)<\/rpEvents>/g)];
     assert.ok(examples.length >= 2);
     for (const example of examples) assert.doesNotThrow(() => parsePayload(example[0]));
     const doc = await readFile(new URL('../RP_EVENTS_PROMPT.md', import.meta.url), 'utf8');
-    assert.equal(doc.match(/```text\r?\n([\s\S]*?)\r?\n```/)[1].replace(/\r\n/g, '\n'), RP_EVENT_GUIDE.replace(/\r\n/g, '\n'));
+    assert.ok(doc.replace(/\r\n/g, '\n').includes(RP_EVENT_GUIDE.replace(/\r\n/g, '\n')));
 });

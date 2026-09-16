@@ -45,6 +45,7 @@ export function createDefaultConfiguration({
     };
     
     const inlinePromptKeys = {
+        RP_STATE: `${injectionKey}_rp_state`,
         SUMMARY: `${injectionKey}_inline_summary`,
         TABLE: `${injectionKey}_inline_table`,
     };
@@ -723,6 +724,7 @@ export function createDefaultConfiguration({
         injection: {
             enabled: true,
             depth: 999,
+            memoryBudgetChars: 60000,
             role: extensionPromptRoles.SYSTEM,
             template: defaultInjectionTemplate,
             content: '',

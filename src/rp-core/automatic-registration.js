@@ -23,8 +23,9 @@ export function prepareAutomaticRegistration(events, source, projection, { model
             && item.mutual === (event.data.mutual === true))) continue;
         const kind = creationCollections[event.action];
         if (kind && ['person_registered', 'item_registered', 'location_created'].includes(event.action)) {
-            const matches = existing(kind, event.data?.name);
-            const sameBatch = copies.filter(other => other !== event && other.track === 'facts' && creationCollections[other.action] === kind
+            const explicitNew = source.policy?.version === 2 && event.data.id !== event.data.name && !projection[kind].some(item => item.id === event.data.id);
+            const matches = explicitNew ? [] : existing(kind, event.data?.name);
+            const sameBatch = explicitNew ? [] : copies.filter(other => other !== event && other.track === 'facts' && creationCollections[other.action] === kind
                 && other.data?.name === event.data?.name && (other.action !== event.action || copies.indexOf(other) < copies.indexOf(event)));
             if (matches.length > 1 || (!matches.length && sameBatch.length > 1)) {
                 event.resolutionIssue = '存在同名对象，暂保留原状态；请选择对应人物或地点。';
@@ -33,7 +34,8 @@ export function prepareAutomaticRegistration(events, source, projection, { model
                 // Existing-state declarations do not re-create objects or overwrite their attributes.
                 for (const other of copies) for (const ref of entityReferences(other)) {
                     if (ref.collection === kind && ref.value === event.data.id) {
-                        if (ref.field.startsWith('participants.')) other.data.participants[Number(ref.field.split('.')[1])] = targetId;
+                        if (ref.field.startsWith('present.')) other.data.present[Number(ref.field.split('.')[1])] = targetId;
+                        else if (ref.field.startsWith('participants.')) other.data.participants[Number(ref.field.split('.')[1])] = targetId;
                         else other.data[ref.field] = targetId;
                     }
                 }

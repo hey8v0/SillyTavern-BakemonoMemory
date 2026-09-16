@@ -28,9 +28,11 @@ export function parsePayload(value) {
     try { parsed = JSON.parse(wrapped ? wrapped[1] : value); }
     catch { throw new Error('剧情事件 JSON 格式不完整或无效；请重新生成完整事件块'); }
     inspect(parsed);
-    if (!parsed || Array.isArray(parsed) || parsed.version !== 1) throw new Error('不支持的事件协议版本');
-    const events = expandStatePayload(parsed);
+    if (!parsed || Array.isArray(parsed) || ![1, 2].includes(parsed.version)) throw new Error('不支持的事件协议版本');
+    if (parsed.version === 2 && (!Array.isArray(parsed.events) || parsed.state !== undefined)) throw new Error('版本 2 使用 events 逐项事件，不接受整组 state 覆盖');
+    const events = expandStatePayload(parsed).map(event => parsed.version === 2 && event && typeof event === 'object' && !Array.isArray(event) ? { track: 'facts', ...event } : event);
     if (events.length > 100) throw new Error('事件列表无效');
+    Object.defineProperty(events, 'protocolVersion', { value: parsed.version });
     return events;
 }
 const sourceKey = source => source.messageId + '|' + source.variantId;
@@ -56,6 +58,7 @@ function normalizeCandidate(event, source, modelOwned = false) {
         track: event.track, action: event.action, data: structuredClone(event.data),
         context: event.context ?? 'current',
         group: event.group || '',
+        ...(source.policy?.version === 2 ? { ruleVersion: 3, protocolVersion: 2 } : {}),
         sourceKey: sourceKey(origin), sourceRevision: origin.revision, originSourceKey: sourceKey(source),
         evidence: located.anchor || null, evidenceStatus: located.status,
         excerpt: String(event.excerpt || ''), status: 'pending',
@@ -63,6 +66,7 @@ function normalizeCandidate(event, source, modelOwned = false) {
             revision: (basis || source).revision, scope: basis ? 'part' : 'reply', stamp: basis ? basis.revision : sourceStamp(source) } } : {}),
         ...(event.resolutionIssue ? { blockedReason: event.resolutionIssue, reason: event.resolutionIssue } : {}),
     };
+    if (candidate.origin && source.policy) candidate.origin.policy = structuredClone(source.policy);
     if (!modelOwned && located.status !== 'located') candidate.reason = located.status === 'ambiguous'
         ? '正文中有多处相同摘录，请补充前后文后重新定位。'
         : '正文与已识别摘要中未找到这段摘录；请选择连续原句，不要拼接或改写。';
@@ -74,7 +78,8 @@ export function prepareExtraction(original, raw, source, { floor, order = floor,
     assertLedgerVersion(original);
     if (!Number.isSafeInteger(floor) || floor < original.baseline.floor || !Number.isFinite(order)) throw new Error('提取记录位置无效');
     const projection = replayLedger(original, applyFact).projection;
-    const protocol = normalizeProtocolEvents(parsePayload(raw));
+    const payload = parsePayload(raw);
+    const protocol = normalizeProtocolEvents(payload, { preserveOccurrences: original.ruleVersion >= 3 });
     const parsed = modelOwned ? resolveStateEvents(protocol.events, projection) : protocol.events;
     const events = normalizeEntityIdentities(automaticRegistration ? prepareAutomaticRegistration(parsed, source, projection, { modelOwned }) : parsed, source, projection);
     let core = structuredClone(original);
@@ -88,17 +93,21 @@ export function prepareExtraction(original, raw, source, { floor, order = floor,
         const basis = item.origin.scope === 'part' ? evidenceSource(source, item.origin) : source;
         return item.origin.stamp === (item.origin.scope === 'part' ? basis?.revision : sourceStamp(basis));
     };
-    const previous = original.candidates.filter(item => (item.originSourceKey || item.sourceKey) === sourceKey(source)
+    const previous = original.candidates.filter(item => !item.superseded && (item.originSourceKey || item.sourceKey) === sourceKey(source)
         && (!modelOwned || item.status !== 'pending' && stillCurrent(item)));
     const repeat = original.batches.some(batch => batch.sourceKey === sourceKey(source));
     const items = [], seen = new Set(), seenCandidates = [];
     const matched = new Set();
-    for (const event of events) {
+    for (const [occurrence, event] of events.entries()) {
         const candidate = normalizeCandidate(event, source, modelOwned);
+        if (candidate.ruleVersion >= 3) candidate.protocolVersion = payload.protocolVersion;
+        if (candidate.origin) candidate.origin.baseRevision = original.revision;
+        const local = original.ruleVersion >= 3 && ['item_consumed', 'item_quantity_changed'].includes(event.action);
+        if (local) { candidate.occurrence = occurrence; candidate.fingerprint += ':' + occurrence; }
         const sameInterpretation = item => item.track === candidate.track && item.action === candidate.action && item.context === candidate.context
             && canonical(item.data) === canonical(candidate.data) && (!item.evidence || !candidate.evidence
                 || item.evidence.start === candidate.evidence.start && item.evidence.end === candidate.evidence.end);
-        if (modelOwned && seenCandidates.some(sameInterpretation)) continue;
+        if (!local && modelOwned && seenCandidates.some(sameInterpretation)) continue;
         seenCandidates.push(candidate);
         if (seen.has(candidate.fingerprint)) continue;
         seen.add(candidate.fingerprint);
@@ -155,7 +164,7 @@ export function prepareExtraction(original, raw, source, { floor, order = floor,
         if (!matched.has(candidate.id)) items.push({ change: 'not_detected', candidate: structuredClone(candidate) });
     }
     core.batches.push({ id: 'batch-' + (++core.revision), sourceKey: sourceKey(source), sourceRevision: source.revision,
-        floor, candidateIds: items.filter(item => item.change !== 'not_detected').map(item => item.candidate.id),
+        floor, baseRevision: original.revision, candidateIds: items.filter(item => item.change !== 'not_detected').map(item => item.candidate.id),
         protocolIssues: protocol.issues, protocolRepairs: protocol.repairs, ...(modelOwned ? { recordingPolicy: 'model' } : {}) });
     return { core, baseRevision: original.revision, sourceRevision: source.revision, repeat, items,
         projection: replayLedger(core, applyFact) };
@@ -204,11 +213,17 @@ function decideSingleCandidate(original, candidateId, decision, source, { floor,
         if (!previousFacts.includes(replaceFactId)) throw new Error('替代目标不匹配');
         retractFact(core, replaceFactId, { floor, reason: '重新提取后确认替代' });
     }
+    const before = candidate.ruleVersion >= 3 && candidate.track === 'facts' ? replayLedger(core, applyFact).projection : null;
     const record = appendRecord(core, candidate, { floor, order: candidate.order });
     if (candidate.track === 'facts') {
         const view = replayLedger(core, applyFact);
         const failure = view.pending.find(item => item.factId === record.id);
         if (failure) throw new Error(failure.reason);
+        if (before) {
+            const kind = candidate.data.collection || ({ person: 'people', relationship: 'relationships', item: 'items', location: 'locations', plan: 'plans', promise: 'plans', clock: 'clock', scene: 'scene' })[candidate.action.split('_')[0]];
+            const read = projection => Array.isArray(projection[kind]) ? projection[kind].find(item => item.id === candidate.data.id) ?? null : projection[kind] ?? null;
+            core.facts.find(item => item.id === record.id).change = { collection: kind, before: read(before), after: read(view.projection) };
+        }
     }
     candidate.status = 'accepted';
     candidate.factId = candidate.track === 'facts' ? record.id : null;

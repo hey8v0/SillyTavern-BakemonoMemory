@@ -21,21 +21,13 @@ async function fixture(mes, settings = {}) {
 const summary = '<bakemono><details><summary>剧情摘要</summary>【当前时间：1889年10月15日 20:00★当前地点：宅邸客厅★在场角色：夏尔、Nana】\n➤【场记】\n两人在看信。\n➤【第四面墙】\n明天他们要结婚了。</details></bakemono>';
 const protocol = events => '<rpEvents>' + JSON.stringify({ version: 1, events }) + '</rpEvents>';
 
-test('inline summary-only metadata automatically records clock and scene with no additional request', async () => {
+test('I06 summary-only headers never create facts or advance processing progress', async () => {
     const f = await fixture('两人在看信。' + summary);
-    const result = await f.flow.captureInline({ detailed: true });
-    assert.equal(result.status, 'processed');
-    const view = f.service.view().projection;
-    assert.equal(view.clock.date, '1889-10-15T20:00');
-    assert.equal(view.locations.find(p => p.id === view.scene.location).name, '宅邸客厅');
-    assert.deepEqual(view.people.map(p => p.name).sort(), ['Nana', '夏尔']);
-    assert.ok(view.people.every(p => p.location === view.scene.location));
-    assert.equal(view.relationships.length, 0);
-    assert.equal(f.state.rpCore.candidates.filter(c => c.status === 'pending').length, 0);
-    assert.ok(f.state.rpCore.facts.every(fact => fact.evidence.sourceKind === 'summary'));
+    assert.equal((await f.flow.captureInline({ detailed: true })).status, 'missing');
+    assert.equal(f.service.view().projection.clock.date, null);
+    assert.equal(f.state.rpCore.facts.length, 0);
+    assert.equal(f.state.rpCore.batches.length, 0);
     assert.equal(f.requests(), 0);
-    assert.equal((await f.flow.captureInline({ detailed: true })).status, 'unchanged');
-    assert.doesNotThrow(() => exportRpBackup(f.state.rpCore));
 });
 
 test('summary evidence is separate: metadata edits do not invalidate existing body evidence', async () => {
@@ -62,34 +54,24 @@ test('ranges, hypothetical headers and mere mentioned people do not become curre
     }
 });
 
-test('configured summary tags work and excluded footer changes do not alter summary evidence', async () => {
-    const f = await fixture(summary.replaceAll('bakemono', 'memo'), { scanRules: { includeTags: 'memo' } });
-    await f.flow.captureInline();
+test('I05 independent filter snapshot excludes widgets and ignores later summary settings', async () => {
+    const f = await fixture('Nana微笑。<widget>旧组件</widget>' + summary + protocol([{ track: 'claims', data: { description: '微笑' } }]));
+    await f.service.configure({ excludeTags: 'widget' }); await f.flow.captureInline();
     const before = f.service.view().applied;
-    assert.ok(before.length > 0);
-    f.chat[0].mes = f.chat[0].mes.replace('明天他们要结婚了。', '新小剧场。') + '<widget>状态组件</widget>';
+    f.state.scanRules = { includeTags: 'memo', excludeTags: 'p' }; f.state.turnSummary.includeTags = 'nothing';
+    f.chat[0].mes = f.chat[0].mes.replace('旧组件', '新的文尾组件').replace('20:00', '21:00');
     assert.deepEqual(f.service.view().applied, before);
+    assert.equal(f.service.view().sourceStates[f.state.rpCore.claims[0].id], 'current');
 });
 
-test('the next reply preserves unmentioned state and summary objects do not multiply', async () => {
-    const f = await fixture(summary);
-    await f.flow.captureInline();
-    const before = structuredClone(f.service.view().projection);
-    f.chat.push({ is_user: true, mes: '继续' }, { mes: '她继续看信。' });
-    await f.flow.captureInline();
+test('I07 omitted state survives summary changes and serialization', async () => {
+    const f = await fixture('她在客厅看信。' + protocol([{ track: 'facts', action: 'clock_set', data: { date: '1889-10-15T20:00' } }]));
+    await f.flow.captureInline(); const before = structuredClone(f.service.view().projection);
+    f.chat.push({ mes: summary }); await f.flow.captureInline();
     assert.deepEqual(f.service.view().projection, before);
-    f.chat.push({ mes: summary.replace('20:00', '21:00') });
-    await f.flow.captureInline();
-    const view = f.service.view().projection;
-    assert.equal(view.clock.date, '1889-10-15T21:00');
-    assert.equal(view.people.length, 2);
-    assert.equal(view.locations.length, 1);
-    assert.match(renderRpStateMemory(f.state, f.service.view()), /当前场景：宅邸客厅/);
-    assert.equal(f.state.rpCore.candidates.filter(c => c.status === 'pending').length, 0);
     const savedState = JSON.parse(JSON.stringify(f.state)), savedChat = JSON.parse(JSON.stringify(f.chat));
     const reloaded = createRpCoreService({ getState: () => savedState, getChat: () => savedChat, saveState() {}, saveChat: async () => {} });
-    assert.deepEqual(reloaded.view().projection, view);
-    assert.deepEqual(exportRpBackup(savedState.rpCore).facts, f.state.rpCore.facts);
+    assert.deepEqual(reloaded.view().projection, before); assert.doesNotThrow(() => exportRpBackup(savedState.rpCore));
 });
 
 test('same-source automatic additions do not duplicate summary facts or revive ignored results', async () => {
@@ -110,22 +92,17 @@ test('same-source automatic additions do not duplicate summary facts or revive i
     assert.equal(f.state.rpCore.candidates.find(c => c.id === candidate.id).status, 'ignored');
 });
 
-test('an imprecise time in a later summary does not erase an already known date', async () => {
-    const f = await fixture(summary);
-    await f.flow.captureInline();
-    f.chat.push({ mes: '<bakemono>【时间：傍晚★地点：宅邸客厅】</bakemono>' });
-    await f.flow.captureInline();
-    assert.equal(f.service.view().projection.clock.date, '1889-10-15T20:00');
+test('S02 imprecise new clock description does not clear a date when date is omitted', async () => {
+    const f = await fixture('夜晚。' + protocol([{ track: 'facts', action: 'clock_set', data: { date: '1889-10-15T20:00' } }]));
+    await f.flow.captureInline(); f.chat.push({ mes: '仍是夜晚。' + protocol([{ track: 'facts', action: 'clock_set', data: { description: '夜晚' } }]) });
+    await f.flow.captureInline(); assert.equal(f.service.view().projection.clock.date, '1889-10-15T20:00');
 });
 
-test('automatic recording accepts a group with both body and summary evidence despite old autoApply setting', async () => {
-    const f = await fixture('Nana微笑。' + summary + protocol([{ track: 'facts', action: 'person_created', data: { id: 'n', name: 'Nana' }, excerpt: 'Nana微笑。' }]));
-    await f.service.configure({ autoApply: false });
-    await f.flow.captureInline();
-    const candidate = f.state.rpCore.candidates.find(c => c.action === 'person_moved' && c.data.id.includes('person'));
-    assert.equal(candidate.status, 'accepted');
-    assert.ok(f.service.view().projection.people.some(p => p.location));
-    assert.ok(!f.service.view().pending.length);
+test('automatic recording remains model-owned but does not synthesize summary candidates', async () => {
+    const f = await fixture('Nana微笑。' + summary + protocol([{ track: 'facts', action: 'person_created', data: { id: 'n', name: 'Nana' } }]));
+    await f.service.configure({ autoApply: false }); await f.flow.captureInline();
+    assert.equal(f.service.view().projection.people.length, 1);
+    assert.equal(f.state.rpCore.facts.length, 1); assert.equal(f.service.view().projection.clock.date, null);
 });
 
 test('known relationship IDs stay stable across output order and temporary aliases', async () => {
@@ -141,53 +118,36 @@ test('known relationship IDs stay stable across output order and temporary alias
     assert.deepEqual(first.find(e => e.action === 'relationship_recorded').data, second.find(e => e.action === 'relationship_recorded').data);
 });
 
-test('independent requests get bounded summaries and references without changing inline mode', async () => {
-    const f = await fixture('两人在看信。' + summary);
-    await f.service.configure({ mode: 'independent' });
-    let sent;
+test('independent requests receive body and reference context without summary facts', async () => {
+    const f = await fixture('两人在看信。' + summary); let sent;
     const flow = createRpExtractionFlow({ getState: () => f.state, getChat: () => f.chat, service: f.service,
-        getReferenceContext: async () => '设定参考'.repeat(5000),
-        callGenerationModel: async request => { sent = request; return protocol([]); } });
-    await flow.runIndependent();
-    assert.match(sent.prompt, /宅邸客厅/);
-    assert.match(sent.systemPrompt, /非本轮新证据/);
-    assert.ok(sent.systemPrompt.length < 20000);
-    assert.equal(f.service.view().projection.people.length, 2);
+        getReferenceContext: async () => '设定参考', callGenerationModel: async request => { sent = request; return protocol([]); } });
+    await flow.runIndependent({ manual: true });
+    assert.equal(sent.prompt, '两人在看信。'); assert.match(sent.systemPrompt, /不作为本轮新事实/);
+    assert.equal(f.state.rpCore.settings.mode, 'inline'); assert.equal(f.service.view().projection.people.length, 0);
     assert.equal(f.state.turnSummary.enabled, undefined);
 });
 
-test('summary changes during reference preparation reject a stale independent request', async () => {
-    const f = await fixture(summary);
-    await f.service.configure({ mode: 'independent' });
-    let requests = 0;
+test('summary-only changes during an independent request leave the body ticket valid', async () => {
+    const f = await fixture('正文。' + summary); await f.service.configure({ mode: 'independent' }); let requests = 0;
     const flow = createRpExtractionFlow({ getState: () => f.state, getChat: () => f.chat, service: f.service,
-        getReferenceContext: async () => { f.chat[0].mes = summary.replace('20:00', '21:00'); return ''; },
+        getReferenceContext: async () => { f.chat[0].mes = '正文。' + summary.replace('20:00', '21:00'); return ''; },
         callGenerationModel: async () => { requests++; return protocol([]); } });
-    await assert.rejects(flow.runIndependent(), /来源已变化/);
-    assert.equal(requests, 0);
-    assert.equal(f.state.rpCore.facts.length, 0);
+    await flow.runIndependent(); assert.equal(requests, 1); assert.equal(f.state.rpCore.facts.length, 0);
 });
 
-test('invalid candidate is isolated while independent explicit summary metadata still applies', async () => {
+test('invalid candidate is isolated without admitting summary headers as fallback facts', async () => {
     const f = await fixture(summary + protocol([null]));
     assert.equal(await f.flow.captureInline(), true);
-    assert.equal(f.service.view().projection.clock.date, '1889-10-15T20:00');
-    assert.equal(f.service.view().projection.locations[0].name, '宅邸客厅');
+    assert.equal(f.service.view().projection.clock.date, null);
+    assert.equal(f.service.view().projection.locations.length, 0);
     assert.deepEqual(f.state.rpCore.batches[0].protocolIssues.map(issue => issue.index), [1]);
-    assert.ok(f.state.rpCore.candidates.every(candidate => candidate.sourceKey.includes('|')));
 });
 
-test('summary headers accept canonical date lines and newline-separated labels without reading narrative guesses', async () => {
-    for (const header of [
-        '★1889年10月15日-星期二-20:00★地点：客厅★在场角色：夏尔、Nana',
-        '当前时间：1889年10月15日 20:00\n当前地点：客厅\n在场角色：夏尔、Nana',
-    ]) {
-        const f = await fixture('<bakemono>【' + header + '】\n➤【场记】正文。</bakemono>');
-        await f.flow.captureInline();
-        const p = f.service.view().projection;
-        assert.equal(p.clock.date, '1889-10-15T20:00');
-        assert.equal(p.locations[0].name, '客厅');
-        assert.equal(p.people.length, 2);
+test('I06 canonical and labelled summary headers remain narrative-only in new records', async () => {
+    for (const header of ['★1889年10月15日-星期二-20:00★地点：客厅★在场角色：夏尔、Nana', '当前时间：1889年10月15日 20:00 当前地点：客厅']) {
+        const f = await fixture('<bakemono>' + header + '</bakemono>');
+        await f.flow.captureInline(); assert.equal(f.service.view().projection.clock.date, null); assert.equal(f.state.rpCore.batches.length, 0);
     }
 });
 
@@ -224,11 +184,9 @@ test('missing opaque IDs and ambiguous names are not silently merged or invented
     assert.ok(f.state.rpCore.candidates.some(c => c.status === 'rejected'));
 });
 
-test('incomplete protocol preserves independent explicit summary updates, but never applies a partial JSON event', async () => {
+test('S12 truncated protocol never falls back to summary facts or marks success', async () => {
     const f = await fixture(summary + '<rpEvents>{"version":1,"events":[{"action":"item_consumed"');
-    const result = await f.flow.captureInline({ detailed: true });
-    assert.equal(result.status, 'processed');
-    assert.equal(result.protocolStatus, 'incomplete');
-    assert.equal(f.service.view().projection.clock.date, '1889-10-15T20:00');
-    assert.equal(f.state.rpCore.facts.some(f => f.action === 'item_consumed'), false);
+    assert.equal((await f.flow.captureInline({ detailed: true })).status, 'incomplete');
+    assert.equal(f.state.rpCore.facts.length, 0); assert.equal(f.state.rpCore.batches.length, 0);
+    assert.equal(f.state.rpCore.extractionJobs[0].status, 'failed');
 });

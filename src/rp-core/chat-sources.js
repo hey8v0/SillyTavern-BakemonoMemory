@@ -1,5 +1,6 @@
 import { sourceSnapshot } from './source.js';
 import { readSummarySources } from './summary-source.js';
+import { sourcePolicy } from './policy.js';
 
 function newIdentity() {
     if (!globalThis.crypto?.randomUUID) throw new Error('当前环境无法建立可靠的来源身份');
@@ -7,7 +8,12 @@ function newIdentity() {
 }
 const list = value => String(value || '').split(/[\s,，;；]+/).filter(Boolean);
 
-export function sourceOptions(state) {
+export function sourceOptions(state, policy = null) {
+    if (policy?.version === 2 || !policy && state.rpCore?.ruleVersion >= 3) {
+        const settings = policy || sourcePolicy(state.rpCore.settings);
+        return { includeTags: list(settings.includeTags), excludeTags: [...new Set(['thinking', 'think', 'reasoning', 'analysis', 'script', 'style', 'tableEdit', 'tableThink', 'rpEvents', 'bakemono', 'summaryDraft', ...list(settings.excludeTags)])] };
+    }
+    state = state.rpCore?.legacySourceSettings || state;
     return {
         includeTags: list(state.turnSummary?.includeTags),
         excludeTags: [...new Set(['thinking', 'think', 'tableEdit', 'tableThink', 'rpEvents', 'bakemono', 'summaryDraft',
@@ -15,7 +21,7 @@ export function sourceOptions(state) {
     };
 }
 
-export function readChatSource(message, state, { allocate = false, makeId = newIdentity } = {}) {
+export function readChatSource(message, state, { allocate = false, makeId = newIdentity, policy = null } = {}) {
     if (!message || message.is_user) return null;
     const swipe = String(Number.isSafeInteger(message.swipe_id) && message.swipe_id >= 0 ? message.swipe_id : 0);
     const info = message.swipe_info?.[Number(swipe)];
@@ -55,15 +61,17 @@ export function readChatSource(message, state, { allocate = false, makeId = newI
     }
     const source = sourceSnapshot(message.mes || '', {
         messageId: identity.messageId, variantId,
-    }, sourceOptions(state));
-    source.supplements = readSummarySources(message.mes || '', { messageId: identity.messageId, variantId }, state);
+    }, sourceOptions(state, policy));
+    const bodyOnly = policy?.version === 2 || !policy && state.rpCore?.ruleVersion >= 3;
+    source.policy = bodyOnly ? structuredClone(policy || sourcePolicy(state.rpCore.settings)) : { version: 1 };
+    source.supplements = bodyOnly ? [] : readSummarySources(message.mes || '', { messageId: identity.messageId, variantId }, state.rpCore?.legacySourceSettings || state);
     return source;
 }
 
-export function findChatSource(chat, state, key) {
+export function findChatSource(chat, state, key, policy = null) {
     const matches = [];
     for (let floor = 0; floor < chat.length; floor++) {
-        const source = readChatSource(chat[floor], state);
+        const source = readChatSource(chat[floor], state, { policy });
         for (const item of source ? [source, ...(source.supplements || [])] : []) {
             if (item.messageId + '|' + item.variantId === key) matches.push({ ...item, floor });
         }
@@ -71,10 +79,10 @@ export function findChatSource(chat, state, key) {
     return matches.length === 1 ? matches[0] : null;
 }
 
-export function currentChatSources(chat, state) {
+export function currentChatSources(chat, state, policy = null) {
     const sources = new Map();
     for (let floor = 0; floor < chat.length; floor++) {
-        const source = readChatSource(chat[floor], state);
+        const source = readChatSource(chat[floor], state, { policy });
         if (!source) continue;
         for (const item of [source, ...(source.supplements || [])]) {
             const key = item.messageId + '|' + item.variantId;

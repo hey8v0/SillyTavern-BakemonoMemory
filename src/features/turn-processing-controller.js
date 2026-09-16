@@ -43,7 +43,6 @@ export function createTurnProcessingController({
     callGenerationModel,
     extractTaggedContent,
     buildTableEditPrompt,
-    rpExtractionFlow,
 } = {}) {
     let inlineCaptureTimer = null;
 
@@ -137,7 +136,7 @@ export function createTurnProcessingController({
     
     async function captureInlineGenerationFromLatestMessage() {
         const state = ensureState();
-        const capturedRp = await rpExtractionFlow?.captureInline() || false;
+        const capturedRp = false;
         if (ensureState() !== state) throw new Error('提取期间聊天已变化');
         if (!state.inlineGeneration?.summaryEnabled && !state.inlineGeneration?.tableEnabled) {
             return false;
@@ -367,7 +366,7 @@ export function createTurnProcessingController({
         if (manual) {
             sections.push(`## 用户手动参考资料\n${manual}`);
         }
-        const rpPrompt = includeRp ? rpExtractionFlow?.prompt('reply', state) || '' : '';
+        const rpPrompt = '';
         const base = (purpose === 'table'
             ? `你是剧情剪辑台的表格整理助手。只输出 tableThink 和 tableEdit${rpPrompt ? ' 以及 rpEvents' : ''}，不写正文。`
             : '你是剧情剪辑台的正文摘要器。只总结输入正文，不续写剧情。输出必须包含 summaryDraft 标签。') + (rpPrompt ? '\n\n' + rpPrompt : '');
@@ -426,17 +425,17 @@ export function createTurnProcessingController({
         }
     
         await runGeneration(options.manual ? '正在处理最新正文...' : '正在自动生成正文摘要草稿...', async () => {
-            const rpTicket = rpExtractionFlow?.capture(turn.assistantMessage.messageId, 'reply');
+            const sourceMessage = getChat()[turn.assistantMessage.messageId];
+            const sourceText = sourceMessage?.mes, sourceSwipe = sourceMessage?.swipe_id;
             const summaryResult = await callGenerationModel({
                 prompt: buildTurnSummaryPrompt(blocks, state),
                 systemPrompt: await buildTurnReferenceSystemPrompt(blocks, 'summary', state),
             });
-            rpExtractionFlow?.assertCurrent(rpTicket);
             if (ensureState() !== state) throw new Error('提取期间聊天已变化');
             const summaryText = stripRpProtocol(summaryResult);
+            if (getChat()[turn.assistantMessage.messageId] !== sourceMessage || sourceMessage?.mes !== sourceText || sourceMessage?.swipe_id !== sourceSwipe) throw new Error('摘要生成期间正文来源已变化');
             const summaryContent = normalizeGeneratedBakemono(extractTaggedContent(summaryText, 'summaryDraft') || summaryText);
             if (!String(summaryContent).trim()) throw new Error('本轮未返回摘要内容');
-            await rpExtractionFlow?.consume(rpTicket, summaryResult, { manual: !!options.manual });
             if (ensureState() !== state) throw new Error('提取期间聊天已变化');
             const summaryDraft = createDraft({
                 kind: blockTypes.STORY,

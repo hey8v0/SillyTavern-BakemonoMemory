@@ -14,7 +14,7 @@ async function fixture() {
     let afterSave = () => {};
     const service = createRpCoreService({ getState, getChat: () => chat, saveState: () => ({}), saveChat: async () => { saves++; afterSave(); }, makeSourceId: () => String(++id) });
     await service.enable();
-    await service.configure({ mode: 'reuse' });
+    await service.configure({ mode: 'inline' });
     const flow = createRpExtractionFlow({ getState, getChat: () => chat, service, makeSourceId: () => String(++id) });
     return { flow, service, chat, getState, switchChat: () => { state = { ...state }; }, saves: () => saves,
         onSave: callback => { afterSave = callback; } };
@@ -33,10 +33,9 @@ test('new activation defaults to inline and does not turn on legacy post-process
     assert.equal(state.rpCore.settings.mode, 'inline');
     const { rpCore, ...legacy } = state;
     assert.equal(JSON.stringify(legacy), before);
-    await service.configure({ mode: 'reply' });
-    assert.equal(flow.channel(), 'reply');
+    await assert.rejects(service.configure({ mode: 'reply' }), /设置无效/);
     state.tableDatabase.enabled = false;
-    assert.equal(flow.channel(), null);
+    assert.equal(flow.channel(), 'inline');
 });
 
 test('unknown ledger versions disable extraction and memory projection without changing saved data', async () => {
@@ -50,22 +49,22 @@ test('unknown ledger versions disable extraction and memory projection without c
     assert.equal(JSON.stringify(f.getState()), before);
 });
 
-test('reply reuse consumes existing response and suppresses identical automatic reprocessing', async () => {
+test('inline processing consumes source response and suppresses identical automatic reprocessing', async () => {
     const f = await fixture();
-    assert.equal(f.flow.channel(), 'reply');
-    const ticket = f.flow.capture(0, 'reply');
-    assert.match(f.flow.prompt('reply'), /rpEvents/);
+    assert.equal(f.flow.channel(), 'inline');
+    const ticket = f.flow.capture(0, 'inline');
+    assert.match(f.flow.prompt('inline'), /rpEvents/);
     await f.flow.consume(ticket, response);
     assert.equal(f.getState().rpCore.facts.length, 1);
     const saves = f.saves();
-    assert.equal((await f.flow.consume(f.flow.capture(0, 'reply'), response)).status, 'unchanged');
+    assert.equal((await f.flow.consume(f.flow.capture(0, 'inline'), response)).status, 'unchanged');
     assert.equal(f.saves(), saves);
     assert.equal(stripRpProtocol(response), '<summaryDraft>摘要</summaryDraft>');
 });
 
 test('source edits, chat changes and newer ledger revisions reject old extraction results', async () => {
     for (const mutation of ['source', 'chat', 'revision']) {
-        const f = await fixture(), ticket = f.flow.capture(0, 'reply');
+        const f = await fixture(), ticket = f.flow.capture(0, 'inline');
         if (mutation === 'source') f.chat[0].mes = '甲没有来。';
         if (mutation === 'chat') f.switchChat();
         if (mutation === 'revision') f.getState().rpCore.revision++;
@@ -75,20 +74,20 @@ test('source edits, chat changes and newer ledger revisions reject old extractio
 });
 
 test('source changes while saving cannot resume downstream work on the stale response', async () => {
-    const f = await fixture(), ticket = f.flow.capture(0, 'reply');
+    const f = await fixture(), ticket = f.flow.capture(0, 'inline');
     f.onSave(() => { f.chat[0].mes = '甲没有来。'; });
     await assert.rejects(f.flow.consume(ticket, response), /变化/);
     assert.equal(f.service.view().projection.people.length, 0);
     assert.equal(f.service.view().pending.length, 1);
 });
 
-test('inline and reply reuse select one channel and delay stays bound to the original reply', async () => {
+test('independent and inline select one channel and delay stays bound to the original reply', async () => {
     const f = await fixture();
     Object.assign(f.getState().inlineGeneration, { summaryEnabled: true });
-    f.getState().turnSummary.triggerTiming = 'next_user';
+    f.getState().rpCore.settings.triggerTiming = 'next_user';
     f.chat[0].mes += response;
     assert.equal(f.flow.channel(), 'inline');
-    assert.equal(f.flow.capture(0, 'reply'), null);
+    assert.equal(f.flow.capture(0, 'independent'), null);
     assert.equal(await f.flow.captureInline(), false);
     f.chat.push({ is_user: true, mes: '继续' });
     assert.equal(await f.flow.captureInline(), true);
@@ -98,7 +97,7 @@ test('inline and reply reuse select one channel and delay stays bound to the ori
 
 test('preset-only chats get inline events without enabling legacy summary or reply processing', async () => {
     const f = await fixture();
-    assert.equal((await f.flow.consume(f.flow.capture(0, 'reply'), '只有摘要')).status, 'missing');
+    assert.equal((await f.flow.consume(f.flow.capture(0, 'inline'), '只有摘要')).status, 'missing');
     assert.equal(f.getState().rpCore.batches.length, 0);
     f.getState().turnSummary.enabled = false;
     assert.equal(f.flow.channel(), 'inline');
@@ -117,11 +116,11 @@ test('inline capture distinguishes an already processed tagged block from missin
     assert.equal((await f.flow.captureInline({ detailed: true })).status, 'processed');
     assert.equal((await f.flow.captureInline({ detailed: true })).status, 'unchanged');
     assert.equal(f.getState().rpCore.batches.length, 1);
-    f.getState().turnSummary.triggerTiming = 'next_user';
+    f.getState().rpCore.settings.triggerTiming = 'next_user';
     assert.equal((await f.flow.captureInline({ detailed: true })).status, 'delayed');
 });
 
-test('the real summary controller reuses one response and rejects changed source before creating a draft', async () => {
+test('the real summary controller no longer consumes RP events', async () => {
     for (const stale of [false, true]) {
         const f = await fixture(), state = f.getState();
         Object.assign(state.turnSummary, { processingMode: 'summary', includeCharacterContext: false, includeUserMessage: false, saveMode: 'draft' });
@@ -134,7 +133,7 @@ test('the real summary controller reuses one response and rejects changed source
             getSourceMessageIdsFromBlocks: blocks => blocks.map(block => block.messageId), getSourceStart: () => 0,
             renderGenerationPrompt: () => '处理这段正文', formatSourceRange: String,
             runGeneration: async (_title, fn) => fn(), callGenerationModel: async request => {
-                requests++; assert.match(request.systemPrompt, /rpEvents/);
+                requests++; assert.doesNotMatch(request.systemPrompt, /rpEvents/);
                 if (stale) f.chat[0].mes = '甲没有来';
                 return response;
             },
@@ -148,12 +147,12 @@ test('the real summary controller reuses one response and rejects changed source
         else await controller.processLatestTurnSummary({ manual: true });
         assert.equal(requests, 1);
         assert.equal(state.drafts.length, stale ? 0 : 1);
-        assert.equal(state.rpCore.candidates.length, stale ? 0 : 1);
+        assert.equal(state.rpCore.candidates.length, 0);
         if (!stale) assert.equal(state.drafts[0].content, '摘要');
     }
 });
 
-test('table-only processing can consume RP events without an extra model request', async () => {
+test('table-only processing does not consume RP events', async () => {
     const f = await fixture(), state = f.getState();
     state.turnSummary.enabled = false;
     state.tableDatabase = { enabled: true, tables: [{}], editDrafts: [] };
@@ -168,10 +167,10 @@ test('table-only processing can consume RP events without an extra model request
     });
     await controller.processLatestTableEdit();
     assert.equal(requests, 1);
-    assert.equal(state.rpCore.facts.length, 1);
+    assert.equal(state.rpCore.facts.length, 0);
 });
 
-test('inline prompts use exactly one existing slot, including when both legacy outputs are enabled', async () => {
+test('inline prompts use exactly one independent slot, including when both legacy outputs are enabled', async () => {
     const f = await fixture(), state = f.getState();
     const prompts = new Map();
     const injection = createInjectionService({ ensureState: f.getState, rpExtractionFlow: f.flow,
@@ -186,12 +185,12 @@ test('inline prompts use exactly one existing slot, including when both legacy o
         Object.assign(state.inlineGeneration, { summaryEnabled, tableEnabled: true });
         injection.syncInlineGenerationPrompts();
         assert.equal([...prompts.values()].filter(text => text.includes('<rpEvents>')).length, 1);
-        assert.match(prompts.get(summaryEnabled ? 'summary' : 'table'), /rpEvents/);
+        assert.match(prompts.get('bakemono-rp-state-maintenance'), /rpEvents/);
     }
     Object.assign(state.inlineGeneration, { summaryEnabled: false, tableEnabled: false });
     state.turnSummary.enabled = false;
     injection.syncInlineGenerationPrompts();
-    assert.match(prompts.get('summary'), /rpEvents/);
+    assert.match(prompts.get('bakemono-rp-state-maintenance'), /rpEvents/);
     assert.equal(prompts.get('table'), '');
     state.rpCore.settings.enabled = false;
     injection.syncInlineGenerationPrompts();
@@ -201,7 +200,7 @@ test('inline prompts use exactly one existing slot, including when both legacy o
 test('new-user orchestration captures delayed inline events even after legacy inline capture was marked processed', async () => {
     const f = await fixture(), state = f.getState();
     Object.assign(state.inlineGeneration, { summaryEnabled: true });
-    state.turnSummary.triggerTiming = 'next_user';
+    state.rpCore.settings.triggerTiming = 'next_user';
     state.turnSummary.auto = false;
     f.chat[0].mes += response;
     f.chat.push({ is_user: true, mes: '继续' });
@@ -233,7 +232,7 @@ test('independent extraction is opt-in, records progress and never silently retr
     assert.equal(f.getState().rpCore.candidates.length, 1);
     assert.equal(f.getState().rpCore.facts.length, 1, 'first successful manual extraction honors auto-apply');
     await flow.runIndependent({ manual: true });
-    assert.equal(f.getState().rpCore.facts.length, 1, 're-extraction never duplicates confirmed facts');
+    assert.equal(f.service.view().applied.length, 1, 're-extraction replaces only the effective source batch');
     assert.equal(await flow.runIndependent(), false);
     assert.equal(requests, 3);
 });

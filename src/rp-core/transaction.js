@@ -1,6 +1,8 @@
+import { clearRpDerivedCache } from './memory.js';
+
 export function createRpTransactions({ getState, saveState, saveChat }) {
     const queues = new WeakMap();
-    function commit(expectedState, expectedRevision, nextCore, validateSource = () => true) {
+    function commit(expectedState, expectedRevision, nextCore, validateSource = () => true, { clearCache = false } = {}) {
         const previous = queues.get(expectedState) || Promise.resolve();
         const operation = previous.catch(() => {}).then(async () => {
             if (getState() !== expectedState || (expectedState.rpCore?.revision ?? null) !== expectedRevision) {
@@ -10,6 +12,11 @@ export function createRpTransactions({ getState, saveState, saveChat }) {
             const before = expectedState.rpCore;
             const prepared = structuredClone(nextCore);
             const serialized = JSON.stringify(prepared);
+            const cache = expectedState.vectorMemory;
+            const beforeCache = clearCache && cache ? Object.fromEntries(['records', 'lastHits', 'lastEmbeddingCandidates', 'lastRerankCandidates']
+                .filter(key => Array.isArray(cache[key])).map(key => [key, cache[key]])) : {};
+            if (clearCache) clearRpDerivedCache(expectedState);
+            const preparedCache = Object.fromEntries(Object.keys(beforeCache).map(key => [key, cache[key]]));
             expectedState.rpCore = prepared;
             try {
                 const staged = saveState();
@@ -19,6 +26,9 @@ export function createRpTransactions({ getState, saveState, saveChat }) {
                 if (expectedState.rpCore === prepared && JSON.stringify(prepared) === serialized) {
                     if (before === undefined) delete expectedState.rpCore;
                     else expectedState.rpCore = before;
+                    if (expectedState.vectorMemory === cache) for (const key of Object.keys(beforeCache)) {
+                        if (cache[key] === preparedCache[key]) cache[key] = beforeCache[key];
+                    }
                     if (getState() === expectedState) saveState();
                 }
                 throw error;

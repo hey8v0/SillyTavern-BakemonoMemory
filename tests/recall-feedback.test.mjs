@@ -227,6 +227,19 @@ test('changed source invalidates an already selected recall before injection', a
     assert.equal(f.state.vectorMemory.lastHits.length, 0);
 });
 
+test('P06: cached RP hit is revalidated after correction and disabling RP injection', async () => {
+    let sources = [{ id: 'vec-rp-facts-old', hash: 'rp:facts:old:before', messageId: 0, text: '钥匙可用', title: '状态' }];
+    const f = fixture([{ body: .9 }], {}, { getRpMemorySources: () => sources, createLocalEmbedding: () => [1, 0] });
+    await f.run(); assert.match(f.service.renderVectorMemorySection(), /钥匙可用/);
+    sources = [{ ...sources[0], hash: 'rp:facts:old:corrected', text: '已纠正，不可用' }];
+    assert.doesNotMatch(f.service.renderVectorMemorySection(), /钥匙可用/);
+    await f.run(); assert.match(f.service.renderVectorMemorySection(), /已纠正/);
+    sources = [];
+    assert.doesNotMatch(f.service.renderVectorMemorySection(), /已纠正|钥匙可用/);
+    assert.ok(f.state.vectorMemory.records.some(item => !item.memoryHash), 'body index is preserved');
+    await f.run(); assert.ok(f.state.vectorMemory.lastHits.some(item => !item.memoryHash));
+});
+
 test('a configured zero recent window does not fall back to the default window', async () => {
     const f = fixture([{ body: .9 }], { skipIfAllInContext: true });
     f.chat[0].is_system = false; f.state.vectorMemory.contextWindowMessages = 0;

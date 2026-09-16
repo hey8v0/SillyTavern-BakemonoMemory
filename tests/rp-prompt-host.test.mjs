@@ -50,7 +50,7 @@ test('production callbacks follow replaced settings and supply all extraction mo
     const state = { rpCore: { schemaVersion: 1, ruleVersion: 2, baseline: {}, facts: [], claims: [], observations: [], decisions: [], settings: { enabled: true, mode: 'inline' } }, turnSummary: { enabled: true } };
     const projection = { people: [], relationships: [], plans: [], items: [], locations: [] };
     const flow = createRpExtractionFlow({ getState: () => state, getChat: () => [], getPrompt: () => host.library.current(), service: { view: () => ({ projection }) } });
-    for (const mode of ['inline', 'reply', 'independent']) {
+    for (const mode of ['inline', 'independent']) {
         state.rpCore.settings.mode = mode;
         assert.ok(flow.prompt(mode).startsWith('新设置'), mode);
     }

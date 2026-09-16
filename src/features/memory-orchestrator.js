@@ -25,6 +25,13 @@ export function createMemoryOrchestrator({
     shouldRunTurnProcessing,
     rpExtractionFlow,
 } = {}) {
+    async function runRp(method) {
+        try { return await rpExtractionFlow?.[method]?.(); }
+        catch (error) {
+            if (/变化|停止/.test(error.message)) throw error;
+            toastr?.warning?.('剧情状态未更新：' + error.message, '剧情剪辑台'); return null;
+        }
+    }
     async function maybeRunAutoSummary() {
         const state = ensureState();
         if (!state.automation.enabled || isBusy()) {
@@ -84,7 +91,7 @@ export function createMemoryOrchestrator({
             scanBakemonoBlocks({ persist: false, render: false });
         }
         let state = ensureState();
-        await rpExtractionFlow?.reconcilePending?.();
+        await runRp('reconcilePending');
         if (ensureState() !== state) return;
         let floorIndex = getCurrentFloorMemoryIndex(state);
         let plan = getMemoryOrchestrationPlan(state, floorIndex);
@@ -92,8 +99,8 @@ export function createMemoryOrchestrator({
         const triggerMatches = shouldRunTurnProcessing?.(state.turnSummary, turnTrigger) !== false;
 
         if (options.turnOnly) {
-            await rpExtractionFlow?.runIndependent?.();
-            await rpExtractionFlow?.captureInline();
+            await runRp('runIndependent');
+            await runRp('captureInline');
             if (ensureState() !== state) return { index: floorIndex, plan };
             if (triggerMatches) await maybeRunTurnSummary();
             syncInjection();
@@ -104,12 +111,14 @@ export function createMemoryOrchestrator({
         if (options.captureInline !== false && plan.actions.captureInline) {
             await captureInlineGenerationFromLatestMessage();
         }
-        if (options.captureInline !== false) await rpExtractionFlow?.captureInline();
+        if (options.captureInline !== false) await runRp('captureInline');
         if (ensureState() !== state) return { index: floorIndex, plan };
         if (options.scheduleInlineCapture) {
             scheduleInlineGenerationCapture(reason);
+            rpExtractionFlow?.scheduleCapture?.({ independent: true });
         }
-        await rpExtractionFlow?.runIndependent?.();
+        await runRp('runIndependent');
+        if (ensureState() !== state) return { index: floorIndex, plan };
     
         state = ensureState();
         floorIndex = getCurrentFloorMemoryIndex(state);

@@ -25,7 +25,7 @@ test('formal memory preserves track and validity and never indexes candidate gue
 test('state injection is bounded and prioritizes named people without dumping the ledger', () => {
     const projection = createProjection();
     projection.people = Array.from({ length: 200 }, (_, i) => ({ id: String(i), name: '人物' + i }));
-    const text = renderRpStateMemory({ rpCore: { settings: { inject: true } } }, { projection }, '人物199', 400);
+    const text = renderRpStateMemory({ rpCore: { settings: { enabled: true, inject: true } } }, { projection }, '人物199', 1000);
     assert.match(text, /人物199/);
-    assert.ok(text.length < 500);
+    assert.ok(text.length <= 1000);
 });

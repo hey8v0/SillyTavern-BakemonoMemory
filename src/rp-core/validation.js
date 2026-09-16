@@ -12,9 +12,10 @@ const requirements = {
     item_quantity_changed: ['id', 'delta'], item_damaged: ['id'], item_destroyed: ['id'],
     location_created: ['id', 'name'], location_reparented: ['id', 'parent'],
     clock_set: [], clock_advanced: ['from', 'days', 'to'],
+    person_state_revised: ['id', 'stateId'], person_trait_removed: ['id', 'trait'], plan_reopened: ['id'], item_restored: ['id'],
 };
 const contexts = new Set(['current', 'dream', 'hypothetical', 'flashback']);
-const strings = ['id', 'name', 'trait', 'stateId', 'description', 'from', 'to', 'kind', 'title', 'loanId', 'owner', 'holder', 'location', 'parent', 'outcome'];
+const strings = ['id', 'name', 'trait', 'stateId', 'description', 'from', 'to', 'kind', 'title', 'loanId', 'owner', 'holder', 'location', 'parent', 'outcome', 'dueDescription'];
 const reject = reason => ({ status: 'rejected', reason });
 const pending = reason => ({ status: 'pending', reason });
 
@@ -29,6 +30,9 @@ export function classifyCandidate(event) {
     if (!Object.hasOwn(requirements, event.action)) return reject('不支持的事实行为');
     const data = event.data;
     if (!data || typeof data !== 'object' || Array.isArray(data)) return reject('行为参数结构无效');
+    if (data.visibility != null && !['observable', 'private', 'author'].includes(data.visibility)) return reject('状态可见性无效');
+    if (data.target != null && typeof data.target !== 'string') return reject('状态指向对象无效');
+    if (data.present != null && (!Array.isArray(data.present) || data.present.some(id => typeof id !== 'string' || !id))) return reject('在场人物无效');
     for (const key of strings) {
         if (data[key] != null && (typeof data[key] !== 'string' || data[key].length > 4000)) return reject('行为参数类型无效：' + key);
     }

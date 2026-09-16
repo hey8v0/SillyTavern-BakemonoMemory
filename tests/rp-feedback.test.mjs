@@ -162,7 +162,7 @@ test('ambiguous names remain pending and reference previews expire after another
     projection.people = [{ id: 'p1', name: '甲', location: null }, { id: 'p2', name: '甲', location: null }];
     projection.locations = [{ id: 'room', name: '书房', parent: null }];
     chat[0].mes = '甲走进书房。';
-    await service.enable({ projection });
+    await service.enable(); state.rpCore.baseline.projection = structuredClone(projection);
     await service.ingest(payload([{ track: 'facts', action: 'person_moved', data: { id: '甲', location: '书房' }, excerpt: '甲走进书房。' }]), 0);
     assert.equal(state.rpCore.facts.length, 0);
     const id = state.rpCore.candidates[0].id;

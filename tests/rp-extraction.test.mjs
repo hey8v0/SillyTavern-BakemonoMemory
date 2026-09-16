@@ -49,7 +49,7 @@ test('claims remain separate and stale evidence cannot be confirmed', () => {
 });
 test('protocol rejects dangerous keys and unsupported versions', () => {
     assert.throws(() => prepareExtraction(fixture(), '{"version":1,"events":[],"__proto__":{}}', source, { floor: 1 }), /字段/);
-    assert.throws(() => prepareExtraction(fixture(), '{"version":2,"events":[]}', source, { floor: 1 }), /版本/);
+    assert.throws(() => prepareExtraction(fixture(), '{"version":99,"events":[]}', source, { floor: 1 }), /版本/);
 });
 
 test('invalid actions are rejected while unresolved prerequisites remain pending', () => {

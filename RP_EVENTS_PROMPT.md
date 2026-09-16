@@ -1,28 +1,38 @@
-# 剧情状态提示词
+# 剧情状态内置提示词
 
-维护设置 → 剧情状态提示词，可编辑、应用、另存和覆盖预设。随正文、回复后复用和独立提取使用同一份已应用提示词，末尾会附上当前对象参考。
+维护设置 → 剧情状态提示词，可编辑、应用、另存预设。升级保留自定义文本；要改用新版，载入“默认剧情状态”后应用。旧 state 格式仍可读取，但不能借整组覆盖悄悄删除既有状态。
 
-```text
-## 剧情状态
-完成本轮正文或摘要后，在 bakemono 块外输出一个完整的 <rpEvents> JSON 块；独立提取时只输出这个块。不输出代码围栏、注释或解释。
-你根据本轮正文、摘要和已知设定判断当前状态，插件自动记录，不等待用户逐条审核。不必提供摘录、证据、置信度或临时编号。
+## 剧情状态 · 逐项记录（协议 2）
+你维护当前剧情状态。只记录本轮正文中已发生、明确成立的变化；不要从摘要、角色卡、世界书或已有状态参考中制造本轮新事件。输出会由插件自动保存，不需要用户逐项确认。
+随正文模式：正文结束后，在摘要块之外追加一个完整 <rpEvents> JSON 块。独立模式：只输出这个块。不要代码围栏、解释、注释。无需摘录、置信度。
 
-格式示例（只示范结构，不要照抄示例剧情）：
-<rpEvents>{"version":1,"state":{"clock":{"date":"2024-04-12T23:45"},"scene":{"location":"书店"},"people":[{"name":"林晚","location":"书店"},{"name":"沈砚"}],"relationships":[{"from":"林晚","to":"沈砚","kind":"朋友"}],"items":[{"name":"钥匙","holder":"林晚","quantity":1}],"plans":[{"title":"一起看海","participants":["林晚","沈砚"],"status":"accepted","due":"2024-04-14"}]},"claims":[{"speaker":"林晚","description":"否认与同学交往"}]}</rpEvents>
+格式：
+<rpEvents>{"version":2,"events":[{"track":"facts","action":"person_moved","data":{"id":"林晚","location":"书店"}}]}</rpEvents>
+没有变化：<rpEvents>{"version":2,"events":[]}</rpEvents>。必须闭合标签与 JSON。每轮只写局部变化，不复制整个状态，不输出 state 或整组 states。
+省略字段表示保持；null 只用于明确未知的可空引用或未知数量，绝不是零。结束状态要用 ended；恢复物品、重开约定必须用明确的 restored/reopened 行为。
 
-state 的可用字段（只输出需要记录或修改的部分）：
-- clock：date（公历 YYYY-MM-DD 或 YYYY-MM-DDTHH:mm）、description（仅有“大约傍晚”等描述时使用）。
-- scene：location（当前场景名称）。
-- people：name、aliases（别名数组）、location、birthDate、traits（特征数组）、states（临时状态数组，如 [{"id":"胃痛","description":"胃痛"}]；结束时移除该状态，全部结束用 []）。
-- relationships：from、to（人物名称）、kind（关系名称）、mutual（是否双向）、status（active/ended）、since（已知开始日期）。一对人物可有多种关系。
-- plans：title、participants（人物名称数组）、status（proposed/accepted/completed/cancelled/failed）、due（日期）、outcome。
-- items：name、owner（所有者）、holder（持有者）、location、quantity（当前总量）、status（available/damaged/destroyed）。
-- locations：name、parent（上级地点名称）。
-名称引用已知对象；首次出现可直接写全名，插件补建人物和地点。同名不同对象用不同全名；已有对象改名时带参考中的 id。不要杜撰 char_1 之类代号。
+对象：引用已有参考的 id；首次登记使用唯一姓名/名称作为本批 id。同名人物、同名物品不要自动合并：明确为新对象时用新的本批 id 并登记。临时状态有独立 stateId，一次伤势、一种情绪各自记录；后续修订/结束引用同一 stateId。不能用相似文字替换别的伤势。
 
-首次处理补齐明确的时间、场景、人物位置和已知关系，之后只输出变化；省略字段保持原值。明确未知可写 null；未知数量不是 0。数组字段一旦输出即表示该字段的当前完整列表，不要漏掉仍存在的临时状态。不要输出整份旧状态或整段剧情。
-角色声称、否认、传闻放 claims；怀疑、推测、主观观察放 observations。两者都是含 description 的数组，可加 speaker、subject，不改变世界状态。
-表白不等于交往，吵架不等于分手，借用不转移所有权，约定到期不等于完成。回忆、梦境、假设、小剧场、第四面墙与推理不更新当前状态。参考资料用于理解，不把设定里的历史当成本轮新事件。
-相对时间只在当前日期明确时换算；不猜生日、日期或无依据数值。正文或摘要已明确的状态应记录，不因没有逐字摘录而省略。
-每轮优先记录时间、场景、重要人物关系与变化，保持短小且完整。无变化输出 <rpEvents>{"version":1,"state":{}}</rpEvents>。
-```
+常用 facts 行为（data 字段）：
+- person_registered：id,name；person_renamed：id,name；person_moved：id,location（最近确认的位置，不表示当前仍在场）。
+- person_trait_recorded / person_trait_removed：id,trait。仅明确的稳定特征，短期情绪不是人格。
+- person_state_started：id,stateId,description,visibility（observable/private/author），可选 target（指向人物）、expiresAt（明确公历日期）。
+- person_state_revised：id,stateId，及需要更新的 description/visibility/target。person_state_ended：id,stateId。未提到不代表结束。
+- clock_set：date（YYYY-MM-DD 或 YYYY-MM-DDTHH:mm），或 description（如“三天后傍晚”，缺锚点不猜公历）。clock_advanced：from,days,to，必须有可靠日期锚点。
+- scene_recorded：location，present（仅明确在场的人物 id 数组）。只被提及、打电话、传闻中的人不算在场。
+- relationship_established：id,from,to,kind,mutual（明确双向才 true）。relationship_recorded 用于首次记录正文明确已有的关系。
+- relationship_ended：id；relationship_conflict / relationship_milestone：id,description。表白不等于交往、争吵不等于分手。不要推断双向或数值好感度。
+- plan_proposed / promise_created：id,title,participants；可选 due 或 dueDescription（未能锚定的相对约定）。
+- plan_accepted / plan_completed / plan_cancelled / plan_failed：id；plan_modified：id及 title/due；plan_reopened：id（仅明确再次开启）。
+- item_registered / item_acquired：id,name，可选 owner,holder,location,quantity。所有权、持有人、存放地是三件事；未知数量保持 null。
+- item_lent：id,from,to,loanId；item_returned：id,loanId；item_gifted：id,from,to（赠送者确有所有权）。
+- item_placed：id,from,location；item_consumed：id,quantity（本次消耗，不是剩余总量）；item_quantity_changed：id,delta。
+- item_damaged / item_destroyed：id；item_restored：id，可选 quantity。已销毁物品不能用普通更新复活。
+- location_created：id,name，可选 parent；location_reparented：id,parent。
+
+每项默认 track:"facts"、context:"current"。角色声称、否认、传闻用 track:"claims",action:"claim_made",data:{speaker,subject,description}；
+怀疑、推测、主观观察用 track:"observations",action:"observation_recorded",data:{speaker,subject,description}，它们不会改变世界事实。
+回忆、梦境、假设、未执行计划不产生当前事实。不要把“想赠送”写成已赠送。
+待转告不等于已经传达；叙述者知道不等于所有人物知道。内心情绪注明指向对象和 private/author，不推成永久特征。
+同一次行为只写一次；确实发生两次消耗就写两项。有关联且必须同时成立的操作使用相同 group；独立变化不放进同一组。
+优先时间、场景、在场人物、关系和重要变化，保持短小完整。只写你能从本轮正文确定的内容，不猜生日、日期、所有权或数量。

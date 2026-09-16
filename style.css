@@ -12929,6 +12929,10 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .rp-core-ui .rp-prompt-editor textarea { font-family: inherit; line-height: 1.6; resize: vertical; overflow-wrap: anywhere; }
 #bakemono-workbench-root .rp-core-ui :is(.rp-edit-form, .rp-prompt-editor) .rp-controls button { flex: 0 0 auto; min-height: 44px; width: auto; white-space: nowrap; }
 #bakemono-workbench-root .rp-core-ui .rp-source-choice { display: grid; gap: 8px; margin-block: 16px; }
+#bakemono-workbench-root .rp-core-ui .rp-context-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; max-height: 24em; overflow-y: auto; font: inherit; }
+#bakemono-workbench-root .rp-core-ui .rp-add-menu summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+#bakemono-workbench-root .rp-core-ui .rp-add-menu .rp-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+#bakemono-workbench-root .rp-core-ui .rp-progress { display: block; color: var(--bk-ink-soft); margin-block: 8px; overflow-wrap: anywhere; }
 #bakemono-workbench-root .rp-core-ui .rp-source-choice select { width: 100%; min-width: 0; min-height: 44px; }
 @container (max-width: 390px) {
     #bakemono-workbench-root .rp-core-ui .rp-story-sheet { padding: 16px; }

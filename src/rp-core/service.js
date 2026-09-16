@@ -1,5 +1,6 @@
 import { createLedger, replayLedger, assertLedgerVersion, appendRecord } from './ledger.js';
-import { applyStateUpdate } from './state-update.js';
+import { RP_SETTINGS, migrateRpCore } from './policy.js';
+import { exportRpBackup, importRpBackup } from './backup.js';
 import { createProjection, applyDomainFact } from './domain.js';
 import { prepareExtraction, decideCandidate, refreshCandidateFingerprint } from './extraction.js';
 import { readChatSource, findChatSource, currentChatSources } from './chat-sources.js';
@@ -9,20 +10,27 @@ import { deriveTimeViews } from './time-views.js';
 import { missingReferences } from './references.js';
 import { prepareReferenceRepair } from './reference-repair.js';
 
-export function createRpCoreService({ getState, getChat, saveState, saveChat, makeSourceId }) {
+export function createRpCoreService({ getState, getChat, saveState, saveChat, makeSourceId, getChatIdentity = () => getState().chatIdentity || getState().chatId || '' }) {
     const transactions = createRpTransactions({ getState, saveState, saveChat });
     const lastFloor = () => Math.max(0, getChat().length - 1);
 
     function factReducer(state, currentSources = null) {
         const activeSources = currentSources || currentChatSources(getChat(), state);
+        const policySources = new Map();
+        let invalidFrom = Infinity;
         const sources = new Map();
         return (projection, fact) => {
             if (fact.origin?.kind === 'model') {
-                const source = activeSources.get(fact.origin.messageId + '|' + fact.origin.variantId);
-                if (!source || (fact.origin.scope === 'part' ? source.revision : sourceStamp(source)) !== fact.origin.stamp) throw new Error('所属回复已改变，本条记录不再用于当前状态');
+                const policy = fact.origin.policy || { version: 1 }, key = JSON.stringify(policy);
+                if (!policySources.has(key)) policySources.set(key, currentChatSources(getChat(), state, policy));
+                const source = policySources.get(key).get(fact.origin.messageId + '|' + fact.origin.variantId);
+                if (!source || (fact.origin.scope === 'part' ? source.revision : sourceStamp(source)) !== fact.origin.stamp) { invalidFrom = Math.min(invalidFrom, fact.order); throw new Error('所属回复已改变，本条记录不再用于当前状态'); }
+                if (fact.ruleVersion >= 3 && ['state_updated', 'clock_set', 'scene_recorded', 'person_moved'].includes(fact.action)
+                    && (fact.order > invalidFrom || state.rpCore.invalidations?.some(item => item.floor < fact.order && item.revision > (fact.origin.baseRevision ?? 0)))) throw new Error('较早来源已改变，本条绝对状态需重新提取');
             } else if (fact.evidence && fact.origin?.kind !== 'user') {
                 const key = fact.evidence.messageId + '|' + fact.evidence.variantId;
-                if (!sources.has(key)) sources.set(key, activeSources.get(key));
+                if (!policySources.has('legacy')) policySources.set('legacy', currentChatSources(getChat(), state, { version: 1 }));
+                if (!sources.has(key)) sources.set(key, policySources.get('legacy').get(key));
                 const source = sources.get(key);
                 if (!source || source.revision !== fact.evidence.revision) throw new Error('事实来源已变化，需要重新确认');
                 const anchor = locateEvidence(source, fact.evidence.excerpt, fact.evidence).anchor;
@@ -38,29 +46,68 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         const sources = options.asOfFloor === undefined ? currentChatSources(getChat(), state) : null;
         const result = replayLedger(state.rpCore, options.asOfFloor === undefined ? factReducer(state, sources) : applyDomainFact, options);
         const sourceStates = {};
+        const policies = new Map();
         if (options.asOfFloor === undefined) {
             for (const item of ['facts', 'claims', 'observations', 'candidates'].flatMap(track => state.rpCore[track])) {
                 const key = item.origin?.kind === 'model' ? item.origin.messageId + '|' + item.origin.variantId : item.sourceKey || (item.evidence && item.evidence.messageId + '|' + item.evidence.variantId);
                 if (!key) continue;
-                const source = sources.get(key), revision = item.sourceRevision || item.evidence?.revision;
+                const policy = item.origin?.policy || { version: 1 }, policyKey = JSON.stringify(policy);
+                if (!policies.has(policyKey)) policies.set(policyKey, currentChatSources(getChat(), state, policy));
+                const source = policies.get(policyKey).get(key), revision = item.sourceRevision || item.evidence?.revision;
                 sourceStates[item.id] = !source ? 'inactive' : (item.origin?.kind === 'model' ? (item.origin.scope === 'part' ? source.revision : sourceStamp(source)) !== item.origin.stamp : source.revision !== revision) ? 'changed' : 'current';
             }
         }
         for (const track of ['claims', 'observations']) for (const item of state.rpCore[track]) {
+            if (item.superseded) sourceStates[item.id] = 'replaced';
             if (item.replaces && (options.asOfFloor === undefined || item.floor <= options.asOfFloor)) sourceStates[item.replaces] = 'replaced';
         }
         return { ...result, sourceStates, projection: result.projection ? deriveTimeViews(result.projection) : null };
     }
-    async function enable({ projection = createProjection() } = {}) {
+    async function enable() {
         const state = getState();
         if (state.rpCore) throw new Error('当前聊天已经启用剧情状态');
-        const core = createLedger(projection, lastFloor());
-        core.ruleVersion = 2;
-        core.settings = { enabled: true, autoApply: true, inject: true, mode: 'inline' };
+        const core = createLedger(createProjection(), lastFloor());
+        core.ruleVersion = 3;
+        core.settings = { ...RP_SETTINGS, excludeTags: state.scanRules?.includeTags || '' };
         await transactions.commit(state, null, core);
         return core;
     }
-    async function ingest(raw, sourceFloor, { manual = false, expectedSource = null, channel = null, inputHash = '', protocolStatus = null } = {}) {
+    async function migrate() {
+        const state = getState(), core = state.rpCore;
+        if (!core || core.ruleVersion === 3) return false;
+        assertLedgerVersion(core);
+        await transactions.commit(state, core.revision, migrateRpCore(core, state));
+        return true;
+    }
+    function backup() {
+        const state = getState();
+        const identity = String(getChatIdentity() || '');
+        if (!identity) throw new Error('无法确认当前聊天身份，暂不能导出恢复包');
+        return { format: 'bakemono-rp-state', version: 1, chatIdentity: identity, core: exportRpBackup(state.rpCore) };
+    }
+    function validateRestore(payload) {
+        if (payload?.format !== 'bakemono-rp-state' || payload.version !== 1 || !payload.chatIdentity || payload.chatIdentity !== String(getChatIdentity() || '')) throw new Error('恢复包版本或所属聊天不匹配');
+        return importRpBackup(payload.core);
+    }
+    async function restore(payload, { expectedState = getState(), expectedRevision = expectedState.rpCore?.revision ?? null } = {}) {
+        const state = getState(), core = state.rpCore;
+        if (state !== expectedState || (core?.revision ?? null) !== expectedRevision) throw new Error('聊天或状态已变化，请重新导入');
+        const restored = validateRestore(payload);
+        restored.settings.automatic = false;
+        restored.revision = Math.max(restored.revision, core?.revision || 0) + 1;
+        await transactions.commit(state, core?.revision ?? null, restored, () => true, { clearCache: true });
+        return view(state);
+    }
+    async function clear(expectedRevision, expectedState = getState()) {
+        const state = getState(), core = state.rpCore;
+        assertLedgerVersion(core);
+        if (state !== expectedState || core.revision !== expectedRevision) throw new Error('状态已变化，请重新操作');
+        const next = createLedger(createProjection(), lastFloor());
+        next.ruleVersion = 3; next.revision = core.revision + 1;
+        next.settings = { ...core.settings, enabled: false, automatic: false };
+        await transactions.commit(state, core.revision, next, () => true, { clearCache: true });
+    }
+    async function ingest(raw, sourceFloor, { manual = false, expectedSource = null, channel = null, inputHash = '', protocolStatus = null, taskId = '' } = {}) {
         const state = getState(), core = state.rpCore;
         if (!core?.settings?.enabled || (channel !== null && core.settings.mode !== channel)) return null;
         assertLedgerVersion(core);
@@ -69,7 +116,25 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         const source = readChatSource(message, state, { allocate: true, makeId: makeSourceId });
         if (expectedSource && (expectedSource.messageId !== source.messageId || expectedSource.variantId !== source.variantId
             || sourceStamp(expectedSource) !== sourceStamp(source))) throw new Error('生成期间正文来源已变化');
-        const prepared = prepareExtraction({ ...core, ruleVersion: 2 }, raw, source, {
+        const original = structuredClone(core), key = source.messageId + '|' + source.variantId;
+        if (core.ruleVersion >= 3) {
+            const oldBatches = original.batches.filter(batch => batch.sourceKey === key && !batch.superseded);
+            if (!manual && oldBatches.some(batch => batch.sourceStamp === sourceStamp(source))) return { core, unchanged: true };
+            if (oldBatches.length) (original.invalidations ||= []).push({ floor: sourceFloor, revision: ++original.revision, sourceKey: key });
+            for (const batch of oldBatches) {
+                batch.superseded = true;
+                for (const candidate of original.candidates.filter(item => batch.candidateIds.includes(item.id) && item.status === 'accepted')) {
+                    const recordId = candidate.recordId || candidate.factId;
+                    original.decisions.push({ sequence: ++original.revision, floor: lastFloor(), action: 'supersede', factId: recordId });
+                    for (const track of ['claims', 'observations']) {
+                        const record = original[track].find(item => item.id === recordId);
+                        if (record) record.superseded = true;
+                    }
+                    candidate.superseded = true;
+                }
+            }
+        }
+        const prepared = prepareExtraction(original, raw, source, {
             floor: lastFloor(), order: sourceFloor,
             autoApply: true, modelOwned: true,
             automaticRegistration: true,
@@ -79,24 +144,56 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         if (inputHash) prepared.core.batches.at(-1).inputHash = String(inputHash);
         prepared.core.batches.at(-1).sourceStamp = sourceStamp(source);
         if (['complete', 'missing', 'incomplete'].includes(protocolStatus)) prepared.core.batches.at(-1).protocolStatus = protocolStatus;
-        const key = source.messageId + '|' + source.variantId;
+        prepared.core.batches.at(-1).sourceFloor = sourceFloor;
+        prepared.core.batches.at(-1).taskId = taskId;
+        prepared.core.extractionJobs = [...(prepared.core.extractionJobs || []).filter(job => job.sourceKey !== key), { sourceKey: key,
+            sourceRevision: source.revision, sourceStamp: sourceStamp(source), sourceFloor, status: 'done', recordedAt: new Date().toISOString() }];
         await transactions.commit(state, core.revision, prepared.core, () => {
-            const current = findChatSource(getChat(), state, key);
+            const current = findChatSource(getChat(), state, key, source.policy);
             return sourceStamp(current) === sourceStamp(source);
         });
         return prepared;
     }
-    async function editEntity(collection, id, values, { expectedRevision = getState().rpCore?.revision } = {}) {
+    async function editEntity(collection, id, values, { expectedRevision = getState().rpCore?.revision, create = false, intent = 'change' } = {}) {
         const state = getState(), core = state.rpCore;
         assertLedgerVersion(core);
         if (core.revision !== expectedRevision) throw new Error('状态已变化，请重新打开编辑');
         const projection = view(state).projection;
-        if (!['clock', 'scene'].includes(collection) && !projection[collection]?.some(item => item.id === id)) throw new Error('对象已变化或不存在');
-        applyStateUpdate(projection, { collection, id, values });
-        const next = structuredClone(core); next.ruleVersion = 2;
-        appendRecord(next, { track: 'facts', action: 'state_updated', data: { collection, id, values }, origin: { kind: 'user' } }, { floor: lastFloor() });
+        if (!create && !['clock', 'scene'].includes(collection) && !projection[collection]?.some(item => item.id === id)) throw new Error('对象已变化或不存在');
+        if (!['change', 'correction'].includes(intent)) throw new Error('修改意图无效');
+        if (create && !['people', 'locations', 'items', 'plans', 'relationships'].includes(collection)) throw new Error('对象类型无效');
+        if (create) id = 'user-' + (makeSourceId?.() || globalThis.crypto.randomUUID());
+        const event = { track: 'facts', action: 'state_updated', ruleVersion: 3, protocolVersion: 2,
+            data: { collection, id, values, ...(create ? { create: true } : {}) }, origin: { kind: 'user', intent } };
+        const after = applyDomainFact(projection, event);
+        const previous = ['clock', 'scene'].includes(collection) ? projection[collection] : projection[collection]?.find(item => item.id === id);
+        const changed = ['clock', 'scene'].includes(collection) ? after[collection] : after[collection]?.find(item => item.id === id);
+        event.change = { before: Object.fromEntries(Object.keys(values).map(key => [key, previous?.[key] ?? null])), after: Object.fromEntries(Object.keys(values).map(key => [key, changed?.[key] ?? null])) };
+        if (intent === 'correction') event.origin.corrects = core.facts.filter(item => item.data.id === id || item.data.collection === collection && ['clock', 'scene'].includes(collection)).map(item => item.id);
+        const next = structuredClone(core); next.ruleVersion = 3;
+        appendRecord(next, event, { floor: lastFloor() });
         await transactions.commit(state, expectedRevision, next);
         return view(state);
+    }
+    async function editTemporary(personId, stateId, values, { expectedRevision, end = false } = {}) {
+        const state = getState(), core = state.rpCore;
+        if (core?.revision !== expectedRevision) throw new Error('状态已变化，请重新打开编辑');
+        const action = end ? 'person_state_ended' : stateId ? 'person_state_revised' : 'person_state_started';
+        const event = { track: 'facts', action, ruleVersion: 3, protocolVersion: 2,
+            data: { ...values, id: personId, stateId: stateId || 'state-' + (makeSourceId?.() || globalThis.crypto.randomUUID()) }, origin: { kind: 'user', intent: 'change' } };
+        applyDomainFact(view(state).projection, event);
+        const next = structuredClone(core); next.ruleVersion = 3;
+        appendRecord(next, event, { floor: lastFloor() });
+        await transactions.commit(state, core.revision, next);
+    }
+    async function lifecycle(action, id, expectedRevision) {
+        const state = getState(), core = state.rpCore;
+        if (core?.revision !== expectedRevision || !['item_restored', 'plan_reopened'].includes(action)) throw new Error('状态或操作已变化');
+        const event = { track: 'facts', action, ruleVersion: 3, protocolVersion: 2, data: { id }, origin: { kind: 'user', intent: 'change' } };
+        applyDomainFact(view(state).projection, event);
+        const next = structuredClone(core); next.ruleVersion = 3;
+        appendRecord(next, event, { floor: lastFloor() });
+        await transactions.commit(state, expectedRevision, next);
     }
     async function editInformation(track, id, values, { expectedRevision = getState().rpCore?.revision } = {}) {
         const state = getState(), core = state.rpCore;
@@ -106,7 +203,7 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         if (!record || Object.keys(values).some(key => !['speaker', 'subject', 'description'].includes(key))
             || Object.values(values).some(value => typeof value !== 'string' || value.length > 4000)
             || !(values.description ?? record.data.description)?.trim()) throw new Error('信息记录格式无效');
-        const next = structuredClone(core); next.ruleVersion = 2;
+        const next = structuredClone(core); next.ruleVersion = Math.max(2, core.ruleVersion);
         const added = appendRecord(next, { track, action: record.action, data: { ...record.data, ...values }, origin: { kind: 'user' } }, { floor: lastFloor() });
         next[track].find(item => item.id === added.id).replaces = id;
         await transactions.commit(state, expectedRevision, next);
@@ -116,7 +213,7 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         const state = getState(), core = state.rpCore;
         if (!core?.settings?.enabled || !core.candidates.some(item => item.status === 'pending')) return false;
         assertLedgerVersion(core);
-        let next = structuredClone(core); next.ruleVersion = 2;
+        let next = structuredClone(core); next.ruleVersion = Math.max(2, core.ruleVersion);
         const keys = [...new Set(core.candidates.filter(item => item.status === 'pending').map(item => item.originSourceKey || item.sourceKey))];
         const stamps = new Map();
         for (const key of keys) {
@@ -220,12 +317,16 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
                 () => sourceStamp(findChatSource(getChat(), state, candidate.originSourceKey || candidate.sourceKey)) === sourceStamp(groupSource)) };
     }
     async function configure(patch) {
+        await migrate();
         const state = getState(), core = state.rpCore;
         assertLedgerVersion(core);
         const next = structuredClone(core);
         for (const [key, value] of Object.entries(patch)) {
-            if (['enabled', 'autoApply', 'inject', 'includeCharacterContext', 'includeWorldInfo'].includes(key) && typeof value === 'boolean') next.settings[key] = value;
-            else if (key === 'mode' && ['reuse', 'inline', 'reply', 'independent'].includes(value)) next.settings.mode = value;
+            if (['enabled', 'automatic', 'autoApply', 'inject', 'includeCharacterContext', 'includeWorldInfo'].includes(key) && typeof value === 'boolean') next.settings[key] = value;
+            else if (key === 'mode' && ['inline', 'independent'].includes(value)) { next.settings.mode = value; next.settings.modeNeedsChoice = false; }
+            else if (key === 'triggerTiming' && ['immediate', 'next_user'].includes(value)) next.settings[key] = value;
+            else if (['includeTags', 'excludeTags'].includes(key) && typeof value === 'string' && value.length <= 2000) next.settings[key] = value;
+            else if (key === 'contextBudget' && Number.isSafeInteger(value) && value >= 1000 && value <= 60000) next.settings[key] = value;
             else throw new Error('剧情状态设置无效');
         }
         next.revision++;
@@ -235,11 +336,12 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         if (getState() !== expectedState) throw new Error('提取聊天已变化');
         const core = expectedState.rpCore;
         assertLedgerVersion(core);
+        if (core.extractionJobs?.some(item => item.sourceKey === job.sourceKey && item.sourceStamp === job.sourceStamp && item.status === job.status)) return { status: 'unchanged' };
         if (!job || typeof job.sourceKey !== 'string' || typeof job.sourceRevision !== 'string'
             || !['running', 'done', 'failed', 'paused'].includes(job.status)) throw new Error('提取任务无效');
         const next = structuredClone(core);
         next.extractionJobs = [...(next.extractionJobs || []).filter(item => item.sourceKey !== job.sourceKey),
-            { sourceKey: job.sourceKey, sourceRevision: job.sourceRevision, ...(typeof job.sourceStamp === 'string' ? { sourceStamp: job.sourceStamp } : {}), status: job.status, recordedAt: new Date().toISOString() }];
+            { sourceKey: job.sourceKey, sourceRevision: job.sourceRevision, ...(typeof job.sourceStamp === 'string' ? { sourceStamp: job.sourceStamp } : {}), status: job.status, ...(Number.isSafeInteger(job.sourceFloor) ? { sourceFloor: job.sourceFloor } : {}), ...(job.errorClass ? { errorClass: job.errorClass } : {}), recordedAt: new Date().toISOString() }];
         next.revision++;
         return transactions.commit(expectedState, core.revision, next);
     }
@@ -247,5 +349,18 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         // An unsupported ledger remains untouched; legacy memories must still work.
         try { return view(state); } catch { return null; }
     }
-    return { enable, ingest, editEntity, editInformation, reconcilePending, review, previewReview, previewEvidenceRepair, evidenceChoices, evidenceSuggestion, referenceIssues, previewReferenceRepair, configure, setExtractionJob, view, memoryView };
+    function progress(state = getState()) {
+        const core = state.rpCore;
+        if (!core) return null;
+        const sources = currentChatSources(getChat(), state), missing = [];
+        let latest = null;
+        getChat().forEach((message, floor) => {
+            if (!message || message.is_user || message.is_system || floor < core.baseline.floor) return;
+            const source = readChatSource(message, state), key = source && source.messageId + '|' + source.variantId;
+            const processed = key && sources.get(key) && core.batches.some(batch => !batch.superseded && batch.sourceKey === key && batch.sourceStamp === sourceStamp(source));
+            if (processed) latest = floor; else missing.push(floor);
+        });
+        return { start: core.baseline.floor, latest, missingCount: missing.length, missingFrom: missing[0], missingTo: missing.at(-1) };
+    }
+    return { enable, migrate, backup, validateRestore, restore, clear, progress, ingest, editEntity, editTemporary, lifecycle, editInformation, reconcilePending, review, previewReview, previewEvidenceRepair, evidenceChoices, evidenceSuggestion, referenceIssues, previewReferenceRepair, configure, setExtractionJob, view, memoryView };
 }

@@ -12,10 +12,13 @@ export function entityReferences(event) {
     if (kind === 'person' || kind === 'item' || kind === 'scene') add('location', 'locations', '地点');
     if (kind === 'location') add('parent', 'locations', '上级地点');
     if ((kind === 'plan' || kind === 'promise') && Array.isArray(data.participants)) data.participants.forEach((value, index) => refs.push({ field: 'participants.' + index, collection: 'people', label: '参与者', value }));
+    if (kind === 'person') add('target', 'people', '状态指向人物');
+    if (kind === 'scene' && Array.isArray(data.present)) data.present.forEach((value, index) => refs.push({ field: 'present.' + index, collection: 'people', label: '在场人物', value }));
     return refs;
 }
 export function setReference(data, field, value) {
-    if (field.startsWith('participants.')) data.participants[Number(field.split('.')[1])] = value;
+    if (field.startsWith('present.')) data.present[Number(field.split('.')[1])] = value;
+    else if (field.startsWith('participants.')) data.participants[Number(field.split('.')[1])] = value;
     else data[field] = value;
 }
 export function resolveKnownReferences(event, projection) {

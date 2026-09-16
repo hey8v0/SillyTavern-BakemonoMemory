@@ -8,7 +8,7 @@ const ui = createRpStatePresentation({ escapeHtml: esc });
 function crowded() {
     const view = createProjection();
     view.clock.date = '2025-10-16';
-    view.scene = { location: 'shop' };
+    view.scene = { location: 'shop', present: Array.from({ length: 8 }, (_, i) => 'p' + i) };
     view.locations = [{ id: 'shop', name: '旧书店' }, { id: 'sea', name: '海边' }];
     view.people = Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, name: `人物${i}`, location: i < 8 ? 'shop' : 'sea' }));
     view.relationships = Array.from({ length: 25 }, (_, i) => ({ id: `r${i}`, from: `p${i}`, to: `p${i + 1}`, kind: 'partner', mutual: i !== 0, status: 'active' }));
@@ -69,7 +69,7 @@ test('separate locations are not silently presented as one current scene', () =>
     assert.equal(selectStoryOverview(view).location, null);
     assert.equal(selectStoryOverview(view).peopleLabel, '人物');
     view.people.forEach(person => { person.location = 'shop'; });
-    assert.equal(selectStoryOverview(view).location.id, 'shop');
+    assert.equal(selectStoryOverview(view).location, null, 'last known positions do not create a current scene');
     view.scene = { location: 'sea' };
     const overview = selectStoryOverview(view);
     assert.equal(overview.location.id, 'sea');
