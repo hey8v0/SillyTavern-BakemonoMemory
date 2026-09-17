@@ -124,14 +124,14 @@
                   <button type="button" class="bakemono-memory-help-trigger" aria-label="查看 Token 比例说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">比例读取酒馆保存的上一轮已发送 Prompt 快照。清单按最终请求中的消息逐条统计，不触发生成，也不会消耗 API 次数；还没有生成过回复时显示为空。</span></button>
                 </div>
               </div>
-              <dl class="bakemono-memory-token-breakdown">
-                <div data-bakemono-token-source="rule"><dt><i></i>模板／规则</dt><dd><span id="bakemono-memory-token-rule">0</span></dd><span class="bakemono-memory-token-source-bar"><i id="bakemono-memory-token-bar-rule"></i></span></div>
-                <div data-bakemono-token-source="summary"><dt><i></i>阶段／多次总结</dt><dd><span id="bakemono-memory-token-summary">0</span></dd><span class="bakemono-memory-token-source-bar"><i id="bakemono-memory-token-bar-summary"></i></span></div>
-                <div data-bakemono-token-source="memory"><dt><i></i>长期记忆</dt><dd><span id="bakemono-memory-token-memory">0</span></dd><span class="bakemono-memory-token-source-bar"><i id="bakemono-memory-token-bar-memory"></i></span></div>
-                <div data-bakemono-token-source="rpState"><dt><i></i>剧情状态</dt><dd><span id="bakemono-memory-token-rpState">0</span></dd><span class="bakemono-memory-token-source-bar"><i id="bakemono-memory-token-bar-rpState"></i></span></div>
-                <div data-bakemono-token-source="table"><dt><i></i>表格记忆</dt><dd><span id="bakemono-memory-token-table">0</span></dd><span class="bakemono-memory-token-source-bar"><i id="bakemono-memory-token-bar-table"></i></span></div>
-                <div data-bakemono-token-source="vector"><dt><i></i>向量召回</dt><dd><span id="bakemono-memory-token-vector">0</span></dd><span class="bakemono-memory-token-source-bar"><i id="bakemono-memory-token-bar-vector"></i></span></div>
-              </dl>
+              <div class="bakemono-memory-token-breakdown" role="group" aria-label="点击查看各模块注入内容">
+                <button type="button" data-bakemono-token-source="rule" aria-label="查看模板／规则本轮注入内容" aria-haspopup="dialog" aria-expanded="false" aria-controls="bakemono-injection-preview"><span class="bakemono-memory-token-label"><i aria-hidden="true"></i>模板／规则</span><span class="bakemono-memory-token-value" id="bakemono-memory-token-rule">0</span><span class="bakemono-memory-token-source-bar" aria-hidden="true"><i id="bakemono-memory-token-bar-rule"></i></span></button>
+                <button type="button" data-bakemono-token-source="summary" aria-label="查看阶段／多次总结本轮注入内容" aria-haspopup="dialog" aria-expanded="false" aria-controls="bakemono-injection-preview"><span class="bakemono-memory-token-label"><i aria-hidden="true"></i>阶段／多次总结</span><span class="bakemono-memory-token-value" id="bakemono-memory-token-summary">0</span><span class="bakemono-memory-token-source-bar" aria-hidden="true"><i id="bakemono-memory-token-bar-summary"></i></span></button>
+                <button type="button" data-bakemono-token-source="memory" aria-label="查看长期记忆本轮注入内容" aria-haspopup="dialog" aria-expanded="false" aria-controls="bakemono-injection-preview"><span class="bakemono-memory-token-label"><i aria-hidden="true"></i>长期记忆</span><span class="bakemono-memory-token-value" id="bakemono-memory-token-memory">0</span><span class="bakemono-memory-token-source-bar" aria-hidden="true"><i id="bakemono-memory-token-bar-memory"></i></span></button>
+                <button type="button" data-bakemono-token-source="rpState" aria-label="查看剧情状态本轮注入内容" aria-haspopup="dialog" aria-expanded="false" aria-controls="bakemono-injection-preview"><span class="bakemono-memory-token-label"><i aria-hidden="true"></i>剧情状态</span><span class="bakemono-memory-token-value" id="bakemono-memory-token-rpState">0</span><span class="bakemono-memory-token-source-bar" aria-hidden="true"><i id="bakemono-memory-token-bar-rpState"></i></span></button>
+                <button type="button" data-bakemono-token-source="table" aria-label="查看表格记忆本轮注入内容" aria-haspopup="dialog" aria-expanded="false" aria-controls="bakemono-injection-preview"><span class="bakemono-memory-token-label"><i aria-hidden="true"></i>表格记忆</span><span class="bakemono-memory-token-value" id="bakemono-memory-token-table">0</span><span class="bakemono-memory-token-source-bar" aria-hidden="true"><i id="bakemono-memory-token-bar-table"></i></span></button>
+                <button type="button" data-bakemono-token-source="vector" aria-label="查看向量召回本轮注入内容" aria-haspopup="dialog" aria-expanded="false" aria-controls="bakemono-injection-preview"><span class="bakemono-memory-token-label"><i aria-hidden="true"></i>向量召回</span><span class="bakemono-memory-token-value" id="bakemono-memory-token-vector">0</span><span class="bakemono-memory-token-source-bar" aria-hidden="true"><i id="bakemono-memory-token-bar-vector"></i></span></button>
+              </div>
             </article>
           </section>
 
@@ -2175,7 +2175,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.7.2 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.7.3 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

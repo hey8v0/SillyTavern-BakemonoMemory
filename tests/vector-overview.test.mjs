@@ -53,6 +53,6 @@ test('overview uses six equal cells with rules first and a divider on the vector
     const sources = [...html.matchAll(/data-bakemono-token-source="([^"]+)"/g)].map(m => m[1]);
     assert.deepEqual(sources, ['rule', 'summary', 'memory', 'rpState', 'table', 'vector']);
     assert.match(css, /\.bakemono-memory-token-breakdown\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
-    assert.match(css, /\.bakemono-memory-token-breakdown > div:nth-child\(even\)\s*\{[^}]*border-left:/);
-    assert.doesNotMatch(css, /\.bakemono-memory-token-breakdown > div:last-child\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/);
+    assert.match(css, /\.bakemono-memory-token-breakdown > button:nth-child\(even\)\s*\{[^}]*border-left:/);
+    assert.doesNotMatch(css, /\.bakemono-memory-token-breakdown > button:last-child\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/);
 });

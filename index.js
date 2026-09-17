@@ -79,6 +79,7 @@ import { createConfigurationService } from './src/features/configuration-service
 import { createConfigurationController } from './src/features/configuration-controller.js';
 import { createMemoryRecordsUi } from './src/features/memory-records-ui.js';
 import { createOverviewTokenManifest } from './src/features/overview-token-manifest.js';
+import { createInjectionPreview } from './src/features/injection-preview.js';
 import { createWorkflowOverviewModel } from './src/features/workflow-overview-model.js';
 import { createOverviewWorkbenchUi } from './src/features/overview-workbench-ui.js';
 import { createSummaryGenerationUi } from './src/features/summary-generation-ui.js';
@@ -732,7 +733,10 @@ const workbenchNavigation = createWorkbenchNavigation({
     renderHeaderContext: tabName => renderWorkbenchHeaderContext(tabName),
     renderAll: (...args) => renderAll(...args),
     scanBlocks: options => scanBakemonoBlocks(options),
-    closeHelp: () => helpPopover.close(),
+    closeHelp: () => {
+        helpPopover.close();
+        injectionPreview.close({ restoreFocus: false });
+    },
     clearFeedback: () => operationFeedback.clear(),
 });
 const {
@@ -1564,6 +1568,11 @@ const overviewTokenManifest = createOverviewTokenManifest({
     logWarning: (...args) => console.warn(...args),
 });
 const { renderOverviewTokenManifest } = overviewTokenManifest;
+const injectionPreview = createInjectionPreview({
+    documentRef: document,
+    getSources: () => overviewTokenManifest.getOverviewInjectionSources(),
+    beforeOpen: () => helpPopover.close(),
+});
 
 const workflowOverviewModel = createWorkflowOverviewModel({
     getState: ensureState,
@@ -2230,6 +2239,7 @@ const workbenchShellEvents = createWorkbenchShellEvents({
     promptInspector,
     helpGuide,
     helpPopover,
+    injectionPreview,
     runWorkbenchAction,
     getWorkbenchActionRenderScope,
     renderWorkbenchScope,
@@ -2364,21 +2374,27 @@ async function init() {
 
     scheduleAutoHideRecent('init');
 
-    eventSource.on(event_types.CHAT_CHANGED, () => runChatSwitchFlow({
-        getState: ensureState,
-        syncConfig: state => {
-            recoverNewerSharedConfigurationFromState(state);
-            bootstrapSharedConfigurationFromCurrentChat(state);
-            return syncGlobalActiveConfigToState(state, { force: true });
-        },
-        recover: state => reconcileSummaryRecovery(state),
-        scheduleAutoHide: scheduleAutoHideRecent,
-        markVectorDirty: markVectorIndexDirty,
-        syncInjection,
-        scheduleRender: scheduleRenderAll,
-    }));
+    eventSource.on(event_types.CHAT_CHANGED, () => {
+        injectionPreview.close({ restoreFocus: false });
+        return runChatSwitchFlow({
+            getState: ensureState,
+            syncConfig: state => {
+                recoverNewerSharedConfigurationFromState(state);
+                bootstrapSharedConfigurationFromCurrentChat(state);
+                return syncGlobalActiveConfigToState(state, { force: true });
+            },
+            recover: state => reconcileSummaryRecovery(state),
+            scheduleAutoHide: scheduleAutoHideRecent,
+            markVectorDirty: markVectorIndexDirty,
+            syncInjection,
+            scheduleRender: scheduleRenderAll,
+        });
+    });
     if (event_types.CHAT_LOADED) {
-        eventSource.on(event_types.CHAT_LOADED, () => scheduleForegroundRuntimeResume('聊天已载入'));
+        eventSource.on(event_types.CHAT_LOADED, () => {
+            injectionPreview.close({ restoreFocus: false });
+            scheduleForegroundRuntimeResume('聊天已载入');
+        });
     }
     for (const event of [event_types.CHAT_CHANGED, event_types.CHAT_LOADED, event_types.CHARACTER_MESSAGE_RENDERED].filter(Boolean)) {
         eventSource.on(event, () => rpProtocolDisplay.bind());

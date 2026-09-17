@@ -920,7 +920,7 @@ test('first shared-settings upgrade preserves the current chat before forced syn
 
 test('chat changes keep their side effects in one ordered coordinator', () => {
     assert.match(source, /from '.\/src\/core\/chat-switch\.js'/);
-    assert.match(source, /eventSource\.on\(event_types\.CHAT_CHANGED, \(\) => runChatSwitchFlow\(\{/);
+    assert.match(source, /eventSource\.on\(event_types\.CHAT_CHANGED, \(\) => \{\s*injectionPreview\.close\(\{ restoreFocus: false \}\);\s*return runChatSwitchFlow\(\{/);
     assert.match(source, /getState:\s*ensureState/);
     assert.match(source, /scheduleAutoHide:\s*scheduleAutoHideRecent/);
     assert.match(source, /markVectorDirty:\s*markVectorIndexDirty/);

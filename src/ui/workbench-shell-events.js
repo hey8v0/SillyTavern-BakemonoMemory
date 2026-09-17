@@ -18,6 +18,7 @@ export function createWorkbenchShellEvents({
     promptInspector,
     helpGuide,
     helpPopover,
+    injectionPreview,
     runWorkbenchAction,
     getWorkbenchActionRenderScope,
     renderWorkbenchScope,
@@ -60,6 +61,7 @@ export function createWorkbenchShellEvents({
         promptInspector.bindEvents(rootElement);
         helpGuide.bind(rootElement);
         helpPopover.bind(rootElement);
+        injectionPreview?.bind(rootElement);
 
         root.off('click.bakemonoMobileFold').on('click.bakemonoMobileFold', '.bakemono-mobile-collapsible > h4', function () {
             if (!(windowRef.matchMedia?.('(max-width: 900px)').matches ?? false)) return;

@@ -25,10 +25,10 @@ export function createOverviewTokenManifest({
             ruleSections.push(String(state.injection?.template || defaultInjectionTemplate).replaceAll('{{memory}}', '').trim());
         }
         if (state.inlineGeneration?.summaryEnabled) {
-            ruleSections.push(renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state));
+            ruleSections.push(parts.inlineValues?.summaryValue ?? renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state));
         }
         if (state.inlineGeneration?.tableEnabled) {
-            ruleSections.push(renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state));
+            ruleSections.push(parts.inlineValues?.tableValue ?? renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state));
         }
         if (parts.rpMaintenance) ruleSections.push(parts.rpMaintenance);
         return {
@@ -71,18 +71,19 @@ export function createOverviewTokenManifest({
 
     function doesLastPromptMatchCurrentInjection(promptText, state = getState()) {
         const expectedSections = [];
+        const parts = getInjectionMemoryParts(state);
         if (state.injection?.enabled) {
             const content = renderInjectionContent(state);
             if (content) expectedSections.push(content);
         }
         if (state.inlineGeneration?.summaryEnabled) {
-            expectedSections.push(renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state));
+            expectedSections.push(parts.inlineValues?.summaryValue ?? renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state));
         }
         if (state.inlineGeneration?.tableEnabled) {
-            expectedSections.push(renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state));
+            expectedSections.push(parts.inlineValues?.tableValue ?? renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state));
         }
         const normalizedPrompt = String(promptText || '');
-        expectedSections.push(getInjectionMemoryParts(state).rpMaintenance || '');
+        expectedSections.push(parts.rpMaintenance || '');
         return expectedSections.every(section => !section || normalizedPrompt.includes(section));
     }
 
