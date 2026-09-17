@@ -1,4 +1,5 @@
 import { storyTimeContext } from '../memory/story-state.js';
+import {resolveSummaryGraph, getSummaryStatus} from '../memory/summary-provenance.js';
 
 export function selectEpicSourcePool(pools, mode = 'auto') {
     if (['stage', 'epic', 'story'].includes(mode)) return pools[mode] || [];
@@ -41,6 +42,7 @@ export function createSummaryGenerationController({
     getIsBusy,
     scanBlocks,
     getState,
+    summarySources,
     getUnsummarizedStoryBlocks,
     getAutoStageTargets,
     getUnsummarizedStageBlocks,
@@ -74,6 +76,13 @@ export function createSummaryGenerationController({
     confirmDanger,
     confirm,
 }) {
+    function filterCovered(blocks, config = {}) {
+        const state=getState(), graph=resolveSummaryGraph(state);
+        return blocks.filter(block => {
+            const covered=({story:graph.coveredStoryHashes,stage:graph.coveredStageHashes,epic:graph.coveredEpicHashes})[block.type||'story'];
+            return (config.includeCovered || !covered?.has(block.hash)) && (!config.validOnly || getSummaryStatus(state,block).valid);
+        });
+    }
     function buildStageSystemPrompt() {
         return '你是剧情剪辑台的总结器。严格遵守用户提供的总结模板；只总结输入材料，不续写剧情，不扮演角色，不新增事件；不要输出寒暄、解释或 Markdown 代码围栏。';
     }
@@ -83,11 +92,13 @@ export function createSummaryGenerationController({
     }
 
     function buildStageUserPrompt(blocks) {
+        summarySources?.assertMaterials(blocks);
         validateSummaryMaterials(blocks);
         return [storyTimeContext(getState()), renderGenerationPrompt(getState().generationPrompts.stage, blocks)].filter(Boolean).join('\n\n');
     }
 
     function buildEpicUserPrompt(blocks) {
+        summarySources?.assertMaterials(blocks);
         validateSummaryMaterials(blocks);
         return [storyTimeContext(getState()), renderGenerationPrompt(getState().generationPrompts.epic, blocks)].filter(Boolean).join('\n\n');
     }
@@ -98,7 +109,7 @@ export function createSummaryGenerationController({
 
     function reportNoStageMaterials(state) {
         const excluded = getStageSourceMode() === 'backfill'
-            && getStoryMaterialBlocks('summaries').some(block => !state.coveredBlockHashes.includes(block.hash));
+            && getStoryMaterialBlocks('summaries').some(block => !activeStoryCoverage(state).has(block.hash));
         const message = excluded
             ? '当前选择“仅插件已保存摘要”，正文标签摘要未被纳入。请将“阶段材料”改为“正文标签 + 插件摘要”，无需删除原文或重新补课。'
             : '没有新的剧情摘要需要生成阶段总结。';
@@ -136,7 +147,7 @@ export function createSummaryGenerationController({
 
         scanBlocks({ persist: false });
         const state = getState();
-        const allTargets = getUnsummarizedStoryBlocks();
+        const allTargets = getUnsummarizedStoryBlocks({includeCovered:!options.automatic});
         if (!allTargets.length) {
             reportNoStageMaterials(state);
             return;
@@ -153,7 +164,7 @@ export function createSummaryGenerationController({
         }
         const targets = options.automatic
             ? getAutoStageTargets(allTargets)
-            : selectGenerationTargets(allTargets, targetConfig);
+            : selectGenerationTargets(filterCovered(allTargets,targetConfig), targetConfig);
         if (!targets.length) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '当前生成范围没有匹配到可总结摘要。');
             toastr.warning('当前生成范围没有匹配到可总结摘要。');
@@ -163,6 +174,7 @@ export function createSummaryGenerationController({
             return;
         }
         validateSummaryMaterials(targets);
+        summarySources?.assertMaterials(targets);
         if (!options.automatic && !confirmGenerationTargets('stage', targets, allTargets.length)) {
             return;
         }
@@ -178,6 +190,7 @@ export function createSummaryGenerationController({
             sourceMessageIds,
             trigger: options.automatic ? 'auto' : 'manual',
             metadata: {
+                inputSnapshot: summarySources?.capture(targets),
                 sourceRange: formatSourceRange(sourceMessageIds),
                 sourceStart: getSourceStart(sourceMessageIds),
                 sourceEnd: getSourceEnd(sourceMessageIds),
@@ -198,7 +211,7 @@ export function createSummaryGenerationController({
         scanBlocks({ persist: false });
         const state = getState();
         readGenerationTargetSettings();
-        const allTargets = getUnsummarizedStoryBlocks();
+        const allTargets = getUnsummarizedStoryBlocks({includeCovered:true});
         if (!allTargets.length) {
             reportNoStageMaterials(state);
             return;
@@ -212,7 +225,7 @@ export function createSummaryGenerationController({
         }
 
         const config = targetConfig || state.generationTargets.stage || defaultGenerationTargets.stage;
-        const batches = partitionGenerationTargets(allTargets, 'stage', config);
+        const batches = partitionGenerationTargets(filterCovered(allTargets,config), 'stage', config);
         if (!batches.length) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '当前批量范围没有匹配到可总结摘要。');
             toastr.warning('当前批量范围没有匹配到可总结摘要。');
@@ -224,6 +237,7 @@ export function createSummaryGenerationController({
             return;
         }
 
+        summarySources?.assertMaterials(batches.flat(), state);
         const materialReport = validateSummaryMaterials(batches.flat());
         const totalTargets = batches.reduce((sum, batch) => sum + batch.length, 0);
         const confirmed = confirmDanger(
@@ -253,6 +267,7 @@ export function createSummaryGenerationController({
                 sourceMessageIds,
                 trigger: 'batch_stage',
                 metadata: {
+                    inputSnapshot: summarySources?.capture(targets),
                     sourceRange: formatSourceRange(sourceMessageIds),
                     sourceStart: getSourceStart(sourceMessageIds),
                     sourceEnd: getSourceEnd(sourceMessageIds),
@@ -279,9 +294,9 @@ export function createSummaryGenerationController({
 
         scanBlocks({ persist: false });
         const state = getState();
-        const allStageTargets = getUnsummarizedStageBlocks();
-        const allMultiTargets = getUnsummarizedMultiSummaryBlocks();
-        const allStoryFallback = getStoryMaterialBlocks().filter(block => !state.coveredBlockHashes.includes(block.hash));
+        const allStageTargets = getUnsummarizedStageBlocks({includeCovered:!options.automatic});
+        const allMultiTargets = getUnsummarizedMultiSummaryBlocks({includeCovered:!options.automatic});
+        const allStoryFallback = getStoryMaterialBlocks();
         if (!allStageTargets.length && !allMultiTargets.length && !allStoryFallback.length) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有可用于生成多次总结的内容。');
             toastr.info('没有可用于生成多次总结的内容。');
@@ -298,7 +313,7 @@ export function createSummaryGenerationController({
             }
         }
         const pool = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets, story: allStoryFallback }, targetConfig.sourceMode);
-        const targets = selectGenerationTargets(pool, targetConfig);
+        const targets = selectGenerationTargets(filterCovered(pool,options.automatic ? {} : targetConfig), targetConfig);
         const nextLevel = getNextMultiSummaryLevel(targets);
         const sourcePoolSize = pool.length;
 
@@ -339,6 +354,7 @@ export function createSummaryGenerationController({
             sourceMessageIds,
             trigger: options.automatic ? 'auto' : 'manual',
             metadata: {
+                inputSnapshot: summarySources?.capture(targets),
                 sourceRange: formatSourceRange(sourceMessageIds),
                 sourceStart: getSourceStart(sourceMessageIds),
                 sourceEnd: getSourceEnd(sourceMessageIds),
@@ -357,9 +373,9 @@ export function createSummaryGenerationController({
         scanBlocks({ persist: false });
         const state = getState();
         readGenerationTargetSettings();
-        const allStageTargets = getUnsummarizedStageBlocks();
-        const allMultiTargets = getUnsummarizedMultiSummaryBlocks();
-        const allStoryFallback = getStoryMaterialBlocks().filter(block => !state.coveredBlockHashes.includes(block.hash));
+        const allStageTargets = getUnsummarizedStageBlocks({includeCovered:true});
+        const allMultiTargets = getUnsummarizedMultiSummaryBlocks({includeCovered:true});
+        const allStoryFallback = getStoryMaterialBlocks();
         let sourceBlocks = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets, story: allStoryFallback });
         if (!sourceBlocks.length) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有可用于生成多次总结的内容。');
@@ -376,13 +392,14 @@ export function createSummaryGenerationController({
 
         sourceBlocks = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets, story: allStoryFallback }, targetConfig.sourceMode);
         const config = targetConfig || state.generationTargets.epic || defaultGenerationTargets.epic;
-        const batches = partitionGenerationTargets(sourceBlocks, 'epic', config);
+        const batches = partitionGenerationTargets(filterCovered(sourceBlocks,config), 'epic', config);
         if (!batches.length) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '当前批量范围没有匹配到可用于多次总结的内容。');
             toastr.warning('当前批量范围没有匹配到可用于多次总结的内容。');
             return;
         }
 
+        summarySources?.assertMaterials(batches.flat(), state);
         const materialReport = validateSummaryMaterials(batches.flat());
         const totalTargets = batches.reduce((sum, batch) => sum + batch.length, 0);
         const confirmed = confirmDanger(
@@ -415,6 +432,7 @@ export function createSummaryGenerationController({
                 sourceMessageIds,
                 trigger: 'batch_epic',
                 metadata: {
+                    inputSnapshot: summarySources?.capture(targets),
                     sourceRange: formatSourceRange(sourceMessageIds),
                     sourceStart: getSourceStart(sourceMessageIds),
                     sourceEnd: getSourceEnd(sourceMessageIds),

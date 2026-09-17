@@ -1,4 +1,5 @@
 import { getHash } from '../shared/text.js';
+import { getSummaryStatus, resolveSummaryGraph } from './summary-provenance.js';
 
 function finiteIds(values = []) {
     return [...new Set((Array.isArray(values) ? values : [values])
@@ -51,9 +52,11 @@ export function buildFloorMemoryIndex({ messages = [], state = {} } = {}) {
         });
     });
 
-    const coveredHashes = new Set(state.coveredBlockHashes || []);
+    const graph = resolveSummaryGraph(state);
+    const coveredHashes = graph.coveredStoryHashes;
     const blockIdsByHash = new Map();
     for (const block of state.blocks || []) {
+        if (block.isGeneratedSummary) continue;
         const ids = sourceIds(block);
         if (block?.hash) blockIdsByHash.set(block.hash, ids);
         addToFloors(floors, ids, floor => {
@@ -66,19 +69,21 @@ export function buildFloorMemoryIndex({ messages = [], state = {} } = {}) {
     }
 
     for (const summary of state.storySummaries || []) {
+        if (!getSummaryStatus(state, summary,graph).valid) continue;
         addToFloors(floors, sourceIds(summary), floor => {
             floor.summaryState = coveredHashes.has(summary?.hash) ? 'covered' : 'saved';
             addUnique(floor.summarySources, summary?.sourceKind === 'backfill' ? '补课摘要' : '已保存摘要');
         });
     }
 
-    for (const stage of state.stageSummaries || []) {
+    for (const stage of [...(state.stageSummaries || []), ...(state.epicSummaries || [])]) {
+        if (!getSummaryStatus(state, stage,graph).valid) continue;
         const ids = new Set(sourceIds(stage));
         for (const hash of stage?.sourceHashes || []) {
             for (const id of blockIdsByHash.get(hash) || []) ids.add(id);
         }
         addToFloors(floors, [...ids], floor => {
-            if (floor.summaryState !== 'missing') floor.summaryState = 'covered';
+            floor.summaryState = 'covered';
             addUnique(floor.coveredBy, stage?.title || '阶段总结');
         });
     }
@@ -130,7 +135,7 @@ export function buildFloorMemoryIndex({ messages = [], state = {} } = {}) {
     }
     const coveredStoryCount = [...storyMaterials.keys()].filter(hash => coveredHashes.has(hash)).length;
     const uncoveredStoryCount = Math.max(0, storyMaterials.size - coveredStoryCount);
-    const coveredStageHashes = new Set(state.coveredStageHashes || []);
+    const coveredStageHashes = graph.coveredStageHashes;
     const uncoveredStageCount = stageSummaries.filter(summary => summary?.hash && !coveredStageHashes.has(summary.hash)).length;
 
     return {

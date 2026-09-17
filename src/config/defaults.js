@@ -18,6 +18,7 @@ export function createDefaultConfiguration({
         SAVED: 'saved',
         INJECTED: 'injected',
         ARCHIVED: 'archived',
+        STALE: 'stale',
         DRAFT: 'draft',
     };
     

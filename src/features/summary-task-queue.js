@@ -23,6 +23,7 @@ export function createSummaryTaskQueue({
     confirmDanger,
     historyState,
     getTaskSourceSignature = () => '',
+    summarySources,
     rebuildMissingTask,
 } = {}) {
     let isQueueRunning = false;
@@ -99,8 +100,12 @@ export function createSummaryTaskQueue({
                         saveState();
                         continue;
                     }
+                    const inputSnapshot = task.metadata?.inputSnapshot;
+                    try { if(inputSnapshot)summarySources?.validate(inputSnapshot,state); }
+                    catch(error) { state.taskQueuePaused=true; throw error; }
                     const sourceSignature = getTaskSourceSignature(task);
-                    if (task.metadata?.sourceFingerprint && task.metadata.sourceFingerprint !== sourceSignature) {
+                    if (!inputSnapshot && task.metadata?.sourceFingerprint && task.metadata.sourceFingerprint !== sourceSignature) {
+                        state.taskQueuePaused=true;
                         throw new Error('任务排队后来源正文已变化，请重新选择材料生成，不要重试旧提示词。');
                     }
                     const existingDraft = (state.drafts || []).find(draft => draft.metadata?.queueTaskId === task.id);
@@ -118,7 +123,11 @@ export function createSummaryTaskQueue({
                         return;
                     }
                     if (controller.signal.aborted) throw new Error('当前任务已停止，返回内容未写入；可以稍后重试。');
-                    if (sourceSignature !== getTaskSourceSignature(task)) {
+                    let inputError = '';
+                    try { if(inputSnapshot)summarySources?.validate(inputSnapshot,state); }
+                    catch(error) { inputError = error.message; }
+                    if (!inputSnapshot && sourceSignature !== getTaskSourceSignature(task)) {
+                        state.taskQueuePaused=true;
                         throw new Error('生成期间来源正文或回复版本已变化，本次返回未写入，请重新选择材料生成。');
                     }
                     if (cancelledQueueTaskIds.has(task.id)) {
@@ -172,10 +181,18 @@ export function createSummaryTaskQueue({
                         trigger: task.trigger || 'manual',
                         metadata: { ...task.metadata, queueTaskId: task.id },
                     });
+                    if (inputError) {
+                        state.taskQueuePaused=true;
+                        if(!existingDraft)createdDrafts+=1;
+                        draft.metadata.inputError = inputError;
+                        saveState();
+                        throw new Error(`${inputError}；生成结果已保留为草稿，请从失效的下层材料重建。`);
+                    }
                     saveState();
                     if (task.trigger === 'auto' && state.automation.mode === 'commit_hide' && task.kind === blockTypes.STAGE) {
                         const summary = await commitDraft(draft.id, draft.content, { silent: true });
                         if (!isCurrentRun()) return;
+                        if (!summary) throw new Error('草稿尚未保存，已停止覆盖和自动隐藏；请检查来源状态。');
                         autoCommitted += 1;
                         const preserveRecent = Math.max(0, Number(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent));
                         task.metadata = {
@@ -216,7 +233,9 @@ export function createSummaryTaskQueue({
             if (createdDrafts) {
                 switchWorkbenchTab('drafts');
             }
-            const message = state.taskQueuePaused ? '队列已暂停，已完成的草稿保留；点击继续队列可处理剩余任务。' : autoCommitted && !createdDrafts
+            const message = state.taskQueuePaused
+                ? createdDrafts ? '队列已暂停，已生成的草稿保留；请先核对任务来源状态。' : '队列已暂停，本次没有生成草稿，请查看任务进度与失败原因。'
+                : autoCommitted && !createdDrafts
                 ? `任务队列处理完成，已自动保存 ${autoCommitted} 个阶段总结并收纳旧楼层。`
                 : autoCommitted
                     ? `任务队列处理完成，已自动保存 ${autoCommitted} 个阶段总结，另有 ${createdDrafts} 个草稿待确认。`

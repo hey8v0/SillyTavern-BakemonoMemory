@@ -1,3 +1,4 @@
+import {activeStoryCoverage} from '../memory/story-state.js';
 export function createArchiveController({
     query,
     getChat,
@@ -24,7 +25,7 @@ export function createArchiveController({
     async function hideCoveredMessages(options = {}) {
         scanBakemonoBlocks({ persist: false });
         const state = ensureState();
-        const covered = new Set(state.coveredBlockHashes);
+        const covered = activeStoryCoverage(state);
         const summaryMessageIds = unique(state.blocks
             .filter(block => block.type === blockTypes.STORY && covered.has(block.hash) && Number.isFinite(block.messageId))
             .flatMap(block => getFiniteMessageIds([block.messageId, ...(block.sourceMessageIds || [])])));

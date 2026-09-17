@@ -1,3 +1,4 @@
+import {getSummaryStatus, resolveSummaryGraph} from '../memory/summary-provenance.js';
 export function createSummaryTimelineUi({
     documentRef,
     getState,
@@ -59,6 +60,12 @@ export function createSummaryTimelineUi({
         meta.className = 'bakemono-memory-timeline-meta';
         meta.textContent = getMetaText(item, Array.isArray(item.sourceHashes) ? item.sourceHashes.length : 0);
         copy.append(kindLabel, label, meta);
+        const status=getSummaryStatus(getState(),{...item,type:kind});
+        if(!status.valid || status.coveredBy.length){
+            const reason=documentRef.createElement('span');
+            reason.textContent=(!status.valid?'需重建：':'')+status.reason;
+            copy.append(reason);
+        }
         const toggle = documentRef.createElement('i');
         toggle.className = 'fa-solid fa-chevron-right bakemono-memory-timeline-toggle';
         toggle.setAttribute('aria-hidden', 'true');
@@ -116,12 +123,14 @@ export function createSummaryTimelineUi({
 
         const makeStoryNode = story => createNode(story, 'story');
         const makeStageNode = stage => createNode(stage, 'stage', (stage.sourceHashes || []).map(hash => byHash.get(hash)).filter(Boolean).map(makeStoryNode));
-        const makeEpicNode = epic => {
+        const makeEpicNode = (epic, ancestors = new Set()) => {
+            if(ancestors.has(epic.hash) || ancestors.size>50)return createNode(epic,'epic');
+            const visited=new Set([...ancestors,epic.hash]);
             const sourceHashes = unique([...(epic.sourceStageHashes || []), ...(epic.sourceHashes || [])]);
             const children = sourceHashes.map(hash => {
                 const block = byHash.get(hash);
                 if (!block) return null;
-                if (block.type === blockTypes.EPIC || block.kind === blockTypes.EPIC) return makeEpicNode(block);
+                if (block.type === blockTypes.EPIC || block.kind === blockTypes.EPIC) return makeEpicNode(block,visited);
                 if (block.type === blockTypes.STAGE || block.kind === blockTypes.STAGE) return makeStageNode(block);
                 return makeStoryNode(block);
             }).filter(Boolean);
@@ -129,15 +138,13 @@ export function createSummaryTimelineUi({
         };
 
         const rootFactories = [];
-        const epicCoveredStage = new Set(state.epicSummaries.flatMap(summary => [...(summary.sourceStageHashes || []), ...(summary.sourceHashes || [])]));
+        const graph=resolveSummaryGraph(state);
+        const epicCoveredStage = new Set([...graph.coveredStageHashes,...graph.coveredEpicHashes]);
         for (const epic of state.epicSummaries.filter(summary => !epicCoveredStage.has(summary.hash))) {
             rootFactories.push(() => makeEpicNode({ ...summaryToBlock(epic), type: blockTypes.EPIC }));
         }
         for (const stage of state.stageSummaries.filter(summary => !epicCoveredStage.has(summary.hash))) rootFactories.push(() => makeStageNode(stage));
-        const coveredStory = new Set([
-            ...state.stageSummaries.flatMap(summary => summary.sourceHashes || []),
-            ...state.epicSummaries.flatMap(summary => (summary.sourceHashes || []).filter(hash => byHash.get(hash)?.type === blockTypes.STORY)),
-        ]);
+        const coveredStory = graph.coveredStoryHashes;
         for (const story of storyBlocks.filter(block => !coveredStory.has(block.hash))) rootFactories.push(() => createNode(story, 'story'));
 
         const pageCount = Math.max(1, Math.ceil(rootFactories.length / pageSize));

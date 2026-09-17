@@ -1,3 +1,4 @@
+import {getSummaryStatus} from '../memory/summary-provenance.js';
 export function createSummaryPreviewRenderer({
     documentRef,
     getState,
@@ -157,6 +158,13 @@ export function createSummaryPreviewRenderer({
         wrapper.querySelector('.bakemono-summary-title').value = saved.summary.title || '';
         wrapper.querySelector('.bakemono-summary-content').value = saved.summary.content || '';
         wrapper.querySelector('.bakemono-memory-danger-zone').hidden = true;
+        const status=getSummaryStatus(getState(),{...saved.summary,type:saved.kind});
+        if(!status.valid || status.coveredBy.length){
+            const notice=documentRef.createElement('p');
+            notice.className='bakemono-memory-prompt-hint';
+            notice.textContent=(!status.valid?'需重建：':'')+status.reason;
+            wrapper.prepend(notice);
+        }
         return wrapper;
     }
 

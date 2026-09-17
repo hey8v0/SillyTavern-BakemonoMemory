@@ -5,6 +5,7 @@ import { getTokenCountAsync } from '../../../tokenizers.js';
 import { getImageSizeFromDataURL } from '../../../utils.js';
 import { runChatSwitchFlow } from './src/core/chat-switch.js';
 import { captureChronicle } from './src/memory/story-state.js';
+import {createSummarySourceService} from './src/features/summary-source-service.js';
 import { createStoryToolsUi } from './src/features/story-tools-ui.js';
 import { createAutomationBehaviorConfig, createSharedInlineGenerationConfig, createSharedVectorConfig, isStateConfigNewerThanActive, markActiveConfigApplied, mergeAutomationBehaviorConfig, mergeSharedInlineGenerationConfig, mergeSharedVectorConfig, readActiveConfig, sharedConfigVersion, shouldBootstrapSharedConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
 import { persistChatState, persistGlobalSettings } from './src/core/persistence.js';
@@ -589,6 +590,7 @@ const {
     parsePreviewMeta,
 } = summaryPreviewRenderer;
 
+const summarySources = createSummarySourceService({getState:ensureState,getChat:()=>chat,getChatIdentity:()=>getSummaryRecoveryChatIdentity()});
 const summaryMemoryModel = createSummaryMemoryModel({
     blockTypes,
     memoryStrategies,
@@ -616,6 +618,7 @@ const {
 } = summaryMemoryModel;
 const summarySelectors = createSummarySelectors({
     getState: ensureState,
+    getChat: () => chat,
     getBlocksByType,
     blockTypes,
     stageSourceModes,
@@ -637,6 +640,7 @@ const {
     isRawSourceBlock,
 } = summarySelectors;
 const summaryGenerationController = createSummaryGenerationController({
+    summarySources,
     getIsBusy: () => isBusy,
     scanBlocks: options => scanBakemonoBlocks(options),
     getState: ensureState,
@@ -683,6 +687,7 @@ const {
     generateStageDraft,
 } = summaryGenerationController;
 const summaryBackfillController = createSummaryBackfillController({
+    summarySources,
     query: $,
     getIsBusy: () => isBusy,
     getState: ensureState,
@@ -1744,6 +1749,7 @@ const generationClient = createGenerationClient({
 const { callGenerationModel, fetchCustomApiModels, readOpenAIStream } = generationClient;
 
 const summaryDraftService = createSummaryDraftService({
+    summarySources,
     getChat: () => chat,
     ensureState,
     getHash,
@@ -1915,6 +1921,7 @@ const summaryBrowserEvents = createSummaryBrowserEvents({
 });
 
 const turnProcessingController = createTurnProcessingController({
+    summarySources,
     rpExtractionFlow,
     getContext,
     getChat: () => chat,
@@ -2040,6 +2047,7 @@ const {
 } = summaryTargetController;
 
 const summaryTaskQueue = createSummaryTaskQueue({
+    summarySources,
     rebuildMissingTask: task => summaryBackfillController.rebuildMissingTask(task),
     getTaskSourceSignature: task => JSON.stringify((task.sourceMessageIds || []).map(id => [id, chat[id] ? getMessageVariantKey(chat[id]) : null, getHash(chat[id]?.mes || '')])),
     getState: ensureState,

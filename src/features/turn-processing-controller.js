@@ -6,6 +6,7 @@ export function createTurnProcessingController({
     getChat,
     getChatMetadata,
     ensureState,
+    summarySources,
     getHash,
     blockTypes,
     stripPostProcessNoise,
@@ -117,6 +118,7 @@ export function createTurnProcessingController({
                 blockIndex: 0,
                 title: `用户楼层 ${turn.userMessage.messageId}`,
                 content: stripExcludedTurnContent(turn.userMessage.mes || '', state),
+                sourceFilter:'turn-v1',sourceExcludeTags:getTurnExcludeTags(state),sourceIncludeTags:[],
             });
         }
         const assistantContent = stripExcludedTurnContent(turn.assistantMessage.mes || '', state, { applyIncludeTags: true });
@@ -130,6 +132,7 @@ export function createTurnProcessingController({
             blockIndex: 0,
             title: `正文楼层 ${turn.assistantMessage.messageId}`,
             content: assistantContent,
+            sourceFilter:'turn-v1',sourceExcludeTags:getTurnExcludeTags(state),sourceIncludeTags:parseList(state.turnSummary?.includeTags || ''),
         });
         return blocks.filter(block => block.content.trim());
     }
@@ -168,6 +171,7 @@ export function createTurnProcessingController({
                     prompt: state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt,
                     trigger: 'inline_summary',
                     metadata: {
+                        inputSnapshot:summarySources?.capture([{hash:'inline-'+turn.assistantMessage.messageId,messageId:turn.assistantMessage.messageId,sourceKind:'tag',matchedTag:'bakemono',content}],state),
                         sourceKind: 'inline',
                         sourceRange: formatSourceRange(sourceMessageIds),
                         sourceSortKey: getSourceStart(sourceMessageIds),
@@ -424,6 +428,7 @@ export function createTurnProcessingController({
             return;
         }
     
+        const inputSnapshot=summarySources?.capture(blocks,state);
         await runGeneration(options.manual ? '正在处理最新正文...' : '正在自动生成正文摘要草稿...', async () => {
             const sourceMessage = getChat()[turn.assistantMessage.messageId];
             const sourceText = sourceMessage?.mes, sourceSwipe = sourceMessage?.swipe_id;
@@ -445,6 +450,7 @@ export function createTurnProcessingController({
                 prompt: buildTurnSummaryPrompt(blocks, state),
                 trigger: options.manual ? 'turn_manual' : 'turn_auto',
                 metadata: {
+                    inputSnapshot,
                     sourceKind: 'turn',
                     sourceRange: formatSourceRange(getSourceMessageIdsFromBlocks(blocks)),
                     sourceSortKey: getSourceStart(getSourceMessageIdsFromBlocks(blocks)),

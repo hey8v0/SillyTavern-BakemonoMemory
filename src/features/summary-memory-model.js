@@ -1,4 +1,5 @@
 import { isMemoryCurrent } from '../memory/story-state.js';
+import {resolveSummaryGraph, getSummaryStatus} from '../memory/summary-provenance.js';
 
 export function createSummaryMemoryModel({
     blockTypes,
@@ -19,6 +20,8 @@ export function createSummaryMemoryModel({
     function summaryToBlock(summary) {
         const sourceSortKey = getSummarySortKey(summary);
         return {
+            id: summary.id,
+            provenance: summary.provenance,
             hash: summary.hash,
             type: summary.type || blockTypes.STAGE,
             messageId: summary.messageId ?? (sourceSortKey < Number.MAX_SAFE_INTEGER ? sourceSortKey : Number.MAX_SAFE_INTEGER),
@@ -40,22 +43,16 @@ export function createSummaryMemoryModel({
         };
     }
 
-    function getEpicMemoryBlocks(state) {
+    function getEpicMemoryBlocks(state, graph=resolveSummaryGraph(state)) {
         return dedupeByHash([
-            ...(state.epicSummaries || []).filter(item => isMemoryCurrent(state, item)).map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
-            ...(state.blocks || []).filter(block => block.type === blockTypes.EPIC && isMemoryCurrent(state, block)),
+            ...(state.epicSummaries || []).filter(item => isMemoryCurrent(state, item, graph)).map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
+            ...(state.blocks || []).filter(block => block.type === blockTypes.EPIC && isMemoryCurrent(state, block, graph)),
         ]);
     }
 
-    function getActiveEpicMemoryBlocks(state) {
-        const epicBlocks = getEpicMemoryBlocks(state);
-        const epicHashes = new Set(epicBlocks.map(summary => summary.hash).filter(Boolean));
-        const coveredEpicHashes = new Set();
-        for (const epic of epicBlocks) {
-            for (const hash of [...(epic.sourceStageHashes || []), ...(epic.sourceHashes || [])]) {
-                if (epicHashes.has(hash)) coveredEpicHashes.add(hash);
-            }
-        }
+    function getActiveEpicMemoryBlocks(state, graph=resolveSummaryGraph(state)) {
+        const epicBlocks = getEpicMemoryBlocks(state,graph);
+        const coveredEpicHashes = graph.coveredEpicHashes;
         return epicBlocks
             .filter(summary => !coveredEpicHashes.has(summary.hash))
             .sort((a, b) => (
@@ -83,31 +80,26 @@ export function createSummaryMemoryModel({
         return covered;
     }
 
-    function getStageMemoryBlocks(state) {
+    function getStageMemoryBlocks(state, graph=resolveSummaryGraph(state)) {
         return dedupeByHash([
-            ...(state.stageSummaries || []).filter(item => isMemoryCurrent(state, item)).map(summary => ({ ...summaryToBlock(summary), type: blockTypes.STAGE })),
-            ...(state.blocks || []).filter(block => block.type === blockTypes.STAGE && isMemoryCurrent(state, block)),
+            ...(state.stageSummaries || []).filter(item => isMemoryCurrent(state, item,graph)).map(summary => ({ ...summaryToBlock(summary), type: blockTypes.STAGE })),
+            ...(state.blocks || []).filter(block => block.type === blockTypes.STAGE && isMemoryCurrent(state, block,graph)),
         ]);
     }
 
     function getActiveCoveredStageHashes(state) {
-        const existingStageHashes = new Set(getStageMemoryBlocks(state).map(summary => summary.hash).filter(Boolean));
-        const covered = new Set();
-        const epicBlocks = getEpicMemoryBlocks(state);
-        const epicByHash = new Map(epicBlocks.map(epic => [epic.hash, epic]).filter(([hash]) => hash));
-        for (const epic of getActiveEpicMemoryBlocks(state)) {
-            for (const hash of getCoveredStageHashesFromEpic(epic, epicByHash, existingStageHashes)) covered.add(hash);
-        }
-        return covered;
+        return resolveSummaryGraph(state).coveredStageHashes;
     }
 
     function buildMemoryRecords(state) {
         const records = new Map();
-        const coveredStoryHashes = new Set(state.coveredBlockHashes || []);
+        const graph=resolveSummaryGraph(state);
+        const coveredStoryHashes = graph.coveredStoryHashes;
         const coveredStageHashes = getActiveCoveredStageHashes(state);
-        const activeEpicHashes = new Set(getActiveEpicMemoryBlocks(state).map(summary => summary.hash).filter(Boolean));
+        const activeEpicHashes = new Set(getActiveEpicMemoryBlocks(state,graph).map(summary => summary.hash).filter(Boolean));
         const epicCoveredStageHashes = getActiveCoveredStageHashes(state);
-        const stageInjectedHashes = new Set(state.stageSummaries
+        const stageInjectedHashes = new Set(getStageMemoryBlocks(state,graph)
+            .filter(summary => isMemoryCurrent(state, summary,graph))
             .filter(summary => !epicCoveredStageHashes.has(summary.hash))
             .map(summary => summary.hash));
         const storyInjectedHashes = new Set(state.memoryStrategy === memoryStrategies.GENERIC
@@ -116,8 +108,9 @@ export function createSummaryMemoryModel({
 
         const upsert = record => {
             if (!record?.hash) return;
-            const previous = records.get(record.hash) || {};
-            records.set(record.hash, {
+            const key = `${record.kind}:${record.hash}`;
+            const previous = records.get(key) || {};
+            records.set(key, {
                 ...previous,
                 ...record,
                 sourceMessageIds: unique([...(previous.sourceMessageIds || []), ...(record.sourceMessageIds || [])]),
@@ -135,7 +128,8 @@ export function createSummaryMemoryModel({
                 hash: block.hash,
                 kind: block.type || blockTypes.STORY,
                 title: block.title || getBlockTitle(block.content, '未命名片段'),
-                status: isCovered ? memoryRecordStatuses.COVERED : memoryRecordStatuses.SOURCE,
+                status: isCovered ? memoryRecordStatuses.COVERED
+                    : state.injection?.enabled !== false && (!state.injection?.template || state.injection.template.includes('{{memory}}')) && (activeEpicHashes.has(block.hash) || stageInjectedHashes.has(block.hash)) ? memoryRecordStatuses.INJECTED : memoryRecordStatuses.SOURCE,
                 source: block.sourceKind === 'raw' ? '全文扫描' : `标签 <${block.matchedTag || 'unknown'}>`,
                 sourceMessageIds,
                 sourceRange: formatSourceRange(sourceMessageIds),
@@ -149,6 +143,8 @@ export function createSummaryMemoryModel({
 
         const addSummaryRecord = (summary, kind) => {
             const sourceMessageIds = getFiniteMessageIds(summary.sourceMessageIds || []);
+            const validity = getSummaryStatus(state, {...summary,type:kind},graph);
+            const injectionEnabled = state.injection?.enabled !== false && (!state.injection?.template || state.injection.template.includes('{{memory}}'));
             let status = memoryRecordStatuses.SAVED;
             if (kind === blockTypes.STORY) {
                 status = storyInjectedHashes.has(summary.hash)
@@ -161,12 +157,18 @@ export function createSummaryMemoryModel({
             } else if (kind === blockTypes.EPIC) {
                 status = activeEpicHashes.has(summary.hash) ? memoryRecordStatuses.INJECTED : memoryRecordStatuses.ARCHIVED;
             }
+            if (!validity.valid) status = memoryRecordStatuses.STALE || 'stale';
+            else if (status === memoryRecordStatuses.INJECTED && !injectionEnabled) status = memoryRecordStatuses.SAVED;
             upsert({
                 id: `summary:${summary.hash}`,
                 hash: summary.hash,
                 kind,
                 title: summary.title || getBlockTitle(summary.content, getKindLabel(kind)),
                 status,
+                validity: validity.code,
+                coveredBy: validity.coveredBy,
+                usage: status === memoryRecordStatuses.INJECTED ? 'selected' : injectionEnabled ? 'not_selected' : 'disabled',
+                reason: !validity.valid || validity.coveredBy.length ? validity.reason : !injectionEnabled ? '注入已关闭或模板未包含记忆' : '',
                 source: summary.sourceKind === 'backfill' ? '插件补课' : '已保存摘要',
                 sourceMessageIds,
                 sourceRange: formatSourceRange(sourceMessageIds),

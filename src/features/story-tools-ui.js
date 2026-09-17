@@ -1,8 +1,12 @@
 import { ensureChronicle, captureChronicle, replayChronicle, refreshMemoryLinks, summaryItems, getCurrentStateRows, setStoryTime, upsertEntity, bindCellEntity, storyTimeContext, markStoryChange } from '../memory/story-state.js';
 import { createMemoryBackup, validateMemoryBackup, previewMemoryBackup, restoreMemoryBackup, createDiagnosticReport } from '../memory/backup-package.js';
+import {summaryDiagnostic, getSummaryStatus} from '../memory/summary-provenance.js';
+import {previewSummarySourceRepair, applySummarySourceRepair} from '../memory/summary-source-repair.js';
+import {undoSummaryChanges} from '../memory/summary-transaction.js';
 
 export function createStoryToolsUi({ documentRef: document, getState, getChat, getChatKey, getScannedBlocks, saveState, saveChat, refresh, isBusy, escapeHtml: esc, notify, confirm, urlApi = URL, BlobCtor = Blob }) {
     const views = new WeakMap();
+    const sourcePlans = new WeakMap();
     let inFlight = false;
     const button = (action, title) => `<button type="button" class="menu_button" data-story-action="${action}"><span>${title}</span></button>`;
     const help = text => `<button type="button" class="bakemono-memory-help-trigger" aria-label="查看说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">${text}</span></button>`;
@@ -34,6 +38,13 @@ export function createStoryToolsUi({ documentRef: document, getState, getChat, g
         if (maintenance && !maintenance.childElementCount) {
             maintenance.innerHTML = `<details class="bakemono-memory-card-panel"><summary>记忆备份与诊断${help('恢复包包含私人摘要、草稿、表格和剧情账本，不含 API 配置、密钥或完整聊天正文。正文标签摘要保存为独立副本；恢复后需刷新向量索引。导入只替换当前聊天记忆，操作前会下载副本。诊断不含正文、摘要、角色名、接口地址或原始报错。')}</summary><div class="bakemono-story-actions">${button('backup', '导出记忆恢复包')}${button('import', '导入恢复包')}${button('diagnostic', '导出脱敏诊断')}</div><input type="file" accept=".json,application/json" data-story-import hidden></details>`;
         }
+        if (maintenance && !maintenance.querySelector('[data-summary-sources]')) {
+            const section=document.createElement('details');
+            section.className='bakemono-memory-card-panel';
+            section.setAttribute('data-summary-sources','');
+            section.innerHTML=`<summary>摘要来源检查${help('来源报告仅含记录标识、类型、楼层、修订和引用边；分享前仍请检查隐私。来源修复会先预览并下载恢复包，不会重写摘要或调用模型。真正失效的材料需从最底层重新生成。')}</summary><div class="bakemono-story-actions">${button('summary-diagnostic','导出来源报告')}${button('summary-preview','预览来源修复')}</div><div data-summary-repair-preview></div>`;
+            maintenance.append(section);
+        }
         const container = document.querySelector('#bakemono-story-state');
         if (!container) return;
         const selected = view.sequence === null ? null : replayChronicle(c, { sequence: view.sequence });
@@ -59,7 +70,7 @@ export function createStoryToolsUi({ documentRef: document, getState, getChat, g
             + section('history', `逐楼变更账本 · ${c.events.length} 笔`, `<p>迁移基线：第 ${c.baselineFloor} 楼。按楼层查看的是当时已记录的状态；事后补课按实际记录位置记账。删楼后保留旧历史，不把旧历史改写为新剧情。</p>${field('history-floor', '查看楼层', 'number')}${button('floor', '查看该楼状态')}<ol>${events.slice(view.page * 20, view.page * 20 + 20).map(event => `<li><strong>#${event.sequence} ${esc(event.label)}</strong> · 记录于第 ${event.actualFloor} 楼 · ${event.deltas.length} 处变化${event.sources.length ? ` · 来源 ${event.sources.map(ref => `#${ref.floor}`).join(', ')}` : ' · 手动 / 状态同步'} ${button(`event:${event.sequence}`, '查看状态')}<details><summary>变化明细</summary><pre>${esc(JSON.stringify(event.deltas, null, 2).slice(0, 12000))}</pre></details></li>`).join('') || '<li>尚无变更；原表格已作为基线保留。</li>'}</ol>${button('previous', '上一页')} ${view.page + 1} / ${Math.max(1, Math.ceil(events.length / 20))} ${button('next', '下一页')}`)
             + section('links', '分层记忆来源', `<p>来源变更的总结保留供查看，但暂停自动注入与向量召回。请用现有总结流程重新生成；不会自动覆盖原内容。</p><ul>${summaryItems(state).slice(-100).map(item => {
                 const link = c.links[item.hash];
-                return `<li>${esc(item.title || item.memoryKind)} · ${link?.stale ? '⚠ 来源已变更，需要更新' : '来源已关联'}<details><summary>查看关联</summary><p>来源楼层：${esc((link?.refs || []).map(ref => `#${ref.floor}`).join(', ') || '未记录')}<br>下层记忆：${esc((link?.children || []).map(child => summaryItems(state).find(s => s.hash === child.hash)?.title || '已移除的材料').join(' / ') || '无')}<br>记录时剧情时间：${esc([link?.storyTime?.date, link?.storyTime?.label].filter(Boolean).join(' · ') || '未知')}</p></details></li>`;
+                return `<li>${esc(item.title || item.memoryKind)} · ${esc(getSummaryStatus(state,item).reason)}<details><summary>查看关联</summary><p>来源楼层：${esc((link?.refs || []).map(ref => `#${ref.floor}`).join(', ') || '未记录')}<br>下层记忆：${esc((link?.children || []).map(child => summaryItems(state).find(s => s.hash === child.hash)?.title || '已移除的材料').join(' / ') || '无')}<br>记录时剧情时间：${esc([link?.storyTime?.date, link?.storyTime?.label].filter(Boolean).join(' · ') || '未知')}</p></details></li>`;
             }).join('') || '<li>暂无已保存摘要</li>'}</ul>`);
     }
 
@@ -117,6 +128,35 @@ export function createStoryToolsUi({ documentRef: document, getState, getChat, g
             return value;
         };
         if (action === 'backup') { download(backup(state), 'bakemono-memory'); return; }
+        if (action === 'summary-diagnostic') {
+            refreshMemoryLinks(state,getChat());
+            download(summaryDiagnostic(state),'bakemono-summary-sources'); return;
+        }
+        if (action === 'summary-preview') {
+            refreshMemoryLinks(state,getChat());
+            const plan=previewSummarySourceRepair(state,getChat()); sourcePlans.set(state,plan);
+            const preview=root.querySelector('[data-summary-repair-preview]');
+            preview.innerHTML=`<p>可迁移 ${plan.changes.length} 条来源身份；无法确定 ${plan.unresolved} 条。内容全部保留。</p><p>需重建 ${plan.rebuild.length} 条。按普通摘要 → 阶段总结 → 多次总结的顺序，先处理下方来源原因。</p><ul>${plan.rebuild.slice(0,20).map(item=>`<li>${esc(item.reason)}</li>`).join('')}</ul>${plan.changes.length?button('summary-repair','备份并应用修复'):''}`;
+            return;
+        }
+        if (action === 'summary-repair') {
+            if(isBusy() || state.taskQueue?.some(task=>task.status==='running'))throw Error('请等待当前任务结束');
+            const plan=sourcePlans.get(state); if(!plan)throw Error('请先预览来源修复');
+            if(!confirm(`迁移 ${plan.changes.length} 条来源身份？将先下载当前记忆恢复包；正文和摘要内容不变，失效来源不会被强制激活。`))return;
+            download(backup(state),'bakemono-before-summary-repair');
+            const fields=['storySummaries','stageSummaries','epicSummaries'];
+            const before=Object.fromEntries(fields.map(key=>[key,structuredClone(state[key])]));
+            applySummarySourceRepair(state,plan);
+            const prepared=Object.fromEntries(fields.map(key=>[key,structuredClone(state[key])]));
+            try { await persist(state); }
+            catch(error){
+                for(const key of fields)state[key]=undoSummaryChanges(before[key],prepared[key],state[key]);
+                if(getState()===state){saveState();refresh();} throw error;
+            }
+            sourcePlans.delete(state);
+            root.querySelector('[data-summary-repair-preview]').textContent=`已迁移 ${plan.changes.length} 条来源身份。仍需重建 ${plan.rebuild.length} 条，原记录已保留。`;
+            notify('摘要来源修复已保存。'); return;
+        }
         if (action === 'diagnostic') {
             let localStorage = 'untested';
             try { const key = `bakemono-diag-${Date.now()}`; globalThis.localStorage.setItem(key, '1'); globalThis.localStorage.removeItem(key); localStorage = 'available'; } catch { localStorage = 'unavailable'; }

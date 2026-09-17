@@ -711,7 +711,7 @@ test('large-chat scans avoid quadratic lookup and duplicate opening renders', ()
     const scanSource = extractFunctionFrom(scanControllerSource, 'scanBakemonoBlocks');
     const openSource = extractFunctionFrom(workbenchNavigationSource, 'open');
 
-    assert.match(scanSource, /previousBlockByContent\s*=\s*new Map/);
+    assert.doesNotMatch(scanSource, /previousBlockByContent/, 'coverage must not transfer by equal text across different sources');
     assert.doesNotMatch(scanSource, /previousBlocks\.find\(/);
     assert.match(scanSource, /preview\.slice\(-maxStoredScanPreviewItems\)/);
     assert.match(source, /scanBlocks: options => scanBakemonoBlocks\(options\)/);

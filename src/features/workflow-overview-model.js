@@ -1,3 +1,4 @@
+import {resolveSummaryGraph} from '../memory/summary-provenance.js';
 export function createWorkflowOverviewModel({
     getState,
     getChat,
@@ -43,8 +44,7 @@ export function createWorkflowOverviewModel({
         const stageSummaries = Array.isArray(state.stageSummaries) ? state.stageSummaries : [];
         const drafts = Array.isArray(state.drafts) ? state.drafts : [];
         const taskQueue = Array.isArray(state.taskQueue) ? state.taskQueue : [];
-        const coveredStoryHashes = new Set(state.coveredBlockHashes || []);
-        const coveredStageHashes = new Set(state.coveredStageHashes || []);
+        const {coveredStoryHashes,coveredStageHashes} = resolveSummaryGraph(state);
         const coveredStoryCount = storySummaries.filter(summary => summary?.hash && coveredStoryHashes.has(summary.hash)).length;
         const uncoveredStoryCount = Math.max(0, storySummaries.length - coveredStoryCount);
         const uncoveredStageCount = stageSummaries.filter(summary => summary?.hash && !coveredStageHashes.has(summary.hash)).length;

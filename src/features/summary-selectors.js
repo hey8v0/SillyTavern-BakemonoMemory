@@ -1,5 +1,8 @@
+import {refreshMemoryLinks} from '../memory/story-state.js';
+import {resolveSummaryGraph} from '../memory/summary-provenance.js';
 export function createSummarySelectors({
     getState,
+    getChat,
     getBlocksByType,
     blockTypes,
     stageSourceModes,
@@ -50,28 +53,31 @@ export function createSummarySelectors({
         return dedupeByHash([...summaryLikeScanned, ...saved]);
     }
 
-    function getUnsummarizedStoryBlocks() {
+    function getUnsummarizedStoryBlocks({includeCovered = false} = {}) {
         const state = getState();
-        const covered = new Set(state.coveredBlockHashes);
-        return getStoryMaterialBlocks().filter(block => !covered.has(block.hash));
+        if(getChat)refreshMemoryLinks(state,getChat());
+        const covered = resolveSummaryGraph(state).coveredStoryHashes;
+        return getStoryMaterialBlocks().filter(block => includeCovered || !covered.has(block.hash));
     }
 
-    function getUnsummarizedStageBlocks() {
+    function getUnsummarizedStageBlocks({includeCovered = false} = {}) {
         const state = getState();
-        const covered = new Set(state.coveredStageHashes);
+        if(getChat)refreshMemoryLinks(state,getChat());
+        const covered = resolveSummaryGraph(state).coveredStageHashes;
         return dedupeByHash([
             ...getBlocksByType(blockTypes.STAGE),
             ...state.stageSummaries.map(summaryToBlock),
-        ]).filter(block => !covered.has(block.hash));
+        ]).filter(block => includeCovered || !covered.has(block.hash));
     }
 
-    function getUnsummarizedMultiSummaryBlocks() {
+    function getUnsummarizedMultiSummaryBlocks({includeCovered = false} = {}) {
         const state = getState();
-        const covered = new Set(state.coveredStageHashes || []);
+        if(getChat)refreshMemoryLinks(state,getChat());
+        const covered = resolveSummaryGraph(state).coveredEpicHashes;
         return dedupeByHash([
             ...getBlocksByType(blockTypes.EPIC),
             ...state.epicSummaries.map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC })),
-        ]).filter(block => !covered.has(block.hash));
+        ]).filter(block => includeCovered || !covered.has(block.hash));
     }
 
     function getAutoStageTargets(targets = []) {

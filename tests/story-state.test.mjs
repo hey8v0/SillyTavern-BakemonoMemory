@@ -196,7 +196,7 @@ test('summary provenance invalidates ancestors after source edit or child replac
     assert.equal(state.storySummaries[0].content, '交付钥匙');
     assert.equal(activeStoryCoverage(state).has('s'), false);
     state.storySummaries[0].content = '重新整理的摘要'; refreshMemoryLinks(state, chat);
-    assert.equal(isMemoryCurrent(state, { hash: 's' }), true);
+    assert.equal(isMemoryCurrent(state, { hash: 's' }), false, 'editing output must not rebind an outdated input');
     assert.equal(isMemoryCurrent(state, { hash: 'st' }), false);
 });
 

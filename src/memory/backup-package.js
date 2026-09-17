@@ -1,12 +1,13 @@
 import { getHash } from '../shared/text.js';
 import { messageRevision, replayChronicle } from './story-state.js';
 import { exportRpBackup, importRpBackup, validateRpBackup } from '../rp-core/backup.js';
+import { summaryDiagnostic, captureSummaryInputs } from './summary-provenance.js';
 
 const arrays = ['storySummaries', 'stageSummaries', 'epicSummaries', 'drafts', 'coveredBlockHashes', 'coveredStageHashes'];
-const recordFields = ['id', 'hash', 'title', 'content', 'type', 'kind', 'level', 'sourceKind', 'sourceMessageIds', 'sourceHashes', 'sourceStageHashes', 'sourceStart', 'sourceEnd', 'messageId', 'createdAt', 'trigger'];
+const recordFields = ['id', 'hash', 'contentHash', 'provenance', 'title', 'content', 'type', 'kind', 'level', 'sourceKind', 'sourceMessageIds', 'sourceHashes', 'sourceStageHashes', 'sourceStart', 'sourceEnd', 'messageId', 'createdAt', 'trigger'];
 const tableFields = ['id', 'tableIndex', 'name', 'columns', 'columnIds', 'columnKinds', 'semanticOverrides', 'rowIds', 'cellRefs', 'columnPrompts', 'note', 'initNode', 'insertNode', 'updateNode', 'deleteNode', 'rows', 'readOnly', 'allowAiEdit', 'injectLimit', 'required'];
 const pick = (value, fields) => Object.fromEntries(fields.filter(key => value?.[key] !== undefined).map(key => [key, value[key]]));
-const pickRecord = value => ({ ...pick(value, recordFields), metadata: pick(value?.metadata, ['sourceKind', 'sourceRange', 'sourceSortKey', 'batchIndex', 'batchTotal']) });
+const pickRecord = value => ({ ...pick(value, recordFields), metadata: pick(value?.metadata, ['sourceKind', 'sourceRange', 'sourceSortKey', 'batchIndex', 'batchTotal', 'inputSnapshot', 'inputError']) });
 const clone = value => JSON.parse(JSON.stringify(value));
 const rowsCount = tables => (tables || []).reduce((sum, table) => sum + (table.rows?.length || 0), 0);
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -20,12 +21,14 @@ function validateProjection(value) {
         || new Set(value.entities.map(entity => entity.id)).size !== value.entities.length) throw new Error('语义实体格式无效');
 }
 
-export function createMemoryBackup(state, { chatKey = '', chat = [], scanned = [], version = '1.6.1' } = {}) {
+export function createMemoryBackup(state, { chatKey = '', chat = [], scanned = [], version = '1.7.1' } = {}) {
     const memory = Object.fromEntries(arrays.map(key => [key, (state[key] || []).map(item => typeof item === 'object' ? pickRecord(item) : item)]));
     for (const block of scanned) {
         const target = block.type === 'stage' ? memory.stageSummaries : block.type === 'epic' ? memory.epicSummaries : block.type === 'story' ? memory.storySummaries : null;
         if (!target || !block.content || target.some(item => item.hash === block.hash)) continue;
-        target.push({ ...pickRecord(block), sourceKind: 'backup_tag', sourceMessageIds: block.sourceMessageIds?.length ? block.sourceMessageIds : [block.messageId].filter(Number.isInteger) });
+        let provenance;
+        try { provenance=captureSummaryInputs(state,chat,[block]); } catch { /* Unknown old source remains unverified on restore. */ }
+        target.push({ ...pickRecord(block), provenance, createdAt:block.createdAt || new Date().toISOString(), sourceKind: 'backup_tag', sourceMessageIds: block.sourceMessageIds?.length ? block.sourceMessageIds : [block.messageId].filter(Number.isInteger) });
     }
     const db = state.tableDatabase || {};
     memory.tableDatabase = { enabled: !!db.enabled, injectMemory: db.injectMemory !== false, autoApply: false,
@@ -44,7 +47,8 @@ export function createMemoryBackup(state, { chatKey = '', chat = [], scanned = [
     memory.tableDatabase.profileRows[`chat:default:${memory.tableDatabase.activeProfileId}`] = memory.tableDatabase.tables;
     if (state.chronicle) memory.chronicle = state.chronicle;
     if (state.rpCore) memory.rpCore = exportRpBackup(state.rpCore);
-    const payload = clone({ format: 'bakemono-memory-backup', formatVersion: state.rpCore ? 2 : 1, pluginVersion: version,
+    const hasProvenance = arrays.some(key => (memory[key] || []).some(item => item?.provenance || item?.metadata?.inputSnapshot));
+    const payload = clone({ format: 'bakemono-memory-backup', formatVersion: hasProvenance ? 3 : state.rpCore ? 2 : 1, pluginVersion: version,
         createdAt: new Date().toISOString(), chatKeyHash: getHash(chatKey), sources: chat.map(messageRevision), memory });
     return { ...payload, checksum: getHash(JSON.stringify(payload)) };
 }
@@ -74,7 +78,7 @@ export function validateMemoryBackup(raw) {
     if (typeof raw === 'string' && raw.length > 50 * 1024 * 1024) throw new Error('恢复包超过 50 MB，请拆分聊天后备份');
     const data = typeof raw === 'string' ? JSON.parse(raw) : clone(raw);
     inspectJson(data);
-    if (data?.format !== 'bakemono-memory-backup' || ![1, 2].includes(data.formatVersion)) throw new Error('不是支持的记忆恢复包');
+    if (data?.format !== 'bakemono-memory-backup' || ![1, 2, 3].includes(data.formatVersion)) throw new Error('不是支持的记忆恢复包');
     const { checksum, ...payload } = data;
     if (!checksum || checksum !== getHash(JSON.stringify(payload))) throw new Error('恢复包校验失败，文件可能不完整');
     const memory = data.memory;
@@ -87,12 +91,26 @@ export function validateMemoryBackup(raw) {
             && (!item.sourceMessageIds || (Array.isArray(item.sourceMessageIds) && item.sourceMessageIds.every(v => Number.isInteger(v) && v >= 0))))) throw new Error('摘要或草稿结构无效');
     }
     const db = memory.tableDatabase;
+    for (const key of arrays.filter(key => !key.startsWith('covered'))) for (const item of memory[key]) {
+        for (const provenance of [item.provenance, item.metadata?.inputSnapshot].filter(Boolean)) {
+            if (provenance.version !== 2 || !Array.isArray(provenance.inputs) || !provenance.inputs.length
+                || !provenance.inputs.every(input => object(input) && (
+                    input.kind === 'summary' ? typeof input.id === 'string' && typeof input.revision === 'string' && typeof input.sourceSignature === 'string'
+                    : input.kind === 'legacy' ? object(input.ref) && typeof input.ref.id === 'string' && Number.isInteger(input.ref.floor)
+                    : ['body','tag'].includes(input.kind) && typeof input.sourceId === 'string' && typeof input.revision === 'string'
+                        && Number.isInteger(input.length) && input.length >= 0 && Number.isInteger(input.floor)
+                        && (!input.excludeTags || Array.isArray(input.excludeTags) && input.excludeTags.every(tag => typeof tag === 'string'))
+                        && (!input.includeTags || Array.isArray(input.includeTags) && input.includeTags.every(tag => typeof tag === 'string'))
+                        && (input.kind !== 'tag' || typeof input.tag === 'string' && Number.isInteger(input.ordinal) && Number.isInteger(input.tagCount))
+                ))) throw new Error('摘要生成输入快照无效');
+        }
+    }
     validateTables(db?.tables);
     if (!Array.isArray(db.chatProfiles) || !db.profileRows || typeof db.profileRows !== 'object' || Array.isArray(db.profileRows) || !Array.isArray(db.editDrafts)) throw new Error('表格组结构无效');
     db.chatProfiles.forEach(profile => { if (!object(profile) || typeof profile.id !== 'string') throw new Error('表格组身份无效'); validateTables(profile.tables); });
     Object.values(db.profileRows).forEach(validateTables);
     if (memory.rpCore !== undefined) {
-        if (data.formatVersion !== 2) throw new Error('剧情账本需要新版恢复包');
+        if (data.formatVersion < 2) throw new Error('剧情账本需要新版恢复包');
         validateRpBackup(memory.rpCore);
     }
     if (memory.chronicle) {
@@ -144,7 +162,7 @@ export function restoreMemoryBackup(state, validated) {
     return state;
 }
 
-export function createDiagnosticReport(state, { version = '1.6.1', storage = {} } = {}) {
+export function createDiagnosticReport(state, { version = '1.7.1', storage = {} } = {}) {
     // Strict whitelist: no raw errors, identifiers, endpoint URLs, prompts, text, or embeddings.
     return { format: 'bakemono-diagnostic', version, createdAt: new Date().toISOString(),
         counts: { story: state.storySummaries?.length || 0, stage: state.stageSummaries?.length || 0,
@@ -154,7 +172,7 @@ export function createDiagnosticReport(state, { version = '1.6.1', storage = {} 
             rpFacts: state.rpCore?.facts?.length || 0, rpClaims: state.rpCore?.claims?.length || 0,
             rpObservations: state.rpCore?.observations?.length || 0,
             rpPending: state.rpCore?.candidates?.filter(item => item.status === 'pending').length || 0,
-            staleMemories: Object.values(state.chronicle?.links || {}).filter(item => item.stale).length,
+            staleMemories: summaryDiagnostic(state).records.filter(item => item.status !== 'valid').length,
             vectorRecords: state.vectorMemory?.records?.length || 0 },
         persistenceRevision: Number(state.persistenceRevision) || 0,
         vector: { enabled: !!state.vectorMemory?.enabled, dirty: !!state.vectorMemory?.dirty },

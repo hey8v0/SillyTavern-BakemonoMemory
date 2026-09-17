@@ -15,7 +15,8 @@ export function createMemoryRecordsUi({
             [memoryRecordStatuses.SOURCE]: '可总结',
             [memoryRecordStatuses.COVERED]: '已覆盖',
             [memoryRecordStatuses.SAVED]: '已保存',
-            [memoryRecordStatuses.INJECTED]: '注入中',
+            [memoryRecordStatuses.INJECTED]: '已选入',
+            stale: '需重建',
             [memoryRecordStatuses.ARCHIVED]: '已归档',
             [memoryRecordStatuses.DRAFT]: '草稿',
         }[status] || '未知';
@@ -175,6 +176,11 @@ export function createMemoryRecordsUi({
                 record.contentLength ? `${record.contentLength} 字` : '',
             ].filter(Boolean).join(' · ');
             main.append(title, meta);
+            if (record.reason && record.reason !== '来源有效') {
+                const reason = documentRef.createElement('span');
+                reason.textContent = record.reason;
+                main.append(reason);
+            }
 
             const chips = documentRef.createElement('div');
             chips.className = 'bakemono-memory-record-chips';
@@ -182,7 +188,7 @@ export function createMemoryRecordsUi({
             statusChip.className = `bakemono-memory-record-chip is-${record.status || 'source'}`;
             statusChip.textContent = getMemoryRecordStatusLabel(record.status);
             chips.append(statusChip);
-            const coverCount = (record.sourceHashes || []).length + (record.sourceStageHashes || []).length;
+            const coverCount = record.validity && record.validity !== 'valid' ? 0 : new Set([...(record.sourceHashes || []), ...(record.sourceStageHashes || [])]).size;
             if (coverCount) {
                 const sourceChip = documentRef.createElement('span');
                 sourceChip.className = 'bakemono-memory-record-chip';

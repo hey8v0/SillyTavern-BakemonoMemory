@@ -1,3 +1,5 @@
+import { resolveSummaryGraph } from '../memory/summary-provenance.js';
+
 export const workbenchRenderScopes = Object.freeze({
     VECTOR: 'vector',
     DRAFTS: 'drafts',
@@ -120,7 +122,7 @@ export function createWorkbenchRenderer({
             query('#bakemono-memory-strategy-label').text(getMemoryStrategyLabel(state.memoryStrategy));
             query('#bakemono-memory-workflow-label').text(`${getWorkflowModeLabel(state.workflowMode)} / ${getStageSourceModeLabel(getStageSourceMode(state))}`);
             const injectionParts = getInjectionMemoryParts(state);
-            const uncoveredStory = state.storySummaries.filter(item => !(state.coveredBlockHashes || []).includes(item.hash)).length;
+            const uncoveredStory = state.storySummaries.filter(item => !resolveSummaryGraph(state).coveredStoryHashes.has(item.hash)).length;
             query('#bakemono-memory-injection-stats').text(`注入：多次 ${injectionParts.stats.epic} / 阶段 ${injectionParts.stats.stage} / 普通 ${injectionParts.stats.story} / 表格 ${injectionParts.stats.table || 0} / 向量 ${injectionParts.stats.vector || 0}`);
             query('#bakemono-memory-memory-warning').text(getWorkflowStatusText(state, injectionParts.stats, uncoveredStory));
         } else if (activeTab === 'injection') {

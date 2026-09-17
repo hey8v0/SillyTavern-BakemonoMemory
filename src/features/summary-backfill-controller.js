@@ -1,7 +1,9 @@
+import {activeStoryCoverage, isMemoryCurrent} from '../memory/story-state.js';
 export function createSummaryBackfillController({
     query,
     getIsBusy,
     getState,
+    summarySources,
     getContext,
     getFallbackChat,
     parseList,
@@ -56,11 +58,12 @@ export function createSummaryBackfillController({
         const includeHidden = state.scanRules.includeHidden !== false;
         const batchSize = Math.max(1, Number(state.automation.backfillBatchSize || defaultAutomation.backfillBatchSize));
         const rangeIds = options.rangeIds instanceof Set ? options.rangeIds : null;
+        summarySources?.refresh(state);
         const covered = new Set([
-            ...state.coveredBlockHashes,
-            ...state.storySummaries.flatMap(summary => summary.sourceHashes || []),
+            ...activeStoryCoverage(state),
+            ...state.storySummaries.filter(summary=>isMemoryCurrent(state,summary)).flatMap(summary => summary.sourceHashes || []),
         ]);
-        const coveredMessageIds = new Set(state.storySummaries.flatMap(summary => getFiniteMessageIds(summary.sourceMessageIds || [])));
+        const coveredMessageIds = new Set(state.storySummaries.filter(summary=>isMemoryCurrent(state,summary)).flatMap(summary => getFiniteMessageIds(summary.sourceMessageIds || [])));
         const rawBlocks = [];
 
         sourceChat.forEach((message, messageId) => {
@@ -384,7 +387,7 @@ export function createSummaryBackfillController({
                 sourceHashes: batch.blocks.map(block => block.hash),
                 sourceMessageIds: batch.blocks.map(block => block.messageId),
                 trigger: 'backfill',
-                metadata: batch.metadata,
+                metadata: {...batch.metadata,inputSnapshot:summarySources?.capture(batch.blocks)},
             });
         }
         renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `已加入 ${batches.length} 个旧正文补课任务。`);

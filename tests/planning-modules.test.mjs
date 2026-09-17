@@ -9,6 +9,7 @@ function toDataModule(source) {
 }
 
 async function loadModule(path, replacements = []) {
+    if (path === 'src/memory/floor-memory-index.js') return import(new URL(path, repoUrl));
     let source = await readFile(new URL(path, repoUrl), 'utf8');
     for (const [from, to] of replacements) {
         source = source.replace(from, to);

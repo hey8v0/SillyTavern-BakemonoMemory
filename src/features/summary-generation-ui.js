@@ -1,3 +1,4 @@
+import {resolveSummaryGraph} from '../memory/summary-provenance.js';
 export function createSummaryGenerationUi({ documentRef, query, getState }) {
     let mode = 'stage';
     let snapshot = { story: [], stage: [], epic: [] };
@@ -23,7 +24,7 @@ export function createSummaryGenerationUi({ documentRef, query, getState }) {
         const storyBlocks = snapshot.story;
         const stageBlocks = snapshot.stage;
         const epicBlocks = snapshot.epic;
-        const coveredHashes = new Set(state.coveredBlockHashes || []);
+        const coveredHashes = resolveSummaryGraph(state).coveredStoryHashes;
         const coveredStoryCount = storyBlocks.filter(block => block?.hash && coveredHashes.has(block.hash)).length;
         const uncoveredStoryCount = Math.max(0, storyBlocks.length - coveredStoryCount);
         const upperLevelMaterialCount = stageBlocks.length + epicBlocks.length;

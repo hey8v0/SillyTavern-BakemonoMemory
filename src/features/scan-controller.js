@@ -34,8 +34,6 @@ export function createScanController({
         const scanned = [];
         const scannedForBlocks = [];
         const preview = [];
-        const previousBlocks = state.blocks;
-        const previousBlockByContent = new Map(previousBlocks.map(block => [block.content, block]));
         const context = getContext();
         const sourceChat = context.chat || getFallbackChat() || [];
         const rules = state.scanRules;
@@ -101,15 +99,6 @@ export function createScanController({
         messageCache.length = sourceChat.length;
 
         state.blocks = mergeBlocks(state.blocks, scannedForBlocks, state, { replaceScanned: true });
-        const coveredBlocks = new Set(state.coveredBlockHashes);
-        const coveredStages = new Set(state.coveredStageHashes);
-        for (const block of scannedForBlocks) {
-            const previous = previousBlockByContent.get(block.content);
-            if (previous?.hash && coveredBlocks.has(previous.hash)) coveredBlocks.add(block.hash);
-            if (previous?.hash && coveredStages.has(previous.hash)) coveredStages.add(block.hash);
-        }
-        state.coveredBlockHashes = [...coveredBlocks];
-        state.coveredStageHashes = [...coveredStages];
         state.scanPreview = preview.slice(-maxStoredScanPreviewItems);
         state.lastScanMatchCount = scanned.length;
         state.lastScanAt = new Date().toISOString();

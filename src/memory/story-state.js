@@ -1,4 +1,5 @@
 import { getHash, stripConfiguredTags, parseList } from '../shared/text.js';
+import { registerSummaryChat, resolveSummaryGraph, getSummaryStatus } from './summary-provenance.js';
 
 export const semanticKinds = ['text', 'person', 'item', 'plan', 'location'];
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -48,7 +49,9 @@ function captureSources(previous = [], chat = [], state = {}) {
         }
         const id = match?.id || uid('source');
         used.add(id);
-        return { id, floor, anchor, revision, memoryRevision };
+        const variant = String(message?.swipe_id ?? message?.swipeId ?? (Array.isArray(message?.swipes) ? message.swipes.indexOf(message.mes) : ''));
+        return { id, floor, anchor, revision, memoryRevision, variant,
+            ambiguous: (exact.get(`${anchor}:${revision}`)?.length || 0) > 1 };
     });
     return sources;
 }
@@ -79,6 +82,7 @@ export function ensureChronicle(state, chat = []) {
         state.chronicle.entities = clone(restored.entities);
         runtime.set(state, { owner: state.chronicle, current: restored });
     }
+    registerSummaryChat(state, chat);
     return state.chronicle;
 }
 
@@ -161,48 +165,35 @@ export function refreshMemoryLinks(state, chat = []) {
         if (!item.hash) continue;
         const revision = getHash(item.content || '');
         const previous = c.links[item.hash];
-        if (!previous || previous.revision !== revision) {
+        if (!previous && !item.provenance) {
             const ids = item.sourceMessageIds?.length ? item.sourceMessageIds : Number.isInteger(item.messageId) ? [item.messageId] : [];
             c.links[item.hash] = { revision, refs: ids.map(floor => c.sources[floor] || { id: `missing:${floor}`, floor, revision: null }).map(clone),
                 children: [...new Set([...(item.sourceHashes || []), ...(item.sourceStageHashes || [])])].filter(hash => byHash.has(hash)).map(hash => ({ hash, revision: getHash(byHash.get(hash).content || '') })),
-                recordedAt: new Date().toISOString(), storyTime: clone(c.clock), stale: false };
+                recordedAt: new Date().toISOString(), storyTime: clone(c.clock), stale: false, unverified: !!item.createdAt };
+            c.links[item.hash].binding = clone({refs:c.links[item.hash].refs,children:c.links[item.hash].children});
         }
     }
-    const checking = new Set();
-    const done = new Map();
-    const check = hash => {
-        if (done.has(hash)) return done.get(hash);
-        if (checking.has(hash)) return true;
-        checking.add(hash);
-        const link = c.links[hash];
-        const stale = !!link && (link.refs.some(ref => {
-            const source = current.get(ref.id);
-            if (!source || source.floor !== ref.floor) return true;
-            if (!ref.memoryRevision && source.revision === ref.revision) ref.memoryRevision = source.memoryRevision;
-            return ref.memoryRevision ? source.memoryRevision !== ref.memoryRevision : source.revision !== ref.revision;
-        })
-            || link.children.some(child => !byHash.has(child.hash) || getHash(byHash.get(child.hash).content || '') !== child.revision || check(child.hash)));
-        checking.delete(hash);
-        done.set(hash, stale);
-        if (link) link.stale = stale;
-        return stale;
-    };
-    items.forEach(item => check(item.hash));
+    // Upgrade only an unchanged legacy source; never rebind after an output edit.
+    for (const link of Object.values(c.links)) for (const ref of link.refs || []) {
+        const source = current.get(ref.id);
+        if (!ref.memoryRevision && source?.revision === ref.revision) ref.memoryRevision = source.memoryRevision;
+    }
+    registerSummaryChat(state, chat);
+    const graph = resolveSummaryGraph(state);
+    for (const node of graph.nodes.filter(item => item.saved)) {
+        const status = graph.result.get(node.key);
+        if (c.links[node.hash]) Object.assign(c.links[node.hash], {stale:!status.valid,reasonCode:status.code});
+    }
     for (const hash of Object.keys(c.links)) if (!byHash.has(hash)) c.links[hash].stale = true;
     return c.links;
 }
 
-export function isMemoryCurrent(state, item) {
-    return state.chronicle?.links?.[item?.hash]?.stale !== true;
+export function isMemoryCurrent(state, item, graph) {
+    return getSummaryStatus(state, item, graph).valid;
 }
 
 export function activeStoryCoverage(state) {
-    const stale = new Set(), current = new Set();
-    for (const item of [...(state.stageSummaries || []), ...(state.epicSummaries || [])]) {
-        const target = isMemoryCurrent(state, item) ? current : stale;
-        (item.sourceHashes || []).forEach(hash => target.add(hash));
-    }
-    return new Set((state.coveredBlockHashes || []).filter(hash => !stale.has(hash) || current.has(hash)));
+    return resolveSummaryGraph(state).coveredStoryHashes;
 }
 
 export function captureChronicle(state, chat = []) {

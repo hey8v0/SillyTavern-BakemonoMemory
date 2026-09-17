@@ -1,6 +1,9 @@
+import {newSummaryId, getSummaryStatus, invalidateSummaryGraph, resolveSummaryGraph} from '../memory/summary-provenance.js';
+import {undoSummaryChanges} from '../memory/summary-transaction.js';
 export function createSummaryDraftService({
     getChat,
     ensureState,
+    summarySources,
     getHash,
     getBlockTitle,
     blockTypes,
@@ -57,22 +60,41 @@ export function createSummaryDraftService({
         return JSON.parse(JSON.stringify(value));
     }
 
-    function captureSummaryState(state = ensureState()) {
-        return Object.fromEntries(durableSummaryStateKeys.map(key => {
+    const snapshots = new WeakMap();
+    const transactions = new WeakMap();
+    const serial = operation => (...args) => {
+        const state = ensureState();
+        const result = (transactions.get(state) || Promise.resolve()).catch(()=>{}).then(()=>{
+            if(ensureState()!==state)throw new Error('聊天已切换，操作已停止');
+            return operation(...args);
+        });
+        transactions.set(state,result); return result;
+    };
+
+    function readSummaryState(state) {
+        const snapshot = Object.fromEntries(durableSummaryStateKeys.map(key => {
             const value = state[key];
-            if (Array.isArray(value)) return [key, value.slice()];
-            if (value && typeof value === 'object') return [key, { ...value }];
+            if (value && typeof value === 'object') return [key, cloneSerializable(value)];
             return [key, value];
         }));
+        snapshot.sourceLinks = cloneSerializable(state.chronicle?.links);
+        return snapshot;
+    }
+
+    function captureSummaryState(state = ensureState()) {
+        const snapshot=readSummaryState(state); snapshots.set(state,snapshot); return snapshot;
     }
 
     function restoreSummaryState(snapshot, state = ensureState()) {
         for (const key of durableSummaryStateKeys) {
             if (!Object.hasOwn(snapshot, key)) continue;
-            const value = snapshot[key];
+            const value = snapshot.prepared ? undoSummaryChanges(snapshot[key],snapshot.prepared[key],state[key]) : snapshot[key];
             state[key] = Array.isArray(value) ? value.slice() : value && typeof value === 'object' ? { ...value } : value;
         }
-        saveState();
+        if (state.chronicle && snapshot.sourceLinks) state.chronicle.links = snapshot.prepared
+            ? undoSummaryChanges(snapshot.sourceLinks,snapshot.prepared.sourceLinks,state.chronicle.links) : snapshot.sourceLinks;
+        invalidateSummaryGraph(state);
+        if(ensureState()===state){ updateInjectionFromSummaries();saveState(); }
     }
 
     function captureMessage(message) {
@@ -90,11 +112,15 @@ export function createSummaryDraftService({
     }
 
     async function persistSummaryStateDurably(recoveryMessageIds = []) {
+        const state=ensureState();
         const recovery = saveState({ recoveryMessageIds });
+        const snapshot=snapshots.get(state);
+        if(snapshot)snapshot.prepared=readSummaryState(state);
         if (recovery?.status === 'error') {
             throw new Error(`本地恢复保护写入失败：${recovery.error?.message || recovery.error || '存储空间不可用'}`);
         }
         await saveChatConditional();
+        if(ensureState()!==state)throw new Error('保存期间已切换聊天，请回原聊天核对保存结果');
         if (recovery && ['quota-exceeded', 'unavailable'].includes(recovery.status)) {
             toastr.warning(
                 recovery.status === 'quota-exceeded'
@@ -115,7 +141,7 @@ export function createSummaryDraftService({
     function createDraft({ kind, content, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], prompt = '', trigger = 'manual', metadata = {} }) {
         const state = ensureState();
         const createdAt = new Date().toISOString();
-        const id = `draft-${getHash(`${kind}|${createdAt}|${content}`)}`;
+        const id = `draft-${newSummaryId()}`;
         const fallbackTitle = metadata?.suggestedTitle || getDefaultDraftTitle(kind, state);
         const draft = {
             id,
@@ -407,18 +433,29 @@ export function createSummaryDraftService({
             return await commitMissingSummaryDraft(draftIndex, editedContent, options);
         }
 
+        try { summarySources?.validate(draft.metadata?.inputSnapshot,state); }
+        catch(error){
+            draft.metadata ||= {}; draft.metadata.inputError=error.message;
+            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `未激活，草稿已保留：${error.message}`);
+            toastr.warning(`草稿未写入长期记忆：${error.message}`);
+            return null;
+        }
+
         const stateSnapshot = captureSummaryState(state);
     
         const content = normalizeGeneratedBakemono(editedContent ?? draft.content);
         const titleText = String(draft.title || getDefaultDraftTitle(draft.kind, state)).trim();
-        const hash = getHash(content);
+        const hash = newSummaryId();
         const sourceStart = getSourceStart(draft.sourceMessageIds || []);
         const sourceEnd = getSourceEnd(draft.sourceMessageIds || []);
         const sourceSortKey = Number.isFinite(Number(draft.metadata?.sourceSortKey))
             ? Number(draft.metadata.sourceSortKey)
             : sourceStart;
         const summary = {
+            id: hash,
             hash,
+            contentHash: getHash(content),
+            provenance: cloneSerializable(draft.metadata?.inputSnapshot),
             type: draft.kind,
             title: titleText || getBlockTitle(content, getDefaultDraftTitle(draft.kind, state)),
             content,
@@ -436,6 +473,8 @@ export function createSummaryDraftService({
         };
     
         const block = {
+            id: hash,
+            provenance: summary.provenance,
             hash,
             type: draft.kind,
             messageId: Number.isFinite(sourceSortKey) && sourceSortKey < Number.MAX_SAFE_INTEGER ? sourceSortKey : Number.MAX_SAFE_INTEGER,
@@ -490,7 +529,8 @@ export function createSummaryDraftService({
         }
         if (!options.silent) {
             renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '草稿已确认保存。');
-            toastr.success('草稿已保存进长期记忆。');
+            const status=getSummaryStatus(state,summary);
+            toastr.success(status.valid ? `草稿已保存${state.injection?.enabled === false ? '，注入已关闭' : '并进入有效记忆'}。` : `已保存为待重建：${status.reason}`);
         }
         return summary;
     }
@@ -531,11 +571,14 @@ export function createSummaryDraftService({
             return;
         }
         renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '正在重新总结草稿，请稍等...');
+        if(draft.metadata?.appendMode!=='missing_summary')summarySources?.validate(draft.metadata?.inputSnapshot,state);
         await runGeneration('正在重新生成草稿...', async () => {
             const result = normalizeGeneratedBakemono(await callGenerationModel({
                 prompt: draft.prompt,
                 systemPrompt: draft.kind === blockTypes.EPIC ? buildEpicSystemPrompt() : buildStageSystemPrompt(),
             }));
+            if(ensureState()!==state)throw Error('聊天已切换，返回未写入');
+            if(draft.metadata?.appendMode!=='missing_summary')summarySources?.validate(draft.metadata?.inputSnapshot,state);
             draft.content = result;
             draft.title = draft.metadata?.lockTitle ? (draft.title || draft.metadata?.suggestedTitle || getDefaultDraftTitle(draft.kind, state)) : getBlockTitle(result, draft.title);
             draft.createdAt = new Date().toISOString();
@@ -740,7 +783,7 @@ export function createSummaryDraftService({
         if (kind === blockTypes.STAGE) {
             return state.epicSummaries.filter(summary => [...(summary.sourceStageHashes || []), ...(summary.sourceHashes || [])].includes(hash));
         }
-        return [];
+        return state.epicSummaries.filter(summary => summary.hash !== hash && [...(summary.sourceStageHashes || []), ...(summary.sourceHashes || [])].includes(hash));
     }
     
     async function saveEditedSummary(hash, title, content) {
@@ -762,6 +805,7 @@ export function createSummaryDraftService({
             },
             content: normalizeGeneratedBakemono(content || found.summary.content || ''),
         };
+        nextSummary.contentHash = getHash(nextSummary.content);
         found.list[found.index] = nextSummary;
         state.blocks = state.blocks.map(block => block.hash === hash ? {
             ...block,
@@ -872,15 +916,9 @@ export function createSummaryDraftService({
     }
     
     function recomputeCoveredHashes(state = ensureState()) {
-        state.coveredBlockHashes = unique(state.stageSummaries.flatMap(summary => summary.sourceHashes || []));
-        const summaryHashes = new Set([
-            ...state.stageSummaries.map(summary => summary.hash),
-            ...state.epicSummaries.map(summary => summary.hash),
-        ]);
-        state.coveredStageHashes = unique(state.epicSummaries.flatMap(summary => [
-            ...(summary.sourceStageHashes || []),
-            ...(summary.sourceHashes || []).filter(hash => summaryHashes.has(hash)),
-        ]));
+        const graph=resolveSummaryGraph(state);
+        state.coveredBlockHashes=[...graph.coveredStoryHashes];
+        state.coveredStageHashes=[...graph.coveredStageHashes,...graph.coveredEpicHashes];
     }
     
     function normalizeGeneratedBakemono(result) {
@@ -905,11 +943,11 @@ export function createSummaryDraftService({
         clearStuckMissingSummaryTasks,
         clearStuckQueueTasks,
         commitAllMissingSummaryDrafts,
-        commitDraft,
-        commitMissingSummaryDraft,
+        commitDraft: serial(commitDraft),
+        commitMissingSummaryDraft: serial(commitMissingSummaryDraft),
         canRemoveScannedSummaryBlock,
         createDraft,
-        deleteSavedSummary,
+        deleteSavedSummary: serial(deleteSavedSummary),
         discardDraft,
         findSavedSummaryByHash,
         getDefaultDraftTitle,
@@ -923,12 +961,12 @@ export function createSummaryDraftService({
         recordAutoSummaryTransaction,
         regenerateDraft,
         removeMissingSummaryDraftsAndTasks,
-        removeScannedSummaryBlock,
+        removeScannedSummaryBlock: serial(removeScannedSummaryBlock),
         removeSummaryByHash,
-        rollbackAutoSummaryTransaction,
-        saveEditedSummary,
+        rollbackAutoSummaryTransaction: serial(rollbackAutoSummaryTransaction),
+        saveEditedSummary: serial(saveEditedSummary),
         transactionTouchesMessage,
-        undoLastCommit,
+        undoLastCommit: serial(undoLastCommit),
         updateChatMessageText,
     };
 }

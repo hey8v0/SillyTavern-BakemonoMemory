@@ -152,6 +152,8 @@ export function createSummaryTargetController({
                                 <input class="text_pole" data-bakemono-target-range type="text" placeholder="例如 0-20, 80-120">
                             </label>
                         </div>
+                        <label><input type="checkbox" data-bakemono-target-covered>包括已覆盖材料（重新整理）</label>
+                        <label><input type="checkbox" data-bakemono-target-valid>只使用有效材料（不覆盖失效部分）</label>
                         <div class="bakemono-memory-prompt-hint" data-bakemono-target-hint></div>
                     </div>
                     <footer class="bakemono-memory-inline-actions">
@@ -204,6 +206,8 @@ export function createSummaryTargetController({
             overlay.querySelector('[data-bakemono-target-confirm]').addEventListener('click', () => {
                 const parsed = {
                     ...current,
+                    includeCovered: overlay.querySelector('[data-bakemono-target-covered]').checked,
+                    validOnly: overlay.querySelector('[data-bakemono-target-valid]').checked,
                     ...(sourceInput ? { sourceMode: sourceInput.value } : {}),
                     mode: Object.values(targetSelectionModes).includes(modeInput.value) ? modeInput.value : targetSelectionModes.ALL,
                     count: Math.max(1, Number(countInput.value || current.count || defaults.count)),

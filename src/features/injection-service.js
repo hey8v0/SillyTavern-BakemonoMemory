@@ -1,5 +1,6 @@
 import { isMemoryCurrent, storyTimeContext, refreshMemoryLinks, activeStoryCoverage } from '../memory/story-state.js';
 import { storyStateEditGuide } from './table-memory-model.js';
+import {resolveSummaryGraph} from '../memory/summary-provenance.js';
 
 export function createInjectionService({
     ensureState,
@@ -38,6 +39,7 @@ export function createInjectionService({
     
     function getInjectionMemoryParts(state = ensureState()) {
         if (getChat && state.chronicle) refreshMemoryLinks(state, getChat());
+        const graph=resolveSummaryGraph(state);
         const coveredStories = activeStoryCoverage(state);
         const activeEpicBlocks = getActiveEpicMemoryBlocks?.(state) || [];
         const epicContents = activeEpicBlocks.map(item => `## ${getMultiSummaryLabel(item)}\n${item.content}`);
@@ -48,7 +50,7 @@ export function createInjectionService({
         const shouldInjectStory = state.memoryStrategy === memoryStrategies?.GENERIC;
         const storyContents = shouldInjectStory
             ? (state.storySummaries || [])
-                .filter(item => isMemoryCurrent(state, item))
+                .filter(item => isMemoryCurrent(state, item,graph))
                 .filter(item => !coveredStories.has(item.hash))
                 .map(item => item.content)
             : [];
