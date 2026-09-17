@@ -66,7 +66,7 @@ import { createRpExtractionFlow } from './src/rp-core/extraction-flow.js';
 import { createRpStateUi } from './src/features/rp-state-ui.js';
 import { createRpProtocolDisplay, ensureRpDisplayFilter } from './src/features/rp-protocol-display.js';
 import { findChatSource } from './src/rp-core/chat-sources.js';
-import { rpMemorySources, renderRpStateMemory } from './src/rp-core/memory.js';
+import { renderRpStateMemory } from './src/rp-core/memory.js';
 import { shouldRunTurnProcessing } from './src/features/turn-trigger-policy.js';
 import { createGenerationClient } from './src/features/generation-client.js';
 import { createSummaryDraftService } from './src/features/summary-draft-service.js';
@@ -1168,7 +1168,6 @@ const {
 } = memoryRecordsUi;
 
 const vectorMemoryService = createVectorMemoryService({
-    getRpMemorySources: state => state.rpCore ? rpMemorySources(state, rpCoreService.memoryView(state)) : [],
     formatApiFailure,
     defaultVectorMemory,
     getState: ensureState,

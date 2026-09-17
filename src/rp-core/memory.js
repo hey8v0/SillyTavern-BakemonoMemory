@@ -1,6 +1,7 @@
 import { describeRecord, describeStateValues, entityName, relationshipName, stateLabels, trackLabels, isCurrentRpRecord } from './state-view.js';
 import { compileRpContext } from './context.js';
 import { evidenceHash } from './source.js';
+import { removeRpVectorCache } from '../vector/source-policy.js';
 
 function historicalValidity(record, projection) {
     const data = record.data;
@@ -40,9 +41,5 @@ export function renderRpStateMemory(state, view, query = '', budget = null) {
 
 // Derived RP vectors can be discarded without touching body/summary vectors or configuration.
 export function clearRpDerivedCache(state) {
-    const cache = state.vectorMemory;
-    if (!cache) return;
-    for (const key of ['records', 'lastHits', 'lastEmbeddingCandidates', 'lastRerankCandidates']) {
-        if (Array.isArray(cache[key])) cache[key] = cache[key].filter(item => !String(item.memoryHash || '').startsWith('rp:') && !String(item.id || '').startsWith('vec-rp-'));
-    }
+    removeRpVectorCache(state.vectorMemory);
 }

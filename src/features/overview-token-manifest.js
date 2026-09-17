@@ -87,7 +87,7 @@ export function createOverviewTokenManifest({
     }
 
     function formatPromptSharePercent(total, fullPromptTotal) {
-        if (!fullPromptTotal) return '—%';
+        if (!fullPromptTotal) return '—';
         const value = Math.max(0, (total / fullPromptTotal) * 100);
         if (value > 0 && value < 0.1) return '<0.1%';
         if (value < 10) return `${value.toFixed(1)}%`;
@@ -97,7 +97,7 @@ export function createOverviewTokenManifest({
     async function renderOverviewTokenManifest(state = getState()) {
         const revision = ++renderRevision;
         const sourceTexts = getOverviewInjectionSources(state);
-        const sourceKeys = ['summary', 'memory', 'rpState', 'table', 'vector', 'rule'];
+        const sourceKeys = ['rule', 'summary', 'memory', 'rpState', 'table', 'vector'];
         const sourceCounts = await Promise.all(sourceKeys.map(key => getOverviewTokenCount(sourceTexts[key])));
         const lastPromptUsage = await getLastPromptUsage();
         if (revision !== renderRevision || getActiveTab() !== 'overview') return;
@@ -106,7 +106,7 @@ export function createOverviewTokenManifest({
         const total = sourceCounts.reduce((sum, count) => sum + count, 0);
         const promptMatches = !!lastPromptUsage && doesLastPromptMatchCurrentInjection(lastPromptUsage.promptText, state);
         query('#bakemono-memory-overview-token-total').text(total.toLocaleString());
-        query('#bakemono-memory-overview-token-percent').text(promptMatches ? formatPromptSharePercent(total, lastPromptUsage.total) : '—%');
+        query('#bakemono-memory-overview-token-percent').text(promptMatches ? formatPromptSharePercent(total, lastPromptUsage.total) : '—');
         query('#bakemono-memory-overview-token-scope').text(!lastPromptUsage ? '等待上一轮' : promptMatches ? '上一轮实测' : '配置已变更');
         sourceKeys.forEach(key => {
             const value = counts[key] || 0;

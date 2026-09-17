@@ -4,6 +4,7 @@ import { createBm25Index } from '../vector/bm25-index.js';
 import { groupRecallCandidates, selectRecallPlan } from '../vector/recall-plan.js';
 import { vectorRuntimeFieldNames } from '../core/config-sync.js';
 import { isMemoryCurrent, activeStoryCoverage, summaryItems, storyTimeContext } from '../memory/story-state.js';
+import { isRpVectorRecord, removeRpVectorCache } from '../vector/source-policy.js';
 
 const sourceUpdatingMessage = '正文仍在更新，待稳定后自动刷新索引。';
 class VectorSourceChanged extends Error {}
@@ -58,7 +59,6 @@ export function createVectorMemoryService({
     embeddingCache = createEmbeddingCache(),
     yieldToUi = () => new Promise(resolve => setTimeout(resolve, 0)),
     waitForSourceSettle = () => new Promise(resolve => setTimeout(resolve, 350)),
-    getRpMemorySources = () => [],
 } = {}) {
     let vectorIndexTimer = null;
     const recallPlans = new WeakMap();
@@ -127,7 +127,8 @@ export function createVectorMemoryService({
     
     function extractVectorSummaryText(text, state = ensureState()) {
         const summaryTags = getVectorSummaryTags(state);
-        const blocks = extractConfiguredTagBlocks(text, summaryTags.length ? summaryTags : ['bakemono', 'summaryDraft'])
+        const source = /<rpEvents\b/i.test(String(text || '')) ? stripConfiguredTags(text, ['rpEvents']) : text;
+        const blocks = extractConfiguredTagBlocks(source, summaryTags.length ? summaryTags : ['bakemono', 'summaryDraft'])
             .map(block => block.content)
             .filter(Boolean);
         if (!blocks.length) {
@@ -321,6 +322,7 @@ export function createVectorMemoryService({
     }
     
     function getVectorRecallSourceRecords(state = ensureState()) {
+        removeRpVectorCache(state.vectorMemory);
         const records = Array.isArray(state.vectorMemory.records) ? state.vectorMemory.records : [];
         const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages ?? defaultVectorMemory.contextWindowMessages));
         if (state.vectorMemory.skipIfAllInContext === false || contextWindowMessages <= 0) {
@@ -469,7 +471,7 @@ export function createVectorMemoryService({
         const injectedSummaryHashes = getInjectedSummaryHashesForVector(state);
         const addSummary = (summary, type) => {
             if (!isMemoryCurrent(state, summary)) return;
-            const raw = String(summary?.content || '').trim();
+            const raw = stripConfiguredTags(String(summary?.content || ''), ['rpEvents']).trim();
             if (!summary?.hash || !raw) {
                 return;
             }
@@ -508,7 +510,7 @@ export function createVectorMemoryService({
             .forEach(summary => addSummary(summary, blockTypes.STORY));
         (state.stageSummaries || []).forEach(summary => addSummary(summary, blockTypes.STAGE));
         (state.epicSummaries || []).forEach(summary => addSummary(summary, blockTypes.EPIC));
-        return [...sources, ...getRpMemorySources(state)];
+        return sources;
     }
     
     function markVectorIndexDirty(reason = 'changed', state = ensureState()) {
@@ -625,6 +627,7 @@ export function createVectorMemoryService({
     
     async function buildVectorMemoryIndex({ silent = false } = {}) {
         const state = ensureState();
+        removeRpVectorCache(state.vectorMemory);
         if (silent && pausedIndexStates.has(state)) return state.vectorMemory.records || [];
         if (!silent) pausedIndexStates.delete(state);
         if (indexRun && indexRun.state !== state) {
@@ -827,6 +830,7 @@ export function createVectorMemoryService({
     }
     
     async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(), options = {}) {
+        removeRpVectorCache(state.vectorMemory);
         cancelVectorRecall();
         const requestRevision = recallRevision, configKey = recallConfigKey(state);
         const controller = new AbortController();
@@ -968,17 +972,16 @@ export function createVectorMemoryService({
         }
     }
 
-    function isRecallMemoryCurrent(hit, state, rpHashes) {
+    function isRecallMemoryCurrent(hit, state) {
+        if (isRpVectorRecord(hit)) return false;
         const memoryHash = hit.memoryHash || (hit.isSavedSummary ? summaryItems(state).find(item => String(hit.id || '').endsWith(`-${item.hash}`))?.hash : '');
-        if (String(memoryHash).startsWith('rp:')) return rpHashes.has(memoryHash);
         if (memoryHash && !isMemoryCurrent(state, { hash: memoryHash })) return false;
         return !(hit.isSavedSummary && !memoryHash && state.chronicle);
     }
 
     function applyRecallPlan(state, plan) {
-        const rpHashes = new Set(getRpMemorySources(state).map(source => source.hash));
         const result = selectRecallPlan(plan.groups, { ...defaultVectorMemory, ...state.vectorMemory }, {
-            isCurrent: hit => isRecallMemoryCurrent(hit, state, rpHashes),
+            isCurrent: hit => isRecallMemoryCurrent(hit, state),
         });
         state.vectorMemory.lastRerankCandidates = result.decisions.map(item => serializeVectorRecallItem(item, {
             recallTier: item.recallTier, previewLimit: 260, textLimit: 520,
@@ -998,6 +1001,7 @@ export function createVectorMemoryService({
     }
 
     function renderVectorMemorySection(state = ensureState()) {
+        removeRpVectorCache(state.vectorMemory);
         if (!state.vectorMemory?.enabled) return '';
         const hits = state.vectorMemory.lastHits || [];
         let plan = recallPlans.get(state);

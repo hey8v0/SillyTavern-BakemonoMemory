@@ -195,12 +195,27 @@ test('zero full allowance retains summaries but never fabricates a summary for a
     assert.ok(f.state.vectorMemory.lastRerankCandidates.some(x => x.decisionReason?.includes('摘要')));
 });
 
-test('distinct saved memories sharing a floor stay separate and never expand to that floor body', async () => {
-    const sources = ['a', 'b'].map(hash => ({ id: `rp-${hash}`, hash: `rp:${hash}`, messageId: 0, text: `独立信息${hash}`, title: hash }));
-    const f = fixture([{ body: .9 }], {}, { getRpMemorySources: () => sources, createLocalEmbedding: () => [1, 0] });
+test('RP data cannot inflate two tagged summaries to fifteen index entries', async () => {
+    const sources = Array.from({ length: 13 }, (_, i) => ({ id: `vec-rp-facts-${i}`, hash: `rp:facts:${i}`, messageId: 0, text: `状态记录${i}`, title: '状态' }));
+    const f = fixture([{ body: .9, summary: .7 }, { body: .9, summary: .7 }], { summaryTags: 'bakemono' }, { getRpMemorySources: () => sources, createLocalEmbedding: () => [1, 0] });
     const hits = await f.run();
-    assert.equal(hits.length, 3);
-    assert.ok(hits.filter(h => h.memoryHash).every(h => h.recallTier === 'summary' && h.text.startsWith('独立信息')));
+    assert.equal(f.state.vectorMemory.records.filter(r => r.kind === 'summary').length, 2);
+    assert.ok(hits.every(h => !h.memoryHash?.startsWith('rp:')));
+    assert.doesNotMatch(f.service.renderVectorMemorySection(), /状态记录/);
+    const signature = f.service.getVectorSourceSignature();
+    sources[0].text = '改变剧情状态不使向量索引失效';
+    assert.equal(f.service.getVectorSourceSignature(), signature);
+});
+
+test('configured summary tags exclude unrelated tags and nested RP protocol', async () => {
+    const f = fixture([{ body: .9, summary: .7 }], { summaryTags: 'bakemono' }, { createLocalEmbedding: () => [1, 0] });
+    f.chat[0].mes = '正文<bakemono>真正摘要<rpEvents>{"events":[{"data":{"name":"RP_ONLY"}}]}</rpEvents></bakemono><other>OTHER_ONLY</other>';
+    await f.service.buildVectorMemoryIndex();
+    const summaries = f.state.vectorMemory.records.filter(item => item.kind === 'summary');
+    assert.equal(summaries.length, 1);
+    assert.match(summaries[0].text, /真正摘要/);
+    assert.doesNotMatch(summaries[0].text, /RP_ONLY|OTHER_ONLY/);
+    assert.ok(f.state.vectorMemory.records.every(item => !item.text.includes('RP_ONLY')));
 });
 
 test('body and summary winner uses hybrid score first, not a lower hybrid score with higher cosine', async () => {
@@ -227,17 +242,24 @@ test('changed source invalidates an already selected recall before injection', a
     assert.equal(f.state.vectorMemory.lastHits.length, 0);
 });
 
-test('P06: cached RP hit is revalidated after correction and disabling RP injection', async () => {
-    let sources = [{ id: 'vec-rp-facts-old', hash: 'rp:facts:old:before', messageId: 0, text: '钥匙可用', title: '状态' }];
-    const f = fixture([{ body: .9 }], {}, { getRpMemorySources: () => sources, createLocalEmbedding: () => [1, 0] });
-    await f.run(); assert.match(f.service.renderVectorMemorySection(), /钥匙可用/);
-    sources = [{ ...sources[0], hash: 'rp:facts:old:corrected', text: '已纠正，不可用' }];
-    assert.doesNotMatch(f.service.renderVectorMemorySection(), /钥匙可用/);
-    await f.run(); assert.match(f.service.renderVectorMemorySection(), /已纠正/);
-    sources = [];
-    assert.doesNotMatch(f.service.renderVectorMemorySection(), /已纠正|钥匙可用/);
-    assert.ok(f.state.vectorMemory.records.some(item => !item.memoryHash), 'body index is preserved');
-    await f.run(); assert.ok(f.state.vectorMemory.lastHits.some(item => !item.memoryHash));
+test('legacy RP hits are removed on reload even with automatic indexing disabled', async () => {
+    const f = fixture([{ body: .9, summary: .7 }], { autoIndex: false }, { createLocalEmbedding: () => [1, 0] });
+    await f.run();
+    const original = structuredClone(f.state.vectorMemory.records);
+    for (const marker of [{ id: 'vec-rp-facts-old' }, { memoryHash: 'rp:claims:old' }, { summaryType: 'rp-observations' }]) {
+        const legacy = { id: 'legacy', kind: 'summary', isSavedSummary: true, messageId: 0, text: '不应召回的状态', summary: '不应召回的状态', score: 1, embedding: [1, 0], ...marker };
+        const saved = structuredClone(f.state);
+        saved.vectorMemory.records.push(legacy);
+        saved.vectorMemory.lastHits.push(legacy);
+        const service = createVectorMemoryService({ ...f.dependencies, getState: () => saved });
+        assert.ok(service.getVectorRecallSourceRecords().every(r => r !== legacy));
+        assert.doesNotMatch(service.renderVectorMemorySection(), /不应召回/);
+        assert.ok(saved.vectorMemory.lastHits.every(h => h.text !== legacy.text));
+        assert.deepEqual(saved.vectorMemory.records, original);
+        await service.retrieveVectorMemoryHits('QUERY');
+        assert.ok(saved.vectorMemory.lastHits.length);
+        assert.doesNotMatch(service.renderVectorMemorySection(), /不应召回/);
+    }
 });
 
 test('a configured zero recent window does not fall back to the default window', async () => {

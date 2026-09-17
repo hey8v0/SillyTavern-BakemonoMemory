@@ -1,3 +1,5 @@
+import { removeRpVectorCache } from '../vector/source-policy.js';
+
 export function createVectorWorkbenchUi({
     query,
     document,
@@ -60,9 +62,12 @@ export function createVectorWorkbenchUi({
     }
 
     function renderVectorRuntime(state) {
+        removeRpVectorCache(state.vectorMemory);
         const messageRecordCount = unique((state.vectorMemory.records || []).map(record => String(record.messageId))).length;
         const bodyRecordCount = (state.vectorMemory.records || []).filter(record => record.kind !== 'summary').length;
         const summaryRecordCount = (state.vectorMemory.records || []).filter(record => record.kind === 'summary').length;
+        const savedSummaryCount = (state.vectorMemory.records || []).filter(record => record.kind === 'summary' && record.isSavedSummary).length;
+        const tagSummaryCount = summaryRecordCount - savedSummaryCount;
         const maxIndexed = Number(state.vectorMemory.maxIndexedMessages || 0);
         const fullHitCount = (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier === 'full').length;
         const summaryHitCount = (state.vectorMemory.lastHits || []).filter(hit => !['full', 'chunk'].includes(hit.recallTier)).length;
@@ -78,7 +83,7 @@ export function createVectorWorkbenchUi({
                 : '索引健康';
         const runtimeDescription = !messageRecordCount
             ? '建立索引后，剪辑台才能从长聊天里找回相关旧剧情。'
-            : `${bodyRecordCount} 个正文片段 · ${summaryRecordCount} 个摘要片段${indexTime ? ` · 最近刷新于 ${indexTime}` : ''}${state.vectorMemory.lastRecallSkippedReason ? ` · 上次跳过：${state.vectorMemory.lastRecallSkippedReason}` : ''}`;
+            : `${bodyRecordCount} 个正文片段 · ${tagSummaryCount} 条标签摘要 · ${savedSummaryCount} 条已存摘要${indexTime ? ` · 最近刷新于 ${indexTime}` : ''}${state.vectorMemory.lastRecallSkippedReason ? ` · 上次跳过：${state.vectorMemory.lastRecallSkippedReason}` : ''}`;
         query('#bakemono-memory-vector-runtime-label').text(runtimeLabel);
         query('#bakemono-memory-vector-runtime-badge').text(state.vectorMemory.enabled ? '召回开启' : '召回关闭');
         query('#bakemono-memory-vector-runtime-title').text(`${messageRecordCount} 楼已索引`);

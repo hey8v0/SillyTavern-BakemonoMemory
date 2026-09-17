@@ -1,4 +1,5 @@
 import { ensureChronicle } from '../memory/story-state.js';
+import { removeRpVectorCache } from '../vector/source-policy.js';
 
 export function ensureCurrentChatStateSlot({
     getChatMetadata,
@@ -198,6 +199,7 @@ export function createChatStateService({
         ensureObjectField(state.vectorMemory, 'queryCustomApi', defaultVectorMemory.queryCustomApi);
         fillMissingDefaults(state.vectorMemory.queryCustomApi, defaultVectorMemory.queryCustomApi);
         normalizeArrayFields(state.vectorMemory, ['records', 'lastHits', 'lastEmbeddingCandidates', 'lastRerankCandidates']);
+        removeRpVectorCache(state.vectorMemory);
         ensureObjectField(state.vectorMemory, 'embeddingCache', {});
         ensureObjectField(state, 'chatGuard', defaultState.chatGuard);
         sanitizeChatStateWhenStructureChanges(state);
