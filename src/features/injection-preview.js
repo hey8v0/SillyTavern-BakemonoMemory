@@ -22,28 +22,57 @@ export function splitInjectionPreview(key, value) {
     return sections;
 }
 
-export function createInjectionPreview({ documentRef, getSources, beforeOpen = () => {} }) {
+export function createInjectionPreview({ documentRef, windowRef = documentRef.defaultView, getSources, beforeOpen = () => {} }) {
     let root = null;
     let overlay = null;
     let trigger = null;
     let closeButton = null;
     let body = null;
-    let inertSiblings = [];
+    let panel = null;
+    let viewport = null;
+    let openingClick = null;
+
+    function syncViewport() {
+        if (!overlay) return;
+        const valid = value => Number.isFinite(value) && value > 0;
+        const width = [viewport?.width, windowRef?.innerWidth, documentRef.documentElement?.clientWidth, 360].find(valid);
+        const height = [viewport?.height, windowRef?.innerHeight, documentRef.documentElement?.clientHeight, 640].find(valid);
+        const offset = value => Number.isFinite(value) ? Math.max(0, value) : 0;
+        // Pixel bounds also work on mobile keyboards, zoom and older dvh implementations.
+        for (const [name, value] of Object.entries({
+            top: offset(viewport?.offsetTop), left: offset(viewport?.offsetLeft), width, height,
+        })) overlay.style.setProperty(name, value + 'px', 'important');
+        overlay.style.setProperty('--bk-preview-max-height', Math.max(44, Math.min(680, height - 48)) + 'px');
+    }
+
+    function copyTheme() {
+        const computed = windowRef?.getComputedStyle?.(root);
+        if (!computed) return;
+        for (const name of ['--SmartThemeBodyColor', '--bk-paper', '--bk-paper-raised', '--bk-ink-soft',
+            '--bk-accent', '--bk-line', '--bk-line-strong', '--bk-shadow', 'font-family', 'font-size', 'line-height']) {
+            const value = computed.getPropertyValue(name);
+            if (value) overlay.style.setProperty(name, value);
+        }
+    }
 
     function close({ restoreFocus = true } = {}) {
         if (!overlay) return;
-        overlay.remove();
+        const previousOverlay = overlay;
         overlay = null;
         documentRef.removeEventListener('keydown', onKeyDown, true);
         documentRef.removeEventListener('focusin', onFocusIn, true);
-        for (const [element, wasInert] of inertSiblings) {
-            if (!wasInert) element.removeAttribute('inert');
-        }
-        inertSiblings = [];
+        documentRef.removeEventListener('click', onOutsideClick, true);
+        windowRef?.removeEventListener('resize', syncViewport);
+        viewport?.removeEventListener('resize', syncViewport);
+        viewport?.removeEventListener('scroll', syncViewport);
+        viewport = null;
+        try { previousOverlay.close?.(); } catch { /* Detached or fallback dialog. */ }
+        previousOverlay.remove();
         root?.classList.remove('has-injection-preview');
         const previousTrigger = trigger;
         previousTrigger?.setAttribute('aria-expanded', 'false');
-        trigger = closeButton = body = null;
+        trigger = closeButton = body = panel = null;
+        openingClick = null;
         if (restoreFocus && previousTrigger?.isConnected && root?.getAttribute('aria-hidden') !== 'true') {
             previousTrigger.focus({ preventScroll: true });
         }
@@ -67,10 +96,20 @@ export function createInjectionPreview({ documentRef, getSources, beforeOpen = (
         if (overlay && !overlay.contains(event.target)) closeButton.focus({ preventScroll: true });
     }
 
-    function open(button) {
+    function onOutsideClick(event) {
+        if (event === openingClick) return;
+        if (!overlay || panel?.contains(event.target)) return;
+        // Catch the backdrop AND uncovered page space. Do not click through on dismissal.
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        close();
+    }
+
+    function open(button, event) {
         const key = button?.dataset.bakemonoTokenSource;
         if (!Object.hasOwn(labels, key) || !root?.isConnected || root.getAttribute('aria-hidden') === 'true') return;
         close({ restoreFocus: false });
+        openingClick = event;
         beforeOpen();
         let sections = [];
         let failed = false;
@@ -80,11 +119,20 @@ export function createInjectionPreview({ documentRef, getSources, beforeOpen = (
             failed = true;
         }
         trigger = button;
-        overlay = documentRef.createElement('div');
+        overlay = documentRef.createElement('dialog');
         overlay.className = 'bakemono-injection-preview-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-labelledby', popupId + '-title');
+        overlay.setAttribute('aria-describedby', popupId + '-note');
+        // Critical geometry must not inherit host dialog transforms/margins.
+        for (const [name, value] of Object.entries({
+            position: 'fixed', inset: 'auto', margin: '0', transform: 'none',
+            'max-width': 'none', 'max-height': 'none', display: 'grid',
+        })) overlay.style.setProperty(name, value, 'important');
+        copyTheme();
         overlay.innerHTML = `
-            <section id="${popupId}" class="bakemono-injection-preview" role="dialog" aria-modal="true"
-                aria-labelledby="${popupId}-title" aria-describedby="${popupId}-note">
+            <section id="${popupId}" class="bakemono-injection-preview">
                 <header>
                     <div><span>本轮注入预览</span><h3 id="${popupId}-title"></h3></div>
                     <button type="button" class="bakemono-injection-preview-close" aria-label="关闭注入预览">×</button>
@@ -94,6 +142,7 @@ export function createInjectionPreview({ documentRef, getSources, beforeOpen = (
             </section>`;
         overlay.querySelector('h3').textContent = labels[key];
         closeButton = overlay.querySelector('button');
+        panel = overlay.querySelector('section');
         body = overlay.querySelector('.bakemono-injection-preview-body');
         if (!sections.length) {
             const empty = documentRef.createElement('p');
@@ -116,23 +165,39 @@ export function createInjectionPreview({ documentRef, getSources, beforeOpen = (
             body.append(list);
         }
         closeButton.addEventListener('click', () => close());
-        overlay.addEventListener('click', event => {
-            if (event.target === overlay) close();
+        overlay.addEventListener('cancel', event => {
+            event.preventDefault();
+            close();
         });
-        root.append(overlay);
+        const openedOverlay = overlay;
+        overlay.addEventListener('close', () => {
+            if (overlay === openedOverlay) close();
+        });
+        documentRef.body.append(overlay);
+        viewport = windowRef?.visualViewport;
+        syncViewport();
+        windowRef?.addEventListener('resize', syncViewport);
+        viewport?.addEventListener('resize', syncViewport);
+        viewport?.addEventListener('scroll', syncViewport);
+        // Native top layer escapes transformed/scrolled ancestors. Never manually inert the
+        // workbench: even an unsupported dialog must leave a recoverable dismissal path.
+        try {
+            if (typeof overlay.showModal === 'function') overlay.showModal();
+            else overlay.setAttribute('open', '');
+        } catch {
+            overlay.setAttribute('open', '');
+        }
         root.classList.add('has-injection-preview');
         trigger.setAttribute('aria-expanded', 'true');
         closeButton.focus({ preventScroll: true });
-        inertSiblings = [...root.children].filter(element => element !== overlay)
-            .map(element => [element, element.hasAttribute('inert')]);
-        for (const [element] of inertSiblings) element.setAttribute('inert', '');
         documentRef.addEventListener('keydown', onKeyDown, true);
         documentRef.addEventListener('focusin', onFocusIn, true);
+        documentRef.addEventListener('click', onOutsideClick, true);
     }
 
     function onClick(event) {
         const button = event.target?.closest?.('button[data-bakemono-token-source]');
-        if (button && root?.contains(button)) open(button);
+        if (button && root?.contains(button)) open(button, event);
     }
 
     function bind(nextRoot) {

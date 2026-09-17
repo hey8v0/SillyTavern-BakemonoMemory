@@ -47,3 +47,12 @@ test('six native module buttons and popup lifecycle are wired into the workbench
     assert.match(index, /closeHelp:[\s\S]{0,150}injectionPreview\.close/);
     assert.match(index, /eventSource\.on\(event_types\.CHAT_CHANGED,[\s\S]{0,150}injectionPreview\.close/);
 });
+
+test('preview escapes the workbench and never manually inerts the underlying UI', () => {
+    const source = readFileSync(new URL('../src/features/injection-preview.js', import.meta.url), 'utf8');
+    assert.match(source, /documentRef\.body\.append\(overlay\)/);
+    assert.match(source, /overlay\.showModal\(\)/);
+    assert.doesNotMatch(source, /setAttribute\(['"]inert['"]/);
+    assert.match(source, /documentRef\.addEventListener\('click', onOutsideClick, true\)/);
+    assert.match(source, /documentRef\.removeEventListener\('click', onOutsideClick, true\)/);
+});

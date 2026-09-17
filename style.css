@@ -11776,21 +11776,35 @@ details[open] > summary > .bakemono-memory-help-trigger {
 .bakemono-injection-preview-overlay {
   position: fixed;
   inset: 0;
+  margin: 0;
+  border: 0;
+  max-width: none;
+  max-height: none;
+  min-width: 0;
+  min-height: 0;
   z-index: 40130;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
   padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
   background: rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.bakemono-injection-preview-overlay::backdrop {
+  background: transparent;
 }
 
 .bakemono-injection-preview {
   width: min(620px, 100%);
   min-width: 0;
-  max-height: min(680px, 80vh);
-  max-height: min(680px, 80dvh);
-  display: flex;
-  flex-direction: column;
+  min-height: 0;
+  max-height: var(--bk-preview-max-height, min(680px, 80vh));
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   overflow: hidden;
   box-sizing: border-box;
   border: 1px solid var(--bk-line-strong);
@@ -11849,10 +11863,12 @@ details[open] > summary > .bakemono-memory-help-trigger {
 }
 
 .bakemono-injection-preview-body {
+  min-width: 0;
   min-height: 0;
+  max-height: max(44px, calc(var(--bk-preview-max-height, 80vh) - 140px));
   overflow: auto;
   overscroll-behavior: contain;
-  touch-action: pan-y;
+  touch-action: pan-y pinch-zoom;
   scrollbar-gutter: stable;
   border-top: 1px solid var(--bk-line);
 }
