@@ -2,7 +2,7 @@
 
 ## 接手约定
 
-- 当前版本 1.8.2，分支 main，远端 hey8v0/SillyTavern-BakemonoMemory。先查 Git，不从旧对话推断。
+- 当前版本 1.8.3，分支 main，远端 hey8v0/SillyTavern-BakemonoMemory。先查 Git，不从旧对话推断。
 - 不覆盖用户修改、不强推；提交推送以当次授权为准。不默认打开浏览器、调用模型或同步本机酒馆。
 - 当前源码在本目录；任务工作区与酒馆安装目录不是源码。本次离线依赖在任务工作区 .ui-validation，Node 24，无新增运行框架。
 - 使用见 README；验收映射、命令及余项见 TESTING_v1.7.0.md；实际提示词见 RP_EVENTS_PROMPT.md。本文不追加流水账，历史查 Git。
@@ -31,6 +31,7 @@
 | 全局设置/保存 | src/core/*settings*、global-config-save.js、persistence.js |
 | 聊天恢复/备份 | summary-recovery-journal.js；rp-core/backup.js；memory/backup-package.js |
 | 摘要/表格/召回 | features/summary-*.js、table-*.js、vector-*.js；src/vector |
+| 填表校验/错误 | tables/operation-parser.js、operation-feedback.js；table-memory-model 预检与应用共用暂存校验；所有草稿应用须传 raw，失败保留原文 |
 | 本轮注入预览 | features/overview-token-manifest.js、injection-preview.js；只读当前配置；body 顶层 dialog，不手工 inert 工作台 |
 | 设置保存反馈 | ui/page-settings.js；顶部仅保存当前设置页，切页草稿不自动应用；全局回读与聊天保存均完成才报成功 |
 | 模型候选/选择 | vector/provider-config.js；ui/model-picker.js；千帆个人版为有日期的官方候选快照，非账户鉴权结果；接口变化清理本页候选 |

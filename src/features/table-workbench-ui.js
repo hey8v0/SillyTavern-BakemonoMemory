@@ -21,6 +21,7 @@ export function createTableWorkbenchUi({
     parseList,
     getHash,
     getNextTableIndex,
+    inspectTableEditDraft,
 } = {}) {
     const tableUiState = {
         openTableIndex: '',
@@ -250,7 +251,9 @@ export function createTableWorkbenchUi({
         }
         const fragment = document.createDocumentFragment();
         drafts.forEach(draft => {
-            const operations = Array.isArray(draft.operations) ? draft.operations : [];
+            const feedback = inspectTableEditDraft(draft, state);
+            const operations = feedback.operations;
+            const errorText = draft.applicationError || feedback.error;
             const card = document.createElement('article');
             card.className = 'bakemono-memory-table-draft-card';
             card.dataset.tableDraftId = draft.id;
@@ -263,10 +266,24 @@ export function createTableWorkbenchUi({
             time.textContent = draft.createdAt ? new Date(draft.createdAt).toLocaleString() : '刚刚生成';
             header.append(badge, time);
             const title = document.createElement('h4');
-            title.textContent = `${operations.length} 处变化等待应用`;
+            title.textContent = errorText ? '修改未应用' : `${operations.length} 处变化等待应用`;
             const meta = document.createElement('span');
             meta.className = 'bakemono-memory-table-draft-meta';
             meta.textContent = formatSourceRange(draft.sourceMessageIds || []) || '本轮正文';
+            const feedbackBox = document.createElement('div');
+            feedbackBox.className = 'bakemono-memory-table-draft-feedback';
+            if (errorText) {
+                feedbackBox.classList.add('is-error');
+                feedbackBox.setAttribute('role', 'alert');
+                const reason = document.createElement('p');
+                reason.textContent = errorText;
+                const hint = document.createElement('small');
+                hint.textContent = '草稿已保留，可在下方修正指令后重新解析。';
+                feedbackBox.append(reason, hint);
+            } else if (feedback.warnings.length) {
+                feedbackBox.setAttribute('role', 'status');
+                feedbackBox.textContent = feedback.warnings.join(' ');
+            } else feedbackBox.hidden = true;
     
             const preview = document.createElement('div');
             preview.className = 'bakemono-memory-table-diff-list';
@@ -301,6 +318,7 @@ export function createTableWorkbenchUi({
             textarea.value = draft.raw || '';
             const details = document.createElement('details');
             details.className = 'bakemono-memory-table-draft-details bakemono-memory-console-disclosure';
+            details.open = !!errorText;
             details.innerHTML = '<summary><span><i class="fa-solid fa-code"></i> 查看原始修改指令</span><small>重新解析或丢弃</small></summary>';
             const secondaryActions = document.createElement('div');
             secondaryActions.className = 'bakemono-memory-table-draft-secondary-actions';
@@ -314,7 +332,7 @@ export function createTableWorkbenchUi({
             apply.className = 'menu_button bakemono-memory-table-draft-apply';
             apply.dataset.bakemonoTableDraftAction = 'apply';
             apply.innerHTML = '<i class="fa-solid fa-check"></i><span>应用修改</span>';
-            card.append(header, title, meta, preview, details, apply);
+            card.append(header, title, meta, feedbackBox, preview, details, apply);
             fragment.append(card);
         });
         container.append(fragment);

@@ -876,6 +876,7 @@ const {
     applyTableOperations,
     buildTableEditPrompt,
     createTableEditDraft,
+    inspectTableEditDraft,
     formatSpecificTablesForPrompt,
     formatTableDataForPrompt,
     formatTableGuideForPrompt,
@@ -956,6 +957,7 @@ const tableWorkflowController = createTableWorkflowController({
 const { processLatestTableEdit } = tableWorkflowController;
 
 const tableWorkbenchUi = createTableWorkbenchUi({
+    inspectTableEditDraft,
     query: $,
     document,
     requestFrame: callback => (
@@ -994,6 +996,7 @@ const {
 } = tableWorkbenchUi;
 
 const tableEditorEvents = createTableEditorEvents({
+    inspectTableEditDraft,
     query: $,
     getState: ensureState,
     toastr,

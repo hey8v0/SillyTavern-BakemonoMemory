@@ -3,7 +3,7 @@ export function createTableEditorEvents({
     getState,
     toastr,
     confirmDanger,
-    parseTableEditOperations,
+    inspectTableEditDraft,
     renderWorkbenchScope,
     workbenchRenderScopes,
     applyTableOperations,
@@ -38,12 +38,16 @@ export function createTableEditorEvents({
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格草稿已丢弃。');
                 return;
             }
-            const raw = String(card.querySelector('.bakemono-memory-table-draft-editor')?.value || draft.raw || '');
-            try {
-                draft.raw = raw;
-                draft.operations = parseTableEditOperations(raw);
-            } catch (error) {
-                toastr.error(`重新解析失败：${error?.message || error}`);
+            const raw = String(card.querySelector('.bakemono-memory-table-draft-editor')?.value ?? draft.raw ?? '');
+            draft.raw = raw;
+            delete draft.applicationError;
+            const feedback = inspectTableEditDraft(draft, state);
+            draft.operations = feedback.operations;
+            draft.error = feedback.error;
+            if (feedback.error) {
+                persistCurrentTableDatabase(state);
+                renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改未应用，草稿中已标出原因。');
+                toastr.error(`填表未应用：${feedback.error}`);
                 return;
             }
             if (action === 'reparse') {
@@ -57,6 +61,7 @@ export function createTableEditorEvents({
             )) return;
             try {
                 const undoSnapshot = applyTableOperations(draft.operations, state, {
+                    raw: draft.raw,
                     sourceMessageIds: draft.sourceMessageIds,
                     undoLabel: `手动应用表格草稿：${formatSourceRange(draft.sourceMessageIds || [])}`,
                 });
@@ -66,6 +71,8 @@ export function createTableEditorEvents({
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改已应用。');
                 toastr.success('表格修改已应用。');
             } catch (error) {
+                draft.applicationError = `应用失败：${error?.message || error}`;
+                renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改应用失败。');
                 toastr.error(`应用失败：${error?.message || error}`);
             }
         });

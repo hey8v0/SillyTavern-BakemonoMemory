@@ -51,6 +51,7 @@ export function createTableWorkflowController({
         runningStates.add(state);
         try {
             await runGeneration(options.manual ? '正在单独生成表格修改草稿...' : '正在自动生成表格修改草稿...', async () => {
+                let draft = null;
                 try {
                     const tableResult = await callGenerationModel({
                         prompt: buildTableEditPrompt(blocks, state),
@@ -59,7 +60,7 @@ export function createTableWorkflowController({
                     if (ensureState() !== state) throw new Error('提取期间聊天已变化');
                     if (JSON.stringify(buildLatestTurnBlocks(state)) !== sourceSignature) throw new Error('表格生成期间正文来源已变化');
                     failedSources.delete(state);
-                    const draft = createTableEditDraft(tableResult, blocks, state);
+                    draft = createTableEditDraft(tableResult, blocks, state);
                     if (!draft) {
                         state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
                         saveState();
@@ -70,6 +71,7 @@ export function createTableWorkflowController({
                     }
                     if (state.tableDatabase.autoApply && !options.manual) {
                         const undoSnapshot = applyTableOperations(draft.operations, state, {
+                            raw: draft.raw,
                             sourceMessageIds: draft.sourceMessageIds,
                             undoLabel: `回复后表格修改：${formatSourceRange(draft.sourceMessageIds || [])}`,
                         });
@@ -87,7 +89,17 @@ export function createTableWorkflowController({
                     renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改草稿已生成，请确认后应用。');
                     switchWorkbenchTab('tables');
                 } catch (error) {
-                    if (ensureState() === state) failedSources.set(state, sourceSignature);
+                    if (ensureState() === state) {
+                        failedSources.set(state, sourceSignature);
+                        if (draft && state.tableDatabase.editDrafts.includes(draft)) {
+                            draft.applicationError = `自动填表未应用：${error.message}`;
+                            saveState();
+                            try {
+                                if (await saveChatConditional() === false) draft.applicationError += ' 草稿保存未确认，请勿关闭聊天。';
+                            } catch { draft.applicationError += ' 草稿保存未确认，请勿关闭聊天。'; }
+                            renderWorkbenchScope(workbenchRenderScopes.TABLES, '自动填表未应用，草稿中已标出原因。');
+                        }
+                    }
                     throw error;
                 }
             }, '表格修改草稿已生成', workbenchRenderScopes.TABLES);

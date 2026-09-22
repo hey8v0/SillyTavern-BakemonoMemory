@@ -183,6 +183,7 @@ export function createTurnProcessingController({
         }
     
         if (state.inlineGeneration.tableEnabled && /<tableEdit[\s>]/i.test(text)) {
+            let draft = null;
             try {
                 const existingHistories = getAppliedTableHistoriesForMessage(turn.assistantMessage.messageId, state);
                 if (existingHistories.some(history => history.sourceSignature === signature)) {
@@ -202,12 +203,14 @@ export function createTurnProcessingController({
                     rollbackLatestTableOperationForChangedMessages([turn.assistantMessage.messageId], state);
                 }
                 const blocks = buildLatestTurnBlocks(state);
-                const draft = createTableEditDraft(text, blocks, state);
+                draft = createTableEditDraft(text, blocks, state);
                 if (draft) {
                     draft.sourceSignature = signature;
+                    capturedSomething = true;
                 }
                 if (draft && state.tableDatabase.autoApply) {
                     const undoSnapshot = applyTableOperations(draft.operations, state, {
+                        raw: draft.raw,
                         sourceMessageIds: draft.sourceMessageIds,
                         undoLabel: `随正文表格修改：${formatSourceRange(draft.sourceMessageIds || [])}`,
                     });
@@ -223,7 +226,8 @@ export function createTurnProcessingController({
                     changedMessage = true;
                 }
             } catch (error) {
-                toastr.warning(`随正文表格修改解析失败：${error?.message || error}`);
+                if (draft) draft.applicationError = `随正文填表未应用：${error?.message || error}`;
+                toastr.warning(`随正文填表未应用：${error?.message || error}${draft ? '；草稿已保留。' : ''}`);
             }
         }
     
@@ -465,10 +469,12 @@ export function createTurnProcessingController({
                     prompt: buildTableEditPrompt(blocks, state),
                     systemPrompt: await buildTurnReferenceSystemPrompt(blocks, 'table', state),
                 });
+                let draft = null;
                 try {
-                    const draft = createTableEditDraft(tableResult, blocks, state);
+                    draft = createTableEditDraft(tableResult, blocks, state);
                     if (draft && state.tableDatabase.autoApply) {
                         const undoSnapshot = applyTableOperations(draft.operations, state, {
+                            raw: draft.raw,
                             sourceMessageIds: draft.sourceMessageIds,
                             undoLabel: `回复后表格修改：${formatSourceRange(draft.sourceMessageIds || [])}`,
                         });
@@ -476,7 +482,8 @@ export function createTurnProcessingController({
                         state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draft.id);
                     }
                 } catch (error) {
-                    toastr.warning(`表格草稿解析失败：${error?.message || error}`);
+                    if (draft) draft.applicationError = `填表未应用：${error?.message || error}`;
+                    toastr.warning(`填表未应用：${error?.message || error}${draft ? '；草稿已保留。' : ''}`);
                 }
             }
     

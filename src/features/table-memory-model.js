@@ -1,8 +1,10 @@
 import { ensureTableIdentity, resolveEntity, storyTimeContext, setStoryTime, upsertEntity, markStoryChange } from '../memory/story-state.js';
+import { describeTableOperation, normalizeTableClock } from '../tables/operation-feedback.js';
 
 export const storyStateEditGuide = `剧情状态随本次填表维护，在同一个 <tableEdit> 内可追加：
 setColumnKind(表号, 列号, "person")：实体名称列可标为 person/item/plan/location；普通描述列保持 text，不把一段描述或多人列表当成一个实体。
 setStoryClock({"date":"1889-10-15","label":"夜晚","flashback":false})：仅根据本轮明确发生的时间变化填写；架空时间只填 label；明确经过 N 天且当前已有日期时可用 relativeDays:N。回忆用 flashback:true，不推进现在。
+没有年份时只填描述，例如 setStoryClock({"label":"11月14日 深夜 23:45"})；date 与 relativeDays 不要同时填写。
 这些操作可与 insertRow/updateRow/deleteRow 共存。已有字段语义无变化时不要重复输出。没有时间依据时省略时钟操作，不能用现实日期或猜测填空。`;
 
 export function createTableMemoryModel({
@@ -149,8 +151,10 @@ export function createTableMemoryModel({
     }
 
     function createTableEditDraft(raw, blocks, state = ensureState()) {
-        const operations = parseTableEditOperations(raw);
-        if (!operations.length) {
+        let operations = [], error = '';
+        try { operations = parseTableEditOperations(raw); }
+        catch (cause) { error = cause.message; }
+        if (!operations.length && !error) {
             return null;
         }
         const now = new Date().toISOString();
@@ -158,6 +162,7 @@ export function createTableMemoryModel({
             id: `table-draft-${getHash(`${now}|${raw}`)}`,
             raw,
             operations,
+            error,
             sourceMessageIds: getSourceMessageIdsFromBlocks(blocks),
             createdAt: now,
         };
@@ -165,66 +170,62 @@ export function createTableMemoryModel({
         return draft;
     }
 
-    function applyTableOperations(operations = [], state = ensureState(), options = {}) {
+    function prepareTableOperations(operations = [], state = ensureState(), options = {}) {
         const sourceMessageIds = getFiniteMessageIds(options.sourceMessageIds || []);
-        let snapshot = null;
+        const warnings = [];
         const nextTables = structuredClone(state.tableDatabase.tables || []);
         const nextState = { chronicle: state.chronicle ? { clock: structuredClone(state.chronicle.clock), entities: structuredClone(state.chronicle.entities) } : null };
         let clockOperation = null;
         const tablesByIndex = new Map(nextTables.map(table => [Number(table.tableIndex), table]));
         const deletes = [];
         for (const operation of operations) {
-            if (operation.op === 'clock') {
-                if (!nextState.chronicle) throw new Error('剧情状态尚未初始化');
-                const data = operation.data;
-                if (clockOperation) throw new Error('一次填表只接受一项剧情时间更新');
-                if (!data || typeof data !== 'object' || Array.isArray(data)
-                    || Object.keys(data).some(key => !['label', 'date', 'relativeDays', 'flashback'].includes(key))
-                    || (data.label !== undefined && typeof data.label !== 'string')
-                    || (data.date !== undefined && typeof data.date !== 'string')
-                    || (data.flashback !== undefined && typeof data.flashback !== 'boolean')
-                    || (data.relativeDays !== undefined && !Number.isInteger(data.relativeDays))
-                    || (!data.label?.trim() && !data.date?.trim() && data.relativeDays === undefined)) throw new Error('剧情时间操作无效');
-                setStoryTime(nextState, { ...data, sourceMessageIds });
-                clockOperation = data;
-                continue;
-            }
-            const table = tablesByIndex.get(Number(operation.tableIndex));
-            if (!table) {
-                throw new Error(`表格 ${operation.tableIndex} 不存在。`);
-            }
-            if (table.readOnly || table.allowAiEdit === false) {
-                throw new Error(`表格 ${operation.tableIndex}「${table.name || ''}」是只读或禁止 AI 修改，已拒绝本次操作。`);
-            }
-            table.rows = Array.isArray(table.rows) ? table.rows : [];
-            ensureTableIdentity(table);
-            if (operation.op === 'semantic') {
-                if (!Number.isInteger(operation.columnIndex) || operation.columnIndex < 0 || operation.columnIndex >= table.columns.length
-                    || !['text', 'person', 'item', 'plan', 'location'].includes(operation.kind)) throw new Error('字段语义无效');
-                table.columnKinds[operation.columnIndex] = operation.kind;
-                table.semanticOverrides ||= {};
-                table.semanticOverrides[table.columnIds[operation.columnIndex]] = { name: table.columns[operation.columnIndex], kind: operation.kind };
-                continue;
-            }
-            if (!['insert', 'update', 'delete'].includes(operation.op)) throw new Error('未知表格操作');
-            if (operation.op !== 'insert' && (!Number.isInteger(operation.rowIndex) || !table.rows[operation.rowIndex])) throw new Error('表格数据行不存在');
-            if (operation.op === 'insert') {
-                const row = table.columns.map((_, index) => normalizeTableText(operation.data?.[String(index)] ?? operation.data?.[index] ?? ''));
-                table.rows.push(row);
-            } else if (operation.op === 'update') {
-                const row = table.rows[operation.rowIndex];
-                if (!row) {
-                    throw new Error(`表格 ${operation.tableIndex} 的 row ${operation.rowIndex} 不存在。`);
+            try {
+                if (operation.op === 'clock') {
+                    if (!nextState.chronicle) throw new Error('剧情状态尚未初始化');
+                    if (clockOperation) throw new Error('一次填表只接受一项剧情时间更新');
+                    const data = normalizeTableClock(operation.data, warnings);
+                    setStoryTime(nextState, { ...data, sourceMessageIds });
+                    clockOperation = data;
+                    continue;
                 }
-                for (const [key, value] of Object.entries(operation.data || {})) {
-                    const colIndex = Number(key);
-                    if (!Number.isInteger(colIndex) || colIndex < 0 || colIndex >= table.columns.length) throw new Error('表格字段不存在');
-                    if (Number.isFinite(colIndex) && colIndex >= 0 && colIndex < table.columns.length) {
-                        row[colIndex] = normalizeTableText(value);
+                const table = tablesByIndex.get(Number(operation.tableIndex));
+                if (!table) {
+                    throw new Error(`表格 ${operation.tableIndex} 不存在。`);
+                }
+                if (table.readOnly || table.allowAiEdit === false) {
+                    throw new Error(`表格 ${operation.tableIndex}「${table.name || ''}」是只读或禁止 AI 修改，已拒绝本次操作。`);
+                }
+                table.rows = Array.isArray(table.rows) ? table.rows : [];
+                ensureTableIdentity(table);
+                if (operation.op === 'semantic') {
+                    if (!Number.isInteger(operation.columnIndex) || operation.columnIndex < 0 || operation.columnIndex >= table.columns.length
+                        || !['text', 'person', 'item', 'plan', 'location'].includes(operation.kind)) throw new Error(`字段语义无效；列编号范围为 0–${table.columns.length - 1}，类型为 text/person/item/plan/location。`);
+                    table.columnKinds[operation.columnIndex] = operation.kind;
+                    table.semanticOverrides ||= {};
+                    table.semanticOverrides[table.columnIds[operation.columnIndex]] = { name: table.columns[operation.columnIndex], kind: operation.kind };
+                    continue;
+                }
+                if (!['insert', 'update', 'delete'].includes(operation.op)) throw new Error('未知表格操作');
+                if (operation.op !== 'insert' && (!Number.isInteger(operation.rowIndex) || !table.rows[operation.rowIndex])) throw new Error(`数据行不存在；${table.rows.length ? `当前行编号为 0–${table.rows.length - 1}` : '当前表为空，请使用 insertRow 新增记录'}。`);
+                if (operation.op === 'insert' || operation.op === 'update') {
+                    if (!operation.data || typeof operation.data !== 'object' || Array.isArray(operation.data)) throw new Error('字段内容应为对象，如 {"0":"名称","1":"状态"}。');
+                    if (!Object.keys(operation.data).length) throw new Error('字段内容为空，请填写要修改的列。');
+                    for (const [key, value] of Object.entries(operation.data)) {
+                        if (!/^(0|[1-9]\d*)$/.test(key) || !Number.isSafeInteger(Number(key)) || Number(key) >= table.columns.length) throw new Error(`第 ${key} 列不存在；当前列编号为 0–${table.columns.length - 1}，请按表格字段填写。`);
+                        if (value !== null && !['string', 'number', 'boolean'].includes(typeof value)) throw new Error(`第 ${key} 列应为文本或简单数值，不能填写嵌套对象或数组。`);
                     }
                 }
-            } else if (operation.op === 'delete') {
-                deletes.push({ table, rowIndex: operation.rowIndex });
+                if (operation.op === 'insert') {
+                    const row = table.columns.map((_, index) => normalizeTableText(operation.data?.[String(index)] ?? operation.data?.[index] ?? ''));
+                    table.rows.push(row);
+                } else if (operation.op === 'update') {
+                    const row = table.rows[operation.rowIndex];
+                    for (const [key, value] of Object.entries(operation.data)) row[Number(key)] = normalizeTableText(value ?? '');
+                } else if (operation.op === 'delete') {
+                    deletes.push({ table, rowIndex: operation.rowIndex });
+                }
+            } catch (error) {
+                throw new Error(`${describeTableOperation(operation)}：${error.message}`);
             }
         }
         const deleted = new Set();
@@ -246,6 +247,26 @@ export function createTableMemoryModel({
                 if (!nextState.chronicle.entities.some(e => e.kind === kind && [e.name, ...(e.aliases || [])].includes(name))) upsertEntity(nextState, { kind, name });
             }));
         }
+        return { nextTables, nextState, clockOperation, sourceMessageIds, warnings };
+    }
+
+    function inspectTableEditDraft(draft, state = ensureState()) {
+        let operations = [];
+        try {
+            operations = parseTableEditOperations(draft.raw || '');
+            if (!operations.length) return { operations, error: '没有可应用的填表指令，请补全指令或丢弃此草稿。', warnings: [] };
+            const { warnings } = prepareTableOperations(operations, state, { sourceMessageIds: draft.sourceMessageIds });
+            return { operations, warnings, error: '' };
+        } catch (error) { return { operations, warnings: [], error: error.message }; }
+    }
+
+    function applyTableOperations(operations = [], state = ensureState(), options = {}) {
+        if (options.raw !== undefined) {
+            operations = parseTableEditOperations(options.raw);
+            if (!operations.length) throw new Error('没有可应用的填表指令，请补全指令或丢弃此草稿。');
+        }
+        const { nextTables, nextState, clockOperation, sourceMessageIds } = prepareTableOperations(operations, state, options);
+        let snapshot = null;
         if (options.recordUndo !== false && operations.length) {
             snapshot = pushTableUndoSnapshot(options.undoLabel || `AI 表格修改 ${operations.length} 项`, state, { sourceMessageIds });
         }
@@ -274,6 +295,7 @@ export function createTableMemoryModel({
         getTableSchemasForPreset,
         getNextTableIndex,
         createTableEditDraft,
+        inspectTableEditDraft,
         applyTableOperations,
     };
 }

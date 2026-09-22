@@ -4717,6 +4717,23 @@
   font-size: 8px;
 }
 
+#bakemono-workbench-root .bakemono-memory-table-draft-feedback {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--bk-line);
+  border-radius: 10px;
+  color: var(--bk-ink);
+  background: var(--bk-paper-soft);
+  text-align: left;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+#bakemono-workbench-root .bakemono-memory-table-draft-feedback[hidden] { display: none; }
+#bakemono-workbench-root .bakemono-memory-table-draft-feedback.is-error { border-color: var(--bakemono-theme-danger, #a14f45); }
+#bakemono-workbench-root .bakemono-memory-table-draft-feedback p { margin: 0 0 6px; }
+#bakemono-workbench-root .bakemono-memory-table-draft-feedback small { color: var(--bk-ink-soft); }
+
 .bakemono-memory-table-diff-list {
   display: grid;
   gap: 7px;
