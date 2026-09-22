@@ -1413,17 +1413,22 @@
                 </button>
               </div>
             </label>
-            <label class="bakemono-memory-field">
-              <span>模型</span>
+            <div class="bakemono-memory-field">
+              <label for="bakemono-memory-custom-model">模型</label>
               <div class="bakemono-memory-model-row">
-                <input id="bakemono-memory-custom-model" class="text_pole" type="text" list="bakemono-memory-custom-model-options" placeholder="gpt-4.1-mini">
-                <datalist id="bakemono-memory-custom-model-options"></datalist>
+                <div class="bakemono-memory-model-picker">
+                  <input id="bakemono-memory-custom-model" class="text_pole" type="text" autocomplete="off" placeholder="gpt-4.1-mini">
+                  <span class="bakemono-memory-model-select is-empty">
+                    <select data-model-input="bakemono-memory-custom-model" aria-label="选择生成模型" title="请先拉取模型" disabled><option value="">请先拉取模型</option></select>
+                    <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                  </span>
+                </div>
                 <button class="menu_button" id="bakemono-memory-fetch-models" type="button">
                   <i class="fa-solid fa-cloud-arrow-down"></i>
                   <span>拉取模型</span>
                 </button>
               </div>
-            </label>
+            </div>
             <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
               <label class="bakemono-memory-field">
                 <span>创意温度</span>
@@ -1835,11 +1840,16 @@
               <span>接口地址</span>
               <input id="bakemono-memory-vector-base-url" class="text_pole" type="text" placeholder="https://api.openai.com/v1">
             </label>
-            <label class="bakemono-memory-field">
-              <span>模型</span>
-              <input id="bakemono-memory-vector-model" class="text_pole" type="text" list="bakemono-memory-vector-model-options" placeholder="text-embedding-3-small">
-              <datalist id="bakemono-memory-vector-model-options"></datalist>
-            </label>
+            <div class="bakemono-memory-field">
+              <label for="bakemono-memory-vector-model">模型</label>
+              <div class="bakemono-memory-model-picker">
+                <input id="bakemono-memory-vector-model" class="text_pole" type="text" autocomplete="off" placeholder="text-embedding-3-small">
+                <span class="bakemono-memory-model-select is-empty">
+                  <select data-model-input="bakemono-memory-vector-model" aria-label="选择嵌入模型" title="请先拉取模型" disabled><option value="">请先拉取模型</option></select>
+                  <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                </span>
+              </div>
+            </div>
             <label class="bakemono-memory-field">
               <span>接口密钥</span>
               <input id="bakemono-memory-vector-api-key" class="text_pole" type="password" autocomplete="off">
@@ -1866,11 +1876,16 @@
               <span>改写接口地址</span>
               <input id="bakemono-memory-vector-query-base-url" class="text_pole" type="text" placeholder="留空复用嵌入向量接口地址">
             </label>
-            <label class="bakemono-memory-field">
-              <span>改写模型</span>
-              <input id="bakemono-memory-vector-query-model" class="text_pole" type="text" list="bakemono-memory-vector-query-model-options" placeholder="例如 gpt-4o-mini / gemini-flash">
-              <datalist id="bakemono-memory-vector-query-model-options"></datalist>
-            </label>
+            <div class="bakemono-memory-field">
+              <label for="bakemono-memory-vector-query-model">改写模型</label>
+              <div class="bakemono-memory-model-picker">
+                <input id="bakemono-memory-vector-query-model" class="text_pole" type="text" autocomplete="off" placeholder="例如 gpt-4o-mini / gemini-flash">
+                <span class="bakemono-memory-model-select is-empty">
+                  <select data-model-input="bakemono-memory-vector-query-model" aria-label="选择改写模型" title="请先拉取模型" disabled><option value="">请先拉取模型</option></select>
+                  <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                </span>
+              </div>
+            </div>
             <label class="bakemono-memory-field">
               <span>改写密钥</span>
               <input id="bakemono-memory-vector-query-api-key" class="text_pole" type="password" autocomplete="off" placeholder="留空复用嵌入向量密钥">
@@ -2187,7 +2202,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.8.1 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.8.2 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

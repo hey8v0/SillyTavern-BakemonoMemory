@@ -9,7 +9,7 @@ function toDataModule(source) {
 }
 
 async function loadModule(path) {
-    if (path === 'src/features/turn-processing-controller.js') return import(new URL(path, repoUrl));
+    if (['src/features/turn-processing-controller.js', 'src/features/vector-actions-controller.js'].includes(path)) return import(new URL(path, repoUrl));
     return import(toDataModule(await readFile(new URL(path, repoUrl), 'utf8')));
 }
 

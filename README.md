@@ -2,7 +2,7 @@
 
 面向 SillyTavern 长篇 RP 的第三方记忆扩展。
 
-当前版本：**v1.8.1**。剧情状态“全部记录”按类型分组，人物直接显示当前状态，优化搜索筛选、长文本和标签排版。见 [本次更新](CHANGELOG_UI_1.8.1.md) · [精简状态与总览](CHANGELOG_RP_1.8.0.md)。
+当前版本：**v1.8.2**。适配千帆 Token Plan 个人版模型候选；模型框保留当前值时也能展开完整列表。见 [本次更新](CHANGELOG_API_1.8.2.md) · [剧情状态列表](CHANGELOG_UI_1.8.1.md) · [精简状态与总览](CHANGELOG_RP_1.8.0.md)。
 
 建议升级前备份聊天。[运行稳定性修复](CHANGELOG_2026-09-22.md) · [摘要来源说明](TESTING_SUMMARY_COVERAGE.md) · [剧情状态基础验收](TESTING_v1.7.0.md) · [9/9—9/17 更新汇总](CHANGELOG_2026-09-17.md)。
 

@@ -1,3 +1,5 @@
+import { renderModelPicker } from '../ui/model-picker.js';
+
 export function createPresetControlsUi({
     documentRef,
     query,
@@ -7,7 +9,6 @@ export function createPresetControlsUi({
     getActiveGlobalConfig,
     getSelectedAreaPresetId,
     getAreaPresets,
-    unique,
 }) {
     function renderPresetControlPair(selectSelector, nameSelector) {
         const select = documentRef.querySelector(selectSelector);
@@ -61,15 +62,8 @@ export function createPresetControlsUi({
         renderAreaPresetControl(areaPresetScopes.VECTOR, '#bakemono-memory-vector-preset-select', '#bakemono-memory-vector-preset-name');
     }
 
-    function renderCustomModelOptions(models = []) {
-        const list = documentRef.querySelector('#bakemono-memory-custom-model-options');
-        if (!list) return;
-        list.innerHTML = '';
-        for (const model of unique(models.map(item => String(item || '').trim()).filter(Boolean)).sort()) {
-            const option = documentRef.createElement('option');
-            option.value = model;
-            list.append(option);
-        }
+    function renderCustomModelOptions(models = [], options) {
+        renderModelPicker(documentRef, 'bakemono-memory-custom-model', models, options);
     }
 
     return { renderAll, renderAreaPresetControl, renderCustomModelOptions, renderPresetControlPair };

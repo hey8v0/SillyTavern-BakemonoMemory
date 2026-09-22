@@ -1,7 +1,7 @@
 import { runApiRequest } from '../shared/request-policy.js';
+import { getQianfanPersonalModelCatalog } from '../vector/provider-config.js';
 
 export function createGenerationClient({
-    query,
     ensureState,
     generateRaw,
     normalizeCustomApiBaseUrl,
@@ -9,7 +9,6 @@ export function createGenerationClient({
     defaultAutomation,
     fetchImpl,
     readCustomApiFieldsFromUi,
-    persistSharedConfigurationFromState,
     toastr,
     getCustomModelsUrl,
     extractCustomModelIds,
@@ -17,6 +16,7 @@ export function createGenerationClient({
     formatApiFailure = response => `接口请求失败：${response.status} ${response.statusText}`,
     requestTimeoutMs = 300000,
 } = {}) {
+    let modelRequest = 0;
     function checkFinishReason(reason) {
         if (reason && reason !== 'stop') throw new Error(reason === 'length'
             ? '模型输出达到长度上限，摘要可能被截断；请提高输出上限或减小批次后重试。'
@@ -125,44 +125,46 @@ export function createGenerationClient({
     
     async function fetchCustomApiModels() {
         const state = ensureState();
-        readCustomApiFieldsFromUi(state);
-        persistSharedConfigurationFromState(state);
-        const config = state.automation.customApi || {};
+        const savedConfig = state.automation.customApi, revision = state.activeConfigSignature;
+        const request = ++modelRequest;
+        const readDraft = () => {
+            const draft = { ...state, automation: { ...state.automation, customApi: { ...savedConfig } } };
+            readCustomApiFieldsFromUi(draft);
+            return draft.automation.customApi || {};
+        };
+        const config = readDraft(), expected = JSON.stringify(config);
         const baseUrl = normalizeCustomApiBaseUrl(config.baseUrl);
         const apiKey = String(config.apiKey || '').trim();
         if (!baseUrl) {
             toastr.warning('请先填写自定义接口地址。');
-            return;
+            return false;
         }
         const toast = toastr.info('正在拉取模型列表...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
         try {
-            const response = await fetchImpl(getCustomModelsUrl(baseUrl), {
-                method: 'GET',
-                headers: {
-                    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-                },
-            });
-            if (!response.ok) {
-                throw new Error(formatApiFailure(response, '拉取模型失败'));
+            const catalog = getQianfanPersonalModelCatalog(baseUrl);
+            let models = catalog?.models;
+            if (!catalog) {
+                const response = await fetchImpl(getCustomModelsUrl(baseUrl), {
+                    method: 'GET',
+                    headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
+                });
+                if (!response.ok) throw new Error(formatApiFailure(response, '拉取模型失败'));
+                models = extractCustomModelIds(await response.json());
             }
-            const data = await response.json();
-            if (ensureState() !== state || state.automation.customApi !== config) {
+            if (ensureState() !== state || state.automation.customApi !== savedConfig
+                || state.activeConfigSignature !== revision || request !== modelRequest || JSON.stringify(readDraft()) !== expected) {
                 throw new Error('聊天或接口配置已切换，请在当前配置重新拉取模型。');
             }
-            const models = extractCustomModelIds(data);
             if (!models.length) {
                 throw new Error('接口返回里没有找到模型 ID。');
             }
-            state.automation.customApi.models = models;
-            if (!String(state.automation.customApi.model || '').trim()) {
-                state.automation.customApi.model = state.automation.customApi.models[0];
-                query('#bakemono-memory-custom-model').val(state.automation.customApi.model);
-            }
-            renderCustomModelOptions(state.automation.customApi.models);
-            persistSharedConfigurationFromState(state);
-            toastr.success(`已拉取 ${state.automation.customApi.models.length} 个模型。`);
+            renderCustomModelOptions(models, { refresh: true });
+            if (catalog) toastr.info(catalog.notice, '模型候选');
+            else toastr.success(`已拉取 ${models.length} 个模型候选。`);
+            return true;
         } catch (error) {
             toastr.error(error?.message || String(error), '模型拉取失败');
+            return false;
         } finally {
             toastr.clear(toast);
         }

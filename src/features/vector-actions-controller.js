@@ -1,3 +1,5 @@
+import { getQianfanPersonalModelCatalog } from '../vector/provider-config.js';
+
 export function createVectorActionsController({
     query,
     getState: ensureState,
@@ -94,6 +96,7 @@ export function createVectorActionsController({
         }
         const toast = toastr.info('正在拉取嵌入向量模型列表...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
         try {
+            getQianfanPersonalModelCatalog(baseUrl, 'embedding');
             const response = await fetchImpl(getCustomModelsUrl(baseUrl), {
                 method: 'GET',
                 headers: {
@@ -109,7 +112,7 @@ export function createVectorActionsController({
             if (!models.length) {
                 throw new Error('接口返回里没有找到模型 ID。');
             }
-            renderVectorModelOptions(models);
+            renderVectorModelOptions(models, { refresh: true });
             toastr.success(`已拉取 ${models.length} 个模型候选；名称筛选不代表能力验证，请选择服务商支持的嵌入模型，也可手动填写。`);
             return true;
         } catch (error) {
@@ -133,23 +136,23 @@ export function createVectorActionsController({
         }
         const toast = toastr.info('正在拉取改写模型列表...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
         try {
-            const response = await fetchImpl(getCustomModelsUrl(baseUrl), {
-                method: 'GET',
-                headers: {
-                    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-                },
-            });
-            if (!response.ok) {
-                throw new Error(formatApiFailure(response, '拉取模型失败'));
+            const catalog = getQianfanPersonalModelCatalog(baseUrl);
+            let models = catalog?.models;
+            if (!catalog) {
+                const response = await fetchImpl(getCustomModelsUrl(baseUrl), {
+                    method: 'GET',
+                    headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
+                });
+                if (!response.ok) throw new Error(formatApiFailure(response, '拉取模型失败'));
+                models = extractCustomModelIds(await response.json());
             }
-            const data = await response.json();
             ticket.assertCurrent();
-            const models = extractCustomModelIds(data);
             if (!models.length) {
                 throw new Error('接口返回里没有找到模型 ID。');
             }
-            renderVectorQueryModelOptions(models);
-            toastr.success(`已拉取 ${models.length} 个改写模型候选，请选择模型后应用配置。`);
+            renderVectorQueryModelOptions(models, { refresh: true });
+            if (catalog) toastr.info(catalog.notice, '模型候选');
+            else toastr.success(`已拉取 ${models.length} 个改写模型候选，请选择模型后应用配置。`);
             return true;
         } catch (error) {
             toastr.error(error?.message || String(error), '改写模型拉取失败');

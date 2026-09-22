@@ -1,4 +1,5 @@
 import { removeRpVectorCache } from '../vector/source-policy.js';
+import { renderModelPicker } from '../ui/model-picker.js';
 
 export function createVectorWorkbenchUi({
     query,
@@ -307,30 +308,12 @@ export function createVectorWorkbenchUi({
         container.append(fragment);
     }
     
-    function renderVectorModelOptions(models = []) {
-        const list = document.querySelector('#bakemono-memory-vector-model-options');
-        if (!list) {
-            return;
-        }
-        list.innerHTML = '';
-        for (const model of unique(models.map(item => String(item || '').trim()).filter(Boolean)).sort()) {
-            const option = document.createElement('option');
-            option.value = model;
-            list.append(option);
-        }
+    function renderVectorModelOptions(models = [], options) {
+        renderModelPicker(document, 'bakemono-memory-vector-model', models, options);
     }
     
-    function renderVectorQueryModelOptions(models = []) {
-        const list = document.querySelector('#bakemono-memory-vector-query-model-options');
-        if (!list) {
-            return;
-        }
-        list.innerHTML = '';
-        for (const model of unique(models.map(item => String(item || '').trim()).filter(Boolean)).sort()) {
-            const option = document.createElement('option');
-            option.value = model;
-            list.append(option);
-        }
+    function renderVectorQueryModelOptions(models = [], options) {
+        renderModelPicker(document, 'bakemono-memory-vector-query-model', models, options);
     }
 
     return {
