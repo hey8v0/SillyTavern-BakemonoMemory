@@ -1,3 +1,4 @@
+import { currentInformation, informationInvolves, informationName } from '../rp-core/current-information.js';
 import { readStoryDate } from '../rp-core/clock.js';
 import { entityName, relationshipName, stateLabels, describeRecord } from '../rp-core/state-view.js';
 
@@ -101,8 +102,9 @@ export function createRpStatePresentation({ escapeHtml: esc }) {
         return link('people', item.id, `${avatar(item.name)}<span class="rp-row-copy"><strong>${esc(item.name)}</strong><small>${esc(sub.join(' · '))}</small></span>${chevron}`, 'rp-person rp-row');
     }
 
-    function rows(rows, view, { recent = false } = {}) {
+    function rows(rows, view, { recent = false, directory = false } = {}) {
         if (!rows.length) return empty('暂无记录');
+        if (directory) return '<div class="rp-directory-list">' + rows.map(row => link(row.kind, row.id, `<span class="rp-story-copy"><strong>${esc(row.title)}</strong><small>${esc(row.detail)}</small></span>${chip(({ people: '人物', relationships: '关系', items: '物品', plans: '约定', locations: '地点', claims: '说法', observations: '观察' })[row.kind])}${chevron}`, 'rp-story-entry')).join('') + '</div>';
         const kind = rows[0].kind;
         if (kind === 'people') return `<div class="rp-sheet rp-person-list">${rows.map(row => person(row.record, view)).join('')}</div>`;
         if (kind === 'relationships') return `<div class="rp-card-list">${rows.map(row => relationship(row.record, view)).join('')}</div>`;
@@ -130,29 +132,39 @@ export function createRpStatePresentation({ escapeHtml: esc }) {
         return `<section class="rp-overview rp-sheet"><div class="rp-scene-top"><span class="rp-eyebrow">${date.year ? esc(date.year) : '此刻'} · ${historicalFloor == null ? '当前故事' : '历史快照'}</span>${historicalFloor != null || lastBatch ? `<span class="rp-floor">第 ${esc(historicalFloor ?? lastBatch.sourceFloor ?? lastBatch.floor)} 楼</span>` : ''}</div><h3>${esc(date.date || view.clock.description || '剧情时间待记录')}${date.time ? `<span class="rp-scene-period">${esc(date.time)}</span>` : ''}</h3>${date.date && view.clock.description ? `<p>${esc(view.clock.description)}</p>` : ''}<p class="rp-scene-place">${icon('location-dot')}${esc(places.join('；') || '人物位置尚未记录')}${positions.length > 3 ? '…' : ''}</p>${located.length ? `<div class="rp-cast"><span class="rp-eyebrow">${positions.length === 1 ? '在此' : '人物'}</span>${located.map(item => link('people', item.id, `${avatar(item.name)}${esc(item.name)}`, 'rp-cast-person')).join('')}</div>` : ''}</section>`;
     }
 
-    function overview(view, lastBatch, historicalFloor, recentRows = [], facts = []) {
+    function information(item, view) {
+        const data = item.data;
+        return link(item.track, item.id, `<span class="rp-story-copy"><strong>${esc(informationName(view, data.speaker))}${data.subject ? ' → ' + esc(informationName(view, data.subject)) : ''}</strong><small>${esc(data.description)}</small></span>${chip(item.track === 'claims' ? '说法' : '观察')}${chevron}`, 'rp-story-entry rp-story-information');
+    }
+    function overview(view, lastBatch, historicalFloor, recentRows = [], facts = [], informationRows = []) {
         const selection = selectStoryOverview(view, facts), date = storyDateLabel(view.clock.date);
         const route = (action, html, css = 'rp-story-more') => `<button type="button" class="${css}" data-rp-action="${action}">${html}</button>`;
         const more = (action, count, unit) => count > 0 ? route(action, `其余 ${count} ${unit} ${chevron}`) : '';
-        const dateText = esc(date.date || view.clock.description || '剧情时间待记录');
-        const time = [date.time, date.date ? view.clock.description : ''].filter(Boolean).join(' · ');
-        let html = `<section class="rp-story-sheet" aria-label="当前故事总览"><div class="rp-story-scene"><div class="rp-scene-top"><span class="rp-eyebrow">${date.year ? esc(date.year) : '此刻'} · ${historicalFloor == null ? '当前故事' : '历史快照'}</span>${historicalFloor != null || lastBatch ? `<span class="rp-floor">第 ${esc(historicalFloor ?? lastBatch.sourceFloor ?? lastBatch.floor)} 楼</span>` : ''}</div><h3 class="rp-story-heading" tabindex="-1">${route('clock', `<span class="rp-story-date">${dateText}</span>${time ? `<span class="rp-story-time">${esc(time)}</span>` : ''}`, 'rp-story-clock')}</h3>`;
-        const placeHtml = `${icon('location-dot')}<span class="rp-story-place-name">${esc(selection.location ? locationTrail(view, selection.location.id) : '当前场景待记录')}</span>${chevron}`;
-        html += `<div class="rp-story-place">${selection.location ? link('locations', selection.location.id, placeHtml, 'rp-story-place-link') : route('locations', placeHtml, 'rp-story-place-link')}${selection.location ? more('locations', view.locations.length - 1, '处地点') : ''}</div>`;
-        if (view.people.length) html += `<div class="rp-story-cast"><span class="rp-eyebrow">${selection.peopleLabel}</span>${selection.people.map(item => link('people', item.id, `${avatar(item.name)}<span>${esc(item.name)}</span>`, 'rp-story-person')).join('')}${more('people', selection.peopleRemaining, '位人物')}</div>`;
-        html += '</div>';
-        if (view.relationships.length) html += `<div class="rp-story-relations">${selection.relationships.map(item => {
+        const heading = (text, action = '', count = 0) => `<div class="rp-story-section-head"><h4>${esc(text)}</h4>${action ? route(action, '全部' + (count ? ' ' + count : '') + ' ›') : ''}</div>`;
+        const dateText = esc(date.date || view.clock.description || '时间未记录');
+        const time = view.clock.date?.includes('T') ? view.clock.date.split('T')[1] : '';
+        const weekday = date.time.split(' · ')[0];
+        let html = `<section class="rp-story-sheet" aria-label="当前故事总览"><div class="rp-story-tools">${route('directory', '全部记录')}${route('context-preview', '注入预览')}</div><div class="rp-story-scene"><div class="rp-scene-top"><span class="rp-eyebrow">${date.year ? esc(date.year) : '此刻'} · ${historicalFloor == null ? '当前故事' : '历史快照'}</span>${historicalFloor != null || lastBatch ? `<span class="rp-floor">第 ${esc(historicalFloor ?? lastBatch.sourceFloor ?? lastBatch.floor)} 楼</span>` : ''}</div><h3 class="rp-story-heading" tabindex="-1">${route('clock', `<span class="rp-story-date-block"><span class="rp-story-date">${dateText}</span><span class="rp-story-weekday">${esc([weekday, date.date ? view.clock.description : ''].filter(Boolean).join(' · '))}</span></span>${time ? `<span class="rp-story-time">${esc(time)}</span>` : ''}`, 'rp-story-clock')}</h3>`;
+        const placeHtml = `${icon('location-dot')}<span class="rp-story-place-name">${esc(selection.location ? locationTrail(view, selection.location.id) : '场景未记录')}</span>${chevron}`;
+        html += `<div class="rp-story-place">${selection.location ? link('locations', selection.location.id, placeHtml, 'rp-story-place-link') : route('locations', placeHtml, 'rp-story-place-link')}${selection.location ? more('locations', view.locations.length - 1, '处地点') : ''}</div></div>`;
+        if (view.people.length) html += `<div class="rp-story-cast">${heading(selection.peopleLabel === '在此' ? '在场 · ' + (view.scene?.present?.length || 0) : '人物', 'people', view.people.length)}${selection.people.map(item => {
+            const active = (item.states || []).filter(state => state.active !== false && !state.ended && !state.endedAt);
+            const status = active.slice(0, 2).map(state => state.description).join('；');
+            return link('people', item.id, `${avatar(item.name)}<span class="rp-story-copy"><strong>${esc(item.name)}</strong><small>${esc(status || (item.location ? locationTrail(view, item.location) : '状态未记录'))}</small></span>${active.length > 2 ? chip('+' + (active.length - 2)) : ''}${chevron}`, 'rp-story-person');
+        }).join('')}</div>`;
+        const info = informationRows.filter(item => informationInvolves(item, selection.people)).slice(0, 2);
+        if (view.relationships.length || info.length) html += `<div class="rp-story-relations">${selection.relationships.length || info.length ? heading('关系与说法', 'relationships') : ''}${selection.relationships.map(item => {
             const names = `${esc(entityName(view, item.from))} <span class="rp-arrow">${item.mutual ? '↔' : '→'}</span> ${esc(entityName(view, item.to))}`;
             const type = relationshipName(view, item).split(' · ').at(-1);
-            return link('relationships', item.id, `<span class="rp-story-copy"><strong>${names}</strong><small>${esc(type)}${item.elapsedDays == null ? '' : ` · ${esc(item.elapsedDays)} 天`}</small></span>${chevron}`, 'rp-story-relation rp-story-entry');
-        }).join('')}${more('relationships', selection.relationshipsRemaining, '段关系')}</div>`;
-        if (view.plans.length) html += `<div class="rp-story-plans">${selection.plans.map(item => link('plans', item.id, `${icon('calendar-days')}<span class="rp-story-copy"><strong>${esc(item.title || '未命名约定')}</strong><small>${esc(planStatusLabel(item))}${item.due ? ` · ${esc(item.due.replace('T', ' '))}` : ''}</small></span>${chevron}`, 'rp-story-plan rp-story-entry')).join('')}${more('plans', selection.plansRemaining, '项约定')}</div>`;
-        if (view.items.length) html += `<div class="rp-story-items">${selection.items.length ? `<span class="rp-eyebrow">${selection.itemsLabel}</span>` : ''}${selection.items.map(item => link('items', item.id, `${icon('key')}<span>${esc(item.name)}${item.loan ? ' · 借用' : ''}</span>`, 'rp-story-item')).join('')}${more('items', selection.itemsRemaining, '件物品')}</div>`;
-        html += `<div class="rp-story-recent">${recentRows.length ? `<span class="rp-eyebrow">最近变化</span>${rows(recentRows.slice(0, 2), view, { recent: true })}` : ''}${route('history', `变化记录 ${chevron}`)}</div></section>`;
+            return link('relationships', item.id, `<span class="rp-story-copy"><strong>${names}</strong><small>${esc(type)}</small></span>${chip('已成立')}${chevron}`, 'rp-story-relation rp-story-entry');
+        }).join('')}${info.map(item => information(item, view)).join('')}${more('relationships', selection.relationshipsRemaining, '段关系')}</div>`;
+        if (view.items.length) html += `<div class="rp-story-items">${selection.items.length ? heading('随身与场景物品', 'items') : ''}${selection.items.map(item => link('items', item.id, `${icon('key')}<span class="rp-story-copy"><strong>${esc(item.name)}</strong><small>${esc(item.holder ? entityName(view, item.holder) + ' 持有' : item.location ? locationTrail(view, item.location) : '持有者未记录')}${item.loan ? ' · 借用' : ''}</small></span>${chevron}`, 'rp-story-item rp-story-entry')).join('')}${more('items', selection.itemsRemaining, '件物品')}</div>`;
+        if (view.plans.length) html += `<div class="rp-story-plans">${selection.plans.length ? heading('尚未完成', 'plans') : ''}${selection.plans.map(item => link('plans', item.id, `${icon('calendar-days')}<span class="rp-story-copy"><strong>${esc(item.title || '未命名约定')}</strong><small>${esc(planStatusLabel(item))}${item.due || item.dueDescription ? ' · ' + esc(item.due?.replace('T', ' ') || item.dueDescription) : ''}</small></span>${chevron}`, 'rp-story-plan rp-story-entry')).join('')}${more('plans', selection.plansRemaining, '项约定')}</div>`;
+        html += `<div class="rp-story-recent">${route('history', `变化记录 ${chevron}`)}</div></section>`;
         return html;
     }
 
-    function entityDetail(kind, item, core, view, floor) {
+    function entityDetail(kind, item, core, view, floor, ledgerView = { projection: view }) {
         const title = kind === 'relationships' ? relationshipName(view, item).replace(' → ', item.mutual ? ' ↔ ' : ' → ') : item.name || item.title;
         const captions = { people: '人物档案', relationships: '人物关系', plans: '共同约定', items: '物品档案', locations: '地点档案' };
         let html = `<div class="rp-detail-hero">${kind === 'people' ? avatar(item.name) : ''}<div><span class="rp-eyebrow">${captions[kind]}</span><h3 tabindex="-1" class="rp-detail-title">${esc(title)}</h3></div></div>`;
@@ -164,8 +176,10 @@ export function createRpStatePresentation({ escapeHtml: esc }) {
             if (states.length) html += head('当前状态') + `<ul class="rp-plain-list">${states.map(state => `<li>${esc(state.description)}${state.target ? ' → ' + esc(entityName(view, state.target)) : ''} · ${esc({ private: '私人状态', author: '作者信息', observable: '可观察' }[state.visibility] || '可见性未记录')}</li>`).join('')}</ul>`;
             const relationships = view.relationships.filter(relation => relation.from === item.id || relation.to === item.id);
             if (relationships.length) html += head('与 TA 有关的人') + relationships.slice(0, 3).map(relation => relationship(relation, view)).join('');
-            const items = view.items.filter(object => object.holder === item.id);
-            if (items.length) html += head('当前持有') + `<div class="rp-chips">${items.slice(0, 5).map(object => link('items', object.id, esc(object.name) + (object.loan ? ' · 借用' : ''), 'rp-entity-link')).join('')}</div>`;
+            const info = currentInformation(core, ledgerView, { floor }).filter(record => informationInvolves(record, [item])).slice(0, 5);
+            if (info.length) html += head('相关说法与观察') + info.map(record => information(record, view)).join('');
+            const items = view.items.filter(object => object.holder === item.id || object.owner === item.id);
+            if (items.length) html += head('相关物品') + `<div class="rp-chips">${items.slice(0, 5).map(object => link('items', object.id, esc(object.name) + (object.loan ? ' · 借用' : ''), 'rp-entity-link')).join('')}</div>`;
             const plans = view.plans.filter(plan => plan.participants.includes(item.id) && ['accepted', 'proposed'].includes(plan.status));
             if (plans.length) html += head('接下来的约定') + plans.slice(0, 3).map(plan => appointment(plan, view)).join('');
         } else if (kind === 'relationships') {

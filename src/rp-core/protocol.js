@@ -32,6 +32,10 @@ export function normalizeProtocolEvents(events, { preserveOccurrences = false } 
             && (typeof event.data.description !== 'string' || !event.data.description.trim() || event.data.description.length > 4000)) {
             fail(entry, 'invalid_description', 'data.description', '说法或观察需要非空 description，长度不超过 4000');
         }
+        if (object(event.data) && Object.hasOwn(informationActions, event.track)) {
+            for (const field of ['speaker', 'subject']) if (event.data[field] != null && (typeof event.data[field] !== 'string' || event.data[field].length > 4000)) fail(entry, 'invalid_reference', field, '说法对象需为名称或引用');
+            if (event.data.heardBy != null && (!Array.isArray(event.data.heardBy) || event.data.heardBy.length > 100 || event.data.heardBy.some(value => typeof value !== 'string' || !value || value.length > 4000))) fail(entry, 'invalid_audience', 'heardBy', '知情者需为名称或引用数组');
+        }
         if (event.track === 'facts' && Object.hasOwn(creations, event.action) && object(event.data)
             && (typeof event.data.id !== 'string' || !event.data.id.trim() || event.data.id.length > 4000)) {
             fail(entry, 'invalid_identity', 'data.id', '登记对象需要明确 id，可使用唯一名称');

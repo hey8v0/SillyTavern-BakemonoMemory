@@ -2,6 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRpPromptLibrary } from '../src/rp-core/prompt-library.js';
 import { RP_EVENT_GUIDE, createRpExtractionFlow } from '../src/rp-core/extraction-flow.js';
+import { LEGACY_DEFAULT_PROMPT } from '../src/rp-core/legacy-default-prompt.js';
+import { RP_PROMPT_VERSION } from '../src/rp-core/prompt.js';
+test('only exact unchanged built-in prompts upgrade; custom text and preset snapshots remain untouched', () => {
+    const saved = { version: 1, revision: 4, promptVersion: 2, activePrompt: LEGACY_DEFAULT_PROMPT, selectedId: 'default', presets: [{ id: 'custom', name: '旧版备份', prompt: LEGACY_DEFAULT_PROMPT }] };
+    const library = createRpPromptLibrary({ read: () => saved, write() { throw Error('read must not persist'); } });
+    assert.equal(library.current(), RP_EVENT_GUIDE); assert.equal(library.draft().promptVersion, RP_PROMPT_VERSION);
+    assert.equal(saved.activePrompt, LEGACY_DEFAULT_PROMPT); assert.equal(library.list()[1].prompt, LEGACY_DEFAULT_PROMPT);
+    saved.activePrompt += '\n我的规则'; assert.equal(library.current(), saved.activePrompt);
+    saved.activePrompt = LEGACY_DEFAULT_PROMPT; saved.selectedId = 'custom'; assert.equal(library.current(), LEGACY_DEFAULT_PROMPT);
+});
 test('prompt presets apply, save, overwrite, delete and persist across instances', async () => {
     let saved; const confirmations = [];
     const deps = { read: () => saved, write: value => { saved = structuredClone(value); }, confirmSave: async value => { confirmations.push(value); return { status: 'confirmed' }; } };

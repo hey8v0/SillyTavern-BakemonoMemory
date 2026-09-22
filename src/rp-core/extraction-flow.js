@@ -109,14 +109,24 @@ export function createRpExtractionFlow({ getState, getChat, service, makeSourceI
             if (!ticket || ticket.state !== state || sourceStamp(ticket.source) !== stamp) throw new Error('提取开始前正文或聊天已变化');
             await runGeneration('正在记录剧情状态...', async () => {
                 assertCurrent(ticket);
-                const compiled = context(state, { manual: true, query: ticket.source.text });
+                const instruction = '\n只从本轮正文记录新事件。近期及设定资料仅供理解，不作为本轮新事实。\n';
+                const budget = state.rpCore.settings.contextBudget || 16000;
+                const compiled = context(state, { manual: true, query: ticket.source.text, availableBudget: Math.max(0, budget - ticket.source.text.length - instruction.length) });
                 if (compiled.blocked) throw new Error(compiled.warning);
                 const reference = String(await getReferenceContext(state, floor));
                 assertCurrent(ticket);
                 const recent = getChat().slice(Math.max(0, floor - 4), floor).filter(message => message && !message.is_system)
-                    .map(message => message.is_user ? '用户：' + stripRpProtocol(message.mes).slice(-2000) : '此前正文：' + (readChatSource(message, state)?.text || '').slice(-2000)).join('\n');
-                const systemPrompt = compiled.maintenance + '\n只从本轮正文记录新事件。近期及设定资料仅供理解，不作为本轮新事实。\n' + recent + '\n' + reference;
-                if (systemPrompt.length + ticket.source.text.length > (state.rpCore.settings.contextBudget || 16000)) throw new Error('状态提取上下文超出预算，请提高预算后重试');
+                    .map(message => message.is_user ? '用户：' + stripRpProtocol(message.mes).slice(-2000) : '此前正文：' + (readChatSource(message, state)?.text || '').slice(-2000));
+                // Current body and state are mandatory; optional context cannot
+                // make an otherwise valid extraction exceed its request budget.
+                let systemPrompt = compiled.maintenance + instruction;
+                const selected = [];
+                for (const text of recent.reverse()) if (systemPrompt.length + selected.join('\n').length + text.length + 2 + ticket.source.text.length <= budget) selected.unshift(text);
+                if (selected.length) systemPrompt += selected.join('\n') + '\n';
+                const remaining = Math.max(0, budget - systemPrompt.length - ticket.source.text.length);
+                if (reference.length <= remaining) systemPrompt += reference;
+                else if (remaining > 100) systemPrompt += '\n设定节选（已按预算截短）：\n' + reference.slice(0, remaining - 30);
+                if (systemPrompt.length + ticket.source.text.length > budget) throw new Error('状态提取上下文超出预算，请提高预算后重试');
                 if (controller.signal.aborted) throw new Error('提取已停止');
                 const result = await callGenerationModel({ prompt: ticket.source.text, systemPrompt, signal: controller.signal });
                 if (controller.signal.aborted) throw new Error('提取已停止');

@@ -19,7 +19,7 @@ test('I02 P04 P05: production service→flow→orchestrator→injection with sum
     h.chat[0].mes += block([e('person_registered', { id: '甲', name: '甲' }), e('scene_recorded', { location: '书店', present: ['甲'] })]);
     await h.orchestrator.runMemoryOrchestrator('正文完成', { scan: false });
     assert.equal(h.service.view().projection.people[0].name, '甲');
-    assert.match(h.prompts.get('rp'), /逐项记录/); assert.match(h.prompts.get('memory'), /当前剧情状态/);
+    assert.match(h.prompts.get('rp'), /变化记录/); assert.match(h.prompts.get('memory'), /当前剧情状态/);
     assert.equal(h.prompts.get('summary'), ''); assert.equal(h.prompts.get('table'), '');
     const parts = h.injection.getInjectionMemoryParts(); assert.equal(parts.sources.table, ''); assert.match(parts.sources.rpState, /甲/);
     assert.equal([...h.prompts.values()].filter(text => text.includes('<rpEvents>')).length, 1);
@@ -65,7 +65,7 @@ test('S01 S10 S13: same-looking temporary states have separate stable IDs and di
     assert.equal(new Set(ids).size, 3); assert.equal(person.traits.length, 0); assert.notEqual(ids[0], 'left');
     await append(h, '甲的左臂康复。', [e('person_state_ended', { id: person.id, stateId: ids[0] })]);
     const current = h.service.view().projection.people[0]; assert.equal(current.states[0].active, false); assert.equal(current.states[1].active, true);
-    assert.match(h.flow.context().brief, /内心（其他角色未必知道）/); assert.equal(current.states[2].target, h.service.view().projection.people[1].id);
+    assert.match(h.flow.context().brief, /内心，非公开知识/); assert.equal(current.states[2].target, h.service.view().projection.people[1].id);
     await h.service.editTemporary(person.id, ids[1], { description: '右臂正在恢复' }, { expectedRevision: h.state.rpCore.revision });
     assert.equal(h.service.view().projection.people[0].states[1].id, ids[1]);
 });

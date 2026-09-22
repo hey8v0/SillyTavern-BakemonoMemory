@@ -54,14 +54,17 @@ test('S01 S02 S04 S05 S06: local state rules preserve omissions and guard explic
     apply('item_restored', { id: 'key' }); assert.equal(p.items[0].quantity, null);
     apply('item_consumed', { id: 'key', quantity: 1 }); assert.equal(p.items[0].quantity, null);
 });
-test('P01 P02 P03 P08: all-entity relevance and indivisible budgets', () => {
+test('P01 P02 P03 P08: relevant state survives a compact budget without a whole-ledger prerequisite', () => {
     const p = createProjection();
     p.people = Array.from({ length: 101 }, (_, i) => ({ id: 'p' + i, name: '人物' + i, states: [], traits: [] }));
     p.scene = { present: ['p100'] }; p.items = [{ id: 'k', name: '钥匙', owner: 'p100', holder: null, location: '远方', status: 'destroyed', quantity: 0 }];
     const core = { revision: 9, settings: { enabled: true, inject: true, contextBudget: 1000 } };
     const result = compileRpContext(core, { projection: p }, { query: '继续' });
     assert.match(result.brief, /人物100/); assert.match(result.brief, /已销毁，不可继续使用/); assert.match(result.brief, /远方/);
-    assert.equal(compileRpContext(core, { projection: p }, { guide: '规则', maintenance: true }).blocked, true);
+    const compact = compileRpContext(core, { projection: p }, { guide: '规则', maintenance: true });
+    assert.equal(compact.blocked, false); assert.ok(compact.used <= 1000);
+    assert.match(compact.brief, /人物100/);
+    assert.equal(compileRpContext(core, { projection: p }, { guide: '规则'.repeat(1000), maintenance: true }).blocked, true);
 });
 test('R01 R05: stale ticket and failed save cannot alter RP or other data', async () => {
     const f = await fixture(), ticket = f.flow.capture(0, 'inline');

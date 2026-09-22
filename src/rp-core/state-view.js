@@ -1,3 +1,5 @@
+import { currentInformation, informationName } from './current-information.js';
+
 export const trackLabels = { facts: '事实', claims: '角色说法', observations: '观察', pending: '未采用' };
 export const stateLabels = { active: '持续中', ended: '已结束', proposed: '提议中', accepted: '已接受', completed: '已完成', cancelled: '已取消', failed: '明确失败', available: '可用', damaged: '损坏', destroyed: '已销毁', pending: '待确认', ignored: '已忽略', rejected: '已拒绝' };
 export const actionLabels = {
@@ -64,7 +66,12 @@ export function buildStatePage(core, view, navigation = {}) {
             ? `持有：${entityName(projection, item.holder)} · 数量：${item.quantity ?? '未知'}`
             : key === 'plans' ? `期限：${item.due || item.dueDescription || '未定'}${item.timing?.status === 'overdue' ? ' · 已逾期' : ''}`
                 : key === 'people' ? `最近确认位置：${entityName(projection, item.location)}` : '', record: item }));
-    if (tab === 'people') rows = [...(filter !== 'relationships' ? entityRows('people', projection.people) : []), ...(filter !== 'people' ? entityRows('relationships', projection.relationships) : [])];
+    if (tab === 'directory') {
+        rows = ['people', 'relationships', 'items', 'plans', 'locations'].filter(kind => !filter || filter === kind).flatMap(kind => entityRows(kind, projection[kind]));
+        rows.push(...currentInformation(core, view, { floor: navigation.floor }).filter(item => !filter || filter === item.track).map(item => ({ kind: item.track, id: item.id,
+            title: informationName(projection, item.data.speaker) + '：' + item.data.description, status: trackLabels[item.track], detail: '第 ' + item.floor + ' 楼', record: item })));
+    }
+    else if (tab === 'people') rows = [...(filter !== 'relationships' ? entityRows('people', projection.people) : []), ...(filter !== 'people' ? entityRows('relationships', projection.relationships) : [])];
     else if (tab === 'world') {
         const selected = ['plans', 'items', 'locations'].includes(filter) ? filter : 'plans';
         rows = entityRows(selected, projection[selected]);

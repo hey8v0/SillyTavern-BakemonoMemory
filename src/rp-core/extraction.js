@@ -7,6 +7,7 @@ import { normalizeEntityIdentities } from './identity.js';
 import { classifyCandidate } from './validation.js';
 import { atomicCandidateGroups } from './groups.js';
 import { normalizeProtocolEvents } from './protocol.js';
+import { resolveModelReferences } from './model-references.js';
 
 function canonical(value) {
     if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
@@ -80,7 +81,8 @@ export function prepareExtraction(original, raw, source, { floor, order = floor,
     const projection = replayLedger(original, applyFact).projection;
     const payload = parsePayload(raw);
     const protocol = normalizeProtocolEvents(payload, { preserveOccurrences: original.ruleVersion >= 3 });
-    const parsed = modelOwned ? resolveStateEvents(protocol.events, projection) : protocol.events;
+    const referenced = resolveModelReferences(protocol.events, projection);
+    const parsed = modelOwned ? resolveStateEvents(referenced, projection) : referenced;
     const events = normalizeEntityIdentities(automaticRegistration ? prepareAutomaticRegistration(parsed, source, projection, { modelOwned }) : parsed, source, projection);
     let core = structuredClone(original);
     if (modelOwned) for (const item of core.candidates.filter(item => item.status === 'pending' && (item.originSourceKey || item.sourceKey) === sourceKey(source))) {

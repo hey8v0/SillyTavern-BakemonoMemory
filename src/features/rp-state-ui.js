@@ -1,4 +1,5 @@
 import { buildStatePage, createStateNavigation, describeRecord, describeStateValues, relationshipName, stateLabels, trackLabels, isCurrentRpRecord } from '../rp-core/state-view.js';
+import { currentInformation, informationName } from '../rp-core/current-information.js';
 import { createRpStateEditors } from './rp-state-editors.js';
 import { createRpStatePresentation } from './rp-state-presentation.js';
 
@@ -6,7 +7,7 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
     const navigation = createStateNavigation(), renderedStates = new WeakMap();
     const presentation = createRpStatePresentation({ escapeHtml: esc });
     let busy = false;
-    const tabs = { overview: '概览', people: '人物关系', world: '世界状态', history: '历史' };
+    const tabs = { directory: '全部记录', preview: '状态注入', overview: '概览', people: '人物关系', world: '世界状态', history: '历史' };
     const button = (action, label, extra = '') => `<button type="button" class="menu_button${['save-settings', 'edit-save', 'prompt-apply', 'enable-preview', 'enable-confirm'].includes(action) ? ' rp-primary' : ''}" data-rp-action="${action}" ${extra}><span>${esc(label)}</span></button>`;
     const help = text => `<button type="button" class="bakemono-memory-help-trigger" aria-label="使用说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">${esc(text)}</span></button>`;
     const editors = createRpStateEditors({ escapeHtml: esc, button, help });
@@ -40,7 +41,7 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         return '<details class="rp-reference-settings"><summary>时机与正文范围</summary><label class="rp-edit-field">处理时机<select class="text_pole" data-rp-setting="triggerTiming"><option value="immediate"' + (settings.triggerTiming !== 'next_user' ? ' selected' : '') + '>本轮结束</option><option value="next_user"' + (settings.triggerTiming === 'next_user' ? ' selected' : '') + '>下一轮用户消息后</option></select></label>'
             + ['includeTags', 'excludeTags'].map((key, i) => '<label class="rp-edit-field">' + ['只读取标签（留空读取正文）', '排除标签'][i] + '<input class="text_pole" data-rp-setting="' + key + '" value="' + esc(settings[key] || '') + '"></label>').join('')
             + '<label class="rp-edit-field">状态上下文预算（字符）<input class="text_pole" type="number" min="1000" max="60000" data-rp-setting="contextBudget" value="' + (settings.contextBudget || 16000) + '"></label>'
-            + help('摘要、表格指令、推理和脚本始终排除。范围仅影响之后的新提取，不改变旧记录的来源规则。预算包含状态、维护提示词及已有对象参考；不足时暂缓维护，不截断关键状态。') + '</details>';
+            + help('摘要、表格指令、推理和脚本始终排除。范围仅影响之后的新提取，不改变旧记录的来源规则。预算包含现状和维护提示词；优先保留相关状态，旧记录仍在档案中。') + '</details>';
     }
     function renderContextPreview(state) {
         const result = getContextPreview?.(state) || flow.context?.(state);
@@ -86,17 +87,25 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         if (!view?.projection) { root.insertAdjacentHTML('beforeend', `<p>所选楼层早于基线，没有可用状态。</p>${button('current', '返回当前状态')}`); return; }
         const projection = view.projection;
         if (nav.selected) { renderDetail(root, state, view, nav); return; }
+        if (nav.tab === 'preview') {
+            const result = getContextPreview?.(state) || flow.context?.(state);
+            root.insertAdjacentHTML('beforeend', result ? '<section class="rp-context-page"><p>' + (result.used || 0) + ' 字符 · 修订 ' + result.revision + '</p>'
+                + (result.warning ? '<p role="alert">' + esc(result.warning) + '</p>' : '')
+                + '<h4>续写现状</h4><pre class="rp-context-preview">' + esc(result.brief || '本轮未注入状态简报') + '</pre>'
+                + '<details><summary>维护指令与短引用</summary><pre class="rp-context-preview">' + esc(result.maintenance || '未注入维护指令') + '</pre></details></section>' : '<p>暂无注入预览</p>');
+            return;
+        }
         const channel = flow.channel(state), lastBatch = [...core.batches].filter(item => !item.superseded).sort((a, b) => (a.sourceFloor ?? a.floor) - (b.sourceFloor ?? b.floor)).at(-1);
         const maintenance = !core.settings.enabled ? '剧情状态已关闭' : !channel ? '自动维护已暂停' : channel === 'inline' ? '随正文维护' : channel === 'reply' ? '复用回复后处理' : '独立提取';
         const footer = `<footer class="rp-footer"><small>${nav.floor == null ? esc(maintenance) + (lastBatch ? ` · ${lastBatch.protocolStatus === 'missing' ? '摘要状态已读取' : '已处理到'} ${lastBatch.sourceFloor ?? lastBatch.floor} 楼` : ' · 尚未处理正文') : '当时已记录的状态 · 只读'}</small><div class="rp-controls">${nav.floor == null ? button("settings", "维护设置") + button("extract", "重新提取最新正文") + '<details class="rp-add-menu"><summary>添加记录</summary><div class="rp-controls">' + Object.entries({people:"人物",relationships:"关系",locations:"地点",items:"物品",plans:"约定"}).map(([kind,label]) => button("new",label,'data-rp-kind="' + kind + '"')).join("") + '</div></details>' : ""}${help('模型整理后自动保存；格式无效的项目跳过，不需要逐条确认。状态变化由模型输出事件，摘要不生成事实。不必开启回复后处理。说法、观察与事实分别保存；关闭维护不删除记录。')}</div></footer>`;
         if (nav.floor == null) {
             const progress = service.progress?.(state);
-            if (progress) root.insertAdjacentHTML('beforeend', '<small class="rp-progress">从第 ' + progress.start + ' 楼开始 · ' + (progress.latest == null ? '尚未完成维护' : '最近完成第 ' + progress.latest + ' 楼') + (progress.missingCount ? ' · 未处理 ' + progress.missingCount + ' 楼（' + progress.missingFrom + '–' + progress.missingTo + '）' : '') + '</small>');
+            if (progress?.missingCount) root.insertAdjacentHTML('beforeend', '<small class="rp-progress">从第 ' + progress.start + ' 楼开始 · ' + (progress.latest == null ? '尚未完成维护' : '最近完成第 ' + progress.latest + ' 楼') + (progress.missingCount ? ' · 未处理 ' + progress.missingCount + ' 楼（' + progress.missingFrom + '–' + progress.missingTo + '）' : '') + '</small>');
             const failed = core.extractionJobs?.filter(job => job.status !== 'done') || [];
             if (failed.length) root.insertAdjacentHTML('beforeend', '<p role="status">有 ' + failed.length + ' 轮未完成维护，可重新提取最新正文。</p>');
             const compiled = getContextPreview?.(state) || flow.context?.(state);
             if (compiled?.warning) root.insertAdjacentHTML('beforeend', '<p role="alert">' + esc(compiled.warning) + '</p>');
-            root.insertAdjacentHTML('beforeend', '<small class="rp-progress">起点：第 ' + core.baseline.floor + ' 楼</small>');
+
         }
         if (lastBatch?.protocolStatus === 'incomplete' && nav.floor == null) root.insertAdjacentHTML('beforeend', '<p class="rp-status-warning" role="status">该次事件块未完整输出；请重新提取正文。</p>');
         if (lastBatch?.protocolIssues?.length && nav.floor == null) root.insertAdjacentHTML('beforeend', `<details class="rp-status-warning rp-protocol-issues"><summary>第 ${esc(lastBatch.floor)} 楼有 ${lastBatch.protocolIssues.length} 项格式问题</summary><p>下列项及其关联操作暂未处理；其他候选已继续校验。修正事件块后可重新处理。</p><ul>${lastBatch.protocolIssues.map(issue => `<li>第 ${esc(issue.index)} 项：${esc(issue.reason)}</li>`).join('')}</ul></details>`);
@@ -111,7 +120,7 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
             const facts = core.facts.filter(item => applied.has(item.id) && (nav.floor == null || item.floor <= nav.floor));
             const recentRows = [...facts].sort((a, b) => b.sequence - a.sequence).slice(0, 2)
                 .map(item => ({ kind: 'facts', id: item.id, title: describeRecord(item, projection), record: item }));
-            root.insertAdjacentHTML('beforeend', presentation.overview(projection, lastBatch, nav.floor, recentRows, facts));
+            root.insertAdjacentHTML('beforeend', presentation.overview(projection, lastBatch, nav.floor, recentRows, facts, currentInformation(core, view, { floor: nav.floor })));
             if (channel === 'independent' && nav.floor == null) root.insertAdjacentHTML('beforeend', `<div class="rp-controls rp-run-controls">${button('extract', '处理最新正文')}${button('stop', '停止提取')}</div>${core.extractionJobs?.some(job => ['running', 'paused', 'failed'].includes(job.status)) ? '<p role="status">有未完成提取；可手动重试，不会自动重复计费。</p>' : ''}`);
             if (channel === 'inline' && !lastBatch && nav.floor == null) root.insertAdjacentHTML('beforeend', `<div class="rp-controls rp-run-controls">${button('capture', '检查最新正文')}</div>`);
             root.insertAdjacentHTML('beforeend', footer); return;
@@ -120,6 +129,7 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
             root.insertAdjacentHTML('beforeend', `<section class="rp-clock-detail">${presentation.scene(projection, lastBatch, nav.floor)}${nav.floor == null ? button('edit-clock', '修改时间') + button('edit-scene', '修改当前场景') : ''}${help('时间来自当前正文中的明确字段。时间跨度与回忆不会自动推进当前日期；约定到期不代表已经完成。')}${sectionHead('与时间有关的约定')}${presentation.rows(buildStatePage(core, view, { tab: 'world', filter: 'plans' }).rows, projection)}</section>${footer}`);
             return;
         }
+        if (nav.tab === 'directory') root.insertAdjacentHTML('beforeend', '<div class="rp-filters">' + Object.entries({ '': '全部', people: '人物', relationships: '关系', items: '物品', plans: '约定', locations: '地点', claims: '说法', observations: '观察' }).map(([key, label]) => button('filter', label, 'data-rp-filter="' + key + '" aria-pressed="' + (nav.filter === key) + '"')).join('') + '</div>');
         if (nav.tab === 'people') root.insertAdjacentHTML('beforeend', `<div class="rp-filters">${Object.entries({ '': '全部', people: '人物', relationships: '关系' }).map(([key, label]) => button('filter', label, `data-rp-filter="${key}" aria-pressed="${nav.filter === key}"`)).join('')}</div>`);
         if (nav.tab === 'world') root.insertAdjacentHTML('beforeend', `<div class="rp-filters">${Object.entries({ plans: '约定', items: '物品', locations: '地点' }).map(([key, label]) => button('filter', label, `data-rp-filter="${key}" aria-pressed="${(nav.filter || 'plans') === key}"`)).join('')}</div>`);
         if (nav.tab === 'history') root.insertAdjacentHTML('beforeend', `<div class="rp-filters">${Object.entries({ '': '全部', ...trackLabels, ...(nav.floor == null ? { pending: '问题记录', 'source-history': '旧回复' } : {}) }).map(([key, label]) => button('filter', label, `data-rp-filter="${key}" aria-pressed="${nav.filter === key}"`)).join('')}</div><details class="rp-snapshot"><summary>查看过去某一楼的状态</summary><label>楼层<input class="text_pole" type="number" min="0" data-rp-floor value="${nav.floor ?? ''}"></label>${button('snapshot', '查看快照')}</details>`);
@@ -132,7 +142,7 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
                 const rows = page.rows.filter(row => row.kind === kind);
                 if (rows.length) root.insertAdjacentHTML('beforeend', sectionHead(title) + presentation.rows(rows, projection));
             }
-        } else root.insertAdjacentHTML('beforeend', presentation.rows(page.rows, projection));
+        } else root.insertAdjacentHTML('beforeend', presentation.rows(page.rows, projection, { directory: nav.tab === 'directory' }));
         if (page.pages > 1) root.insertAdjacentHTML('beforeend', `<div class="rp-pager">${button('prev', '上一页', page.page ? '' : 'disabled')}<span>${page.page + 1} / ${page.pages}</span>${button('next', '下一页', page.page === page.pages - 1 ? 'disabled' : '')}</div>`);
         root.insertAdjacentHTML('beforeend', footer);
     }
@@ -147,6 +157,9 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
             const current = isCurrentRpRecord(view, item);
             content = `<h3 class="rp-detail-title" tabindex="-1">${esc(describeRecord(item, projection))}</h3>`;
             content += line('类型', trackLabels[item.track || kind]) + line('状态', !current ? '旧回复记录' : kind === 'candidate' ? '未采用' : '已记录');
+            if (['claims', 'observations'].includes(kind)) content += line('说话者', informationName(projection, item.data.speaker))
+                + line('涉及对象', informationName(projection, item.data.subject))
+                + line('明确知情者', Array.isArray(item.data.heardBy) && item.data.heardBy.length ? item.data.heardBy.map(value => informationName(projection, value)).join('、') : '未记录');
             if (item.action === 'state_updated') content += describeStateValues(item.data, projection).map(value => `<p>${esc(value)}</p>`).join('');
             if (item.reason && kind === 'candidate') content += `<p role="status">${esc(item.reason)}</p>`;
             if (item.evidence?.excerpt) content += `<blockquote>${esc(item.evidence.excerpt)}</blockquote>`;
@@ -162,8 +175,8 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
                 else content += button('detail', '查看当前状态', `data-rp-kind="${esc(target)}" data-rp-id="${esc(item.data.id)}"`);
             }
         } else {
-            content = presentation.entityDetail(kind, item, core, projection, nav.floor);
-            if (kind === 'people' && nav.floor == null) content += '<section class="rp-state-list"><h4>逐项维护状态</h4>' + (item.states || []).filter(value => !value.ended && !value.endedAt).map(value => '<p>' + esc(value.description) + '</p><div class="rp-controls">' + button('state-edit', '修改', 'data-rp-state-id="' + esc(value.id) + '"') + button('state-end', '结束状态', 'data-rp-state-id="' + esc(value.id) + '"') + '</div>').join('') + button('state-new', '添加临时状态') + '</section>';
+            content = presentation.entityDetail(kind, item, core, projection, nav.floor, view);
+            if (kind === 'people' && nav.floor == null) content += '<details class="rp-state-list"><summary>修改状态</summary>' + (item.states || []).filter(value => !value.ended && !value.endedAt).map(value => '<p>' + esc(value.description) + '</p><div class="rp-controls">' + button('state-edit', '修改', 'data-rp-state-id="' + esc(value.id) + '"') + button('state-end', '结束状态', 'data-rp-state-id="' + esc(value.id) + '"') + '</div>').join('') + button('state-new', '添加临时状态') + '</details>';
             if (nav.floor == null) {
                 if (kind === 'items' && item.status === 'destroyed') content += button('restore-item', '明确恢复物品');
                 if (kind === 'plans' && ['completed','failed','cancelled'].includes(item.status)) content += button('reopen-plan', '重新开启约定');
@@ -228,7 +241,10 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
             const entity = ['clock', 'scene'].includes(kind) ? projection[kind] || {} : ['claims', 'observations'].includes(kind)
                 ? state.rpCore[kind].find(item => item.id === id)?.data : projection[kind]?.find(item => item.id === id);
             if (!entity) throw new Error('记录已变化，请重新打开');
-            nav.edit = editors.draft(kind, id, entity, state.rpCore.revision);
+            const editable = ['claims', 'observations'].includes(kind) ? { ...entity,
+                speaker: entity.speaker ? informationName(projection, entity.speaker) : '', subject: entity.subject ? informationName(projection, entity.subject) : '',
+                heardBy: Array.isArray(entity.heardBy) ? entity.heardBy.map(value => informationName(projection, value)) : [] } : entity;
+            nav.edit = editors.draft(kind, id, editable, state.rpCore.revision);
         }
         if (name === 'edit-cancel') nav.edit = null;
         if (name === 'edit-save') {
@@ -245,9 +261,9 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
             nav.edit = null; nav.notice = '修改已保存。';
         }
         if (name === 'tab') Object.assign(nav, { tab: element.dataset.rpTab, page: 0, filter: '', selected: null, search: '', scroll: 0, settings: false, evidenceDraft: null, trail: [] });
-        if (['people', 'relationships', 'plans', 'items', 'locations', 'clock', 'history', 'facts'].includes(name)) {
+        if (['people', 'relationships', 'plans', 'items', 'locations', 'clock', 'history', 'facts', 'directory', 'context-preview'].includes(name)) {
             if (nav.tab === 'overview' && !nav.selected) nav.overviewOrigin = { action: name, scroll: scrollSurface(root)?.scrollTop || 0 };
-            Object.assign(nav, { tab: ['plans', 'items', 'locations'].includes(name) ? 'world' : name === 'facts' ? 'history' : name === 'relationships' ? 'people' : name, filter: ['relationships', 'plans', 'items', 'locations', 'facts'].includes(name) ? name : '', page: 0, selected: null, search: '', scroll: 0, trail: [] });
+            Object.assign(nav, { tab: ['plans', 'items', 'locations'].includes(name) ? 'world' : name === 'facts' ? 'history' : name === 'relationships' ? 'people' : name === 'context-preview' ? 'preview' : name, filter: ['relationships', 'plans', 'items', 'locations', 'facts'].includes(name) ? name : '', page: 0, selected: null, search: '', scroll: 0, trail: [] });
         }
         if (name === 'filter') Object.assign(nav, { filter: element.dataset.rpFilter, page: 0, search: '', scroll: 0 });
         if (name === 'search') Object.assign(nav, { search: root.querySelector('[data-rp-search]')?.value || '', page: 0, scroll: 0 });

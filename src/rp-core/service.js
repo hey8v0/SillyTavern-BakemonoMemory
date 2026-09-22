@@ -200,11 +200,16 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         assertLedgerVersion(core);
         if (!['claims', 'observations'].includes(track) || core.revision !== expectedRevision) throw new Error('记录已变化，请重新打开编辑');
         const record = core[track].find(item => item.id === id);
-        if (!record || Object.keys(values).some(key => !['speaker', 'subject', 'description'].includes(key))
-            || Object.values(values).some(value => typeof value !== 'string' || value.length > 4000)
+        if (!record || Object.keys(values).some(key => !['speaker', 'subject', 'description', 'heardBy'].includes(key))
+            || Object.entries(values).some(([key, value]) => key === 'heardBy' ? !Array.isArray(value) || value.length > 100 || value.some(item => typeof item !== 'string' || item.length > 4000) : typeof value !== 'string' || value.length > 4000)
             || !(values.description ?? record.data.description)?.trim()) throw new Error('信息记录格式无效');
         const next = structuredClone(core); next.ruleVersion = Math.max(2, core.ruleVersion);
-        const added = appendRecord(next, { track, action: record.action, data: { ...record.data, ...values }, origin: { kind: 'user' } }, { floor: lastFloor() });
+        const people = view(state).projection.people;
+        const resolve = value => { const matches = people.filter(item => item.id === value || [item.name, ...(item.aliases || [])].includes(value)); return matches.length === 1 ? matches[0].id : value; };
+        const data = { ...record.data, ...values };
+        for (const field of ['speaker', 'subject']) if (data[field]) data[field] = resolve(data[field]);
+        if (Array.isArray(data.heardBy)) data.heardBy = data.heardBy.map(resolve);
+        const added = appendRecord(next, { track, action: record.action, data, origin: { kind: 'user' } }, { floor: lastFloor() });
         next[track].find(item => item.id === added.id).replaces = id;
         await transactions.commit(state, expectedRevision, next);
         return view(state);

@@ -79,6 +79,7 @@ export function validateRpBackup(core) {
                 try { validateStateFields(record.data.collection, record.data.values); } catch { fail(); }
             }
             if (track !== 'facts' && ['description', 'speaker', 'subject'].some(key => record.data[key] != null && (typeof record.data[key] !== 'string' || record.data[key].length > 4000))) fail();
+            if (track !== 'facts' && record.data.heardBy != null && (!Array.isArray(record.data.heardBy) || record.data.heardBy.length > 100 || record.data.heardBy.some(value => typeof value !== 'string' || value.length > 4000))) fail();
             if (record.origin?.baseRevision != null && (!integer(record.origin.baseRevision) || record.origin.baseRevision >= record.sequence)) fail();
             if (record.change != null && (!object(record.change) || !Object.hasOwn(record.change, 'before') || !Object.hasOwn(record.change, 'after'))) fail();
             if (record.ruleVersion != null && ![1, 2, 3].includes(record.ruleVersion)) fail();
