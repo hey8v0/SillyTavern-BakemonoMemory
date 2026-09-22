@@ -68,8 +68,12 @@ export function buildStatePage(core, view, navigation = {}) {
                 : key === 'people' ? `最近确认位置：${entityName(projection, item.location)}` : '', record: item }));
     if (tab === 'directory') {
         rows = ['people', 'relationships', 'items', 'plans', 'locations'].filter(kind => !filter || filter === kind).flatMap(kind => entityRows(kind, projection[kind]));
+        for (const row of rows.filter(row => row.kind === 'people')) row.detail = (row.record.states || []).filter(state => state.active !== false && !state.ended && !state.endedAt).map(state => state.description).filter(Boolean).join('；')
+            || (projection.scene?.present?.includes(row.id) ? '在场' : row.record.location ? '最近位置：' + entityName(projection, row.record.location) : '');
         rows.push(...currentInformation(core, view, { floor: navigation.floor }).filter(item => !filter || filter === item.track).map(item => ({ kind: item.track, id: item.id,
-            title: informationName(projection, item.data.speaker) + '：' + item.data.description, status: trackLabels[item.track], detail: '第 ' + item.floor + ' 楼', record: item })));
+            title: informationName(projection, item.data.speaker) + (item.data.subject ? ' → ' + informationName(projection, item.data.subject) : '') + '：' + item.data.description, status: trackLabels[item.track], detail: '第 ' + item.floor + ' 楼', record: item })));
+        const order = ['people', 'relationships', 'claims', 'observations', 'items', 'plans', 'locations'];
+        rows.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
     }
     else if (tab === 'people') rows = [...(filter !== 'relationships' ? entityRows('people', projection.people) : []), ...(filter !== 'people' ? entityRows('relationships', projection.relationships) : [])];
     else if (tab === 'world') {

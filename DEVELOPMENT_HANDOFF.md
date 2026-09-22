@@ -2,7 +2,7 @@
 
 ## 接手约定
 
-- 当前版本 1.8.0，分支 main，远端 hey8v0/SillyTavern-BakemonoMemory。先查 Git，不从旧对话推断。
+- 当前版本 1.8.1，分支 main，远端 hey8v0/SillyTavern-BakemonoMemory。先查 Git，不从旧对话推断。
 - 不覆盖用户修改、不强推；提交推送以当次授权为准。不默认打开浏览器、调用模型或同步本机酒馆。
 - 当前源码在本目录；任务工作区与酒馆安装目录不是源码。本次离线依赖在任务工作区 .ui-validation，Node 24，无新增运行框架。
 - 使用见 README；验收映射、命令及余项见 TESTING_v1.7.0.md；实际提示词见 RP_EVENTS_PROMPT.md。本文不追加流水账，历史查 Git。
@@ -10,7 +10,7 @@
 ## 产品与数据边界
 
 - 摘要、自由表格、RP 独立。旧 chronicle 仍服务表格/摘要，不能删除或当 RP 真相源。
-- 菜单直接进入“剧情状态”；表格/向量在“自动与数据 → 记忆结构”。暖纸总览点对象进详情，列表每页 20 项。
+- 菜单直接进入“剧情状态”；表格/向量在“自动与数据 → 记忆结构”。总览点对象进详情；全部记录按类型分组，每页 20 项。目录独立样式，测试 tests/offline/rp-directory-style.mjs 需 BAKEMONO_TEST_LINKEDOM 和 BAKEMONO_TEST_CSSTREE。
 - RP 空白启用，从当前开始；不导入旧表、不从摘要头部生成新事实。旧 RP 基线保留。
 - 自动方式仅 inline / independent，默认 inline 无额外请求；独立模式须主动选择。手动最新正文提取不改变自动方式；时机、过滤、注入独立。
 - schema 1、规则 3、协议 2、来源策略 2、规范化 1 分开管理。旧规则/来源保留，迁移留 upgradeSnapshot，未知版本不改写。

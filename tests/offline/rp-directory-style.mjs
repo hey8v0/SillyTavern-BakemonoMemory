@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { createRpStateUi } from '../../src/features/rp-state-ui.js';
+import { runtimeHost } from '../helpers/rp-runtime-host.mjs';
+const { parseHTML } = await import(process.env.BAKEMONO_TEST_LINKEDOM || 'linkedom');
+const { parse, walk, generate } = await import(process.env.BAKEMONO_TEST_CSSTREE || 'css-tree');
+const { document, window } = parseHTML(await readFile(new URL('../../settings.html', import.meta.url), 'utf8'));
+const css = parse(await readFile(new URL('../../style.css', import.meta.url), 'utf8')), rules = new Map();
+walk(css, node => {
+    if (node.type !== 'Rule') return;
+    const declarations = {};
+    node.block.children.forEach(item => { if (item.type === 'Declaration') declarations[item.property] = generate(item.value); });
+    const selector = generate(node.prelude); rules.set(selector, { ...rules.get(selector), ...declarations });
+});
+const h = runtimeHost(); await h.service.enable();
+await h.service.editEntity('people', '', { name: '很长的名字'.repeat(20) }, { create: true });
+h.state.rpCore.claims = [{ id: 'claim', floor: 0, sequence: 1, data: { speaker: '角色', subject: '另一个角色', description: '一段很长的说法'.repeat(60) } }];
+const root = document.querySelector('#bakemono-rp-root');
+const ui = createRpStateUi({ documentRef: document, getState: () => h.state, service: h.service, flow: h.flow, navigate() {}, escapeHtml: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;') });
+ui.bind(); ui.render();
+root.querySelector('[data-rp-action=directory]').dispatchEvent(new window.Event('click', { bubbles: true }));
+await new Promise(resolve => setTimeout(resolve, 10));
+const prefix = '#bakemono-workbench-root .rp-core-ui ';
+function contract(selector, expected) {
+    const target = prefix + selector;
+    assert.ok(document.querySelector(target), 'style must target the real directory DOM: ' + selector);
+    for (const [property, value] of Object.entries(expected)) assert.equal(rules.get(target)?.[property], value, selector + ' ' + property);
+}
+assert.equal(root.querySelector('.rp-story-sheet'), null);
+contract('button.rp-directory-row', { display: 'flex', 'align-items': 'center', 'text-align': 'left', border: '0', 'border-bottom': '1px solid var(--bk-line)', 'border-radius': '0', 'min-width': '0', 'min-height': '64px' });
+contract('.rp-directory-copy', { 'min-width': '0', 'text-align': 'left', 'overflow-wrap': 'anywhere' });
+contract('.rp-directory-copy strong', { '-webkit-line-clamp': '2', overflow: 'hidden' });
+contract('.rp-directory-copy small', { '-webkit-line-clamp': '2', overflow: 'hidden', 'font-weight': '400' });
+contract('.rp-directory-badge', { 'align-self': 'center', 'flex': '0 0 auto', height: 'auto', 'min-height': '0', 'border-radius': '5px' });
+contract('.rp-directory-avatar', { width: '42px', height: '42px', 'border-radius': '50%' });
+contract('.rp-directory-filters', { 'flex-wrap': 'nowrap', 'overflow-x': 'auto', 'max-width': '100%' });
+contract('.rp-directory-filters button', { 'min-height': '44px', 'border-radius': '0', background: 'transparent' });
+contract('.rp-directory-filters button[aria-pressed="true"]', { 'border-bottom-color': 'var(--bk-accent)' });
+contract('.rp-directory-search', { 'flex-wrap': 'nowrap', margin: '0' });
+contract('.rp-directory-search input', { 'min-width': '0', 'min-height': '44px', 'font-size': 'max(16px,.95em)' });
+assert.equal(root.querySelectorAll('.rp-directory-row').length, 2);
+console.log('PASS: full stylesheet parsed; directory selectors match production DOM, row alignment, compact tags, long-text bounds, search and horizontal filters. CSS contracts, not browser layout measurements.');

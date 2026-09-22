@@ -102,9 +102,37 @@ export function createRpStatePresentation({ escapeHtml: esc }) {
         return link('people', item.id, `${avatar(item.name)}<span class="rp-row-copy"><strong>${esc(item.name)}</strong><small>${esc(sub.join(' · '))}</small></span>${chevron}`, 'rp-person rp-row');
     }
 
+    function directoryRow(row, view) {
+        const item = row.record;
+        let title = row.title, detail = row.detail, symbol = '', badge = '';
+        if (row.kind === 'people') symbol = `<span class="rp-directory-avatar" aria-hidden="true">${esc(Array.from(item.name || '人')[0])}</span>`;
+        else if (row.kind === 'relationships') {
+            title = entityName(view, item.from) + (item.mutual ? ' ↔ ' : ' → ') + entityName(view, item.to);
+            detail = relationshipName(view, item).split(' · ').at(-1);
+            badge = item.status === 'active' ? '已成立' : stateLabels[item.status] || '';
+        } else if (['claims', 'observations'].includes(row.kind)) {
+            title = informationName(view, item.data.speaker) + (item.data.subject ? ' → ' + informationName(view, item.data.subject) : '');
+            detail = item.data.description; badge = row.kind === 'claims' ? '说法' : '观察';
+        } else {
+            symbol = `<span class="rp-directory-symbol">${icon(({ items: 'key', plans: 'calendar-days', locations: 'location-dot' })[row.kind])}</span>`;
+            if (row.kind === 'items') {
+                detail = [item.holder ? entityName(view, item.holder) + '持有' : item.location ? locationTrail(view, item.location) : '', item.loan ? '借用中' : ''].filter(Boolean).join(' · ');
+                if (['damaged', 'destroyed'].includes(item.status)) badge = stateLabels[item.status];
+            } else if (row.kind === 'plans') detail = [item.due?.replace('T', ' ') || item.dueDescription, planStatusLabel(item)].filter(Boolean).join(' · ');
+            else detail = [item.parent ? locationTrail(view, item.parent) : '', view.scene?.location === item.id ? '当前场景' : ''].filter(Boolean).join(' · ');
+        }
+        return link(row.kind, row.id, `${symbol}<span class="rp-directory-copy"><strong>${esc(title)}</strong>${detail ? `<small>${esc(detail)}</small>` : ''}</span>${badge ? `<span class="rp-directory-badge">${esc(badge)}</span>` : ''}${chevron}`, 'rp-directory-row');
+    }
+    function directoryRows(rows, view) {
+        const labels = { people: '人物', relationships: '关系', claims: '角色说法', observations: '观察', items: '物品', plans: '约定', locations: '地点' };
+        return '<div class="rp-directory-list">' + Object.entries(labels).map(([kind, label]) => {
+            const group = rows.filter(row => row.kind === kind);
+            return group.length ? `<section class="rp-directory-group" data-rp-group="${kind}" aria-label="${label}">${kind === 'people' ? '' : `<h4>${label}</h4>`}${group.map(row => directoryRow(row, view)).join('')}</section>` : '';
+        }).join('') + '</div>';
+    }
     function rows(rows, view, { recent = false, directory = false } = {}) {
         if (!rows.length) return empty('暂无记录');
-        if (directory) return '<div class="rp-directory-list">' + rows.map(row => link(row.kind, row.id, `<span class="rp-story-copy"><strong>${esc(row.title)}</strong><small>${esc(row.detail)}</small></span>${chip(({ people: '人物', relationships: '关系', items: '物品', plans: '约定', locations: '地点', claims: '说法', observations: '观察' })[row.kind])}${chevron}`, 'rp-story-entry')).join('') + '</div>';
+        if (directory) return directoryRows(rows, view);
         const kind = rows[0].kind;
         if (kind === 'people') return `<div class="rp-sheet rp-person-list">${rows.map(row => person(row.record, view)).join('')}</div>`;
         if (kind === 'relationships') return `<div class="rp-card-list">${rows.map(row => relationship(row.record, view)).join('')}</div>`;

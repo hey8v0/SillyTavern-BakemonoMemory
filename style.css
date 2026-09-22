@@ -13093,7 +13093,8 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .rp-core-ui .rp-story-person:last-child { border-bottom: 0; }
 #bakemono-workbench-root .rp-core-ui .rp-story-person .rp-avatar { width: 38px; height: 38px; flex-basis: 38px; font-size: 16px; border-radius: 12px; }
 #bakemono-workbench-root .rp-core-ui :is(.rp-story-relations, .rp-story-plans, .rp-story-items, .rp-story-recent) { display: block; padding-block: 8px; border-top: 1px solid var(--bk-line); margin-top: 5px; }
-#bakemono-workbench-root .rp-core-ui button.rp-story-entry { display: flex; width: 100%; padding-block: 11px; gap: 10px; }
+#bakemono-workbench-root .rp-core-ui button.rp-story-entry { display: flex; align-items: center; text-align: left; width: 100%; padding: 11px 0; gap: 10px; border: 0; border-radius: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-story-entry > .rp-chip { flex: 0 0 auto; align-self: center; height: auto; border-radius: 5px; font-size: .68em; padding: 3px 7px; }
 #bakemono-workbench-root .rp-core-ui .rp-story-copy { display: block; flex: 1; min-width: 0; }
 #bakemono-workbench-root .rp-core-ui .rp-story-copy strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-weight: 550; font-size: 1em; }
 #bakemono-workbench-root .rp-core-ui .rp-story-copy small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin-top: 4px; font-size: .85em; line-height: 1.6; color: var(--bk-ink-soft); }
@@ -13107,6 +13108,30 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .rp-core-ui .rp-breadcrumb { display: flex; gap: 15px; align-items: center; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--bk-line); }
 #bakemono-workbench-root .rp-core-ui .rp-breadcrumb button { border: 0; padding-inline: 0; color: var(--rp-accent-strong); }
 #bakemono-workbench-root .rp-core-ui .rp-breadcrumb h3 { font-size: 1.05em; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-header { max-width: 680px; margin-inline: auto; padding-block: 0 16px; margin-bottom: 24px; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-header h3 { margin: 0; font-size: 1.4em; font-weight: 600; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-header button { font-size: 1.6em; flex: 0 0 44px; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-page { max-width: 680px; min-width: 0; margin-inline: auto; text-align: left; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-search { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px; margin: 0; padding: 3px 9px; border: 1px solid var(--bk-line); border-radius: 8px; background: var(--bk-paper-raised); }
+#bakemono-workbench-root .rp-core-ui .rp-directory-search label { display: block; flex: 1; min-width: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-search button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; min-height: 44px; border: 0; padding: 0; color: var(--bk-ink-soft); }
+#bakemono-workbench-root .rp-core-ui .rp-directory-search input { width: 100%; min-width: 0; min-height: 44px; margin: 0; padding: 10px 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; font: inherit; font-size: max(16px, .95em); color: var(--bk-ink); }
+#bakemono-workbench-root .rp-core-ui .rp-directory-filters { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px; min-width: 0; max-width: 100%; overflow-x: auto; margin: 12px 0 4px; scrollbar-width: thin; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-filters button { flex: 0 0 auto; min-height: 44px; margin: 0; padding: 8px 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; box-shadow: none; background: transparent; color: var(--bk-ink-soft); font: inherit; font-size: .8em; white-space: nowrap; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-filters button[aria-pressed="true"] { border-bottom-color: var(--bk-accent); color: var(--rp-accent-strong); background: transparent; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-count { margin: 0; padding: 10px 0; color: var(--bk-ink-soft); font-size: .8em; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-group { min-width: 0; margin: 0; padding: 0; border: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-group h4 { margin: 25px 0 4px; font-size: .85em; font-weight: 500; color: var(--bk-ink-soft); }
+#bakemono-workbench-root .rp-core-ui button.rp-directory-row { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; width: 100%; min-width: 0; min-height: 64px; gap: 12px; padding: 16px 0; margin: 0; border: 0; border-bottom: 1px solid var(--bk-line); border-radius: 0; background: transparent; box-shadow: none; font: inherit; line-height: 1.5; text-align: left; color: var(--bk-ink); }
+#bakemono-workbench-root .rp-core-ui .rp-directory-copy { display: block; flex: 1 1 0; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-copy strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 1em; font-weight: 600; line-height: 1.5; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-copy small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin-top: 4px; font-size: .82em; font-weight: 400; line-height: 1.6; color: var(--bk-ink-soft); }
+#bakemono-workbench-root .rp-core-ui .rp-directory-avatar { display: inline-flex; align-items: center; justify-content: center; align-self: center; width: 42px; height: 42px; flex: 0 0 42px; border-radius: 50%; background: var(--bk-paper-soft); color: var(--rp-accent-strong); font: 22px/1 var(--bk-display); }
+#bakemono-workbench-root .rp-core-ui .rp-directory-symbol { display: inline-flex; align-items: center; justify-content: center; align-self: center; width: 26px; flex: 0 0 26px; color: var(--rp-accent-strong); }
+#bakemono-workbench-root .rp-core-ui .rp-directory-badge { display: inline-block; flex: 0 0 auto; align-self: center; height: auto; min-height: 0; max-width: 6em; padding: 3px 7px; border: 1px solid var(--bk-line); border-radius: 5px; background: var(--bk-paper-soft); color: var(--bk-ink-soft); font-size: .7em; font-weight: 400; line-height: 1.4; white-space: nowrap; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-row > .rp-chevron { flex: 0 0 12px; align-self: center; margin: 0; font-size: 1.1em; line-height: 1; color: var(--bk-ink-soft); }
+#bakemono-workbench-root .rp-core-ui .rp-directory-maintenance { margin-top: 24px; border-top: 1px solid var(--bk-line); color: var(--bk-ink-soft); font-size: .82em; }
+#bakemono-workbench-root .rp-core-ui .rp-directory-maintenance > summary { min-height: 44px; padding-block: 12px; cursor: pointer; }
 #bakemono-workbench-root .rp-core-ui .rp-attention { display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--bk-line); }
 #bakemono-workbench-root .rp-core-ui .rp-attention button { border: 0; padding-inline: 0; font-size: .82em; }
 #bakemono-workbench-root .rp-core-ui .rp-edit-field { display: grid; gap: 8px; min-width: 0; margin-block: 16px; }
