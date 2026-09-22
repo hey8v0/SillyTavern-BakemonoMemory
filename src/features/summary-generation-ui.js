@@ -13,6 +13,9 @@ export function createSummaryGenerationUi({ documentRef, query, getState }) {
     }
 
     function render(state = getState(), blocks = null) {
+        const auto = state.automation || {};
+        query('#bakemono-memory-summary-auto-status').text('自动总结：' + (!auto.enabled ? '未开启'
+            : auto.triggerType === 'chars' ? `每 ${auto.charInterval || 12000} 字触发` : `每 ${auto.floorInterval || 10} 个片段触发`));
         if (blocks) {
             snapshot = {
                 story: Array.isArray(blocks.story) ? blocks.story : [],

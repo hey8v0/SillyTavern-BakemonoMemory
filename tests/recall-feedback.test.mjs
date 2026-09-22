@@ -218,6 +218,16 @@ test('configured summary tags exclude unrelated tags and nested RP protocol', as
     assert.ok(f.state.vectorMemory.records.every(item => !item.text.includes('RP_ONLY')));
 });
 
+test('inline summaries embed exactly the bounded indexed text, not the entire long tag block', async () => {
+    const inputs = [];
+    const f = fixture([], { summaryMaxChars: 520 }, { createLocalEmbedding: value => { inputs.push(value); return [1, 0]; } });
+    f.chat.push({ mes: '<bakemono>' + '很长的剧情摘要。'.repeat(1000) + '</bakemono>' });
+    await f.service.buildVectorMemoryIndex();
+    const record = f.state.vectorMemory.records.find(r => r.kind === 'summary');
+    assert.ok(record); assert.equal(inputs[0], record.text);
+    assert.ok(inputs[0].length <= 523); // The configured excerpt plus an ellipsis.
+});
+
 test('body and summary winner uses hybrid score first, not a lower hybrid score with higher cosine', async () => {
     const f = fixture([{ body: .9, summary: .6 }], {}, { selectHybridCandidates: records => records.map(r => ({ ...r, hybridScore: r.kind === 'summary' ? .95 : .7 })).sort((a, b) => b.hybridScore - a.hybridScore) });
     await f.run();

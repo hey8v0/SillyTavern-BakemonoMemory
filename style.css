@@ -59,6 +59,30 @@
   display: none;
 }
 
+.bakemono-memory-page-savebar {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  border: 1px solid var(--bk-line);
+  border-radius: 12px;
+  background: var(--bk-paper);
+}
+.bakemono-memory-page-savebar[hidden], .bakemono-memory-page-savebar [hidden] { display: none !important; }
+.bakemono-memory-page-savebar.is-dirty { border-color: var(--bk-accent); }
+.bakemono-memory-page-savebar > span { flex: 1 1 130px; min-width: 0; font-size: 0.85em; overflow-wrap: anywhere; }
+.bakemono-memory-page-savebar > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.bakemono-memory-page-savebar .menu_button { min-height: 44px; margin: 0; }
+.bakemono-memory-summary-settings-link { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
+.bakemono-memory-summary-settings-link .menu_button { min-height: 44px; }
+.bakemono-memory-injection-diagnostic { font-size: 0.85em; line-height: 1.6; color: var(--bk-ink-soft); overflow-wrap: anywhere; }
+
 .bakemono-memory-operation-toast {
   position: fixed;
   z-index: 40100;

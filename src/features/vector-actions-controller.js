@@ -73,7 +73,8 @@ export function createVectorActionsController({
             if (ensureState() !== state || state.vectorMemory.customApi !== config) {
                 throw new Error('测试期间配置或聊天已切换，请在当前配置重新测试。');
             }
-            toastr.success(`嵌入接口测试通过：返回 ${embedding.length} 维向量。未发送聊天正文，也未修改索引。`);
+            const unchanged = JSON.stringify(draft.vectorMemory.customApi) === JSON.stringify(config);
+            toastr.success(`嵌入接口测试通过：返回 ${embedding.length} 维向量。${unchanged ? '使用已保存的接口配置。' : '测试的是输入框草稿，请先保存设置，后台才会使用这套接口。'}仅验证短文本连接，不代表长文索引已经完成。未发送聊天正文，也未修改索引。`);
             return true;
         } catch (error) {
             toastr.error(error instanceof TypeError ? '连接失败：可能是网络、证书或跨域限制，请检查服务商是否允许浏览器直连。' : error?.message || String(error), '嵌入接口测试失败');

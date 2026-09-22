@@ -19,7 +19,7 @@ export function createOverviewTokenManifest({
     function getOverviewInjectionSources(state = getState()) {
         const parts = getInjectionMemoryParts(state);
         const mainInjectionEnabled = !!state.injection?.enabled;
-        const mainInjectionContent = mainInjectionEnabled ? renderInjectionContent(state) : '';
+        const mainInjectionContent = mainInjectionEnabled ? renderInjectionContent(state, parts) : '';
         const ruleSections = [];
         if (mainInjectionContent) {
             ruleSections.push(String(state.injection?.template || defaultInjectionTemplate).replaceAll('{{memory}}', '').trim());
@@ -73,7 +73,7 @@ export function createOverviewTokenManifest({
         const expectedSections = [];
         const parts = getInjectionMemoryParts(state);
         if (state.injection?.enabled) {
-            const content = renderInjectionContent(state);
+            const content = renderInjectionContent(state, parts);
             if (content) expectedSections.push(content);
         }
         if (state.inlineGeneration?.summaryEnabled) {
@@ -84,7 +84,8 @@ export function createOverviewTokenManifest({
         }
         const normalizedPrompt = String(promptText || '');
         expectedSections.push(parts.rpMaintenance || '');
-        return expectedSections.every(section => !section || normalizedPrompt.includes(section));
+        const nonEmpty = expectedSections.filter(section => String(section || '').trim());
+        return nonEmpty.length > 0 && nonEmpty.every(section => normalizedPrompt.includes(section));
     }
 
     function formatPromptSharePercent(total, fullPromptTotal) {
@@ -101,14 +102,15 @@ export function createOverviewTokenManifest({
         const sourceKeys = ['rule', 'summary', 'memory', 'rpState', 'table', 'vector'];
         const sourceCounts = await Promise.all(sourceKeys.map(key => getOverviewTokenCount(sourceTexts[key])));
         const lastPromptUsage = await getLastPromptUsage();
-        if (revision !== renderRevision || getActiveTab() !== 'overview') return;
+        if (revision !== renderRevision || getActiveTab() !== 'overview' || getState() !== state) return;
 
         const counts = Object.fromEntries(sourceKeys.map((key, index) => [key, sourceCounts[index]]));
         const total = sourceCounts.reduce((sum, count) => sum + count, 0);
         const promptMatches = !!lastPromptUsage && doesLastPromptMatchCurrentInjection(lastPromptUsage.promptText, state);
         query('#bakemono-memory-overview-token-total').text(total.toLocaleString());
         query('#bakemono-memory-overview-token-percent').text(promptMatches ? formatPromptSharePercent(total, lastPromptUsage.total) : '—');
-        query('#bakemono-memory-overview-token-scope').text(!lastPromptUsage ? '等待上一轮' : promptMatches ? '上一轮实测' : '配置已变更');
+        query('#bakemono-memory-overview-token-scope').text(!total ? '暂无注入内容' : !lastPromptUsage ? '本轮已组装' : promptMatches ? '上一轮已核对' : '本轮已组装 · 上轮未核对');
+        query('#bakemono-memory-injection-diagnostic').text(promptMatches ? '已在上一轮上下文中核对到当前注入内容。' : getInjectionMemoryParts(state).diagnostic || '本轮内容已组装，尚未在上一轮上下文核实。');
         sourceKeys.forEach(key => {
             const value = counts[key] || 0;
             query(`#bakemono-memory-token-${key}`).text(value.toLocaleString());

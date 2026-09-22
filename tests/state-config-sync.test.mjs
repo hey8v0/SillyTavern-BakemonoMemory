@@ -116,6 +116,7 @@ test('shared vector config excludes chat runtime and restores the destination ch
         lastEmbeddingCandidates: [{ id: 'source-candidate' }],
         lastRerankCandidates: [{ id: 'source-rerank' }],
         lastIndexAt: 'source-time',
+        lastIndexError: 'source index paused',
         lastIndexedSignature: 'source-signature',
         dirty: false,
     };
@@ -135,6 +136,7 @@ test('shared vector config excludes chat runtime and restores the destination ch
         lastEmbeddingCandidates: [{ id: 'destination-candidate' }],
         lastRerankCandidates: [{ id: 'destination-rerank' }],
         lastIndexAt: 'destination-time',
+        lastIndexError: 'destination index paused',
         lastIndexedSignature: 'destination-signature',
         dirty: false,
     };
@@ -145,6 +147,7 @@ test('shared vector config excludes chat runtime and restores the destination ch
     assert.deepEqual(merged.lastHits, current.lastHits);
     assert.deepEqual(merged.lastEmbeddingCandidates, current.lastEmbeddingCandidates);
     assert.equal(merged.lastIndexedSignature, 'destination-signature');
+    assert.equal(merged.lastIndexError, 'destination index paused');
 });
 
 test('automation behavior presets never overwrite the independently saved generation API', async () => {

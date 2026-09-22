@@ -76,9 +76,16 @@ export function createInjectionService({
             availableBudget: Math.max(0, Math.floor((memoryBudget - otherMemory.length * copies - rules.length - 8 * copies) / copies)) });
         sources.rpState = rpContext?.brief ?? renderRpStateMemory(state);
         const sections = [sources.summary, sources.memory, sources.rpState, sources.table, sources.vector].filter(Boolean);
+        const memory = sections.join('\n\n').trim();
+        const savedSummaries = (state.stageSummaries?.length || 0) + (state.epicSummaries?.length || 0);
+        const diagnostic = state.injection?.enabled === false ? '长期记忆注入已关闭。'
+            : memory ? '当前有效记忆已组装；是否进入模型上下文，以“查看上一轮”核对为准。'
+            : savedSummaries ? `已有 ${savedSummaries} 条阶段／多次总结，但没有有效可选内容。请到记忆库查看来源失效、空内容或覆盖状态；无需先删除总结。`
+            : !shouldInjectStory && state.storySummaries?.length ? '已有摘要模式不直接注入普通摘要；当前没有有效的阶段／多次总结。'
+            : '当前没有可注入的记忆内容。';
     
         return {
-            memory: sections.join('\n\n').trim(),
+            memory, diagnostic,
             sources,
             rpMaintenance: rpContext?.maintenance ?? rpExtractionFlow?.prompt('inline', state) ?? '',
             rpContext,
@@ -98,7 +105,7 @@ export function createInjectionService({
         const state = ensureState();
         const parts = getInjectionMemoryParts(state);
         state.generatedMemory = parts.memory;
-        const content = renderInjectionContent(state);
+        const content = renderInjectionContent(state, parts);
         state.injection.content = content;
         const value = state.injection.enabled ? content : '';
         setExtensionPrompt(
@@ -143,9 +150,9 @@ export function createInjectionService({
         setExtensionPrompt(inlinePromptKeys.TABLE, tableValue, extensionPromptTypes.IN_CHAT, depth, false, role);
     }
     
-    function renderInjectionContent(state = ensureState()) {
+    function renderInjectionContent(state = ensureState(), parts = getInjectionMemoryParts(state)) {
         const template = String(state.injection.template || defaultInjectionTemplate);
-        return renderInjectionTemplate(state.generatedMemory || '', template, defaultInjectionTemplate);
+        return renderInjectionTemplate(parts.memory || '', template, defaultInjectionTemplate);
     }
 
     return {

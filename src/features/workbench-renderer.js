@@ -76,6 +76,7 @@ export function createWorkbenchRenderer({
     buildMemoryRecords,
     renderHeaderContext,
     captureFeedback,
+    afterRender = () => {},
 }) {
     let scheduledHandle = null;
     let scheduledStatus = '';
@@ -129,7 +130,7 @@ export function createWorkbenchRenderer({
             query('#bakemono-memory-injection-enabled').prop('checked', !!state.injection.enabled);
             query('#bakemono-memory-depth').val(state.injection.depth);
             query('#bakemono-memory-role').val(String(state.injection.role));
-            query('#bakemono-memory-source-content').val(state.generatedMemory || '');
+            query('#bakemono-memory-source-content').val(getInjectionMemoryParts(state).memory || '');
             query('#bakemono-memory-injection-template').val(state.injection.template || defaultInjectionTemplate);
             query('#bakemono-memory-injection-content').val(renderInjectionContent(state));
         } else if (activeTab === 'prompts') {
@@ -212,6 +213,7 @@ export function createWorkbenchRenderer({
         if (statusText) query('#bakemono-memory-status-line').text(statusText);
         renderHeaderContext(activeTab, state);
         if (statusText && options.feedback !== false) captureFeedback(statusText);
+        afterRender(activeTab, state);
     }
 
     function renderDataHubMemory(state) {
@@ -281,7 +283,6 @@ export function createWorkbenchRenderer({
         } else if (scope === workbenchRenderScopes.AUTOMATION) {
             if (activeTab === 'automation') { syncActiveFormFields(activeTab, state); renderActivePresetControls(activeTab); renderAutomationOverview(state); }
             else if (activeTab === 'data-hub' || activeTab === 'settings-hub') renderHubPanels(state);
-            else if (activeTab === 'overview') renderWorkflowGuide(state);
             else if (activeTab === 'maintenance') renderMaintenanceOverview(state);
         } else if (scope === workbenchRenderScopes.PROMPTS) {
             if (activeTab === 'prompts') { syncActiveFormFields(activeTab, state); renderActivePresetControls(activeTab); renderPromptOverview(state); syncPromptHintButtons(); }
@@ -293,9 +294,9 @@ export function createWorkbenchRenderer({
             else if (activeTab === 'settings-hub' || activeTab === 'data-hub') renderHubPanels(state);
         } else if (scope === workbenchRenderScopes.SETTINGS) {
             if (activeTab === 'settings') { syncActiveFormFields(activeTab, state); renderWorkflowGuide(state); }
-            else if (activeTab === 'overview') renderWorkflowGuide(state);
             else if (activeTab === 'settings-hub' || activeTab === 'data-hub') renderHubPanels(state);
         } else return false;
+        if (activeTab === 'overview' && ![workbenchRenderScopes.SUMMARY, workbenchRenderScopes.ARCHIVE].includes(scope)) renderOverviewMemory(state);
         renderSharedChrome(activeTab, state, statusText, options);
         return true;
     }
@@ -338,6 +339,7 @@ export function createWorkbenchRenderer({
         renderHeaderContext(activeTab, state);
         syncPromptHintButtons();
         captureFeedback(statusText);
+        afterRender(activeTab, state);
     }
 
     function scheduleRenderAll(statusText = '') {

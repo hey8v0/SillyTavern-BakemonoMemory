@@ -439,7 +439,7 @@ export function createVectorMemoryService({
     function getVectorSourceSignature(state = ensureState()) {
         return [
             getEmbeddingSpaceKey(state),
-            JSON.stringify(['index-v3', ...['indexMode', 'chunkSize', 'overlap', 'longMessageThreshold', 'summaryMaxChars'].map(key => state.vectorMemory[key] ?? defaultVectorMemory[key])]),
+            JSON.stringify(['index-v4', ...['indexMode', 'chunkSize', 'overlap', 'longMessageThreshold', 'summaryMaxChars'].map(key => state.vectorMemory[key] ?? defaultVectorMemory[key])]),
             ...getVectorSourceMessages(state)
                 .map(({ message, messageId, cleanedText, summaryText }) => `${messageId}:${getMessageVariantKey(message)}:${getHash(cleanedText || '')}:${getHash(summaryText || '')}`),
             ...getVectorSavedSummarySources(state)
@@ -532,19 +532,22 @@ export function createVectorMemoryService({
     
     function scheduleVectorAutoIndex(reason = 'auto') {
         const state = ensureState();
-        if (!state.vectorMemory.enabled || state.vectorMemory.autoIndex === false || pausedIndexStates.has(state)) {
+        if (!state.vectorMemory.enabled || state.vectorMemory.autoIndex === false || pausedIndexStates.has(state) || state.vectorMemory.lastIndexError) {
             return;
         }
         clearTimer(vectorIndexTimer);
         vectorIndexTimer = setTimer(async () => {
-            if (ensureState() !== state || pausedIndexStates.has(state)
+            if (ensureState() !== state || pausedIndexStates.has(state) || state.vectorMemory.lastIndexError || indexRun?.state === state
                 || !state.vectorMemory.enabled || state.vectorMemory.autoIndex === false) return;
+            const configuration = indexConfigurationKey(state);
             try {
                 await buildVectorMemoryIndex({ silent: true, reason });
             } catch (error) {
-                if (ensureState() !== state || pausedIndexStates.has(state)) return;
-                console.warn('[BakemonoMemory] vector auto index failed', error);
-                toastr.warning(`向量自动索引失败：${error?.message || error}`);
+                if (ensureState() !== state || pausedIndexStates.has(state) || configuration !== indexConfigurationKey(state)) return;
+                state.vectorMemory.lastIndexError = '自动索引已暂停：上次请求未完成。请检查已保存配置后，点击“建立 / 刷新索引”重试。';
+                saveState();
+                renderWorkbenchScope(workbenchRenderScopes.VECTOR, state.vectorMemory.lastIndexError);
+                toastr.warning(`向量自动索引失败：${error?.message || error} 自动索引已暂停，请手动重试。`);
             }
         }, 1200);
     }
@@ -628,8 +631,11 @@ export function createVectorMemoryService({
     async function buildVectorMemoryIndex({ silent = false } = {}) {
         const state = ensureState();
         removeRpVectorCache(state.vectorMemory);
-        if (silent && pausedIndexStates.has(state)) return state.vectorMemory.records || [];
-        if (!silent) pausedIndexStates.delete(state);
+        if (silent && (pausedIndexStates.has(state) || state.vectorMemory.lastIndexError)) return state.vectorMemory.records || [];
+        if (!silent) {
+            pausedIndexStates.delete(state);
+            state.vectorMemory.lastIndexError = '';
+        }
         if (indexRun && indexRun.state !== state) {
             indexRun.controller.abort();
             indexRun = null;
@@ -660,6 +666,10 @@ export function createVectorMemoryService({
             }
         })().catch(error => {
             if (controller.signal.aborted && pausedIndexStates.has(state) && ensureState() === state) return false;
+            if (ensureState() === state && configuration === indexConfigurationKey(state) && !controller.signal.aborted) {
+                state.vectorMemory.lastIndexError = '自动索引已暂停：上次请求未完成。请检查已保存配置后，点击“建立 / 刷新索引”重试。';
+                saveState();
+            }
             throw error;
         }).finally(() => {
             if (indexRun === run) indexRun = null;
@@ -726,6 +736,7 @@ export function createVectorMemoryService({
             const variantKey = getMessageVariantKey(message);
             const shouldChunk = indexMode === 'chunk' || (indexMode === 'hybrid' && fullText.length > longMessageThreshold);
             if (summaryContent) {
+                const summaryText = getClippedVectorText(summaryContent, Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars)));
                 records.push({
                     id: `vec-${getHash(`${messageId}|${variantKey}|summary|${summaryContent}`)}`,
                     kind: 'summary',
@@ -734,10 +745,10 @@ export function createVectorMemoryService({
                     role,
                     isHidden: !!message.is_system,
                     title: `${message.is_user ? '用户摘要' : message.is_system ? '隐藏摘要' : '助手摘要'} #${messageId}`,
-                    text: getClippedVectorText(summaryContent, Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars))),
-                    summary: getClippedVectorText(summaryContent, Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars))),
+                    text: summaryText,
+                    summary: summaryText,
                     preview: toPlainPreview(summaryContent, 180),
-                    ...await embeddingForRecord(summaryContent),
+                    ...await embeddingForRecord(summaryText),
                     createdAt: new Date().toISOString(),
                 });
             }

@@ -69,25 +69,9 @@ export function createContentConfigurationEvents({
             saveState();
             renderWorkbenchScope(workbenchRenderScopes.INJECTION, '注入内容已清空。');
         });
-        query('#bakemono-memory-injection-enabled').off('change').on('change', function () {
-            const state = getState();
-            state.injection.enabled = !!this.checked;
-            syncInjection();
-            persistSharedConfigurationFromState(state);
-            renderWorkbenchScope(workbenchRenderScopes.INJECTION);
-        });
-        query('#bakemono-memory-depth').off('input').on('input', function () {
-            const state = getState();
-            state.injection.depth = Math.max(0, Number(this.value || defaultState.injection.depth));
-            syncInjection();
-            persistSharedConfigurationFromState(state);
-        });
-        query('#bakemono-memory-role').off('change').on('change', function () {
-            const state = getState();
-            state.injection.role = Number(this.value || extensionPromptRoles.SYSTEM);
-            syncInjection();
-            persistSharedConfigurationFromState(state);
-        });
+        // These fields stay drafts until the user explicitly saves this page.
+        query('#bakemono-memory-injection-enabled, #bakemono-memory-role').off('change');
+        query('#bakemono-memory-depth').off('input');
         query('#bakemono-memory-source-content, #bakemono-memory-injection-template').off('input').on('input', () => {
             const state = getState();
             const previewState = {
@@ -98,7 +82,7 @@ export function createContentConfigurationEvents({
                     template: String(query('#bakemono-memory-injection-template').val() || ''),
                 },
             };
-            const content = renderInjectionContent(previewState);
+            const content = renderInjectionContent(previewState, { memory: previewState.generatedMemory });
             query('#bakemono-memory-injection-content').val(content);
             query('#bakemono-memory-injection-char-count').text(`约 ${content.length.toLocaleString()} 字符`);
         });

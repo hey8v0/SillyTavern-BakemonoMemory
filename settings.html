@@ -77,6 +77,13 @@
     </nav>
 
     <main class="bakemono-workbench-main">
+      <div id="bakemono-memory-page-savebar" class="bakemono-memory-page-savebar" hidden>
+        <span id="bakemono-memory-page-save-status" role="status" aria-live="polite">无未保存修改</span>
+        <div>
+          <button type="button" class="menu_button" id="bakemono-memory-page-discard" hidden>撤销修改</button>
+          <button type="button" class="menu_button" id="bakemono-memory-page-save"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i><span>保存设置</span></button>
+        </div>
+      </div>
       <section class="bakemono-workbench-panel is-active" data-bakemono-panel="overview">
         <div class="bakemono-memory-overview-dashboard">
           <header class="bakemono-memory-overview-heading">
@@ -135,6 +142,7 @@
             </article>
           </section>
 
+          <p id="bakemono-memory-injection-diagnostic" class="bakemono-memory-injection-diagnostic" role="status"></p>
           <section class="bakemono-memory-overview-section" aria-labelledby="bakemono-memory-config-title">
             <header class="bakemono-memory-overview-section-head">
               <div><span class="bakemono-memory-next-kicker">正在生效</span><h4 id="bakemono-memory-config-title">当前配置</h4></div>
@@ -363,7 +371,7 @@
               <strong id="bakemono-memory-database-active">0</strong>
             </div>
             <div>
-              <span>正在注入</span>
+              <span>已选入记忆</span>
               <strong id="bakemono-memory-database-injected">0</strong>
             </div>
             <div>
@@ -603,12 +611,12 @@
         </label>
         <div class="bakemono-memory-record-quick-filters" aria-label="常用状态筛选">
           <button type="button" class="is-active" data-bakemono-record-status="all">全部</button>
-          <button type="button" data-bakemono-record-status="injected">注入中</button>
+          <button type="button" data-bakemono-record-status="injected">已选入</button>
           <button type="button" data-bakemono-record-status="archived">已归档</button>
         </div>
         <div class="bakemono-memory-record-stat-strip" aria-label="记忆档案概览">
           <div><strong id="bakemono-memory-record-stat-total">0</strong><span>记忆记录</span></div>
-          <div><strong id="bakemono-memory-record-stat-injected">0</strong><span>正在注入</span></div>
+          <div><strong id="bakemono-memory-record-stat-injected">0</strong><span>已选入记忆</span></div>
           <div><strong id="bakemono-memory-record-stat-archived">0</strong><span>已归档</span></div>
         </div>
         <details class="bakemono-memory-record-filter-disclosure bakemono-memory-console-disclosure">
@@ -812,7 +820,7 @@
               </label>
               <button class="menu_button" id="bakemono-memory-save-turn-preset">
                 <i class="fa-solid fa-floppy-disk"></i>
-                <span>保存</span>
+                <span>另存为预设</span>
               </button>
               <button class="menu_button danger_button" id="bakemono-memory-delete-turn-preset">
                 <i class="fa-solid fa-trash"></i>
@@ -917,7 +925,7 @@
               </div>
               <div class="bakemono-memory-table-quick-actions">
               <label class="checkbox_label bakemono-memory-switch bakemono-memory-table-inject-toggle">
-                <input type="checkbox" id="bakemono-memory-table-inject-memory" checked>
+                <input type="checkbox" id="bakemono-memory-table-inject-memory" title="此开关立即保存" checked>
                 <span>表格记忆注入上下文</span>
               </label>
               </div>
@@ -956,7 +964,7 @@
               <div class="bakemono-memory-table-scope">
                 <label class="bakemono-memory-field">
                   <span>表格框架作用域</span>
-                  <select id="bakemono-memory-table-schema-scope" class="text_pole">
+                  <select id="bakemono-memory-table-schema-scope" class="text_pole" title="确认后立即切换表格组">
                     <option value="chat">当前聊天</option>
                     <option value="character">当前角色</option>
                     <option value="global">全局</option>
@@ -1089,6 +1097,10 @@
           <span class="bakemono-memory-next-kicker">剧情回看</span>
           <h3>总结与时间线</h3>
         </header>
+        <div class="bakemono-memory-summary-settings-link">
+          <span id="bakemono-memory-summary-auto-status">自动总结：未开启</span>
+          <button type="button" class="menu_button" data-bakemono-nav="automation">调整自动总结</button>
+        </div>
 
         <div class="bakemono-memory-summary-mode-tabs" aria-label="总结生成方式">
           <button type="button" class="is-active" data-bakemono-summary-mode="stage">阶段总结</button>
@@ -1349,7 +1361,7 @@
             </label>
             <button class="menu_button" id="bakemono-memory-save-automation-preset">
               <i class="fa-solid fa-floppy-disk"></i>
-              <span>另存</span>
+              <span>另存为预设</span>
             </button>
             <button class="menu_button" id="bakemono-memory-delete-automation-preset">
               <i class="fa-solid fa-trash"></i>
@@ -1373,7 +1385,7 @@
               </label>
               <button class="menu_button" id="bakemono-memory-save-api-preset">
                 <i class="fa-solid fa-floppy-disk"></i>
-                <span>另存</span>
+                <span>另存为预设</span>
               </button>
               <button class="menu_button" id="bakemono-memory-delete-api-preset">
                 <i class="fa-solid fa-trash"></i>
@@ -1495,7 +1507,7 @@
                 <span>名称</span>
                 <input id="bakemono-memory-scan-preset-name" class="text_pole" type="text" placeholder="我的扫描配置">
               </label>
-              <button class="menu_button" id="bakemono-memory-save-scan-preset"><i class="fa-solid fa-floppy-disk"></i><span>另存配置</span></button>
+              <button class="menu_button" id="bakemono-memory-save-scan-preset"><i class="fa-solid fa-floppy-disk"></i><span>另存为预设</span></button>
               <button class="menu_button danger_button" id="bakemono-memory-delete-scan-preset"><i class="fa-solid fa-trash"></i><span>删除配置</span></button>
             </div>
           </div>
@@ -1631,7 +1643,7 @@
             <input id="bakemono-memory-vector-preset-name" class="text_pole bakemono-memory-preset-name" type="text" placeholder="我的 embedding 配置">
             <button class="menu_button" id="bakemono-memory-save-vector-preset">
               <i class="fa-solid fa-floppy-disk"></i>
-              <span>保存</span>
+              <span>另存为预设</span>
             </button>
             <button class="menu_button danger_button" id="bakemono-memory-delete-vector-preset">
               <i class="fa-solid fa-trash"></i>
@@ -1646,7 +1658,7 @@
             <summary><span><i class="fa-solid fa-toggle-on"></i> 检索与索引</span><small>开关、粒度与注入方式</small></summary>
             <div class="bakemono-memory-vector-disclosure-body">
             <label class="checkbox_label bakemono-memory-switch">
-              <input type="checkbox" id="bakemono-memory-vector-enabled">
+              <input type="checkbox" id="bakemono-memory-vector-enabled" title="此开关立即保存；接口及召回参数请点保存设置">
               <span>启用向量原文召回注入</span>
             </label>
             <label class="checkbox_label bakemono-memory-switch">
@@ -1935,7 +1947,7 @@
             <div class="bakemono-memory-preset-controls">
               <label class="bakemono-memory-field"><span>配置</span><select id="bakemono-memory-injection-preset-select" class="text_pole"></select></label>
               <label class="bakemono-memory-field bakemono-memory-preset-name"><span>名称</span><input id="bakemono-memory-injection-preset-name" class="text_pole" type="text" placeholder="我的注入模板配置"></label>
-              <button class="menu_button" id="bakemono-memory-save-injection-preset"><i class="fa-solid fa-floppy-disk"></i><span>另存</span></button>
+              <button class="menu_button" id="bakemono-memory-save-injection-preset"><i class="fa-solid fa-floppy-disk"></i><span>另存为预设</span></button>
               <button class="menu_button danger_button" id="bakemono-memory-delete-injection-preset"><i class="fa-solid fa-trash"></i><span>删除</span></button>
             </div>
           </div>
@@ -1965,7 +1977,7 @@
             <div class="bakemono-memory-preset-controls">
               <label class="bakemono-memory-field"><span>配置</span><select id="bakemono-memory-prompts-preset-select" class="text_pole"></select></label>
               <label class="bakemono-memory-field bakemono-memory-preset-name"><span>名称</span><input id="bakemono-memory-prompts-preset-name" class="text_pole" type="text" placeholder="我的提示词配置"></label>
-              <button class="menu_button" id="bakemono-memory-save-prompts-preset"><i class="fa-solid fa-floppy-disk"></i><span>另存</span></button>
+              <button class="menu_button" id="bakemono-memory-save-prompts-preset"><i class="fa-solid fa-floppy-disk"></i><span>另存为预设</span></button>
               <button class="menu_button danger_button" id="bakemono-memory-delete-prompts-preset"><i class="fa-solid fa-trash"></i><span>删除</span></button>
             </div>
           </div>
@@ -2175,7 +2187,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.7.4 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.7.5 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

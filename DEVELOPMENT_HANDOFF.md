@@ -2,7 +2,7 @@
 
 ## 接手约定
 
-- 当前版本 1.7.4，分支 main，远端 hey8v0/SillyTavern-BakemonoMemory。先查 Git，不从旧对话推断。
+- 当前版本 1.7.5，分支 main，远端 hey8v0/SillyTavern-BakemonoMemory。先查 Git，不从旧对话推断。
 - 不覆盖用户修改、不强推；提交推送以当次授权为准。不默认打开浏览器、调用模型或同步本机酒馆。
 - 当前源码在本目录；任务工作区与酒馆安装目录不是源码。本次离线依赖在任务工作区 .ui-validation，Node 24，无新增运行框架。
 - 使用见 README；验收映射、命令及余项见 TESTING_v1.7.0.md；实际提示词见 RP_EVENTS_PROMPT.md。本文不追加流水账，历史查 Git。
@@ -32,11 +32,13 @@
 | 聊天恢复/备份 | summary-recovery-journal.js；rp-core/backup.js；memory/backup-package.js |
 | 摘要/表格/召回 | features/summary-*.js、table-*.js、vector-*.js；src/vector |
 | 本轮注入预览 | features/overview-token-manifest.js、injection-preview.js；只读当前配置；body 顶层 dialog，不手工 inert 工作台 |
+| 设置保存反馈 | ui/page-settings.js；顶部仅保存当前设置页，切页草稿不自动应用；全局回读与聊天保存均完成才报成功 |
 
 ## 不能破坏的保护
 
 - 宿主实时元数据用 getter；ensureGlobalSettings() 不返回对象，初始化后从 extension_settings[STORAGE_KEY] 取值。
 - 后台不读隐藏表单、不把运行状态升为全局配置；合法 false/0/空字符串不是缺失值。全局保存须回读核验，聊天保存不等于全局成功。
+- 注入预览、计数和发送使用实时有效来源，generatedMemory 只是缓存；“已选入”不等于已发送。向量 lastIndexError 只属本聊天，失败后由手动刷新恢复；不随后台事件重试刷屏。
 - RP 串行事务检查聊天、来源、分支和修订。失败只回滚本次 RP，不能覆盖较新状态或摘要。普通 RP 错误不阻断同聊天摘要；切聊天停止旧流程。
 - 自动同源只处理一次；手动重提取替代模型旧批次，保留审计与人工纠错。早期来源变动后，后续绝对状态保守停用，不机械沿用旧数字。
 - RP 简报/维护槽独立，合计受字符预算和整轮剩余空间约束；必要参考放不下则暂停。RP 不参与向量/BM25 召回，vector/source-policy 清理旧 RP 索引与命中，不删账本。

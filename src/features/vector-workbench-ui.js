@@ -73,17 +73,17 @@ export function createVectorWorkbenchUi({
         const summaryHitCount = (state.vectorMemory.lastHits || []).filter(hit => !['full', 'chunk'].includes(hit.recallTier)).length;
         const chunkHitCount = (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier === 'chunk').length;
         const hitCount = fullHitCount + summaryHitCount + chunkHitCount;
-        const indexReady = messageRecordCount > 0 && !state.vectorMemory.dirty;
+        const indexReady = messageRecordCount > 0 && !state.vectorMemory.dirty && !state.vectorMemory.lastIndexError;
         const indexTime = state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '';
         const providerLabel = state.vectorMemory.embeddingProvider === 'custom-openai' ? '自定义向量' : '本地向量';
-        const runtimeLabel = !messageRecordCount
+        const runtimeLabel = state.vectorMemory.lastIndexError ? '自动索引已暂停' : !messageRecordCount
             ? '尚未建立索引'
             : state.vectorMemory.dirty
                 ? '索引等待刷新'
                 : '索引健康';
-        const runtimeDescription = !messageRecordCount
+        const runtimeDescription = state.vectorMemory.lastIndexError || (!messageRecordCount
             ? '建立索引后，剪辑台才能从长聊天里找回相关旧剧情。'
-            : `${bodyRecordCount} 个正文片段 · ${tagSummaryCount} 条标签摘要 · ${savedSummaryCount} 条已存摘要${indexTime ? ` · 最近刷新于 ${indexTime}` : ''}${state.vectorMemory.lastRecallSkippedReason ? ` · 上次跳过：${state.vectorMemory.lastRecallSkippedReason}` : ''}`;
+            : `${bodyRecordCount} 个正文片段 · ${tagSummaryCount} 条标签摘要 · ${savedSummaryCount} 条已存摘要${indexTime ? ` · 最近刷新于 ${indexTime}` : ''}${state.vectorMemory.lastRecallSkippedReason ? ` · 上次跳过：${state.vectorMemory.lastRecallSkippedReason}` : ''}`);
         query('#bakemono-memory-vector-runtime-label').text(runtimeLabel);
         query('#bakemono-memory-vector-runtime-badge').text(state.vectorMemory.enabled ? '召回开启' : '召回关闭');
         query('#bakemono-memory-vector-runtime-title').text(`${messageRecordCount} 楼已索引`);
@@ -334,6 +334,7 @@ export function createVectorWorkbenchUi({
     }
 
     return {
+        renderVectorConfigurationFields,
         renderVectorMemoryPanel,
         renderVectorRecallDetails,
         renderVectorHitList,

@@ -103,6 +103,7 @@ import { createHelpPopover } from './src/ui/help-popover.js';
 import { createOperationFeedback } from './src/ui/operation-feedback.js';
 import { installWorkbenchParentNavigation, organizeWorkbenchOwnedSections } from './src/ui/workbench-layout.js';
 import { createWorkbenchNavigation } from './src/ui/workbench-navigation.js';
+import { createPageSettings } from './src/ui/page-settings.js';
 import { createWorkbenchShellEvents } from './src/ui/workbench-shell-events.js';
 import { createSillyTavernEntry } from './src/ui/sillytavern-entry.js';
 import { createDefaultConfiguration } from './src/config/defaults.js';
@@ -329,6 +330,7 @@ function setBusy(value) {
 }
 
 let workbenchRenderer = null;
+let pageSettings = null;
 function renderAll(...args) {
     return workbenchRenderer?.renderAll(...args);
 }
@@ -2117,6 +2119,7 @@ const reviewQueueEvents = createReviewQueueEvents({
 });
 
 workbenchRenderer = createWorkbenchRenderer({
+    afterRender: (tab, state) => pageSettings?.render(tab, state),
     renderRpState: state => rpStateUi.render(state),
     documentRef: document,
     globalRef: globalThis,
@@ -2219,6 +2222,38 @@ const workbenchActionController = createWorkbenchActionController({
 });
 const { getRenderScope: getWorkbenchActionRenderScope, run: runWorkbenchAction } = workbenchActionController;
 
+pageSettings = createPageSettings({
+    documentRef: document, getState: ensureState, getActiveTab: getActiveWorkbenchTab,
+    refresh: () => {
+        // Draft restoration runs after rendering. Explicit save/discard must
+        // start from committed fields, not the vector form's retained values.
+        if (getActiveWorkbenchTab() === 'vector') vectorWorkbenchUi.renderVectorConfigurationFields(ensureState());
+        return renderWorkbenchScope({
+        vector: workbenchRenderScopes.VECTOR, scan: workbenchRenderScopes.SCAN,
+        automation: workbenchRenderScopes.AUTOMATION, generation: workbenchRenderScopes.GENERATION,
+        prompts: workbenchRenderScopes.PROMPTS, injection: workbenchRenderScopes.INJECTION,
+        'turn-summary': workbenchRenderScopes.TABLES, tables: workbenchRenderScopes.TABLES,
+        }[getActiveWorkbenchTab()] || workbenchRenderScopes.SUMMARY);
+    },
+    notify: message => toastr.warning(message),
+    async savePage(tab, state) {
+        if (ensureState() !== state) throw new Error('聊天已切换，请在当前聊天重新保存。');
+        if (tab === 'vector') return applyVectorMemorySettings();
+        const readers = { scan: readRuleFieldsFromUi, automation: readAutomationFieldsFromUi,
+            generation: readCustomApiFieldsFromUi, prompts: readPromptFieldsFromUi,
+            injection: readInjectionFieldsFromUi, 'turn-summary': readTurnSummaryFieldsFromUi };
+        if (!readers[tab]) throw new Error('当前页面没有可保存的设置。');
+        readers[tab](state);
+        if (tab === 'scan') scanBakemonoBlocks({ persist: false, render: false });
+        syncInjection();
+        const config = persistSharedConfigurationFromState(state);
+        const revision = state.activeConfigSignature;
+        const [global, chatSave] = await Promise.allSettled([confirmGlobalConfiguration(config), saveChatConditional()]);
+        if (ensureState() !== state || state.activeConfigSignature !== revision) throw new Error('保存期间聊天或配置已变化，请重新核对。');
+        return global.status === 'fulfilled' && global.value?.status === 'confirmed' && chatSave.status === 'fulfilled';
+    },
+});
+
 const workbenchShellEvents = createWorkbenchShellEvents({
     query: $,
     documentRef: document,
@@ -2250,6 +2285,7 @@ function getKindLabel(kind) {
 }
 
 function bindSettingsEvents() {
+    pageSettings.bind(document.getElementById('bakemono-workbench-root'));
     workbenchShellEvents.bind();
     bindArchiveEvents();
     bindWorkflowOverviewEvents();

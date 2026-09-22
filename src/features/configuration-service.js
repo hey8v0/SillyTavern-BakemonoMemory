@@ -170,7 +170,7 @@ export function createConfigurationService({
         state.injection = {
             ...state.injection,
             enabled: query('#bakemono-memory-injection-enabled').prop('checked'),
-            depth: Math.max(0, Number(query('#bakemono-memory-depth').val() || defaultState.injection.depth)),
+            depth: Math.max(0, Number(query('#bakemono-memory-depth').val() === '' ? defaultState.injection.depth : query('#bakemono-memory-depth').val() ?? defaultState.injection.depth)),
             role: Number(query('#bakemono-memory-role').val() || extensionPromptRoles.SYSTEM),
             template: String(query('#bakemono-memory-injection-template').val() || defaultInjectionTemplate),
         };
