@@ -9,6 +9,7 @@ export function createWorkflowOverviewModel({
     workflowModes,
     stageSourceModes,
     getStageSourceMode,
+    getUnsummarizedStoryBlocks,
     getIsBusy,
     isTaskQueueRunning,
     scanBlocks,
@@ -31,7 +32,7 @@ export function createWorkflowOverviewModel({
     function getStageSourceModeLabel(mode = getStageSourceMode()) {
         const labels = {
             [stageSourceModes.SUMMARIES]: '读取已有摘要',
-            [stageSourceModes.BACKFILL]: '读取补课摘要',
+            [stageSourceModes.BACKFILL]: '仅读取插件已保存摘要',
             [stageSourceModes.RAW]: '直接读取正文',
             [stageSourceModes.MIXED]: '摘要和正文都读',
             [stageSourceModes.AUTO]: '自动选择',
@@ -160,7 +161,10 @@ export function createWorkflowOverviewModel({
     }
 
     function getMemoryOrchestrationPlan(state = getState(), index = getCurrentFloorMemoryIndex(state)) {
-        return createMemoryOrchestrationPlan(index, state, { busy: getIsBusy() || isTaskQueueRunning() });
+        return createMemoryOrchestrationPlan(index, state, {
+            busy: getIsBusy() || isTaskQueueRunning(),
+            stageMaterialCount: getUnsummarizedStoryBlocks().length,
+        });
     }
 
     function getOverviewRecommendation(state = getState(), index = getCurrentFloorMemoryIndex(state)) {

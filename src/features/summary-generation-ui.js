@@ -1,5 +1,4 @@
-import {resolveSummaryGraph} from '../memory/summary-provenance.js';
-export function createSummaryGenerationUi({ documentRef, query, getState }) {
+export function createSummaryGenerationUi({ documentRef, query, getState, getStageMaterialOverview, getStageSourceModeLabel }) {
     let mode = 'stage';
     let snapshot = { story: [], stage: [], epic: [] };
 
@@ -27,9 +26,9 @@ export function createSummaryGenerationUi({ documentRef, query, getState }) {
         const storyBlocks = snapshot.story;
         const stageBlocks = snapshot.stage;
         const epicBlocks = snapshot.epic;
-        const coveredHashes = resolveSummaryGraph(state).coveredStoryHashes;
-        const coveredStoryCount = storyBlocks.filter(block => block?.hash && coveredHashes.has(block.hash)).length;
-        const uncoveredStoryCount = Math.max(0, storyBlocks.length - coveredStoryCount);
+        const materials = getStageMaterialOverview();
+        const coveredStoryCount = materials.coveredCount;
+        const uncoveredStoryCount = materials.targets.length;
         const upperLevelMaterialCount = stageBlocks.length + epicBlocks.length;
         const modes = {
             stage: {
@@ -38,8 +37,9 @@ export function createSummaryGenerationUi({ documentRef, query, getState }) {
                 title: '整理下一段长期记忆',
                 button: '生成阶段总结',
                 code: `${uncoveredStoryCount} 条待整理`,
-                description: `${storyBlocks.length} 条剧情摘要，其中 ${coveredStoryCount} 条已经收入阶段记忆。生成结果会先进入待确认。`,
-                progress: storyBlocks.length ? Math.round((coveredStoryCount / storyBlocks.length) * 100) : 0,
+                description: `${getStageSourceModeLabel(materials.sourceMode)} · ${materials.totalCount} 条材料 · ${coveredStoryCount} 条已收录`
+                    + (materials.excludedCount ? ` · ${materials.excludedCount} 条因来源设置未纳入` : ''),
+                progress: materials.totalCount ? Math.round((coveredStoryCount / materials.totalCount) * 100) : 0,
             },
             epic: {
                 action: 'generate-epic',

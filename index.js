@@ -634,6 +634,7 @@ const summarySelectors = createSummarySelectors({
 const {
     getAutoStageTargets,
     getStageSourceMode,
+    getStageMaterialOverview,
     getStoryBlocks,
     getStoryMaterialBlocks,
     getUnsummarizedMultiSummaryBlocks,
@@ -1589,6 +1590,7 @@ const workflowOverviewModel = createWorkflowOverviewModel({
     workflowModes,
     stageSourceModes,
     getStageSourceMode,
+    getUnsummarizedStoryBlocks,
     getIsBusy: () => isBusy,
     isTaskQueueRunning: () => summaryTaskQueue.isRunning(),
     scanBlocks: options => scanBakemonoBlocks(options),
@@ -1646,6 +1648,8 @@ const summaryGenerationUi = createSummaryGenerationUi({
     documentRef: document,
     query: $,
     getState: ensureState,
+    getStageMaterialOverview,
+    getStageSourceModeLabel,
 });
 const {
     bindEvents: bindSummaryGenerationEvents,
@@ -1684,7 +1688,8 @@ const hubAutomationUi = createHubAutomationUi({
     getPromptPresets,
     getSelectedPromptPresetId,
     getWorkflowModeLabel,
-    getUnsummarizedStoryBlocks,
+    getStageMaterialOverview,
+    getStageSourceModeLabel,
     defaultAutomation,
     defaultScanRules,
 });
@@ -1999,6 +2004,7 @@ const memoryOrchestrator = createMemoryOrchestrator({
     isBusy: () => isBusy,
     scanBakemonoBlocks,
     getUnsummarizedStoryBlocks,
+    getStageSourceMode,
     getHash,
     saveState,
     defaultAutomation,

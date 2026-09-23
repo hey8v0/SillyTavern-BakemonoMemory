@@ -32,7 +32,7 @@ export function runtimeHost() {
         formatTableDataForPrompt: empty, formatTableGuideForPrompt: empty, formatSpecificTablesForPrompt: empty,
         getReadonlyTables: list, getWritableTables: list, defaultInlineSummaryPrompt: '摘要指令', defaultInlineTablePrompt: '表格指令',
         inlinePromptKeys: { SUMMARY: 'summary', TABLE: 'table', RP_STATE: 'rp' }, defaultInjectionTemplate: '{{memory}}', renderInjectionTemplate,
-        scanBakemonoBlocks: noop, getUnsummarizedStoryBlocks: list, getHash: String, defaultAutomation: {},
+        scanBakemonoBlocks: noop, getUnsummarizedStoryBlocks: list, getStageSourceMode: () => 'summaries', getHash: String, defaultAutomation: {},
         toastr: { warning: message => warnings.push(message), info: noop }, renderWorkbenchScope: noop, workbenchRenderScopes: {}, generateStageDraft: noop,
         turnProcessingModes: { TABLE: 'table', BOTH: 'both' }, processLatestTableEdit: noop, processLatestTurnSummary: noop,
         getCurrentFloorMemoryIndex: () => ({}), getMemoryOrchestrationPlan: () => ({ actions: {} }),

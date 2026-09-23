@@ -108,8 +108,9 @@ export function createSummaryGenerationController({
     }
 
     function reportNoStageMaterials(state) {
+        const covered = resolveSummaryGraph(state).coveredStoryHashes;
         const excluded = getStageSourceMode() === 'backfill'
-            && getStoryMaterialBlocks('summaries').some(block => !activeStoryCoverage(state).has(block.hash));
+            && getStoryMaterialBlocks('summaries').some(block => !covered.has(block.hash));
         const message = excluded
             ? '当前选择“仅插件已保存摘要”，正文标签摘要未被纳入。请将“阶段材料”改为“正文标签 + 插件摘要”，无需删除原文或重新补课。'
             : '没有新的剧情摘要需要生成阶段总结。';
@@ -170,6 +171,22 @@ export function createSummaryGenerationController({
             toastr.warning('当前生成范围没有匹配到可总结摘要。');
             return;
         }
+        if (options.automatic) {
+            const hashes = new Set(targets.map(block => block.hash));
+            const sameBatch = item => item.kind === blockTypes.STAGE
+                && item.sourceHashes?.length === hashes.size
+                && item.sourceHashes.every(hash => hashes.has(hash));
+            const existingTask = (state.taskQueue || []).find(task => sameBatch(task)
+                && ['queued', 'running', 'failed'].includes(task.status));
+            const existingDraft = (state.drafts || []).find(sameBatch);
+            if (existingTask || existingDraft) {
+                const message = existingDraft ? '这批材料已有阶段总结草稿，请在待确认中保存。'
+                    : existingTask.status === 'failed' ? '这批材料的总结任务失败，请在任务队列查看错误并重试。'
+                        : '这批材料已在总结任务队列中。';
+                renderWorkbenchScope(workbenchRenderScopes.SUMMARY, message);
+                return;
+            }
+        }
         if (!confirmStageContinuity(targets, { automatic: !!options.automatic })) {
             return;
         }
@@ -181,7 +198,7 @@ export function createSummaryGenerationController({
 
         const prompt = buildStageUserPrompt(targets);
         const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
-        enqueueSummaryTask({
+        return enqueueSummaryTask({
             kind: blockTypes.STAGE,
             label: `阶段总结 · ${targets.length} 个片段`,
             prompt,

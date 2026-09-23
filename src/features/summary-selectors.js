@@ -60,6 +60,15 @@ export function createSummarySelectors({
         return getStoryMaterialBlocks().filter(block => includeCovered || !covered.has(block.hash));
     }
 
+    function getStageMaterialOverview() {
+        const targets = getUnsummarizedStoryBlocks();
+        const materials = getStoryMaterialBlocks();
+        const selected = new Set(materials.map(block => block.hash));
+        const excludedCount = getStoryMaterialBlocks(stageSourceModes.MIXED).filter(block => !selected.has(block.hash)).length;
+        return { sourceMode: getStageSourceMode(), targets, totalCount: materials.length,
+            coveredCount: materials.length - targets.length, excludedCount };
+    }
+
     function getUnsummarizedStageBlocks({includeCovered = false} = {}) {
         const state = getState();
         if(getChat)refreshMemoryLinks(state,getChat());
@@ -101,6 +110,7 @@ export function createSummarySelectors({
     return {
         getAutoStageTargets,
         getStageSourceMode,
+        getStageMaterialOverview,
         getStoryBlocks,
         getStoryMaterialBlocks,
         getUnsummarizedMultiSummaryBlocks,

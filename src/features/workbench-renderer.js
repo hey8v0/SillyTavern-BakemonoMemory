@@ -247,6 +247,7 @@ export function createWorkbenchRenderer({
         else if (activeTab === 'drafts') { renderDrafts(); renderHistory(); renderTaskQueue(); }
         else if (activeTab === 'maintenance') renderMaintenanceOverview(state);
         else if (activeTab === 'rp-state') renderRpState?.(state);
+        else if (activeTab === 'automation') renderAutomationOverview(state);
         else if (activeTab === 'turn-summary' || activeTab === 'tables') { renderActivePresetControls(activeTab); renderTurnSummaryPanel(state); }
     }
 
@@ -262,6 +263,7 @@ export function createWorkbenchRenderer({
             else if (activeTab === 'rp-state') renderRpState?.(state);
             else if (activeTab === 'maintenance') renderMaintenanceOverview(state);
             else if (activeTab === 'data-hub' && options.refreshDataHub !== false) renderDataHubMemory(state);
+            else if (activeTab === 'automation' || activeTab === 'preview') renderSummarySurface(activeTab, state);
         } else if (scope === workbenchRenderScopes.TABLES) {
             if (activeTab === 'rp-state') renderRpState?.(state);
             else if (activeTab === 'turn-summary' || activeTab === 'tables') { renderActivePresetControls(activeTab); renderTurnSummaryPanel(state); }

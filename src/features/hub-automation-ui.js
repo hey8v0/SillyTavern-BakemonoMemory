@@ -9,7 +9,8 @@ export function createHubAutomationUi({
     getPromptPresets,
     getSelectedPromptPresetId,
     getWorkflowModeLabel,
-    getUnsummarizedStoryBlocks,
+    getStageMaterialOverview,
+    getStageSourceModeLabel,
     defaultAutomation,
     defaultScanRules,
 }) {
@@ -64,7 +65,8 @@ export function createHubAutomationUi({
     }
 
     function renderAutomationOverview(state = getState()) {
-        const targets = getUnsummarizedStoryBlocks();
+        const materials = getStageMaterialOverview();
+        const targets = materials.targets;
         const triggerType = state.automation.triggerType || defaultAutomation.triggerType;
         const currentValue = triggerType === 'chars'
             ? targets.reduce((sum, block) => sum + String(block.content || '').length, 0)
@@ -79,17 +81,14 @@ export function createHubAutomationUi({
         const mode = state.automation.mode || defaultAutomation.mode;
         const modeLabel = mode === 'commit_hide' ? '自动保存' : mode === 'draft' ? '生成草稿' : '仅提醒';
         const triggerLabel = triggerType === 'chars' ? '字数' : '片段';
-        const unit = triggerType === 'chars' ? '字' : '条摘要';
+        const unit = triggerType === 'chars' ? '字' : ['raw', 'mixed', 'auto'].includes(materials.sourceMode) ? '条材料' : '条摘要';
         const title = !enabled ? '等待开启自动规则' : ready ? '已达到触发条件' : `还差 ${remaining.toLocaleString()} ${unit}`;
-        const destination = mode === 'commit_hide'
-            ? `达到阈值后自动保存阶段总结，并保留最近 ${state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent} 楼正文。`
-            : mode === 'draft'
-                ? '达到阈值后生成阶段总结草稿，先进入待确认，不直接覆盖正文。'
-                : '达到阈值后只提醒你整理，不会自动生成或保存。';
+        const sourceDescription = `${getStageSourceModeLabel(materials.sourceMode)} · ${targets.length} 条待整理 · ${materials.coveredCount} 条已收录`
+            + (materials.excludedCount ? ` · ${materials.excludedCount} 条因来源设置未纳入` : '');
         query('#bakemono-memory-automation-runtime-label').text(enabled ? '自动总结运行中' : '自动总结未开启');
         query('#bakemono-memory-automation-mode-badge').text(modeLabel);
         query('#bakemono-memory-automation-runtime-title').text(title);
-        query('#bakemono-memory-automation-runtime-description').text(destination);
+        query('#bakemono-memory-automation-runtime-description').text(sourceDescription);
         query('#bakemono-memory-automation-progress-bar').css('width', `${enabled ? progress : 0}%`);
         query('#bakemono-memory-automation-rule-status').text(enabled ? `按${triggerLabel} · ${currentValue.toLocaleString()} / ${threshold.toLocaleString()}` : '尚未启用');
         query('#bakemono-memory-automation-floor-hint').text(`每 ${Number(state.automation.floorInterval || defaultAutomation.floorInterval).toLocaleString()} 个未整理片段`);

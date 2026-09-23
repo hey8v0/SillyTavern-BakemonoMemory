@@ -3,6 +3,7 @@ export function createMemoryOrchestrator({
     isBusy,
     scanBakemonoBlocks,
     getUnsummarizedStoryBlocks,
+    getStageSourceMode,
     getHash,
     saveState,
     defaultAutomation,
@@ -25,6 +26,7 @@ export function createMemoryOrchestrator({
     shouldRunTurnProcessing,
     rpExtractionFlow,
 } = {}) {
+    const pendingAutoSummaries = new WeakSet();
     async function runRp(method) {
         try { return await rpExtractionFlow?.[method]?.(); }
         catch (error) {
@@ -34,7 +36,7 @@ export function createMemoryOrchestrator({
     }
     async function maybeRunAutoSummary() {
         const state = ensureState();
-        if (!state.automation.enabled || isBusy()) {
+        if (!state.automation.enabled || isBusy() || pendingAutoSummaries.has(state)) {
             return;
         }
     
@@ -44,7 +46,15 @@ export function createMemoryOrchestrator({
             return;
         }
     
-        const signature = getHash(targets.map(block => block.hash).join('|'));
+        const signature = getHash(JSON.stringify({
+            sources: targets.map(block => block.hash),
+            sourceMode: getStageSourceMode(state),
+            mode: state.automation.mode || defaultAutomation.mode,
+            trigger: state.automation.triggerType || defaultAutomation.triggerType,
+            threshold: state.automation.triggerType === 'chars'
+                ? state.automation.charInterval || defaultAutomation.charInterval
+                : state.automation.floorInterval || defaultAutomation.floorInterval,
+        }));
         if (signature === state.automation.lastSignature) {
             return;
         }
@@ -54,18 +64,20 @@ export function createMemoryOrchestrator({
             return;
         }
     
-        state.automation.lastSignature = signature;
-        saveState();
-        if (state.automation.mode === 'draft' || state.automation.mode === 'commit_hide') {
-            const modeLabel = state.automation.mode === 'commit_hide'
-                ? `自动总结：正在生成草稿，完成后会自动保存长期记忆并隐藏已覆盖楼层，保留最近 ${state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent} 楼。`
-                : '自动总结：正在生成阶段总结草稿。';
-            toastr.info(modeLabel, '剧情剪辑台');
-            renderWorkbenchScope(workbenchRenderScopes.AUTOMATION, modeLabel);
-            await generateStageDraft({ automatic: true });
-        } else {
-            renderWorkbenchScope(workbenchRenderScopes.AUTOMATION, `自动总结提醒：已有 ${targets.length} 个未总结片段。`);
-            toastr.info('已达到自动总结条件，可以生成阶段总结草稿。', '剧情剪辑台');
+        pendingAutoSummaries.add(state);
+        try {
+            if (state.automation.mode === 'draft' || state.automation.mode === 'commit_hide') {
+                const task = await generateStageDraft({ automatic: true });
+                // Validation/refusal before enqueue must not consume this trigger.
+                if (!task || ensureState() !== state) return;
+            } else {
+                renderWorkbenchScope(workbenchRenderScopes.AUTOMATION, `自动总结提醒：已有 ${targets.length} 个未总结片段。`);
+                toastr.info('已达到自动总结条件，可以生成阶段总结草稿。', '剧情剪辑台');
+            }
+            state.automation.lastSignature = signature;
+            saveState();
+        } finally {
+            pendingAutoSummaries.delete(state);
         }
     }
     

@@ -167,7 +167,7 @@ export function buildFloorMemoryIndex({ messages = [], state = {} } = {}) {
     };
 }
 
-export function createMemoryOrchestrationPlan(index, state = {}, { busy = false } = {}) {
+export function createMemoryOrchestrationPlan(index, state = {}, { busy = false, stageMaterialCount } = {}) {
     const stats = index?.aggregates || {};
     const latest = index?.latest || null;
     const mode = state.turnSummary?.processingMode || 'both';
@@ -182,7 +182,7 @@ export function createMemoryOrchestrationPlan(index, state = {}, { busy = false 
         captureInline: !!latest && (!!state.inlineGeneration?.summaryEnabled || !!state.inlineGeneration?.tableEnabled),
         processLatestTurn: !busy && !!state.turnSummary?.auto && !turnAlreadyProcessed && needsSummary,
         processLatestTableOnly: !busy && !!state.turnSummary?.auto && !turnAlreadyProcessed && !needsSummary && needsTable,
-        runStageAutomation: !busy && !!state.automation?.enabled && stats.uncoveredStoryCount > 0,
+        runStageAutomation: !busy && !!state.automation?.enabled && (stageMaterialCount ?? stats.uncoveredStoryCount) > 0,
         balanceHiddenFloors: !!state.autoHideRecent?.enabled,
         refreshVectorIndex: !!state.vectorMemory?.enabled && !!state.vectorMemory?.dirty && state.vectorMemory?.autoIndex !== false,
     };
