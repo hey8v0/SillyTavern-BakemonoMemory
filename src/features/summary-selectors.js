@@ -1,5 +1,6 @@
 import {refreshMemoryLinks} from '../memory/story-state.js';
-import {resolveSummaryGraph} from '../memory/summary-provenance.js';
+import {resolveSummaryGraph, getSummaryStatus} from '../memory/summary-provenance.js';
+import {inspectSummaryMaterials} from '../summary/material-quality.js';
 export function createSummarySelectors({
     getState,
     getChat,
@@ -56,8 +57,10 @@ export function createSummarySelectors({
     function getUnsummarizedStoryBlocks({includeCovered = false} = {}) {
         const state = getState();
         if(getChat)refreshMemoryLinks(state,getChat());
-        const covered = resolveSummaryGraph(state).coveredStoryHashes;
-        return getStoryMaterialBlocks().filter(block => includeCovered || !covered.has(block.hash));
+        const graph = resolveSummaryGraph(state);
+        const covered = graph.coveredStoryHashes;
+        return getStoryMaterialBlocks().filter(block => (includeCovered || !covered.has(block.hash))
+            && !inspectSummaryMaterials([block]).invalid.length && getSummaryStatus(state, block, graph).valid);
     }
 
     function getStageMaterialOverview() {
@@ -65,8 +68,15 @@ export function createSummarySelectors({
         const materials = getStoryMaterialBlocks();
         const selected = new Set(materials.map(block => block.hash));
         const excludedCount = getStoryMaterialBlocks(stageSourceModes.MIXED).filter(block => !selected.has(block.hash)).length;
+        const graph = resolveSummaryGraph(getState());
+        const invalid = materials.filter(block => !graph.coveredStoryHashes.has(block.hash)).flatMap(block => {
+            const content = inspectSummaryMaterials([block]).invalid;
+            if (content.length) return content.map(label => label + '只有标题或没有有效剧情内容');
+            const status = getSummaryStatus(getState(), block, graph);
+            return status.valid ? [] : [status.reason];
+        });
         return { sourceMode: getStageSourceMode(), targets, totalCount: materials.length,
-            coveredCount: materials.length - targets.length, excludedCount };
+            coveredCount: materials.length - targets.length - invalid.length, excludedCount, invalid };
     }
 
     function getUnsummarizedStageBlocks({includeCovered = false} = {}) {

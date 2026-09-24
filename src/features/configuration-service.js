@@ -1,3 +1,5 @@
+import { applySummarySourceChoice } from './turn-trigger-policy.js';
+
 export function createConfigurationService({
     query,
     getState,
@@ -122,13 +124,11 @@ export function createConfigurationService({
     }
 
     function readTurnSummaryFieldsFromUi(state = getState()) {
-        if (!query('#bakemono-memory-turn-enabled').length) {
+        if (!query('#bakemono-memory-turn-source').length) {
             return state;
         }
         state.turnSummary = {
             ...state.turnSummary,
-            enabled: query('#bakemono-memory-turn-enabled').prop('checked'),
-            auto: query('#bakemono-memory-turn-auto').prop('checked'),
             triggerTiming: String(query('#bakemono-memory-turn-trigger-timing').val() || 'immediate') === 'next_user' ? 'next_user' : 'immediate',
             processingMode: String(query('#bakemono-memory-turn-processing-mode').val() || turnProcessingModes.BOTH),
             saveMode: query('#bakemono-memory-turn-auto-save').prop('checked') ? 'commit' : 'draft',
@@ -153,12 +153,12 @@ export function createConfigurationService({
         };
         state.inlineGeneration = {
             ...state.inlineGeneration,
-            summaryEnabled: query('#bakemono-memory-inline-summary-enabled').prop('checked'),
             tableEnabled: query('#bakemono-memory-inline-table-enabled').prop('checked'),
             hideTableEdit: query('#bakemono-memory-inline-hide-table').prop('checked'),
             summaryPrompt: String(query('#bakemono-memory-inline-summary-prompt').val() || defaultInlineSummaryPrompt),
             tablePrompt: String(query('#bakemono-memory-inline-table-prompt').val() || defaultInlineTablePrompt),
         };
+        applySummarySourceChoice(state, String(query('#bakemono-memory-turn-source').val() || 'legacy'));
         setTableSchemaScope(state.tableDatabase.schemaScope, state);
         return state;
     }

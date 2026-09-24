@@ -75,7 +75,7 @@ export function createReviewQueueEvents({
             saveState();
         });
         root.off('click.bakemonoTaskAction').on('click.bakemonoTaskAction', '[data-bakemono-task-action]', function () {
-            const taskId = this.closest('.bakemono-memory-task-item')?.dataset.taskId;
+            const taskId = this.dataset.taskId || this.closest('.bakemono-memory-task-item')?.dataset.taskId;
             if (!taskId) return;
             if (this.dataset.bakemonoTaskAction === 'retry') retryQueueTask(taskId);
             else if (this.dataset.bakemonoTaskAction === 'remove') removeQueueTask(taskId);

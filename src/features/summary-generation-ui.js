@@ -38,6 +38,7 @@ export function createSummaryGenerationUi({ documentRef, query, getState, getSta
                 button: '生成阶段总结',
                 code: `${uncoveredStoryCount} 条待整理`,
                 description: `${getStageSourceModeLabel(materials.sourceMode)} · ${materials.totalCount} 条材料 · ${coveredStoryCount} 条已收录`
+                    + (materials.invalid?.length ? ' · ' + materials.invalid.length + ' 条材料无效：' + materials.invalid.slice(0, 3).join('；') : '')
                     + (materials.excludedCount ? ` · ${materials.excludedCount} 条因来源设置未纳入` : ''),
                 progress: materials.totalCount ? Math.round((coveredStoryCount / materials.totalCount) * 100) : 0,
             },

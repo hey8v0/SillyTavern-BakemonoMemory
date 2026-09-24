@@ -1,3 +1,5 @@
+import { syncSummarySourceControls } from './turn-summary-ui.js';
+
 export function createTableManagementEvents({
     query,
     getState,
@@ -101,6 +103,9 @@ export function createTableManagementEvents({
     }
 
     function bindPromptEvents() {
+        query('#bakemono-memory-turn-source').off('change.bakemonoSummarySource').on('change.bakemonoSummarySource', function () {
+            syncSummarySourceControls(query, this.value);
+        });
         query('#bakemono-memory-apply-turn-settings').off('click').on('click', () => {
             const state = getState();
             readTurnSummaryFieldsFromUi(state);

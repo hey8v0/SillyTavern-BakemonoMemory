@@ -433,16 +433,34 @@ export function createTurnProcessingController({
         }
     
         const inputSnapshot=summarySources?.capture(blocks,state);
+        const sourceInputs = blocks.map(block => ({ ...block, isUser: !!getChat()[block.messageId]?.is_user,
+            variant: getChat()[block.messageId]?.swipe_id ?? getChat()[block.messageId]?.swipeId ?? '' }));
+        const signature = getHash(JSON.stringify(sourceInputs.map(input => [input.messageId, input.content, input.variant, input.isUser])));
+        if (!options.manual && state.turnSummary.lastRun?.status === 'failed' && state.turnSummary.lastRun.signature === signature) return;
+        const assertInputs = () => {
+            if (ensureState() !== state) throw new Error('摘要生成期间聊天已切换，本次结果未写入');
+            if (inputSnapshot) return summarySources.validate(inputSnapshot, state);
+            for (const input of sourceInputs) {
+                const message = getChat()[input.messageId];
+                const content = stripPostProcessNoise(filterTextByConfiguredTags(message?.mes || '', {
+                    includeTags: input.sourceIncludeTags, excludeTags: input.sourceExcludeTags,
+                }));
+                if (!message || !!message.is_user !== input.isUser || content !== input.content
+                    || (message.swipe_id ?? message.swipeId ?? '') !== input.variant)
+                    throw new Error('第 ' + input.messageId + ' 楼的摘要输入或回复版本已变化，请重新处理该楼');
+            }
+        };
         await runGeneration(options.manual ? '正在处理最新正文...' : '正在自动生成正文摘要草稿...', async () => {
-            const sourceMessage = getChat()[turn.assistantMessage.messageId];
-            const sourceText = sourceMessage?.mes, sourceSwipe = sourceMessage?.swipe_id;
+            state.turnSummary.lastRun = { status: 'running', messageId: turn.assistantMessage.messageId, signature };
+            try {
+            assertInputs();
             const summaryResult = await callGenerationModel({
                 prompt: buildTurnSummaryPrompt(blocks, state),
                 systemPrompt: await buildTurnReferenceSystemPrompt(blocks, 'summary', state),
             });
             if (ensureState() !== state) throw new Error('提取期间聊天已变化');
             const summaryText = stripRpProtocol(summaryResult);
-            if (getChat()[turn.assistantMessage.messageId] !== sourceMessage || sourceMessage?.mes !== sourceText || sourceMessage?.swipe_id !== sourceSwipe) throw new Error('摘要生成期间正文来源已变化');
+            assertInputs();
             const summaryContent = normalizeGeneratedBakemono(extractTaggedContent(summaryText, 'summaryDraft') || summaryText);
             if (!String(summaryContent).trim()) throw new Error('本轮未返回摘要内容');
             if (ensureState() !== state) throw new Error('提取期间聊天已变化');
@@ -488,11 +506,16 @@ export function createTurnProcessingController({
             }
     
             state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
+            state.turnSummary.lastRun = { status: 'done', messageId: turn.assistantMessage.messageId };
             saveState();
             updateInjectionFromSummaries();
             await saveChatConditional();
             const savedText = state.turnSummary.saveMode === 'commit' ? '已保存到长期记忆。' : '摘要进入草稿箱。';
             renderWorkbenchScope(workbenchRenderScopes.TABLES, options.manual ? `最新正文已处理，${savedText}` : `正文摘要已自动生成，${savedText}`);
+            } catch (error) {
+                if (ensureState() === state) state.turnSummary.lastRun = { status: 'failed', messageId: turn.assistantMessage.messageId, signature, error: error?.message || '摘要处理失败' };
+                throw error;
+            }
         }, options.manual ? '最新正文已处理' : '正文摘要草稿已生成', workbenchRenderScopes.TABLES);
     }
 

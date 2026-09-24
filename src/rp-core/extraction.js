@@ -25,9 +25,16 @@ function inspect(value, depth = 0) {
 export function parsePayload(value) {
     if (typeof value !== 'string' || value.length > 200000) throw new Error('事件响应过大或无效');
     const wrapped = /<rpEvents\b[^>]*>\s*([\s\S]*?)\s*<\/rpEvents\s*>/i.exec(value);
+    let json = (wrapped ? wrapped[1] : value).trim();
+    const fence = /^\x60\x60\x60(?:json)?\s*\n?([\s\S]*?)\n?\x60\x60\x60$/i.exec(json);
+    if (fence) json = fence[1].trim();
     let parsed;
-    try { parsed = JSON.parse(wrapped ? wrapped[1] : value); }
-    catch { throw new Error('剧情事件 JSON 格式不完整或无效；请重新生成完整事件块'); }
+    try { parsed = JSON.parse(json); }
+    catch (error) {
+        const position = /position (\d+)/i.exec(error.message)?.[1];
+        const line = position === undefined ? '' : '（第 ' + json.slice(0, Number(position)).split('\n').length + ' 行附近）';
+        throw Object.assign(new Error('剧情事件 JSON 格式无效' + line + '；本次未收录，已有记录保留，可在剧情状态中重试提取'), { code: 'invalid_json' });
+    }
     inspect(parsed);
     if (!parsed || Array.isArray(parsed) || ![1, 2].includes(parsed.version)) throw new Error('不支持的事件协议版本');
     if (parsed.version === 2 && (!Array.isArray(parsed.events) || parsed.state !== undefined)) throw new Error('版本 2 使用 events 逐项事件，不接受整组 state 覆盖');

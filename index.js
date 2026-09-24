@@ -83,7 +83,7 @@ import { createInjectionPreview } from './src/features/injection-preview.js';
 import { createWorkflowOverviewModel } from './src/features/workflow-overview-model.js';
 import { createOverviewWorkbenchUi } from './src/features/overview-workbench-ui.js';
 import { createSummaryGenerationUi } from './src/features/summary-generation-ui.js';
-import { createTurnSummaryUi } from './src/features/turn-summary-ui.js';
+import { createTurnSummaryUi, syncSummarySourceControls } from './src/features/turn-summary-ui.js';
 import { createHubAutomationUi } from './src/features/hub-automation-ui.js';
 import { createSummaryBrowserUi } from './src/features/summary-browser-ui.js';
 import { createSummaryBrowserEvents } from './src/features/summary-browser-events.js';
@@ -644,6 +644,7 @@ const {
     isRawSourceBlock,
 } = summarySelectors;
 const summaryGenerationController = createSummaryGenerationController({
+    getStageMaterialOverview,
     summarySources,
     getIsBusy: () => isBusy,
     scanBlocks: options => scanBakemonoBlocks(options),
@@ -1678,6 +1679,8 @@ const turnSummaryUi = createTurnSummaryUi({
 const { render: renderTurnSummaryPanel } = turnSummaryUi;
 
 const hubAutomationUi = createHubAutomationUi({
+    getAutoStageTargets,
+    getIsBusy: () => isBusy,
     documentRef: document,
     query: $,
     getState: ensureState,
@@ -2128,7 +2131,10 @@ const reviewQueueEvents = createReviewQueueEvents({
 });
 
 workbenchRenderer = createWorkbenchRenderer({
-    afterRender: (tab, state) => pageSettings?.render(tab, state),
+    afterRender: (tab, state) => {
+        pageSettings?.render(tab, state);
+        if (tab === 'turn-summary' || tab === 'tables') syncSummarySourceControls($, $('#bakemono-memory-turn-source').val());
+    },
     renderRpState: state => rpStateUi.render(state),
     documentRef: document,
     globalRef: globalThis,

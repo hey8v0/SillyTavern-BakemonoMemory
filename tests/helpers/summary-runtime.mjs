@@ -12,6 +12,7 @@ import * as meta from '../../src/summary/source-metadata.js';
 import * as levels from '../../src/summary/levels.js';
 import {buildPersistedChatState} from '../../src/core/persisted-chat-state.js';
 import * as sourceModule from '../../src/features/summary-source-service.js';
+import {getSortedTargetBlocks} from '../../src/summary/target-selection.js';
 const no=()=>{}, types={STORY:'story',STAGE:'stage',EPIC:'epic'}, modes={SUMMARIES:'summaries',BACKFILL:'backfill',RAW:'raw',AUTO:'auto',MIXED:'mixed'};
 const statuses=Object.fromEntries(['source','covered','saved','injected','archived','draft','stale'].map(k=>[k.toUpperCase(),k]));
 export function fixture(n=201){
@@ -22,7 +23,7 @@ export function fixture(n=201){
     const model=createSummaryMemoryModel({blockTypes:types,memoryStrategies:{GENERIC:'generic'},memoryRecordStatuses:statuses,dedupeByHash,...meta,...levels,unique,getBlockTitle:(_,f)=>f,getKindLabel:x=>x,getDefaultDraftTitle:x=>x});
     const injection=createInjectionService({ensureState:getState,getChat:()=>chat,...model,...levels,memoryStrategies:{GENERIC:'generic'},defaultInjectionTemplate:'{{memory}}'});
     const content=createContentBlockService({getState,...meta});
-    const selectors=createSummarySelectors({getState,getChat:()=>chat,getBlocksByType:content.getBlocksByType,blockTypes:types,stageSourceModes:modes,workflowModes:{GENERIC:'generic'},dedupeByHash,summaryToBlock:model.summaryToBlock});
+    const selectors=createSummarySelectors({getState,getChat:()=>chat,getBlocksByType:content.getBlocksByType,blockTypes:types,stageSourceModes:modes,workflowModes:{GENERIC:'generic'},dedupeByHash,summaryToBlock:model.summaryToBlock,getSortedTargetBlocks,defaultAutomation:{floorInterval:10,charInterval:12000}});
     const toast={success:no,error:no,warning:no,info:no,clear:no};
     let failure=false, persisted=null, result='', calls=0, onCall=null, onSave=null;
     const saveState=()=>{refresh();return {};};

@@ -341,12 +341,14 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         if (getState() !== expectedState) throw new Error('提取聊天已变化');
         const core = expectedState.rpCore;
         assertLedgerVersion(core);
-        if (core.extractionJobs?.some(item => item.sourceKey === job.sourceKey && item.sourceStamp === job.sourceStamp && item.status === job.status)) return { status: 'unchanged' };
+        if (core.extractionJobs?.some(item => item.sourceKey === job.sourceKey && item.sourceStamp === job.sourceStamp && item.status === job.status
+            && item.protocolHash === job.protocolHash && item.errorClass === job.errorClass)) return { status: 'unchanged' };
         if (!job || typeof job.sourceKey !== 'string' || typeof job.sourceRevision !== 'string'
             || !['running', 'done', 'failed', 'paused'].includes(job.status)) throw new Error('提取任务无效');
         const next = structuredClone(core);
         next.extractionJobs = [...(next.extractionJobs || []).filter(item => item.sourceKey !== job.sourceKey),
-            { sourceKey: job.sourceKey, sourceRevision: job.sourceRevision, ...(typeof job.sourceStamp === 'string' ? { sourceStamp: job.sourceStamp } : {}), status: job.status, ...(Number.isSafeInteger(job.sourceFloor) ? { sourceFloor: job.sourceFloor } : {}), ...(job.errorClass ? { errorClass: job.errorClass } : {}), recordedAt: new Date().toISOString() }];
+            { sourceKey: job.sourceKey, sourceRevision: job.sourceRevision, ...(typeof job.sourceStamp === 'string' ? { sourceStamp: job.sourceStamp } : {}),
+                ...(typeof job.protocolHash === 'string' ? { protocolHash: job.protocolHash } : {}), status: job.status, ...(Number.isSafeInteger(job.sourceFloor) ? { sourceFloor: job.sourceFloor } : {}), ...(job.errorClass ? { errorClass: job.errorClass } : {}), recordedAt: new Date().toISOString() }];
         next.revision++;
         return transactions.commit(expectedState, core.revision, next);
     }

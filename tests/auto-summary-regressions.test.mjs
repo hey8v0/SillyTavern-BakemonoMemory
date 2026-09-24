@@ -29,7 +29,7 @@ function fixture() {
         dedupeByHash, summaryToBlock: value => value, getSortedTargetBlocks: blocks => [...blocks].sort((a, b) => a.messageId - b.messageId) });
     let calls = 0, saves = 0, reminders = 0;
     let generate = async () => { calls++; return { id: 'queued' }; };
-    const messages = [];
+    const messages = [], statuses = [];
     const toastr = { info: value => { messages.push(value); reminders++; }, warning: value => messages.push(value) };
     const orchestrator = createMemoryOrchestrator({ ensureState: getState, isBusy: () => false, scanBakemonoBlocks: noop,
         ...selectors, getHash, saveState: () => { saves++; }, defaultAutomation: defaults, toastr,
@@ -39,8 +39,8 @@ function fixture() {
             messages: state.blocks.map(b => ({ mes: b.content })) }), renderGenerationPrompt: (_p, targets) => targets.map(b => b.content).join('\n'),
         getSourceMessageIdsFromBlocks: targets => targets.map(b => b.messageId), formatSourceRange: ids => ids.join('-'), getSourceStart: ids => ids[0], getSourceEnd: ids => ids.at(-1),
         enqueueSummaryTask: task => { const queued = { ...task, id: `task${state.taskQueue.length}`, status: 'queued' }; state.taskQueue.push(queued); return queued; },
-        blockTypes, toastr, renderWorkbenchScope: noop, workbenchRenderScopes });
-    return { get state() { return state; }, selectors, orchestrator, controller, messages,
+        blockTypes, toastr, renderWorkbenchScope: (_scope, text) => statuses.push(text), workbenchRenderScopes });
+    return { get state() { return state; }, selectors, orchestrator, controller, messages, statuses,
         setGenerate: fn => { generate = fn; }, switchChat: next => { state = next; }, counts: () => ({ calls, saves, reminders }) };
 }
 
@@ -168,17 +168,17 @@ test('disabled automation, unmet threshold and genuine continuity gaps remain bl
     await f.orchestrator.maybeRunAutoSummary(); assert.equal(f.counts().saves, 0);
     f.state.automation.enabled = true; f.state.automation.floorInterval = 11;
     await f.orchestrator.maybeRunAutoSummary(); assert.equal(f.counts().saves, 0);
-    f.state.automation.floorInterval = 5; f.state.stageSourceMode = 'backfill';
+    f.state.automation.floorInterval = 5; f.state.automation.mode = 'draft'; f.state.stageSourceMode = 'backfill';
     f.state.storySummaries = f.state.blocks.filter(b => b.messageId !== 1);
     f.state.blocks = f.state.blocks.map(b => ({ ...b, sourceKind: 'raw' }));
     await f.controller.generateStageDraft({ automatic: true });
     assert.equal(f.state.taskQueue.length, 0);
-    assert.match(f.messages.at(-1), /补齐缺失摘要/);
+    assert.match(f.statuses.at(-1), /缺少摘要.*第 1 楼/);
 });
 
 test('stage generator returns the queued task, and does not duplicate pending or failed automatic work', async () => {
     for (const status of ['queued', 'running', 'failed']) {
-        const f = fixture(); const task = await f.controller.generateStageDraft({ automatic: true });
+        const f = fixture(); f.state.automation.mode = 'draft'; const task = await f.controller.generateStageDraft({ automatic: true });
         assert.equal(task, f.state.taskQueue[0]);
         task.status = status;
         await f.controller.generateStageDraft({ automatic: true });
@@ -187,7 +187,7 @@ test('stage generator returns the queued task, and does not duplicate pending or
 });
 
 test('new sources do not regenerate the first batch while its draft is awaiting save', async () => {
-    const f = fixture(); const task = await f.controller.generateStageDraft({ automatic: true });
+    const f = fixture(); f.state.automation.mode = 'draft'; const task = await f.controller.generateStageDraft({ automatic: true });
     task.status = 'done'; f.state.drafts.push({ kind: 'stage', sourceHashes: task.sourceHashes });
     f.state.blocks.push(block(10));
     await f.controller.generateStageDraft({ automatic: true });

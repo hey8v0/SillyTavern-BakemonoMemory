@@ -103,7 +103,13 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
             const progress = service.progress?.(state);
             if (progress?.missingCount) maintenanceNotices.insertAdjacentHTML('beforeend', '<small class="rp-progress">从第 ' + progress.start + ' 楼开始 · ' + (progress.latest == null ? '尚未完成维护' : '最近完成第 ' + progress.latest + ' 楼') + (progress.missingCount ? ' · 未处理 ' + progress.missingCount + ' 楼（' + progress.missingFrom + '–' + progress.missingTo + '）' : '') + '</small>');
             const failed = core.extractionJobs?.filter(job => job.status !== 'done') || [];
-            if (failed.length) maintenanceNotices.insertAdjacentHTML('beforeend', '<p role="status">有 ' + failed.length + ' 轮未完成维护，可重新提取最新正文。</p>');
+            if (failed.length) {
+                const labels = { missing: '未输出事件块', incomplete: '事件块未输出完整', invalid_json: '事件 JSON 格式无效',
+                    invalid_or_unsaved: '事件参数无效或保存未完成' };
+                maintenanceNotices.insertAdjacentHTML('beforeend', '<p role="status">' + failed.slice(-3).map(job =>
+                    (Number.isInteger(job.sourceFloor) ? '第 ' + esc(job.sourceFloor) + ' 楼' : '来源楼层未记录') + '：'
+                    + esc(labels[job.errorClass] || (job.status === 'running' ? '正在提取' : '提取未完成'))).join('；') + '</p>');
+            }
             const compiled = getContextPreview?.(state) || flow.context?.(state);
             if (compiled?.warning) maintenanceNotices.insertAdjacentHTML('beforeend', '<p role="alert">' + esc(compiled.warning) + '</p>');
 

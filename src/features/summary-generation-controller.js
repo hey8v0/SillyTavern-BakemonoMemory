@@ -1,27 +1,12 @@
 import { storyTimeContext } from '../memory/story-state.js';
 import {resolveSummaryGraph, getSummaryStatus} from '../memory/summary-provenance.js';
+import { inspectSummaryMaterials } from '../summary/material-quality.js';
+import { stageAutomationStatus } from '../summary/automation-status.js';
+export { inspectSummaryMaterials } from '../summary/material-quality.js';
 
 export function selectEpicSourcePool(pools, mode = 'auto') {
     if (['stage', 'epic', 'story'].includes(mode)) return pools[mode] || [];
     return pools.stage?.length ? pools.stage : pools.epic?.length ? pools.epic : pools.story || [];
-}
-
-export function inspectSummaryMaterials(blocks = []) {
-    const invalid = [];
-    let textLength = 0;
-    for (const [index, block] of blocks.entries()) {
-        const raw = String(block?.content || '');
-        let text = raw.replace(/<(script|style|thinking)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
-        // HTML disclosure headings are not story content. A custom <summary> body may be.
-        if (/<details\b/i.test(text)) text = text.replace(/<summary\b[^>]*>[\s\S]*?<\/summary>/gi, '');
-        text = text.replace(/<[^>]*>/g, '').replace(/&(?:nbsp|#160|#xA0);/gi, ' ').trim();
-        const meaningful = text.replace(/[\s\p{P}\p{S}]/gu, '');
-        if (!meaningful || /^(?:剧情摘要|摘要|阶段总结|总结|剧集终了点击回看)$/.test(meaningful)) {
-            invalid.push(Number.isFinite(block?.messageId) && block.messageId < Number.MAX_SAFE_INTEGER ? `第 ${block.messageId} 楼` : `第 ${index + 1} 条材料`);
-        }
-        textLength += text.length;
-    }
-    return { count: blocks.length, textLength, invalid };
 }
 
 function validateSummaryMaterials(blocks) {
@@ -44,6 +29,7 @@ export function createSummaryGenerationController({
     getState,
     summarySources,
     getUnsummarizedStoryBlocks,
+    getStageMaterialOverview,
     getAutoStageTargets,
     getUnsummarizedStageBlocks,
     getUnsummarizedMultiSummaryBlocks,
@@ -148,6 +134,16 @@ export function createSummaryGenerationController({
 
         scanBlocks({ persist: false });
         const state = getState();
+        if (options.automatic && getStageMaterialOverview) {
+            const materials = getStageMaterialOverview();
+            if (!materials.targets.length && !materials.invalid?.length) { reportNoStageMaterials(state); return; }
+            const status = stageAutomationStatus(state, materials, { batch: getAutoStageTargets(materials.targets),
+                records: getFloorMemoryIndex?.(state)?.records || [], busy: getIsBusy() });
+            if (status.code !== 'ready') {
+                renderWorkbenchScope(workbenchRenderScopes.SUMMARY, [status.title, status.detail].filter(Boolean).join('：'));
+                return;
+            }
+        }
         const allTargets = getUnsummarizedStoryBlocks({includeCovered:!options.automatic});
         if (!allTargets.length) {
             reportNoStageMaterials(state);

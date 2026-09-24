@@ -1,3 +1,5 @@
+import { stageAutomationStatus } from '../summary/automation-status.js';
+
 export function createHubAutomationUi({
     documentRef,
     query,
@@ -10,6 +12,8 @@ export function createHubAutomationUi({
     getSelectedPromptPresetId,
     getWorkflowModeLabel,
     getStageMaterialOverview,
+    getAutoStageTargets = targets => targets,
+    getIsBusy = () => false,
     getStageSourceModeLabel,
     defaultAutomation,
     defaultScanRules,
@@ -74,27 +78,35 @@ export function createHubAutomationUi({
         const threshold = triggerType === 'chars'
             ? Math.max(100, Number(state.automation.charInterval || defaultAutomation.charInterval))
             : Math.max(1, Number(state.automation.floorInterval || defaultAutomation.floorInterval));
-        const remaining = Math.max(0, threshold - currentValue);
         const progress = Math.max(0, Math.min(100, Math.round((currentValue / threshold) * 100)));
         const enabled = !!state.automation.enabled;
-        const ready = enabled && currentValue >= threshold;
+        const runtime = stageAutomationStatus(state, materials, { batch: getAutoStageTargets(targets),
+            records: getCurrentFloorMemoryIndex?.(state)?.records || [], busy: getIsBusy() });
+        const ready = runtime.code === 'ready';
         const mode = state.automation.mode || defaultAutomation.mode;
         const modeLabel = mode === 'commit_hide' ? '自动保存' : mode === 'draft' ? '生成草稿' : '仅提醒';
         const triggerLabel = triggerType === 'chars' ? '字数' : '片段';
-        const unit = triggerType === 'chars' ? '字' : ['raw', 'mixed', 'auto'].includes(materials.sourceMode) ? '条材料' : '条摘要';
-        const title = !enabled ? '等待开启自动规则' : ready ? '已达到触发条件' : `还差 ${remaining.toLocaleString()} ${unit}`;
+        const title = runtime.title;
         const sourceDescription = `${getStageSourceModeLabel(materials.sourceMode)} · ${targets.length} 条待整理 · ${materials.coveredCount} 条已收录`
             + (materials.excludedCount ? ` · ${materials.excludedCount} 条因来源设置未纳入` : '');
-        query('#bakemono-memory-automation-runtime-label').text(enabled ? '自动总结运行中' : '自动总结未开启');
+        query('#bakemono-memory-automation-runtime-label').text(runtime.code === 'running' ? '自动总结运行中' : enabled ? '自动总结已开启' : '自动总结未开启');
         query('#bakemono-memory-automation-mode-badge').text(modeLabel);
         query('#bakemono-memory-automation-runtime-title').text(title);
-        query('#bakemono-memory-automation-runtime-description').text(sourceDescription);
+        query('#bakemono-memory-automation-runtime-description').text([runtime.detail, sourceDescription].filter(Boolean).join(' · '));
+        const action = documentRef.getElementById?.('bakemono-memory-automation-next-action');
+        if (action) {
+            action.hidden = !runtime.action;
+            for (const key of ['bakemonoTab', 'bakemonoTaskAction', 'taskId']) delete action.dataset[key];
+            if (runtime.action?.tab) action.dataset.bakemonoTab = runtime.action.tab;
+            if (runtime.action?.taskId) { action.dataset.bakemonoTaskAction = 'retry'; action.dataset.taskId = runtime.action.taskId; }
+            action.textContent = runtime.action?.label || '';
+        }
         query('#bakemono-memory-automation-progress-bar').css('width', `${enabled ? progress : 0}%`);
         query('#bakemono-memory-automation-rule-status').text(enabled ? `按${triggerLabel} · ${currentValue.toLocaleString()} / ${threshold.toLocaleString()}` : '尚未启用');
         query('#bakemono-memory-automation-floor-hint').text(`每 ${Number(state.automation.floorInterval || defaultAutomation.floorInterval).toLocaleString()} 个未整理片段`);
         query('#bakemono-memory-automation-char-hint').text(`每 ${Number(state.automation.charInterval || defaultAutomation.charInterval).toLocaleString()} 字`);
         query('#bakemono-memory-automation-preserve-hint').text(`最近 ${Number(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent).toLocaleString()} 楼`);
-        query('.bakemono-memory-automation-hero').toggleClass('is-running', enabled).toggleClass('is-ready', ready);
+        query('.bakemono-memory-automation-hero').toggleClass('is-running', runtime.code === 'running').toggleClass('is-ready', ready);
         documentRef.querySelectorAll('[data-bakemono-auto-rule]').forEach(row => {
             row.hidden = row.dataset.bakemonoAutoRule !== triggerType;
         });

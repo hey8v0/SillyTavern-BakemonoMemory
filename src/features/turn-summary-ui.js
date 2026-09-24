@@ -1,3 +1,10 @@
+import { summarySourceChoice } from './turn-trigger-policy.js';
+
+export function syncSummarySourceControls(query, choice) {
+    query('#bakemono-memory-turn-trigger-timing').prop('disabled', !['independent', 'legacy'].includes(choice));
+    query('#bakemono-memory-turn-auto-save').prop('disabled', !['independent', 'manual', 'legacy'].includes(choice));
+}
+
 export function createTurnSummaryUi({
     documentRef,
     query,
@@ -25,8 +32,8 @@ export function createTurnSummaryUi({
     }
 
     function render(state = getState()) {
-        query('#bakemono-memory-turn-enabled').prop('checked', !!state.turnSummary.enabled);
-        query('#bakemono-memory-turn-auto').prop('checked', !!state.turnSummary.auto);
+        query('#bakemono-memory-turn-source').val(summarySourceChoice(state));
+        syncSummarySourceControls(query, summarySourceChoice(state));
         query('#bakemono-memory-turn-trigger-timing').val(state.turnSummary.triggerTiming === 'next_user' ? 'next_user' : 'immediate');
         query('#bakemono-memory-turn-processing-mode').val(state.turnSummary.processingMode || turnProcessingModes.BOTH);
         query('#bakemono-memory-turn-auto-save').prop('checked', state.turnSummary.saveMode === 'commit');
@@ -55,7 +62,6 @@ export function createTurnSummaryUi({
 
         query('#bakemono-memory-turn-prompt').val(state.turnSummary.prompt || defaultTurnSummaryPrompt);
         query('#bakemono-memory-table-prompt').val(state.turnSummary.tablePrompt || defaultTableEditPrompt);
-        query('#bakemono-memory-inline-summary-enabled').prop('checked', !!state.inlineGeneration.summaryEnabled);
         query('#bakemono-memory-inline-table-enabled').prop('checked', !!state.inlineGeneration.tableEnabled);
         query('#bakemono-memory-inline-hide-table').prop('checked', state.inlineGeneration.hideTableEdit !== false);
         query('#bakemono-memory-inline-summary-prompt').val(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt);
@@ -69,27 +75,31 @@ export function createTurnSummaryUi({
         const turnAuto = !!state.turnSummary.auto;
         const tableEnabled = !!state.tableDatabase.enabled;
         const delayed = state.turnSummary.triggerTiming === 'next_user';
-        const runtimeLabel = !turnEnabled ? '自动记忆未开启' : turnAuto ? delayed ? '自动记忆运行中 · 延迟一轮' : '自动记忆运行中 · 即时' : '自动记忆已启用';
-        const runtimeTitle = hasProcessedTurn ? `第 ${lastId} 楼已处理` : '等待第一轮正文';
+        const lastRun = state.turnSummary.lastRun;
+        const runtimeLabel = !turnEnabled ? state.inlineGeneration.summaryEnabled ? '随正文生成摘要' : '读取已有摘要'
+            : turnAuto ? delayed ? '自动处理 · 下一轮开始时' : '自动处理 · 回复结束后' : '仅手动处理';
+        const runtimeTitle = lastRun?.status === 'running' ? '正在生成第 ' + lastRun.messageId + ' 楼摘要'
+            : lastRun?.status === 'failed' ? '第 ' + lastRun.messageId + ' 楼摘要失败'
+            : hasProcessedTurn ? `第 ${lastId} 楼已处理` : '等待正文';
         const summaryDestination = state.turnSummary.saveMode === 'commit' ? '已直接写入长期记忆' : '摘要会先进入待确认';
         const tableDestination = tableEnabled
             ? tableDraftOperationCount ? `表格还有 ${tableDraftOperationCount} 处差异等待确认` : '表格没有待处理差异'
             : '本轮未启用表格更新';
         query('#bakemono-memory-turn-runtime-label').text(runtimeLabel);
         query('#bakemono-memory-turn-runtime-title').text(runtimeTitle);
-        query('#bakemono-memory-turn-status').text(hasProcessedTurn
+        query('#bakemono-memory-turn-status').text(lastRun?.status === 'failed' ? lastRun.error : turnEnabled && !turnAuto ? '点击“处理最新正文”时执行。' : hasProcessedTurn
             ? `${summaryDestination}；${tableDestination}。`
             : turnEnabled
                 ? delayed ? '下一轮 user 消息发出后，会处理上一条已完成回复。' : '下一次正文结束后会立即按当前设置生成摘要。'
-                : '开启后，每轮剧情会先生成草稿，再由你确认是否保存。');
-        query('.bakemono-memory-turn-status-hero').toggleClass('is-running', turnEnabled && turnAuto);
+                : '从回复中的摘要标签读取。');
+        query('.bakemono-memory-turn-status-hero').toggleClass('is-running', lastRun?.status === 'running');
 
         setFlowStep('#bakemono-memory-turn-flow-read', hasProcessedTurn ? 'done' : turnEnabled ? 'current' : 'waiting');
         setFlowStep('#bakemono-memory-turn-flow-summary', hasProcessedTurn && state.turnSummary.processingMode !== turnProcessingModes.TABLE ? 'done' : 'waiting');
         setFlowStep('#bakemono-memory-turn-flow-table', tableDraftOperationCount ? 'current' : hasProcessedTurn && tableEnabled ? 'done' : 'waiting');
         query('#bakemono-memory-turn-flow-status').text(tableDraftOperationCount
             ? `待确认 ${tableDraftOperationCount} 处`
-            : hasProcessedTurn ? '本轮已完成' : turnEnabled ? '等待下一轮' : '尚未开启');
+            : lastRun?.status === 'failed' ? '处理失败' : hasProcessedTurn ? '本轮已完成' : turnEnabled ? turnAuto ? '等待下一轮' : '仅手动处理' : '读取正文摘要');
         renderTableList(state);
         renderTableEditDrafts(state);
     }

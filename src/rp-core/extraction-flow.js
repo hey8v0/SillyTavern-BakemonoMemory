@@ -12,7 +12,7 @@ export function stripRpProtocol(value) {
 export function createRpExtractionFlow({ getState, getChat, service, makeSourceId, callGenerationModel,
     getPrompt = () => RP_EVENT_GUIDE, getReferenceContext = async () => '',
     runGeneration = async (_label, run) => run(), isBusy = () => false, onBackgroundResult = () => {}, onBackgroundError = () => {}, delay = setTimeout, cancelDelay = clearTimeout }) {
-    let independentRun = null, nextTask = 0, captureTimer = null;
+    let independentRun = null, inlineRun = false, nextTask = 0, captureTimer = null;
     function channel(state = getState()) {
         if (!state.rpCore?.settings?.enabled || state.rpCore.settings.automatic === false) return null;
         try { assertLedgerVersion(state.rpCore); } catch { return null; }
@@ -67,7 +67,13 @@ export function createRpExtractionFlow({ getState, getChat, service, makeSourceI
     }
     const latestFloor = () => getChat().findLastIndex(message => message && !message.is_user && !message.is_system);
     const delayed = state => state.rpCore.settings.triggerTiming === 'next_user' && !getChat().findLast(message => message && !message.is_system)?.is_user;
-    async function captureInline({ detailed = false } = {}) {
+    async function captureInline(options = {}) {
+        if (inlineRun) return options.detailed ? { status: 'busy' } : false;
+        inlineRun = true;
+        try { return await captureInlineOnce(options); }
+        finally { inlineRun = false; }
+    }
+    async function captureInlineOnce({ detailed = false } = {}) {
         await service.migrate?.();
         const report = result => detailed ? result : result.status === 'processed', state = getState();
         if (channel(state) !== 'inline') return report({ status: 'inactive' });
@@ -76,15 +82,20 @@ export function createRpExtractionFlow({ getState, getChat, service, makeSourceI
         const floor = latestFloor();
         if (floor < (state.rpCore?.baseline.floor ?? 0)) return report({ status: 'missing' });
         const ticket = capture(floor, 'inline');
+        const response = getChat()[floor].mes;
+        const protocolHash = evidenceHash((String(response).match(/<rpEvents\b[^>]*>[\s\S]*?(?:<\/rpEvents\s*>|$)/gi) || []).join('\n'));
+        const previous = state.rpCore.extractionJobs?.find(job => job.sourceKey === ticket.source.messageId + '|' + ticket.source.variantId
+            && job.sourceStamp === sourceStamp(ticket.source) && job.protocolHash === protocolHash && job.status === 'failed');
+        if (previous) return report({ status: 'failed', errorClass: previous.errorClass });
         try {
-            const result = await consume(ticket, getChat()[floor].mes);
+            const result = await consume(ticket, response);
             if (['missing', 'incomplete'].includes(result.status)) await service.setExtractionJob({ sourceKey: ticket.source.messageId + '|' + ticket.source.variantId,
-                sourceRevision: ticket.source.revision, sourceStamp: sourceStamp(ticket.source), sourceFloor: floor, status: 'failed', errorClass: result.status }, state);
+                sourceRevision: ticket.source.revision, sourceStamp: sourceStamp(ticket.source), sourceFloor: floor, protocolHash, status: 'failed', errorClass: result.status }, state);
             return report(result);
         } catch (error) {
             if (getState() === state && state.rpCore?.revision === ticket.revision) await service.setExtractionJob({
                 sourceKey: ticket.source.messageId + '|' + ticket.source.variantId, sourceRevision: ticket.source.revision,
-                sourceStamp: sourceStamp(ticket.source), sourceFloor: floor, status: 'failed', errorClass: 'invalid_or_unsaved',
+                sourceStamp: sourceStamp(ticket.source), sourceFloor: floor, protocolHash, status: 'failed', errorClass: error.code === 'invalid_json' ? 'invalid_json' : 'invalid_or_unsaved',
             }, state).catch(() => {});
             throw error;
         }

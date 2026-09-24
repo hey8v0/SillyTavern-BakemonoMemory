@@ -2,7 +2,7 @@
 
 ## 接手约定
 
-- 当前版本 1.8.4，分支 main，远端 hey8v0/SillyTavern-BakemonoMemory。先查 Git，不从旧对话推断。
+- 当前版本 1.8.5，分支 main，远端 hey8v0/SillyTavern-BakemonoMemory。先查 Git，不从旧对话推断。
 - 不覆盖用户修改、不强推；提交推送以当次授权为准。不默认打开浏览器、调用模型或同步本机酒馆。
 - 当前源码在本目录；任务工作区与酒馆安装目录不是源码。本次离线依赖在任务工作区 .ui-validation，Node 24，无新增运行框架。
 - 使用见 README；验收映射、命令及余项见 TESTING_v1.7.0.md；实际提示词见 RP_EVENTS_PROMPT.md。本文不追加流水账，历史查 Git。
@@ -49,7 +49,8 @@
 - 恢复副本只在新载入核对到修订后清理，focus/切页不算落盘证明；轻量恢复不能丢正式摘要、账本、表格与决定。
 - 日志/诊断白名单，不加正文、密钥、接口地址或原始模型输出。必要状态保持可枚举、可序列化。
 - 摘要有效性/覆盖统一走 memory/summary-provenance；持久覆盖数组不是当前事实。新摘要 UUID 与 contentHash 分离，provenance 固定实际输入，编辑输出不能重绑来源。旧档迁移须预览/备份，不放行不明来源；验收见 TESTING_SUMMARY_COVERAGE.md。
-- 自动总结选材、编排与进度共用 summary-selectors；触发标记包含规则并只在入队后写入，同批队列/待保存草稿防重。DRAFTS/SUMMARY/SCAN 刷新进度但不回填设置表单；回归 tests/auto-summary-regressions.test.mjs、offline/auto-summary-ui.mjs。
+- 自动总结选材、编排与进度共用 summary-selectors、summary/material-quality、summary/automation-status；触发标记只在入队后写入，同批队列/草稿防重。来源校验比较实际输入，不比较消息对象身份。DRAFTS/SUMMARY/SCAN 刷新进度不回填表单；回归 tests/auto-summary-regressions.test.mjs、automation-recovery.test.mjs 和对应 offline UI。
+- 摘要来源选择统一写入旧配置字段，保留旧手动及组合方式；运行错误不进全局预设。RP 失败去重绑定来源与协议哈希，修正输出可重读；独立调用失败仍需手动重试。
 
 ## 发布与后续
 

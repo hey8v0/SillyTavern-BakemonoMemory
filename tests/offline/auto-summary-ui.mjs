@@ -5,6 +5,7 @@ import { createSummaryGenerationUi } from '../../src/features/summary-generation
 import { createHubAutomationUi } from '../../src/features/hub-automation-ui.js';
 import { createWorkbenchRenderer } from '../../src/features/workbench-renderer.js';
 import { dedupeByHash } from '../../src/shared/collections.js';
+import { getSortedTargetBlocks } from '../../src/summary/target-selection.js';
 const { parseHTML } = await import(process.env.BAKEMONO_TEST_LINKEDOM || 'linkedom');
 const { document } = parseHTML(await readFile(new URL('../../settings.html', import.meta.url), 'utf8'));
 const all = Array.from({ length: 10 }, (_, i) => ({ hash: `s${i}`, type: 'story', sourceKind: 'tag', content: '摘要正文' }));
@@ -12,7 +13,7 @@ const state = { storySummaries: all.slice(0, 7), blocks: all.slice(7), stageSumm
     stageSourceMode: 'backfill', automation: { enabled: true, mode: 'draft', triggerType: 'count', floorInterval: 10 } };
 const selectors = createSummarySelectors({ getState: () => state, getBlocksByType: () => state.blocks,
     blockTypes: { STORY: 'story' }, stageSourceModes: { BACKFILL: 'backfill', SUMMARIES: 'summaries', MIXED: 'mixed' },
-    workflowModes: {}, dedupeByHash, summaryToBlock: value => value });
+    workflowModes: {}, dedupeByHash, summaryToBlock: value => value, getSortedTargetBlocks, defaultAutomation: { floorInterval: 10 } });
 const query = selector => ({
     text(value) { document.querySelectorAll(selector).forEach(node => { node.textContent = String(value); }); return this; },
     css(key, value) { document.querySelectorAll(selector).forEach(node => { node.style[key] = value; }); return this; },
