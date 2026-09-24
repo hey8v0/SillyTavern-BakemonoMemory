@@ -146,6 +146,39 @@ export function getSummaryStatus(state,item,graph=resolveSummaryGraph(state)) {
     const coveredBy=node ? graph.coveredBy.get(node.key)||[] : [];
     return {...status,coveredBy,reason:!status.valid?status.reason:coveredBy.length?'已由 '+coveredBy.map(key=>graph.byKey.get(key)?.title||'上层总结').join('、')+' 覆盖，原记录保留':status.reason};
 }
+// Resolve current floors from stable sources, never from an inclusive start/end range.
+export function summarySourceFloors(state, item, graph = resolveSummaryGraph(state)) {
+    const floors = new Set(), seen = new Set();
+    const add = value => { if (Number.isInteger(value) && value >= 0 && value < Number.MAX_SAFE_INTEGER) floors.add(value); };
+    const visit = node => {
+        if (!node || seen.has(node)) return;
+        seen.add(node);
+        if (node.provenance) {
+            for (const input of node.provenance.inputs || []) {
+                if (input.kind === 'summary') visit(graph.byKey.get(input.id));
+                else if (input.kind === 'body' || input.kind === 'tag') {
+                    add(state.chronicle?.sources?.find(source => source.id === input.sourceId)?.floor ?? input.floor);
+                } else if (input.kind === 'legacy') add(input.ref?.floor);
+            }
+        } else {
+            const link = state.chronicle?.links?.[node.hash];
+            if (link) {
+                for (const ref of link.refs || []) add(ref.floor);
+                for (const child of graph.edges.get(node.key) || []) visit(child);
+            } else {
+                add(node.messageId);
+                for (const id of node.sourceMessageIds || []) add(id);
+                for (const hash of [...(node.sourceHashes || []), ...(node.sourceStageHashes || [])]) {
+                    const matches = graph.byHash.get(hash) || [];
+                    if (matches.length === 1) visit(matches[0]);
+                }
+            }
+        }
+    };
+    visit((item?.id && graph.byKey.get(item.id)) || graph.nodes.find(node => node.hash === item?.hash
+        && (!item?.type || item.type === node.type)) || item);
+    return [...floors].sort((a, b) => a - b);
+}
 export function captureSummaryInputs(state,chat,blocks,chatId='') {
     const graph=resolveSummaryGraph(state), inputs=[];
     for(const block of blocks){

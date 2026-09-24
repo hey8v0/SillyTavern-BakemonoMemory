@@ -1,5 +1,5 @@
 import { getHash } from '../shared/text.js';
-import { getSummaryStatus, resolveSummaryGraph } from './summary-provenance.js';
+import { getSummaryStatus, resolveSummaryGraph, summarySourceFloors } from './summary-provenance.js';
 
 function finiteIds(values = []) {
     return [...new Set((Array.isArray(values) ? values : [values])
@@ -70,7 +70,7 @@ export function buildFloorMemoryIndex({ messages = [], state = {} } = {}) {
 
     for (const summary of state.storySummaries || []) {
         if (!getSummaryStatus(state, summary,graph).valid) continue;
-        addToFloors(floors, sourceIds(summary), floor => {
+        addToFloors(floors, summarySourceFloors(state, summary, graph), floor => {
             floor.summaryState = coveredHashes.has(summary?.hash) ? 'covered' : 'saved';
             addUnique(floor.summarySources, summary?.sourceKind === 'backfill' ? '补课摘要' : '已保存摘要');
         });
@@ -78,7 +78,7 @@ export function buildFloorMemoryIndex({ messages = [], state = {} } = {}) {
 
     for (const stage of [...(state.stageSummaries || []), ...(state.epicSummaries || [])]) {
         if (!getSummaryStatus(state, stage,graph).valid) continue;
-        const ids = new Set(sourceIds(stage));
+        const ids = new Set(summarySourceFloors(state, stage, graph));
         for (const hash of stage?.sourceHashes || []) {
             for (const id of blockIdsByHash.get(hash) || []) ids.add(id);
         }

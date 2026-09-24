@@ -1,5 +1,5 @@
 import {refreshMemoryLinks} from '../memory/story-state.js';
-import {resolveSummaryGraph, getSummaryStatus} from '../memory/summary-provenance.js';
+import {resolveSummaryGraph, getSummaryStatus, summarySourceFloors} from '../memory/summary-provenance.js';
 import {inspectSummaryMaterials} from '../summary/material-quality.js';
 export function createSummarySelectors({
     getState,
@@ -60,7 +60,12 @@ export function createSummarySelectors({
         const graph = resolveSummaryGraph(state);
         const covered = graph.coveredStoryHashes;
         return getStoryMaterialBlocks().filter(block => (includeCovered || !covered.has(block.hash))
-            && !inspectSummaryMaterials([block]).invalid.length && getSummaryStatus(state, block, graph).valid);
+            && !inspectSummaryMaterials([block]).invalid.length && getSummaryStatus(state, block, graph).valid)
+            .map(block => {
+                const ids = summarySourceFloors(state, block, graph);
+                return ids.length ? { ...block, messageId: ids[0], sourceMessageIds: ids,
+                    sourceStart: ids[0], sourceEnd: ids.at(-1), sourceSortKey: ids[0] } : block;
+            });
     }
 
     function getStageMaterialOverview() {
@@ -69,14 +74,17 @@ export function createSummarySelectors({
         const selected = new Set(materials.map(block => block.hash));
         const excludedCount = getStoryMaterialBlocks(stageSourceModes.MIXED).filter(block => !selected.has(block.hash)).length;
         const graph = resolveSummaryGraph(getState());
-        const invalid = materials.filter(block => !graph.coveredStoryHashes.has(block.hash)).flatMap(block => {
+        const issues = materials.filter(block => !graph.coveredStoryHashes.has(block.hash)).flatMap(block => {
             const content = inspectSummaryMaterials([block]).invalid;
-            if (content.length) return content.map(label => label + '只有标题或没有有效剧情内容');
             const status = getSummaryStatus(getState(), block, graph);
-            return status.valid ? [] : [status.reason];
+            if (!content.length && status.valid) return [];
+            return [{ key: block.id || block.hash, type: block.type || 'story', title: block.title || '剧情摘要',
+                floors: summarySourceFloors(getState(), block, graph),
+                reason: content.length ? content.join('、') + '只有标题或没有有效剧情内容' : status.reason }];
         });
+        const invalid = issues.map(issue => issue.reason);
         return { sourceMode: getStageSourceMode(), targets, totalCount: materials.length,
-            coveredCount: materials.length - targets.length - invalid.length, excludedCount, invalid };
+            coveredCount: materials.length - targets.length - invalid.length, excludedCount, invalid, issues };
     }
 
     function getUnsummarizedStageBlocks({includeCovered = false} = {}) {

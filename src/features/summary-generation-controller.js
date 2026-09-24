@@ -105,7 +105,7 @@ export function createSummaryGenerationController({
     }
 
     function confirmStageContinuity(targets, { automatic = false } = {}) {
-        const gaps = findTargetContinuityGaps(targets, getFloorMemoryIndex(getState())?.records || []);
+        const gaps = findTargetContinuityGaps(targets, getFloorMemoryIndex(getState())?.records || [], { includeLeading: !automatic });
         if (!gaps.length) {
             return true;
         }

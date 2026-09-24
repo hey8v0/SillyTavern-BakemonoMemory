@@ -84,7 +84,7 @@ export function partitionGenerationTargets(blocks = [], kind = 'stage', config =
     return batches.filter(batch => batch.length);
 }
 
-export function findTargetContinuityGaps(blocks = [], floorRecords = []) {
+export function findTargetContinuityGaps(blocks = [], floorRecords = [], { includeLeading = true } = {}) {
     const targetIds = new Set(getFiniteMessageIds((blocks || []).flatMap(block => [
         block?.messageId,
         ...(block?.sourceMessageIds || []),
@@ -103,7 +103,7 @@ export function findTargetContinuityGaps(blocks = [], floorRecords = []) {
     const previousReadyFloor = records
         .filter(record => Number(record.id) < firstTarget && ['saved', 'covered'].includes(record.summaryState))
         .at(-1)?.id;
-    const rangeStart = Number.isInteger(Number(previousReadyFloor))
+    const rangeStart = !includeLeading ? firstTarget : Number.isInteger(Number(previousReadyFloor))
         ? Number(previousReadyFloor) + 1
         : Number(records[0].id);
 

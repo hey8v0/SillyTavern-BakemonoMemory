@@ -1,4 +1,6 @@
 import {activeStoryCoverage, isMemoryCurrent} from '../memory/story-state.js';
+import {resolveSummaryGraph, getSummaryStatus, summarySourceFloors} from '../memory/summary-provenance.js';
+import {inspectSummaryMaterials} from '../summary/material-quality.js';
 export function createSummaryBackfillController({
     query,
     getIsBusy,
@@ -104,7 +106,7 @@ export function createSummaryBackfillController({
     }
 
     function getConfiguredSummaryTags(state = getState()) {
-        const nonSummaryTags = new Set(['content', 'thinking', 'think', 'reasoning', 'tableedit', 'tablethink']);
+        const nonSummaryTags = new Set(['content', 'thinking', 'think', 'reasoning', 'tableedit', 'tablethink', 'rpevents', 'rpstate']);
         const scanSummaryTags = parseList(state.scanRules.includeTags)
             .filter(tag => tag && !nonSummaryTags.has(String(tag).trim().toLowerCase()));
         return unique([
@@ -112,11 +114,12 @@ export function createSummaryBackfillController({
             ...parseList(state.vectorMemory?.summaryTags || ''),
             'bakemono',
             'summaryDraft',
-        ].filter(Boolean));
+        ].filter(tag => tag && !nonSummaryTags.has(String(tag).trim().toLowerCase())));
     }
 
     function messageHasConfiguredSummary(message, state = getState()) {
-        return extractConfiguredTagBlocks(message?.mes || '', getConfiguredSummaryTags(state)).length > 0;
+        return extractConfiguredTagBlocks(message?.mes || '', getConfiguredSummaryTags(state))
+            .some(block => !inspectSummaryMaterials([block]).invalid.length);
     }
 
     function buildMissingSummaryTargets(options = {}) {
@@ -125,11 +128,28 @@ export function createSummaryBackfillController({
         const includeHidden = state.scanRules.includeHidden !== false;
         const rangeIds = options.rangeIds instanceof Set ? options.rangeIds : null;
         const excludeTags = unique([...parseList(state.scanRules.excludeTags), ...getConfiguredSummaryTags(state)]);
-        const existingSourceHashes = new Set([
-            ...state.storySummaries.flatMap(summary => summary.sourceHashes || []),
-            ...state.drafts.flatMap(draft => draft.sourceHashes || []),
-            ...state.taskQueue.flatMap(task => task.sourceHashes || []),
-        ]);
+        summarySources?.refresh(state);
+        const graph = resolveSummaryGraph(state);
+        const rememberedFloors = new Set(graph.nodes.filter(node => node.saved
+            && getSummaryStatus(state, node, graph).valid && !inspectSummaryMaterials([node]).invalid.length)
+            .flatMap(node => summarySourceFloors(state, node, graph)));
+        const pending = [
+            ...state.drafts.filter(draft => !draft.metadata?.inputError && !inspectSummaryMaterials([draft]).invalid.length),
+            ...state.taskQueue.filter(task => ['queued', 'running'].includes(task.status)),
+        ].filter(item => item.kind === blockTypes.STORY);
+        const existingSourceHashes = new Set();
+        for (const item of pending) {
+            const snapshot = item.metadata?.inputSnapshot;
+            if (snapshot && summarySources?.validate) {
+                try {
+                    summarySources.validate(snapshot, state);
+                    for (const id of summarySourceFloors(state, { provenance: snapshot }, graph)) rememberedFloors.add(id);
+                } catch { /* Stale pending work must not hide a missing floor. */ }
+            } else {
+                // Missing-summary tasks bind exact source hashes; completed/failed tasks are not coverage.
+                for (const hash of item.sourceHashes || []) existingSourceHashes.add(hash);
+            }
+        }
         const targets = [];
 
         sourceChat.forEach((message, messageId) => {
@@ -139,7 +159,7 @@ export function createSummaryBackfillController({
             if (!message?.mes || message.is_user || (message.is_system && !includeHidden)) {
                 return;
             }
-            if (messageHasConfiguredSummary(message, state)) {
+            if (rememberedFloors.has(messageId) || messageHasConfiguredSummary(message, state)) {
                 return;
             }
             const rawText = String(message.mes || '');

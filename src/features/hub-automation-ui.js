@@ -96,10 +96,37 @@ export function createHubAutomationUi({
         const action = documentRef.getElementById?.('bakemono-memory-automation-next-action');
         if (action) {
             action.hidden = !runtime.action;
-            for (const key of ['bakemonoTab', 'bakemonoTaskAction', 'taskId']) delete action.dataset[key];
+            for (const key of ['bakemonoTab', 'bakemonoTaskAction', 'taskId', 'bakemonoSummaryFocus', 'summaryType']) delete action.dataset[key];
             if (runtime.action?.tab) action.dataset.bakemonoTab = runtime.action.tab;
             if (runtime.action?.taskId) { action.dataset.bakemonoTaskAction = 'retry'; action.dataset.taskId = runtime.action.taskId; }
+            if (runtime.action?.summaryKey) {
+                action.dataset.bakemonoSummaryFocus = runtime.action.summaryKey;
+                action.dataset.summaryType = runtime.action.summaryType;
+            }
             action.textContent = runtime.action?.label || '';
+        }
+        let issuesPanel = documentRef.getElementById?.('bakemono-memory-automation-issues');
+        const description = documentRef.getElementById?.('bakemono-memory-automation-runtime-description');
+        if (!materials.issues?.length) issuesPanel?.remove();
+        else if (description) {
+            if (!issuesPanel) {
+                issuesPanel = documentRef.createElement('details');
+                issuesPanel.id = 'bakemono-memory-automation-issues';
+                description.after(issuesPanel);
+            }
+            issuesPanel.replaceChildren();
+            const heading = documentRef.createElement('summary');
+            heading.textContent = `异常摘要 · ${materials.issues.length} 条`;
+            issuesPanel.append(heading);
+            for (const issue of materials.issues) {
+                const row = documentRef.createElement('p');
+                const button = documentRef.createElement('button');
+                button.type = 'button'; button.className = 'menu_button';
+                button.dataset.bakemonoSummaryFocus = issue.key; button.dataset.summaryType = issue.type;
+                button.textContent = '查看摘要';
+                row.textContent = `${issue.title}：${issue.reason} `;
+                row.append(button); issuesPanel.append(row);
+            }
         }
         query('#bakemono-memory-automation-progress-bar').css('width', `${enabled ? progress : 0}%`);
         query('#bakemono-memory-automation-rule-status').text(enabled ? `按${triggerLabel} · ${currentValue.toLocaleString()} / ${threshold.toLocaleString()}` : '尚未启用');

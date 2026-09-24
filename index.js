@@ -1926,6 +1926,10 @@ const {
 
 const summaryBrowserEvents = createSummaryBrowserEvents({
     query: $,
+    focusSummaryRecord: (key, type) => {
+        switchWorkbenchTab('summary');
+        if (!summaryBrowserUi.focusRecord(key, type)) toastr.info('这条摘要已不在当前聊天中，请刷新后查看。');
+    },
     getSummaryBrowserActiveType,
     setSummaryBrowserActiveType,
     changeSummaryBrowserPage,

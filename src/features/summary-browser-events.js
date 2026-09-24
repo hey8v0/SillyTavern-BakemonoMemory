@@ -13,9 +13,13 @@ export function createSummaryBrowserEvents({
     renderMemoryRecordList,
     saveEditedSummary,
     deleteSavedSummary,
+    focusSummaryRecord,
 } = {}) {
     function bind(rootSelector = '#bakemono-workbench-root') {
         const root = query(rootSelector);
+        root.off('click.bakemonoSummaryFocus').on('click.bakemonoSummaryFocus', '[data-bakemono-summary-focus]', function () {
+            focusSummaryRecord?.(this.dataset.bakemonoSummaryFocus, this.dataset.summaryType);
+        });
         query('#bakemono-memory-preview-filter').off('input').on('input', () => {
             resetSummaryBrowserPages();
             renderPreviewSections();

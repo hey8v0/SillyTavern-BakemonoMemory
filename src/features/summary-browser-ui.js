@@ -106,7 +106,11 @@ export function createSummaryBrowserUi({
         container.append(controls);
 
         const fragment = documentRef.createDocumentFragment();
-        visibleBlocks.forEach((block, index) => fragment.append(createNotebook(block, start + index)));
+        visibleBlocks.forEach((block, index) => {
+            const notebook = createNotebook(block, start + index);
+            notebook.dataset.bakemonoSummaryKey = block.id || block.hash;
+            fragment.append(notebook);
+        });
         container.append(fragment);
     }
 
@@ -126,5 +130,29 @@ export function createSummaryBrowserUi({
         renderList('#bakemono-memory-preview-epic', prepareBlocks(epics), 'epic');
     }
 
-    return { changePage, getActiveType, renderSections, resetPages, setActiveType };
+    function focusRecord(key, type = 'story') {
+        setActiveType(type);
+        query('#bakemono-memory-preview-filter').val('');
+        const state = getState();
+        const blocks = uiState.activeType === 'story' ? getStoryBlocks() : dedupeByHash([
+            ...getBlocksByType(uiState.activeType),
+            ...(uiState.activeType === 'epic' ? state.epicSummaries : state.stageSummaries)
+                .map(summary => ({ ...summaryToBlock(summary), type: uiState.activeType })),
+        ]);
+        const index = prepareBlocks(blocks).findIndex(block => (block.id || block.hash) === key);
+        if (index < 0) return false;
+        uiState.pages[uiState.activeType] = Math.floor(index / pageSize);
+        renderSections();
+        const container = documentRef.querySelector('#bakemono-memory-preview-' + uiState.activeType);
+        const notebook = [...(container?.querySelectorAll('[data-bakemono-summary-key]') || [])]
+            .find(element => element.dataset.bakemonoSummaryKey === key);
+        if (notebook) {
+            notebook.open = true; notebook.tabIndex = -1;
+            notebook.focus?.({ preventScroll: true });
+            notebook.scrollIntoView?.({ block: 'start' });
+        }
+        return !!notebook;
+    }
+
+    return { changePage, getActiveType, renderSections, resetPages, setActiveType, focusRecord };
 }

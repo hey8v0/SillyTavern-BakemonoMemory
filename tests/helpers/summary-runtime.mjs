@@ -12,7 +12,8 @@ import * as meta from '../../src/summary/source-metadata.js';
 import * as levels from '../../src/summary/levels.js';
 import {buildPersistedChatState} from '../../src/core/persisted-chat-state.js';
 import * as sourceModule from '../../src/features/summary-source-service.js';
-import {getSortedTargetBlocks} from '../../src/summary/target-selection.js';
+import {getSortedTargetBlocks, findTargetContinuityGaps} from '../../src/summary/target-selection.js';
+import {buildFloorMemoryIndex} from '../../src/memory/floor-memory-index.js';
 const no=()=>{}, types={STORY:'story',STAGE:'stage',EPIC:'epic'}, modes={SUMMARIES:'summaries',BACKFILL:'backfill',RAW:'raw',AUTO:'auto',MIXED:'mixed'};
 const statuses=Object.fromEntries(['source','covered','saved','injected','archived','draft','stale'].map(k=>[k.toUpperCase(),k]));
 export function fixture(n=201){
@@ -34,6 +35,7 @@ export function fixture(n=201){
         callGenerationModel:async()=>{calls++;await onCall?.();return result;},normalizeGeneratedBakemono:service.normalizeGeneratedBakemono,createDraft:service.createDraft,commitDraft:service.commitDraft,blockTypes:types,defaultAutomation:{},switchWorkbenchTab:no,
         getTaskSourceSignature: task=>JSON.stringify((task.sourceMessageIds||[]).map(id=>[id,chat[id]?.swipe_id,getHash(chat[id]?.mes||'')]))});
     const controller=createSummaryGenerationController({getIsBusy:()=>false,scanBlocks:refresh,getState,summarySources:source,...selectors,readGenerationTargetSettings:no,promptGenerationTargetSelection:async()=>state.generationTargets.epic,selectGenerationTargets:x=>x,
+        findTargetContinuityGaps,getFloorMemoryIndex:()=>buildFloorMemoryIndex({messages:chat,state}),
         getTargetSelectionLabel:()=> 'selected range',renderGenerationPrompt:(_,blocks)=>blocks.map(x=>x.content).join('\n'),...meta,...levels,enqueueSummaryTask:task=>queue.enqueueSummaryTask({...task,autoStart:false}),blockTypes:types,unique,renderWorkbenchScope:no,workbenchRenderScopes:{SUMMARY:'summary'},toastr:toast,confirm:()=>true});
     async function stage(text,ids,{tag}={}){
         refresh();const blocks=ids.map(id=>({hash:'input-'+id,content:tag?`<${tag}>summary input</${tag}>`:chat[id].mes,messageId:id,sourceKind:tag?'tag':'raw',matchedTag:tag||'全文',type:'story'}));

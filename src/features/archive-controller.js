@@ -1,4 +1,4 @@
-import {activeStoryCoverage} from '../memory/story-state.js';
+import {resolveSummaryGraph, summarySourceFloors} from '../memory/summary-provenance.js';
 export function createArchiveController({
     query,
     getChat,
@@ -25,10 +25,11 @@ export function createArchiveController({
     async function hideCoveredMessages(options = {}) {
         scanBakemonoBlocks({ persist: false });
         const state = ensureState();
-        const covered = activeStoryCoverage(state);
+        const graph = resolveSummaryGraph(state);
+        const covered = graph.coveredStoryHashes;
         const summaryMessageIds = unique(state.blocks
-            .filter(block => block.type === blockTypes.STORY && covered.has(block.hash) && Number.isFinite(block.messageId))
-            .flatMap(block => getFiniteMessageIds([block.messageId, ...(block.sourceMessageIds || [])])));
+            .filter(block => block.type === blockTypes.STORY && covered.has(block.hash))
+            .flatMap(block => summarySourceFloors(state, block, graph)));
         const preserveRecent = Math.max(0, Number(options.preserveRecent || 0));
         const maxHideId = (getChat()?.length || 0) - preserveRecent - 1;
         const messageIds = collectHideMessageIds(summaryMessageIds)

@@ -4,6 +4,8 @@ import { createConfigurationService } from '../../src/features/configuration-ser
 import { createTurnSummaryUi } from '../../src/features/turn-summary-ui.js';
 import { createTableManagementEvents } from '../../src/features/table-management-events.js';
 import { createHubAutomationUi } from '../../src/features/hub-automation-ui.js';
+import { createSummaryBrowserUi } from '../../src/features/summary-browser-ui.js';
+import { createSummaryBrowserEvents } from '../../src/features/summary-browser-events.js';
 const { parseHTML } = await import(process.env.BAKEMONO_TEST_LINKEDOM || 'linkedom');
 const { document, window } = parseHTML(await readFile(new URL('../../settings.html', import.meta.url), 'utf8'));
 const descriptor = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value');
@@ -22,7 +24,7 @@ const query = selector => {
         text(value) { nodes.forEach(n => n.textContent = String(value)); return this; },
         css(key, value) { nodes.forEach(n => n.style[key] = value); return this; },
         toggleClass(key, value) { nodes.forEach(n => n.classList.toggle(key, value)); return this; },
-        off() { return this; }, on(event, callback) { handlers.set(selector + ':' + event, callback); return this; },
+        off() { return this; }, on(event, selectorOrCallback, callback) { handlers.set(selector + ':' + event, callback || selectorOrCallback); return this; },
     };
 };
 const state = { turnSummary: { enabled: true, auto: false, processingMode: 'summary', saveMode: 'draft',
@@ -64,8 +66,9 @@ assert.equal(document.getElementById('bakemono-memory-inline-summary-enabled'), 
 state.automation = { enabled: true, mode: 'draft', floorInterval: 10, triggerType: 'count' };
 state.taskQueue = [{ id: 'failed-task', kind: 'stage', sourceHashes: ['a'], status: 'failed', error: '接口等待超时' }];
 state.drafts = [];
+let materials = { targets: [{ hash: 'a', content: '剧情' }], sourceMode: 'summaries', coveredCount: 0 };
 const auto = createHubAutomationUi({ documentRef: document, query, getState: () => state,
-    getStageMaterialOverview: () => ({ targets: [{ hash: 'a', content: '剧情' }], sourceMode: 'summaries', coveredCount: 0 }),
+    getStageMaterialOverview: () => materials,
     getStageSourceModeLabel: () => '读取已有摘要', defaultAutomation: { floorInterval: 10, autoHidePreserveRecent: 2 } });
 auto.renderAutomationOverview();
 const action = document.getElementById('bakemono-memory-automation-next-action');
@@ -75,4 +78,49 @@ assert.match(document.getElementById('bakemono-memory-automation-runtime-title')
 state.taskQueuePaused = true; auto.renderAutomationOverview();
 assert.equal(action.dataset.taskId, undefined); assert.equal(action.dataset.bakemonoTab, 'drafts');
 state.automation.enabled = false; auto.renderAutomationOverview(); assert.equal(action.hidden, true);
-console.log('Automation recovery DOM: source choices/save, preserved manual settings, disabled controls and failure actions passed.');
+
+state.automation.enabled = true; state.taskQueuePaused = false; state.taskQueue = [];
+const unsafeKey = 'summary-"]<img src=x onerror=alert(1)>';
+materials = { ...materials, issues: [{ key: unsafeKey, type: 'story', title: '<img src=x onerror=alert(1)>',
+    floors: [0], reason: '第 0 楼的实际输入版本变化' }] };
+auto.renderAutomationOverview();
+assert.equal(action.dataset.taskId, undefined);
+assert.equal(action.dataset.bakemonoTab, undefined);
+assert.equal(action.dataset.bakemonoSummaryFocus, unsafeKey);
+const issues = document.getElementById('bakemono-memory-automation-issues');
+issues.open = true; auto.renderAutomationOverview();
+assert.equal(issues.open, true); assert.equal(issues.querySelector('img'), null);
+assert.match(issues.textContent, /第 0 楼/);
+
+const blocks = Array.from({ length: 20 }, (_, id) => ({ id: id === 0 ? unsafeKey : 's-' + id,
+    hash: 'h-' + id, type: 'story', messageId: id, title: '摘要' + id, content: '甲进入书店。' }));
+const browserState = { storySummaries: blocks, stageSummaries: [], epicSummaries: [] };
+const browser = createSummaryBrowserUi({ documentRef: document, query, getState: () => browserState,
+    getStoryBlocks: () => blocks, getBlocksByType: () => [], blockTypes: { STORY: 'story', STAGE: 'stage', EPIC: 'epic' },
+    dedupeByHash: values => values, summaryToBlock: value => value, normalizeSearchText: value => String(value).toLowerCase(),
+    getPreviewSummaryText: block => block.title, parsePreviewMeta: () => ({}), stripHtml: text => text,
+    getBlockSortKey: block => block.messageId,
+    createNotebook: block => { const node = document.createElement('details'); node.textContent = block.title; return node; } });
+let opened = '';
+createSummaryBrowserEvents({ query, focusSummaryRecord: (key, type) => {
+    opened = 'summary'; assert.equal(browser.focusRecord(key, type), true);
+} }).bind();
+query('#bakemono-memory-preview-filter').val('no match');
+query('#bakemono-memory-preview-order').val('desc');
+const clickFocus = handlers.get('#bakemono-workbench-root:click.bakemonoSummaryFocus');
+clickFocus.call(issues.querySelector('button'));
+assert.equal(opened, 'summary'); assert.equal(query('#bakemono-memory-preview-filter').val(), '');
+assert.equal(browser.getActiveType(), 'story');
+const focused = [...document.querySelectorAll('[data-bakemono-summary-key]')].find(node => node.dataset.bakemonoSummaryKey === unsafeKey);
+assert.equal(focused.open, true);
+assert.match(document.querySelector('#bakemono-memory-preview-story').textContent, /17-20 \/ 20/);
+assert.equal(browser.focusRecord('removed'), false);
+
+materials = { ...materials, targets: Array.from({ length: 10 }, (_, i) => ({ hash: 'b-' + i, messageId: i + 10, content: '剧情' })) };
+auto.renderAutomationOverview();
+assert.equal(action.hidden, true); assert.equal(action.dataset.bakemonoSummaryFocus, undefined);
+assert.match(document.getElementById('bakemono-memory-automation-runtime-title').textContent, /已就绪/);
+assert.equal(document.getElementById('bakemono-memory-automation-issues').querySelectorAll('button').length, 1);
+materials.issues = []; auto.renderAutomationOverview();
+assert.equal(document.getElementById('bakemono-memory-automation-issues'), null);
+console.log('Automation recovery DOM: source choices/save, preserved settings, failure actions, safe issue text and cross-page record navigation passed.');
