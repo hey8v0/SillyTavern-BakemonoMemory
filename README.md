@@ -2,7 +2,7 @@
 
 面向 SillyTavern 长篇 RP 的第三方记忆扩展。
 
-当前版本：**v1.8.6**。修复旧异常摘要阻塞当前自动总结、重复补写已有摘要，以及删楼后的覆盖与隐藏位置；异常提示可直接打开对应摘要。见 [本次更新](CHANGELOG_SUMMARY_1.8.6.md) · [自动处理与反馈](CHANGELOG_AUTOMATION_1.8.5.md) · [自动总结触发](CHANGELOG_AUTO_SUMMARY_1.8.4.md) · [填表容错](CHANGELOG_TABLE_1.8.3.md) · [千帆与模型选择](CHANGELOG_API_1.8.2.md) · [剧情状态列表](CHANGELOG_UI_1.8.1.md) · [精简状态与总览](CHANGELOG_RP_1.8.0.md)。
+当前版本：**v1.8.7**。修复异常摘要跳转空白、向量默认数值无法保存；数值填写错误时显示具体字段和原因，并展开定位。见 [本次更新](CHANGELOG_UI_1.8.7.md) · [总结与补写](CHANGELOG_SUMMARY_1.8.6.md) · [自动处理与反馈](CHANGELOG_AUTOMATION_1.8.5.md) · [自动总结触发](CHANGELOG_AUTO_SUMMARY_1.8.4.md) · [填表容错](CHANGELOG_TABLE_1.8.3.md) · [千帆与模型选择](CHANGELOG_API_1.8.2.md) · [剧情状态列表](CHANGELOG_UI_1.8.1.md) · [精简状态与总览](CHANGELOG_RP_1.8.0.md)。
 
 建议升级前备份聊天。[运行稳定性修复](CHANGELOG_2026-09-22.md) · [摘要来源说明](TESTING_SUMMARY_COVERAGE.md) · [剧情状态基础验收](TESTING_v1.7.0.md) · [9/9—9/17 更新汇总](CHANGELOG_2026-09-17.md)。
 

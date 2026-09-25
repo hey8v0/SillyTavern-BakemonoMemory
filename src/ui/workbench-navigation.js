@@ -105,6 +105,9 @@ export function createWorkbenchNavigation({
             return;
         }
         const panelName = tabName === 'tables' ? 'turn-summary' : tabName;
+        const panels = [...root.querySelectorAll('.bakemono-workbench-panel')];
+        const targetPanel = panels.find(panel => panel.dataset.bakemonoPanel === panelName);
+        if (!targetPanel) return;
         root.dataset.activeTab = tabName;
         const title = document.getElementById('bakemono-workbench-title');
         if (title) title.textContent = getPanelTitle?.(tabName) || '';
@@ -113,12 +116,12 @@ export function createWorkbenchNavigation({
         root.querySelectorAll('.bakemono-workbench-tab').forEach(tab => {
             tab.classList.toggle('is-active', tab.dataset.bakemonoTab === menuTabName);
         });
-        root.querySelectorAll('.bakemono-workbench-panel').forEach(panel => {
+        panels.forEach(panel => {
             panel.classList.toggle('is-active', panel.dataset.bakemonoPanel === panelName);
         });
         renderAll?.();
         requestAnimationFrame(() => setMenuOpen(false));
-        syncMobileCollapsibles(root.querySelector(`.bakemono-workbench-panel[data-bakemono-panel="${panelName}"]`) || root);
+        syncMobileCollapsibles(targetPanel);
         if (tabName === 'preview') {
             requestAnimationFrame(stabilizeMobilePreviewScroll);
         } else if (tabName === 'prompts') {

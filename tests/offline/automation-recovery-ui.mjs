@@ -6,6 +6,8 @@ import { createTableManagementEvents } from '../../src/features/table-management
 import { createHubAutomationUi } from '../../src/features/hub-automation-ui.js';
 import { createSummaryBrowserUi } from '../../src/features/summary-browser-ui.js';
 import { createSummaryBrowserEvents } from '../../src/features/summary-browser-events.js';
+import { createWorkbenchNavigation } from '../../src/ui/workbench-navigation.js';
+import { stageAutomationStatus } from '../../src/summary/automation-status.js';
 const { parseHTML } = await import(process.env.BAKEMONO_TEST_LINKEDOM || 'linkedom');
 const { document, window } = parseHTML(await readFile(new URL('../../settings.html', import.meta.url), 'utf8'));
 const descriptor = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value');
@@ -101,20 +103,42 @@ const browser = createSummaryBrowserUi({ documentRef: document, query, getState:
     getPreviewSummaryText: block => block.title, parsePreviewMeta: () => ({}), stripHtml: text => text,
     getBlockSortKey: block => block.messageId,
     createNotebook: block => { const node = document.createElement('details'); node.textContent = block.title; return node; } });
-let opened = '';
+globalThis.document = document;
+globalThis.window = window;
+globalThis.requestAnimationFrame = callback => callback();
+const navigation = createWorkbenchNavigation();
+navigation.switchTab('automation');
+// Exercise the route wired by index.js, not a replacement invented by this test.
+const entrySource = await readFile(new URL('../../index.js', import.meta.url), 'utf8');
+const focusRoute = entrySource.match(/focusSummaryRecord:\s*\(key, type\) => \{\s*switchWorkbenchTab\('([^']+)'\)/)?.[1];
+assert.ok(focusRoute);
 createSummaryBrowserEvents({ query, focusSummaryRecord: (key, type) => {
-    opened = 'summary'; assert.equal(browser.focusRecord(key, type), true);
+    navigation.switchTab(focusRoute); assert.equal(browser.focusRecord(key, type), true);
 } }).bind();
 query('#bakemono-memory-preview-filter').val('no match');
 query('#bakemono-memory-preview-order').val('desc');
 const clickFocus = handlers.get('#bakemono-workbench-root:click.bakemonoSummaryFocus');
 clickFocus.call(issues.querySelector('button'));
-assert.equal(opened, 'summary'); assert.equal(query('#bakemono-memory-preview-filter').val(), '');
+assert.equal(navigation.getActiveTab(), 'preview');
+assert.equal(document.querySelectorAll('.bakemono-workbench-panel.is-active').length, 1);
+assert.equal(document.querySelector('.bakemono-workbench-panel.is-active').dataset.bakemonoPanel, 'preview');
+navigation.switchTab('unknown-page');
+assert.equal(navigation.getActiveTab(), 'preview');
+assert.equal(document.querySelectorAll('.bakemono-workbench-panel.is-active').length, 1);
+assert.equal(query('#bakemono-memory-preview-filter').val(), '');
 assert.equal(browser.getActiveType(), 'story');
 const focused = [...document.querySelectorAll('[data-bakemono-summary-key]')].find(node => node.dataset.bakemonoSummaryKey === unsafeKey);
 assert.equal(focused.open, true);
 assert.match(document.querySelector('#bakemono-memory-preview-story').textContent, /17-20 \/ 20/);
 assert.equal(browser.focusRecord('removed'), false);
+for (const status of [
+    stageAutomationStatus({ automation: { enabled: true } }, { targets: [], invalid: ['来源变化'] }),
+    stageAutomationStatus({ automation: { enabled: true, mode: 'remind', floorInterval: 1 } }, { targets: [blocks[0]] }),
+]) {
+    navigation.switchTab('automation');
+    navigation.switchTab(status.action.tab);
+    assert.equal(navigation.getActiveTab(), 'preview');
+}
 
 materials = { ...materials, targets: Array.from({ length: 10 }, (_, i) => ({ hash: 'b-' + i, messageId: i + 10, content: '剧情' })) };
 auto.renderAutomationOverview();

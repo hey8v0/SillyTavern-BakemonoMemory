@@ -22,7 +22,7 @@ export function stageAutomationStatus(state, materials, { batch = materials.targ
     const invalid = relevantIssues ? relevantIssues.map(issue => issue.reason) : materials.invalid || [];
     if (invalid.length) return status('invalid', '本批摘要材料需要检查', invalid.slice(0, 3).join('；'),
         relevantIssues?.[0] ? { summaryKey: relevantIssues[0].key, summaryType: relevantIssues[0].type, label: '查看异常摘要' }
-            : { tab: 'summary', label: '查看摘要' });
+            : { tab: 'preview', label: '查看摘要' });
     const gaps = findTargetContinuityGaps(batch, records, { includeLeading: false });
     if (gaps.length) return status('gap', '缺少摘要，自动总结暂停', gaps.slice(0, 8).map(item => '第 ' + item.id + ' 楼').join('、'),
         { tab: 'scan', label: '检查缺失摘要' });
@@ -30,6 +30,6 @@ export function stageAutomationStatus(state, materials, { batch = materials.targ
     const threshold = auto.triggerType === 'chars' ? auto.charInterval || 12000 : auto.floorInterval || 10;
     if (count < threshold) return status('waiting', '还差 ' + (threshold - count).toLocaleString() + (auto.triggerType === 'chars' ? ' 字' : ' 条摘要'));
     if (busy) return status('busy', '等待当前处理完成');
-    if (auto.mode === 'remind') return status('remind', '已达到提醒条件', '', { tab: 'summary', label: '前往总结' });
+    if (auto.mode === 'remind') return status('remind', '已达到提醒条件', '', { tab: 'preview', label: '前往总结' });
     return status('ready', '已就绪，等待执行', materials.issues?.length ? `另有 ${materials.issues.length} 条异常摘要，未用于本批` : '');
 }

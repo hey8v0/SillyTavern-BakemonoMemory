@@ -9,6 +9,31 @@ const pages = {
 };
 const immediateFields = new Set(['bakemono-memory-vector-enabled', 'bakemono-memory-table-inject-memory', 'bakemono-memory-table-schema-scope']);
 
+function numberIssue(el) {
+    if (el.type !== 'number' || el.disabled || el.willValidate === false) return '';
+    const validity = el.validity || {};
+    if (validity.badInput || (el.value !== '' && !Number.isFinite(Number(el.value)))) return '请填写有效数字';
+    if (validity.valueMissing) return '请填写数值';
+    if (validity.rangeUnderflow) return `不能小于 ${el.min}`;
+    if (validity.rangeOverflow) return `不能大于 ${el.max}`;
+    if (validity.stepMismatch) return el.step === '1' ? '请填写整数'
+        : `请以 ${el.step || '1'} 为间隔填写（起点 ${el.min || el.getAttribute('value') || '0'}）`;
+    return validity.valid === false ? '请检查数值格式' : '';
+}
+
+function revealInvalidField(el) {
+    for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+        if (parent.tagName === 'DETAILS') parent.open = true;
+        if (parent.classList.contains('is-mobile-collapsed')) {
+            parent.classList.remove('is-mobile-collapsed');
+            parent.classList.add('is-mobile-expanded');
+        }
+    }
+    el.setAttribute('aria-invalid', 'true');
+    el.focus({ preventScroll: true });
+    el.scrollIntoView?.({ block: 'center', behavior: 'instant' });
+}
+
 // Drafts live only in this page/session. Never read hidden pages into shared settings.
 export function createPageSettings({ documentRef, getState, getActiveTab, savePage, refresh, notify = () => {} }) {
     const drafts = new WeakMap();
@@ -43,9 +68,10 @@ export function createPageSettings({ documentRef, getState, getActiveTab, savePa
             }
         }
         for (const el of controls(tab)) {
+            if (!numberIssue(el)) el.removeAttribute('aria-invalid');
             if (!draft.edits.has(el.id)) { draft.base.set(el.id, value(el)); continue; }
             if (el.type === 'checkbox') el.checked = draft.edits.get(el.id);
-            else el.value = draft.edits.get(el.id);
+            else if (el.value !== draft.edits.get(el.id)) el.value = draft.edits.get(el.id);
         }
         documentRef.getElementById('bakemono-memory-page-save-status').textContent =
             `${pages[tab].label} · ${saving ? '正在保存…' : draft.status || (draft.edits.size ? '未保存 · 切页暂存' : '无未保存修改')}`;
@@ -66,11 +92,19 @@ export function createPageSettings({ documentRef, getState, getActiveTab, savePa
         const tab = tabKey(getActiveTab()), state = getState();
         if (!pages[tab] || saving) return;
         const draft = entry(state, tab), revision = draft.revision, submitted = snapshot(tab);
+        const invalid = controls(tab).find(el => numberIssue(el));
+        if (invalid) {
+            const label = invalid.labels?.[0] || invalid.closest('label');
+            const name = (label?.querySelector('span')?.textContent || label?.textContent || invalid.getAttribute('aria-label') || invalid.id).trim();
+            const message = `「${name}」${numberIssue(invalid)}。`;
+            draft.status = `未保存 · ${message}`;
+            render(tab, state);
+            notify(message);
+            revealInvalidField(invalid);
+            return;
+        }
         saving = true; render(tab, state);
         try {
-            if (controls(tab).some(el => el.type === 'number' && (el.validity?.valid === false || (el.value !== '' && !Number.isFinite(Number(el.value)))))) {
-                throw new Error('请检查数值设置，填写允许范围内的数字。');
-            }
             const confirmed = await savePage(tab, state);
             if (getState() !== state) return;
             if (confirmed !== true) throw Error('保存尚未确认，请重试保存设置。');
