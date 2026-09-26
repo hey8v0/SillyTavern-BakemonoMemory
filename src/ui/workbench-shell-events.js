@@ -45,6 +45,8 @@ export function createWorkbenchShellEvents({
         query('#bakemono-memory-menu-toggle').off('click').on('click', () => {
             setWorkbenchMenuOpen(!rootElement?.classList.contains('is-menu-open'));
         });
+        // Tapping the dimmed page beside the phone drawer closes it.
+        query('[data-bakemono-menu-close]').off('click').on('click', () => setWorkbenchMenuOpen(false));
         query('.bakemono-workbench-tab').off('click').on('click', function (event) {
             event?.preventDefault?.();
             event?.stopPropagation?.();

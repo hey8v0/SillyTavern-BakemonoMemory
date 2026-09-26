@@ -87,11 +87,9 @@ test('workbench markup and stylesheet remain structurally balanced', () => {
     assert.equal(cssBraceDelta, 0);
 });
 
-test('workbench menu branding reuses the clapperboard entry icon', () => {
-    assert.match(
-        settingsSource,
-        /class="bakemono-workbench-menu-mark"[^>]*aria-hidden="true"[^>]*>\s*<i class="fa-solid fa-clapperboard"><\/i>\s*<\/div>/,
-    );
+test('workbench menu branding is a clapperboard, like the entry icon', () => {
+    // Drawn in lines (two clap sticks and the board) to match the film-slate style.
+    assert.match(settingsSource, /class="bakemono-workbench-menu-mark" aria-hidden="true"><i><\/i><i><\/i><b><\/b><\/div>/);
     assert.doesNotMatch(settingsSource, /class="bakemono-workbench-menu-mark"[^>]*>\s*剪\s*<\/div>/);
     assert.match(sillyTavernEntrySource, /icon\.classList\.add\('fa-solid', 'fa-clapperboard', 'extensionsMenuExtensionButton'\)/);
 });
@@ -135,7 +133,6 @@ test('overview dashboard keeps the mobile hierarchy compact and read-only', () =
     assert.doesNotMatch(settingsSource, /<nav class="bakemono-mobile-actions"/);
     assert.match(styleSource, /\.bakemono-memory-control-deck \[hidden\]\s*\{[^}]*display:\s*none !important;/s);
     assert.match(styleSource, /\.bakemono-workbench-tabs\s*\{[^}]*scrollbar-width:\s*none;/s);
-    assert.match(styleSource, /\.bakemono-mobile-actions,[\s\S]*?display:\s*none !important;/s);
     assert.equal((settingsSource.match(/class="bakemono-memory-page-intro/g) || []).length, 1);
     assert.match(settingsSource, /class="bakemono-memory-page-intro bakemono-memory-help-intro"/);
     assert.match(styleSource, /Scene workbench aesthetic/);

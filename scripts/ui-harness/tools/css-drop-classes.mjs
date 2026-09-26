@@ -1,10 +1,10 @@
-// Remove selectors that mention retired class names; a rule whose selectors are all removed goes entirely.
+// Remove selectors that mention retired class (or id) names; a rule whose selectors are all removed goes entirely.
 // Selectors that mention a retired class only inside :is()/:where()/:not()/:has() are reported, never touched.
 // Usage: node css-drop-classes.mjs <css> <class-regex-source>   e.g. "bakemono-memory-(health|token)-"
 import { readFileSync, writeFileSync } from 'node:fs';
 const [,, path, pattern] = process.argv;
 const src = readFileSync(path, 'utf8');
-const retired = new RegExp('\\.(?:' + pattern + ')[\\w-]*');
+const retired = new RegExp('[.#](?:' + pattern + ')[\\w-]*');
 const BACKSLASH = String.fromCharCode(92);
 const skipComment = i => src.indexOf('*/', i + 2) + 2;
 function skipString(i) { const q = src[i]; let j = i + 1; while (src[j] !== q) { if (src[j] === BACKSLASH) j++; j++; } return j + 1; }

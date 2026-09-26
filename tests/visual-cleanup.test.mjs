@@ -7,7 +7,8 @@ const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 test('decorative tape stripes are gone; repeating gradients are only texture, the clapper, or a state hatch', async () => {
     const css = await read('style.css');
     const rules = css.split('}').filter(rule => rule.includes('repeating-linear-gradient'));
-    assert.equal(rules.length, 4);
+    assert.equal(rules.length, 5);
+    assert.equal(rules.filter(rule => /\.bakemono-workbench-menu-mark i \{/.test(rule)).length, 1, 'the sidebar clapperboard mark');
     assert.equal(rules.filter(rule => /\.rp-clap-(top|bottom) \{/.test(rule)).length, 2);
     assert.equal(rules.filter(rule => /\.bk-home-frame\.is-draft/.test(rule)).length, 1, 'hatching marks floors waiting for confirmation');
     assert.match(css, /\.bakemono-workbench-root\.bakemono-custom-theme \.bakemono-workbench \{[^}]*repeating-linear-gradient/);
@@ -22,9 +23,10 @@ test('every primary action uses the accent colour', async () => {
     }
 });
 
-test('the header badge has one base rule plus one rule per breakpoint', async () => {
+test('the header injection state is plain text with one base rule and one phone rule', async () => {
     const css = await read('style.css');
-    assert.equal((css.match(/^\s*\.bakemono-memory-badge \{/gm) || []).length, 3);
+    assert.equal((css.match(/\.bakemono-memory-badge \{/g) || []).length, 2);
+    assert.doesNotMatch(css.slice(css.indexOf('.bakemono-memory-badge {')), /^[^}]*border-radius: 999px/);
 });
 
 test('the open-menu toggle is a collapse arrow, not a second close button', async () => {

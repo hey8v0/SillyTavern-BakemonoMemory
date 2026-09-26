@@ -2,31 +2,28 @@
   <div class="bakemono-workbench-backdrop" data-bakemono-close></div>
   <section class="bakemono-workbench" role="dialog" aria-modal="true" aria-labelledby="bakemono-workbench-title">
     <header class="bakemono-workbench-header">
-      <button class="menu_button bakemono-icon-button bakemono-menu-toggle" id="bakemono-memory-menu-toggle" title="打开菜单" aria-label="打开菜单" aria-expanded="false">
+      <button type="button" class="bakemono-icon-button bakemono-menu-toggle" id="bakemono-memory-menu-toggle" title="打开菜单" aria-label="打开菜单" aria-expanded="false">
         <i class="fa-solid fa-bars"></i>
       </button>
       <div class="bakemono-workbench-title-wrap">
         <div class="bakemono-workbench-kicker">
           <span id="bakemono-workbench-section-title">剧情剪辑台</span>
           <span id="bakemono-workbench-section-title-short" class="bakemono-workbench-kicker-short" aria-hidden="true">剧情剪辑</span>
-          <span class="bakemono-workbench-kicker-divider">/</span>
-          <span>通用摘要 · 长期记忆 · 楼层剪辑</span>
         </div>
         <h2 id="bakemono-workbench-title">剪辑台</h2>
       </div>
       <div class="bakemono-workbench-header-actions">
         <span id="bakemono-memory-injection-badge" class="bakemono-memory-badge" role="status" aria-live="polite">等待</span>
-        <button class="menu_button bakemono-icon-button" id="bakemono-memory-close" title="关闭">
+        <button type="button" class="bakemono-icon-button" id="bakemono-memory-close" title="关闭" aria-label="关闭">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
     </header>
 
+    <div class="bakemono-workbench-scrim" data-bakemono-menu-close aria-hidden="true"></div>
     <nav class="bakemono-workbench-tabs" aria-label="剧情剪辑台功能">
       <div class="bakemono-workbench-menu-head">
-        <div class="bakemono-workbench-menu-mark" aria-hidden="true">
-          <i class="fa-solid fa-clapperboard"></i>
-        </div>
+        <div class="bakemono-workbench-menu-mark" aria-hidden="true"><i></i><i></i><b></b></div>
         <div>
           <strong>剧情剪辑台</strong>
           <span>把聊天、摘要、表格和向量记忆整理在一起。</span>
@@ -35,23 +32,18 @@
       <div class="bakemono-workbench-menu-group">
         <div class="bakemono-workbench-menu-label">常用</div>
         <button type="button" class="bakemono-workbench-tab is-active" data-bakemono-tab="overview">
-          <i class="fa-solid fa-table-cells-large"></i>
           <span>剪辑台</span>
         </button>
         <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="preview">
-          <i class="fa-solid fa-book-open"></i>
           <span>总结</span>
         </button>
         <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="records">
-          <i class="fa-solid fa-database"></i>
           <span>记忆库</span>
         </button>
         <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="rp-state">
-          <i class="fa-solid fa-clapperboard"></i>
           <span>剧情状态</span>
         </button>
         <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="drafts">
-          <i class="fa-solid fa-inbox"></i>
           <span>待确认</span>
           <small id="bakemono-memory-menu-draft-count" class="bakemono-workbench-menu-count">0</small>
         </button>
@@ -59,19 +51,16 @@
       <div class="bakemono-workbench-menu-group">
         <div class="bakemono-workbench-menu-label">更多</div>
         <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="data-hub">
-          <i class="fa-solid fa-layer-group"></i>
           <span>自动与数据</span>
         </button>
         <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="settings-hub">
-          <i class="fa-solid fa-sliders"></i>
           <span>设置中心</span>
         </button>
       </div>
       <div class="bakemono-workbench-menu-footer">
         <button type="button" class="bakemono-workbench-tab bakemono-workbench-help-entry" data-bakemono-tab="help">
-          <i class="fa-regular fa-circle-question"></i>
           <span>使用说明</span>
-          <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+          <span class="bakemono-workbench-menu-chevron" aria-hidden="true">›</span>
         </button>
       </div>
     </nav>
@@ -2076,7 +2065,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.11.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.12.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">
