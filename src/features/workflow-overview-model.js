@@ -191,9 +191,9 @@ export function createWorkflowOverviewModel({
             const firstMissing = Number.isInteger(Number(floorStats.firstMissingFloor))
                 ? `最早是第 ${Number(floorStats.firstMissingFloor).toLocaleString()} 楼，`
                 : '';
-            return { badge: '发现缺口', title: '有助手楼层尚未形成记忆', copy: `${firstMissing}共 ${floorStats.missing.toLocaleString()} 楼待补；生成阶段总结前请先补写。`, tone: 'attention' };
+            return { badge: '发现缺口', title: `有 ${floorStats.missing.toLocaleString()} 楼还没有摘要`, copy: `${firstMissing}先补写，再整理成阶段总结。`, tone: 'attention' };
         }
-        return { badge: '已同步', title: '现有记忆已经同步', copy: '当前可识别楼层均已有记忆记录。', tone: 'healthy' };
+        return { badge: '已同步', title: '记忆都跟上了', copy: '所有助手楼层都已有摘要。', tone: 'healthy' };
     }
 
     function getWorkflowStatusText(state = getState(), stats, uncoveredStory = 0) {

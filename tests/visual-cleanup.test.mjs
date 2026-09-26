@@ -4,11 +4,12 @@ import { readFile } from 'node:fs/promises';
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('decorative tape stripes are gone; only the custom theme texture and the story-state clapper keep a repeating gradient', async () => {
+test('decorative tape stripes are gone; repeating gradients are only texture, the clapper, or a state hatch', async () => {
     const css = await read('style.css');
     const rules = css.split('}').filter(rule => rule.includes('repeating-linear-gradient'));
-    assert.equal(rules.length, 3);
+    assert.equal(rules.length, 4);
     assert.equal(rules.filter(rule => /\.rp-clap-(top|bottom) \{/.test(rule)).length, 2);
+    assert.equal(rules.filter(rule => /\.bk-home-frame\.is-draft/.test(rule)).length, 1, 'hatching marks floors waiting for confirmation');
     assert.match(css, /\.bakemono-workbench-root\.bakemono-custom-theme \.bakemono-workbench \{[^}]*repeating-linear-gradient/);
 });
 
@@ -35,6 +36,7 @@ test('the open-menu toggle is a collapse arrow, not a second close button', asyn
 test('overview and data hub carry no decorative codes or English labels', async () => {
     const html = await read('settings.html');
     assert.doesNotMatch(html, /MEMORY STATUS|SC\. 00|bakemono-memory-hub-ticket-number/);
-    assert.match(html, /<\/i> 记忆状态<\/span>/);
+    // English appears only as a small mono label after the Chinese name (“记忆状态 · STATUS”).
+    assert.match(html, /记忆状态 · STATUS/);
     assert.match(html, /<dt>条目<\/dt><dd id="bakemono-memory-prompt-inspector-count">/);
 });

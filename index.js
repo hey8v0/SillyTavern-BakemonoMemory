@@ -1625,6 +1625,9 @@ const overviewWorkbenchUi = createOverviewWorkbenchUi({
     defaultState,
     getCurrentFloorMemoryIndex,
     getOverviewHealth,
+    getOverviewRecommendation,
+    getChat: () => chat,
+    escapeHtml,
     getActiveTab: () => getActiveWorkbenchTab(),
     renderTokenManifest: state => renderOverviewTokenManifest(state),
 });
@@ -2297,6 +2300,7 @@ function bindSettingsEvents() {
     bindMaintenanceEvents();
     storyToolsUi.bind();
     rpStateUi.bind();
+    overviewWorkbenchUi.bind(document);
     tableEditorEvents.bind();
     tableManagementEvents.bind();
     contentConfigurationEvents.bind();

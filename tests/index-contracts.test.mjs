@@ -112,12 +112,12 @@ test('mobile header keeps one compact static injection state', () => {
 });
 
 test('overview dashboard keeps the mobile hierarchy compact and read-only', () => {
-    assert.match(settingsSource, /class="bakemono-memory-overview-dashboard"/);
+    // Home is one grid of ruled cells (status, floor reel, injection, setup); no nested cards.
+    assert.match(settingsSource, /<div class="bk-home">/);
     // Page names live in the workbench header; only the help page keeps an in-page intro.
     assert.doesNotMatch(settingsSource, /class="bakemono-memory-overview-heading"|id="bakemono-memory-scene-code"/);
-    assert.match(settingsSource, /class="bakemono-memory-health-board"/);
-    assert.match(settingsSource, /class="bakemono-memory-token-manifest"/);
-    assert.match(settingsSource, /class="bakemono-memory-config-manifest"/);
+    for (const cell of ['bk-home-status', 'bk-home-reel', 'bk-home-context', 'bk-home-setup']) assert.match(settingsSource, new RegExp('class="bk-home-cell ' + cell));
+    assert.doesNotMatch(settingsSource, /class="bakemono-memory-(health-board|token-manifest|config-manifest|overview-dashboard)"/);
     assert.match(settingsSource, /data-bakemono-nav="prompt-inspector"/);
     assert.doesNotMatch(settingsSource, /id="bakemono-memory-workflow-description"|class="bakemono-memory-scene-steps"|class="menu_button bakemono-memory-action-row"/);
     assert.match(settingsSource, /data-bakemono-tab="settings-hub"/);

@@ -47,12 +47,13 @@ test('removing derived RP cache preserves ledger, direct state injection and vec
     assert.deepEqual(state.vectorMemory.lastHits, []);
 });
 
-test('overview uses six equal cells with rules first and a divider on the vector cell', () => {
+test('overview lists the six injection sources in order, each with its own muted colour', () => {
     const html = readFileSync(new URL('../settings.html', import.meta.url), 'utf8');
     const css = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
     const sources = [...html.matchAll(/data-bakemono-token-source="([^"]+)"/g)].map(m => m[1]);
     assert.deepEqual(sources, ['rule', 'summary', 'memory', 'rpState', 'table', 'vector']);
-    assert.match(css, /\.bakemono-memory-token-breakdown\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
-    assert.match(css, /\.bakemono-memory-token-breakdown > button:nth-child\(even\)\s*\{[^}]*border-left:/);
-    assert.doesNotMatch(css, /\.bakemono-memory-token-breakdown > button:last-child\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/);
+    for (const key of sources) {
+        assert.match(html, new RegExp('id="bakemono-memory-token-pct-' + key + '"'));
+        assert.match(css, new RegExp('\\[data-bakemono-stack-source="' + key + '"\\]'));
+    }
 });

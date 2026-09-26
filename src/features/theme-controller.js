@@ -56,7 +56,7 @@ export function createThemeController({
         const lightText = !text || (0.2126 * text.r + 0.7152 * text.g + 0.0722 * text.b) / 255 > 0.5;
         const base = lightText ? [17, 16, 15] : [244, 241, 234];
         const mix = (value, index) => Math.round(value * tint.a + base[index] * (1 - tint.a));
-        return `rgb(${mix(tint.r, 0)}, ${mix(tint.g, 1)}, ${mix(tint.b, 2)})`;
+        return { color: `rgb(${mix(tint.r, 0)}, ${mix(tint.g, 1)}, ${mix(tint.b, 2)})`, appearance: lightText ? 'dark' : 'light' };
     }
 
     function getThemeChoice() {
@@ -91,10 +91,11 @@ export function createThemeController({
         };
         root.classList.toggle('bakemono-custom-theme', mode === 'custom');
         const tint = mode === 'tavern' ? opaqueTavernTint() : null;
-        if (tint) root.style.setProperty('--SmartThemeBlurTintColor', tint);
+        if (tint) root.style.setProperty('--SmartThemeBlurTintColor', tint.color);
         else root.style.removeProperty('--SmartThemeBlurTintColor');
         root.dataset.bakemonoThemeMode = mode;
-        root.dataset.bakemonoThemeAppearance = mode === 'custom' ? theme.appearance : '';
+        // Light or dark, whichever look is active; pages pick their chart colours from it.
+        root.dataset.bakemonoThemeAppearance = mode === 'custom' ? theme.appearance : tint?.appearance || 'dark';
         root.style.colorScheme = mode === 'custom' ? theme.appearance : '';
         for (const [key, cssVariable] of Object.entries(variableMap)) {
             if (mode === 'custom') {

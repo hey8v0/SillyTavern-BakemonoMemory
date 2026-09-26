@@ -111,11 +111,17 @@ export function createOverviewTokenManifest({
         query('#bakemono-memory-overview-token-percent').text(promptMatches ? formatPromptSharePercent(total, lastPromptUsage.total) : '—');
         query('#bakemono-memory-overview-token-scope').text(!total ? '暂无注入内容' : !lastPromptUsage ? '本轮已组装' : promptMatches ? '上一轮已核对' : '本轮已组装 · 上轮未核对');
         query('#bakemono-memory-injection-diagnostic').text(promptMatches ? '已在上一轮上下文中核对到当前注入内容。' : getInjectionMemoryParts(state).diagnostic || '本轮内容已组装，尚未在上一轮上下文核实。');
+        const share = value => total ? Math.round((value / total) * 100) : 0;
         sourceKeys.forEach(key => {
             const value = counts[key] || 0;
-            query(`#bakemono-memory-token-${key}`).text(value.toLocaleString());
-            query(`#bakemono-memory-token-bar-${key}`).css('width', total ? `${Math.max(0, Math.min(100, (value / total) * 100))}%` : '0%');
+            query(`#bakemono-memory-token-${key}`).text(value ? value.toLocaleString() : '—');
+            query(`#bakemono-memory-token-pct-${key}`).text(value ? `${share(value)}%` : '');
+            query(`[data-bakemono-token-source="${key}"]`).toggleClass('is-empty', !value);
         });
+        // One fixed muted hue per source (see style.css “home” block); order matches the list below it.
+        query('#bakemono-memory-overview-token-stack').html(sourceKeys.filter(key => counts[key]).map(key =>
+            `<i data-bakemono-stack-source="${key}" style="flex-grow:${counts[key]}" title="${share(counts[key])}%"></i>`).join(''));
+        query('#bakemono-memory-overview-token-readout').text(total ? '指向色条或某一行查看占比' : '本轮没有注入内容');
     }
 
     return {
