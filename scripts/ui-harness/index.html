@@ -1,0 +1,30 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>剧情剪辑台 · 模拟酒馆</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css">
+<link rel="stylesheet" href="/scripts/extensions/third-party/BakemonoMemory/style.css">
+<style>
+ :root{--SmartThemeBodyColor:#dcdcd2;--SmartThemeBlurTintColor:rgba(23,23,23,.9);--SmartThemeBorderColor:rgba(0,0,0,.5);--SmartThemeQuoteColor:#e18a24;--SmartThemeEmColor:#919191;--mainFontSize:15px}
+ *{box-sizing:border-box} body{margin:0;background:#1f1f1f;color:#dcdcd2;font-family:"Noto Sans SC",system-ui,sans-serif}
+ .menu_button{cursor:pointer;border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:4px 10px;background:rgba(0,0,0,.25);color:inherit}
+ #top-bar{display:flex;gap:10px;padding:8px;background:#111} #extensionsMenu{position:fixed;left:8px;bottom:60px;background:#222;padding:6px}
+ .mes{padding:8px 16px;border-bottom:1px solid #333} #chat{max-width:760px;margin:0 auto}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"></script>
+</head><body>
+<div id="top-bar"><div id="top-settings-holder"><div id="extensions-settings-button">扩展</div></div></div>
+<div id="extensions_settings"></div>
+<div id="extensionsMenu"></div>
+<div id="chat"></div>
+<script type="module">
+import { chat } from '/script.js';
+import { extension_settings } from '/scripts/extensions.js';
+const realFetch = window.fetch.bind(window);
+window.fetch = (url, init) => String(url).includes('/api/settings/get')
+  ? Promise.resolve(new Response(JSON.stringify({ settings: JSON.stringify({ extension_settings }) }), { headers: { 'Content-Type': 'application/json' } }))
+  : realFetch(url, init);
+document.getElementById('chat').innerHTML = chat.map((m,i)=>`<div class="mes" mesid="${i}"><b>${m.name}</b><div class="mes_text">${m.mes}</div></div>`).join('');
+await import('/scripts/extensions/third-party/BakemonoMemory/index.js');
+</script>
+</body></html>

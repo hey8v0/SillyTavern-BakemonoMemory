@@ -152,6 +152,6 @@ test('actual prompt includes valid minimal examples, automatic actions and bound
     const examples = [...prompt.matchAll(/<rpEvents>(\{[\s\S]*?)<\/rpEvents>/g)];
     assert.ok(examples.length >= 2);
     for (const example of examples) assert.doesNotThrow(() => parsePayload(example[0]));
-    const doc = await readFile(new URL('../RP_EVENTS_PROMPT.md', import.meta.url), 'utf8');
+    const doc = await readFile(new URL('../docs/RP_EVENTS_PROMPT.md', import.meta.url), 'utf8');
     assert.ok(doc.replace(/\r\n/g, '\n').includes(RP_EVENT_GUIDE.replace(/\r\n/g, '\n')));
 });
