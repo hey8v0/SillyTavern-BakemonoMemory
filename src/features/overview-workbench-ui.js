@@ -42,8 +42,6 @@ export function createOverviewWorkbenchUi({
         const coverageProgress = floorStats.total
             ? Math.max(0, Math.min(100, Math.round((floorStats.summarized / floorStats.total) * 100)))
             : 0;
-        const stageCount = Array.isArray(state.stageSummaries) ? state.stageSummaries.length : 0;
-        const epicCount = Array.isArray(state.epicSummaries) ? state.epicSummaries.length : 0;
 
         query('#bakemono-memory-overview-status-label').text(health.badge);
         query('#bakemono-memory-workflow-title').text(health.title);
@@ -51,7 +49,6 @@ export function createOverviewWorkbenchUi({
         query('#bakemono-memory-index-ready-floor').text(floorStats.summarized.toLocaleString());
         query('#bakemono-memory-index-pending-count').text(floorStats.missing.toLocaleString());
         query('#bakemono-memory-count-drafts').text(floorStats.pendingDraftCount.toLocaleString());
-        query('#bakemono-memory-scene-code').text(`SC. ${String(stageCount).padStart(2, '0')} / TK. ${String(epicCount).padStart(2, '0')}`);
         query('#bakemono-memory-scene-progress-fill').css('width', `${coverageProgress}%`);
         query('.bakemono-memory-health-board').attr('data-health-tone', health.tone);
         renderOverviewConfigManifest(state);

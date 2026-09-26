@@ -43,8 +43,9 @@ export function createWorkbenchNavigation({
             button.setAttribute('aria-expanded', open ? 'true' : 'false');
             button.title = open ? '关闭菜单' : '打开菜单';
             button.setAttribute('aria-label', button.title);
+            // A collapse arrow, not a second ✕ beside the close-workbench button.
             button.querySelector('i')?.classList.toggle('fa-bars', !open);
-            button.querySelector('i')?.classList.toggle('fa-xmark', !!open);
+            button.querySelector('i')?.classList.toggle('fa-angles-left', !!open);
         }
     }
 

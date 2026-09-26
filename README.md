@@ -2,7 +2,7 @@
 
 面向 SillyTavern 长篇 RP 的第三方记忆扩展。
 
-当前版本：**v1.9.0**。“摘要方式”合并了工作流与摘要来源，只问“新回复的摘要从哪里来”；修复独立摘要不注入的组合与注入开关无法保存。见 [本次更新](CHANGELOG_UI_1.9.0.md) · [去重与说法统一](CHANGELOG_UI_1.8.9.md) · [切页定位与未保存提醒](CHANGELOG_UI_1.8.8.md) · [摘要跳转与设置保存](CHANGELOG_UI_1.8.7.md) · [总结与补写](CHANGELOG_SUMMARY_1.8.6.md) · [自动处理与反馈](CHANGELOG_AUTOMATION_1.8.5.md) · [自动总结触发](CHANGELOG_AUTO_SUMMARY_1.8.4.md) · [填表容错](CHANGELOG_TABLE_1.8.3.md) · [千帆与模型选择](CHANGELOG_API_1.8.2.md) · [剧情状态列表](CHANGELOG_UI_1.8.1.md) · [精简状态与总览](CHANGELOG_RP_1.8.0.md)。
+当前版本：**v1.9.1**。界面整理：去掉重复标题与装饰元素，主按钮统一强调色，样式表精简约 800 行。见 [本次更新](CHANGELOG_UI_1.9.1.md) · [摘要方式向导](CHANGELOG_UI_1.9.0.md) · [去重与说法统一](CHANGELOG_UI_1.8.9.md) · [切页定位与未保存提醒](CHANGELOG_UI_1.8.8.md) · [摘要跳转与设置保存](CHANGELOG_UI_1.8.7.md) · [总结与补写](CHANGELOG_SUMMARY_1.8.6.md) · [自动处理与反馈](CHANGELOG_AUTOMATION_1.8.5.md) · [自动总结触发](CHANGELOG_AUTO_SUMMARY_1.8.4.md) · [填表容错](CHANGELOG_TABLE_1.8.3.md) · [千帆与模型选择](CHANGELOG_API_1.8.2.md) · [剧情状态列表](CHANGELOG_UI_1.8.1.md) · [精简状态与总览](CHANGELOG_RP_1.8.0.md)。
 
 建议升级前备份聊天。[运行稳定性修复](CHANGELOG_2026-09-22.md) · [摘要来源说明](TESTING_SUMMARY_COVERAGE.md) · [剧情状态基础验收](TESTING_v1.7.0.md) · [9/9—9/17 更新汇总](CHANGELOG_2026-09-17.md)。
 

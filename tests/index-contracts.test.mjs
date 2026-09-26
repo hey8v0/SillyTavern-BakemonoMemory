@@ -113,7 +113,8 @@ test('mobile header keeps one compact static injection state', () => {
 
 test('overview dashboard keeps the mobile hierarchy compact and read-only', () => {
     assert.match(settingsSource, /class="bakemono-memory-overview-dashboard"/);
-    assert.match(settingsSource, /class="bakemono-memory-next-kicker">当前聊天<\/span>/);
+    // Page names live in the workbench header; only the help page keeps an in-page intro.
+    assert.doesNotMatch(settingsSource, /class="bakemono-memory-overview-heading"|id="bakemono-memory-scene-code"/);
     assert.match(settingsSource, /class="bakemono-memory-health-board"/);
     assert.match(settingsSource, /class="bakemono-memory-token-manifest"/);
     assert.match(settingsSource, /class="bakemono-memory-config-manifest"/);
@@ -135,7 +136,8 @@ test('overview dashboard keeps the mobile hierarchy compact and read-only', () =
     assert.match(styleSource, /\.bakemono-memory-control-deck \[hidden\]\s*\{[^}]*display:\s*none !important;/s);
     assert.match(styleSource, /\.bakemono-workbench-tabs\s*\{[^}]*scrollbar-width:\s*none;/s);
     assert.match(styleSource, /\.bakemono-mobile-actions,[\s\S]*?display:\s*none !important;/s);
-    assert.ok((settingsSource.match(/bakemono-memory-page-intro/g) || []).length >= 16);
+    assert.equal((settingsSource.match(/class="bakemono-memory-page-intro/g) || []).length, 1);
+    assert.match(settingsSource, /class="bakemono-memory-page-intro bakemono-memory-help-intro"/);
     assert.match(styleSource, /Scene workbench aesthetic/);
     assert.match(styleSource, /--bk-display:/);
 });
@@ -955,7 +957,9 @@ test('frequent prompt and floor-archive tools live directly in the settings cent
     assert.match(workbenchLayoutSource, /archive: \{ target: 'settings-hub', label: '返回设置中心' \}/);
     assert.match(workbenchLayoutSource, /prompts: \{ target: 'settings-hub', label: '返回设置中心' \}/);
     assert.match(workbenchLayoutSource, /\['config', 'generation', 'archive'\]\.includes\(sectionName\)/);
-    assert.match(settingsSource, /data-bakemono-nav="maintenance">\s*<span>09<\/span>/);
+    assert.match(settingsSource, /data-bakemono-nav="maintenance">\s*<i class="fa-solid fa-shield-halved"><\/i>/);
+    const settingsHub = settingsSource.slice(settingsSource.indexOf('data-bakemono-panel="settings-hub"'), settingsSource.indexOf('data-bakemono-panel="settings"'));
+    assert.doesNotMatch(settingsHub, /<span>0\d<\/span>/, 'settings rows carry no decorative numbers');
     assert.doesNotMatch(settingsSource, /data-bakemono-panel="generation"[\s\S]*?data-bakemono-nav="prompts"/);
 });
 
