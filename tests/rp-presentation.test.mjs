@@ -74,7 +74,8 @@ test('film-slate themes carry the approved day and night palettes with readable 
     assert.equal(day.id, 'bakemono-whiteboard-day');
     assert.equal(day.tokens.paper, '#f2eee5');
     assert.equal(night.id, 'bakemono-slate-night');
-    assert.equal(night.tokens.paper, '#151412');
+    assert.equal(night.tokens.paper, '#27292c');
+    assert.equal(night.tokens.accentStrong, '#c0cbe4');
     assert.equal(night.appearance, 'dark');
     function luminance(hex) {
         const rgb = hex.slice(1).match(/../g).map(value => parseInt(value, 16) / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
