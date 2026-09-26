@@ -42,3 +42,14 @@ test('overview and data hub carry no decorative codes or English labels', async 
     assert.match(html, /记忆状态 · STATUS/);
     assert.match(html, /<dt>条目<\/dt><dd id="bakemono-memory-prompt-inspector-count">/);
 });
+
+test('following the tavern theme re-syncs the opaque background on every kind of host theme change', async () => {
+    const source = await read('src/features/theme-controller.js');
+    assert.match(source, /matchMedia\?\.\('\(prefers-color-scheme: dark\)'\)\?\.addEventListener\?\.\('change', schedule\)/, 'system day/night switch');
+    assert.match(source, /observe\(documentRef\.head, \{ childList: true, subtree: true, characterData: true \}\)/, 'stylesheet swaps');
+    assert.match(source, /addEventListener\('visibilitychange', schedule\)/);
+    assert.match(source, /setInterval\(/);
+    assert.match(source, /if \(key === lastHostThemeKey\) return;/, 're-applies only when a host colour actually changed');
+    const css = await read('style.css');
+    for (const name of ['--ns-faint', '--rp-faint']) assert.ok(css.includes(name + ': color-mix(in srgb, var(--SmartThemeBodyColor) 62%'), name);
+});

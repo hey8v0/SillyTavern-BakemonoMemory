@@ -7902,7 +7902,8 @@
   --bk-type-meta: 12px;
   --bk-type-copy: 13px;
   --bk-type-label: 14px;
-  --bk-ink-soft: color-mix(in srgb, var(--SmartThemeBodyColor) 76%, transparent);
+  /* Secondary text stays readable on tavern themes whose body colour is already soft. */
+  --bk-ink-soft: color-mix(in srgb, var(--SmartThemeBodyColor) 80%, transparent);
 }
 
 .bakemono-workbench-root .bakemono-memory-next-kicker {
@@ -10699,8 +10700,8 @@ details[open] > summary > .bakemono-memory-help-trigger {
    workbench theme tokens, so tavern, day, night and custom looks all apply. */
 #bakemono-workbench-root .rp-core-ui {
   --rp-text: var(--SmartThemeBodyColor);
-  --rp-muted: color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent);
-  --rp-faint: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+  --rp-muted: color-mix(in srgb, var(--SmartThemeBodyColor) 80%, transparent);
+  --rp-faint: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
   --rp-rule: color-mix(in srgb, var(--SmartThemeBodyColor) 13%, transparent);
   --rp-rule-strong: color-mix(in srgb, var(--SmartThemeBodyColor) 24%, transparent);
   --rp-stripe: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
@@ -10979,8 +10980,8 @@ details[open] > summary > .bakemono-memory-help-trigger {
    Everything derives from the active theme, so tavern, day, night and custom looks all apply. */
 #bakemono-workbench-root {
   --ns-text: var(--SmartThemeBodyColor);
-  --ns-muted: color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent);
-  --ns-faint: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+  --ns-muted: color-mix(in srgb, var(--SmartThemeBodyColor) 80%, transparent);
+  --ns-faint: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
   --ns-rule: color-mix(in srgb, var(--SmartThemeBodyColor) 13%, transparent);
   --ns-rule-strong: color-mix(in srgb, var(--SmartThemeBodyColor) 24%, transparent);
   --ns-hover: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);

@@ -358,19 +358,46 @@ export function createThemeController({
         renderAppearanceSettings();
     }
 
-    // SillyTavern sets its theme variables on the root element; follow changes while the plugin is open.
-    let hostThemeObserver = null;
+    // The opaque tint is computed once per host theme, so it must follow every way a tavern theme can change:
+    // inline variables on <html>/<body>, swapped or edited stylesheets, and day/night themes that switch with the
+    // system through prefers-color-scheme (no DOM mutation at all). A cheap key check decides whether to re-apply.
+    let hostThemeWatched = false;
+    let lastHostThemeKey = '';
+    function hostThemeKey() {
+        const style = documentRef.defaultView?.getComputedStyle?.(documentRef.documentElement);
+        return style ? ['--SmartThemeBlurTintColor', '--SmartThemeBodyColor', '--SmartThemeQuoteColor'].map(name => style.getPropertyValue(name).trim()).join('|') : '';
+    }
+    function syncHostTheme() {
+        if (getAppearanceSettings().themeMode !== 'tavern') return;
+        const key = hostThemeKey();
+        if (key === lastHostThemeKey) return;
+        lastHostThemeKey = key;
+        applyAppearanceTheme();
+    }
     function watchHostTheme() {
-        const Observer = documentRef.defaultView?.MutationObserver;
-        if (hostThemeObserver || !Observer) return;
+        const view = documentRef.defaultView;
+        if (hostThemeWatched || !view) return;
+        hostThemeWatched = true;
         let pending = false;
-        hostThemeObserver = new Observer(() => {
-            if (pending || getAppearanceSettings().themeMode !== 'tavern') return;
+        const schedule = () => {
+            if (pending) return;
             pending = true;
-            documentRef.defaultView.requestAnimationFrame(() => { pending = false; applyAppearanceTheme(); });
-        });
-        hostThemeObserver.observe(documentRef.documentElement, { attributes: true, attributeFilter: ['style', 'class'] });
-        if (documentRef.body) hostThemeObserver.observe(documentRef.body, { attributes: true, attributeFilter: ['style', 'class'] });
+            view.requestAnimationFrame(() => { pending = false; syncHostTheme(); });
+        };
+        if (view.MutationObserver) {
+            const observer = new view.MutationObserver(schedule);
+            observer.observe(documentRef.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-theme'] });
+            if (documentRef.body) observer.observe(documentRef.body, { attributes: true, attributeFilter: ['style', 'class'] });
+            if (documentRef.head) observer.observe(documentRef.head, { childList: true, subtree: true, characterData: true });
+        }
+        view.matchMedia?.('(prefers-color-scheme: dark)')?.addEventListener?.('change', schedule);
+        documentRef.addEventListener('visibilitychange', schedule);
+        view.addEventListener('focus', schedule);
+        // Last resort for anything the events above miss; only reads three variables while the workbench is open.
+        view.setInterval(() => {
+            const root = documentRef.getElementById('bakemono-workbench-root');
+            if (root && !root.classList.contains('bakemono-workbench-hidden')) syncHostTheme();
+        }, 2000);
     }
 
     function setEditorSection(section) {
