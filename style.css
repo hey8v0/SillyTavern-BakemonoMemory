@@ -75,6 +75,8 @@
   background: var(--bk-paper);
 }
 .bakemono-memory-page-savebar[hidden], .bakemono-memory-page-savebar [hidden] { display: none !important; }
+/* Generic button display rules must never reveal elements the scripts hid. */
+#bakemono-workbench-root [hidden] { display: none !important; }
 .bakemono-memory-page-savebar.is-dirty { border-color: var(--bk-accent); }
 .bakemono-memory-page-savebar > span { flex: 1 1 130px; min-width: 0; font-size: 0.85em; overflow-wrap: anywhere; }
 .bakemono-memory-page-savebar > div { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -1533,7 +1535,12 @@
 .bakemono-memory-generation-mode-box {
   width: min(480px, calc(100vw - 32px));
   max-height: min(78vh, 520px);
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.bakemono-memory-generation-mode-box > .bakemono-memory-inline-actions {
+  margin-inline: 0;
 }
 
 @media (min-width: 720px) {
@@ -13220,4 +13227,64 @@ details[open] > summary > .bakemono-memory-help-trigger {
     #bakemono-workbench-root .rp-core-ui .rp-story-sheet { padding: 16px; }
     #bakemono-workbench-root .rp-core-ui .rp-story-date { font-size: 1.4em; }
     #bakemono-workbench-root .rp-core-ui .rp-story-time { font-size: 1.65em; }
+}
+
+/* Unsaved settings reminder: shown when leaving a page or closing the workbench. */
+.bakemono-memory-unsaved-dialog {
+  width: min(420px, calc(100vw - 32px));
+  margin: auto;
+  padding: 22px 20px 18px;
+  box-sizing: border-box;
+  border: 1px solid var(--bk-line-strong);
+  border-radius: var(--bk-radius-card, 16px);
+  background: var(--bk-paper-solid, var(--SmartThemeBlurTintColor));
+  color: var(--SmartThemeBodyColor);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45);
+}
+
+.bakemono-memory-unsaved-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.bakemono-memory-unsaved-dialog h3 {
+  margin: 0 0 8px;
+  font: 600 1.1em/1.45 var(--bk-display, inherit);
+}
+
+.bakemono-memory-unsaved-dialog p {
+  margin: 0 0 18px;
+  color: var(--bk-ink-soft);
+  font-size: 0.9em;
+  line-height: 1.7;
+}
+
+.bakemono-memory-unsaved-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bakemono-memory-unsaved-actions .menu_button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--bk-radius-control, 10px);
+  white-space: nowrap;
+}
+
+.bakemono-memory-unsaved-actions .menu_button.is-primary {
+  border-color: var(--bk-accent);
+  background: var(--bk-accent);
+  color: var(--bk-paper-solid, #1b1b1b);
+  font-weight: 600;
+}
+
+@media (max-width: 520px) {
+  .bakemono-memory-unsaved-actions {
+    grid-template-columns: 1fr;
+  }
 }

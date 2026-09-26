@@ -35,7 +35,7 @@ function revealInvalidField(el) {
 }
 
 // Drafts live only in this page/session. Never read hidden pages into shared settings.
-export function createPageSettings({ documentRef, getState, getActiveTab, savePage, refresh, notify = () => {} }) {
+export function createPageSettings({ documentRef, getState, getActiveTab, savePage, refresh, notify = () => {}, askLeave }) {
     const drafts = new WeakMap();
     let root, saving = false, replacement;
     const tabKey = tab => tab === 'tables' ? 'turn-summary' : tab;
@@ -74,7 +74,7 @@ export function createPageSettings({ documentRef, getState, getActiveTab, savePa
             else if (el.value !== draft.edits.get(el.id)) el.value = draft.edits.get(el.id);
         }
         documentRef.getElementById('bakemono-memory-page-save-status').textContent =
-            `${pages[tab].label} · ${saving ? '正在保存…' : draft.status || (draft.edits.size ? '未保存 · 切页暂存' : '无未保存修改')}`;
+            `${pages[tab].label} · ${saving ? '正在保存…' : draft.status || (draft.edits.size ? `未保存 · ${draft.edits.size} 项修改` : '无未保存修改')}`;
         documentRef.getElementById('bakemono-memory-page-save').disabled = saving;
         documentRef.getElementById('bakemono-memory-page-discard').hidden = !draft.edits.size;
         documentRef.getElementById('bakemono-memory-page-discard').disabled = saving;
@@ -129,6 +129,24 @@ export function createPageSettings({ documentRef, getState, getActiveTab, savePa
         }
         drafts.get(getState())?.delete(tab); refresh(); render();
     }
+    function unsavedCount(tab) {
+        return pages[tab] ? drafts.get(getState())?.get(tab)?.edits.size || 0 : 0;
+    }
+    // Leaving a settings page (nextTab) or closing the workbench (null) with
+    // unsaved edits asks first. Returns true, or a promise when the user decides.
+    function confirmLeave(nextTab = null) {
+        const tab = tabKey(getActiveTab()), state = getState();
+        const count = unsavedCount(tab);
+        if (saving || !count || !askLeave || (nextTab && tabKey(nextTab) === tab)) return true;
+        return (async () => {
+            const choice = await askLeave({ label: pages[tab].label, count, closing: !nextTab });
+            if (getState() !== state || tabKey(getActiveTab()) !== tab) return false;
+            if (choice === 'discard') { discard(); return true; }
+            if (choice !== 'save') return false;
+            await save();
+            return getState() === state && !unsavedCount(tab);
+        })();
+    }
     function onClick(event) {
         const tab = tabKey(getActiveTab());
         if (!pages[tab]) return;
@@ -162,5 +180,5 @@ export function createPageSettings({ documentRef, getState, getActiveTab, savePa
         root?.addEventListener('input', onInput); root?.addEventListener('change', onInput);
         root?.addEventListener('click', onClick, true); root?.addEventListener('change', onPreset, true);
     }
-    return { bind, render, save };
+    return { bind, confirmLeave, render, save };
 }

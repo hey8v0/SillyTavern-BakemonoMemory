@@ -67,11 +67,8 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
             return;
         }
         if (!core) {
-            root.innerHTML = `<section class="rp-blank"><span class="rp-blank-mark"><i class="fa-solid fa-book-open" aria-hidden="true"></i></span><span class="rp-eyebrow">剧情状态 · 尚未启用</span><h3>让故事，有迹可循。</h3><p>随着每一轮对话，整理人物关系、当下的处境，以及还没赴的约。</p><ul class="rp-onboarding-list"><li>谁和谁，有怎样的关系</li><li>接下来，有哪些约定</li><li>每次变化，都能回看来源</li></ul><div class="rp-controls">${button('enable-preview', '从这一轮开始')}${help('默认随正文维护，不额外发送请求。需要模型输出 rpEvents；独立于摘要和表格，从当前楼层开始记录。')}</div></section>`;
+            root.innerHTML = `<section class="rp-blank"><span class="rp-blank-mark"><i class="fa-solid fa-book-open" aria-hidden="true"></i></span><span class="rp-eyebrow">剧情状态 · 尚未启用</span><h3>让故事，有迹可循。</h3><p>随着每一轮对话，整理人物关系、当下的处境，以及还没赴的约。</p><ul class="rp-onboarding-list"><li>谁和谁，有怎样的关系</li><li>接下来，有哪些约定</li><li>每次变化，都能回看来源</li></ul>${nav.setup ? `<section class="rp-preview" aria-labelledby="rp-setup-title"><h4 id="rp-setup-title">空白开始</h4><p>从当前楼层建立基线；已有摘要、自定义表格和聊天正文保持不变。</p><div class="rp-controls">${button('enable-confirm', '确认空白启用')}${button('setup-cancel', '返回')}</div></section>` : `<div class="rp-controls">${button('enable-preview', '从这一轮开始')}${help('默认随正文维护，不额外发送请求。需要模型输出 rpEvents；独立于摘要和表格，从当前楼层开始记录。')}</div>`}</section>`;
             if (nav.error) root.insertAdjacentHTML('beforeend', `<p role="alert">${esc(nav.error)}</p>`);
-            if (nav.setup) {
-                root.insertAdjacentHTML('beforeend', `<section class="rp-preview"><h4>空白开始</h4><p>从当前楼层建立基线；已有摘要、自定义表格和聊天正文保持不变。</p>${button('enable-confirm', '确认空白启用')}${button('setup-cancel', '返回')}</section>`);
-            }
             return;
         }
         const hasData = core.facts.length + core.claims.length + core.observations.length
@@ -326,6 +323,7 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         }
         if (getState() !== state) return;
         nav.error = ''; render(state); renderReview(state); refresh?.();
+        if (['enable-preview', 'setup-cancel'].includes(name)) root.querySelector(`[data-rp-action="${name === 'enable-preview' ? 'enable-confirm' : 'enable-preview'}"]`)?.focus();
         if (name.startsWith('edit-')) root.querySelector('.rp-edit-form h3, .rp-detail-title')?.focus({ preventScroll: true });
         if (['detail', 'review-open'].includes(name)) { scrollSurface(root).scrollTop = 0; root.querySelector('.rp-detail-title')?.focus({ preventScroll: true }); }
         if (name === 'back') {

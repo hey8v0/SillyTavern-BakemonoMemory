@@ -5,6 +5,7 @@ export function createWorkbenchNavigation({
     scanBlocks,
     closeHelp,
     clearFeedback,
+    confirmLeave,
     rootId = 'bakemono-workbench-root',
     menuButtonId = 'bakemono-memory-menu-toggle',
 } = {}) {
@@ -92,22 +93,31 @@ export function createWorkbenchNavigation({
         stabilizeMobileScroll('preview');
     }
 
+    // Returns true when switched, false when refused, or a promise while the
+    // user decides what to do with unsaved settings on the current page.
     function switchTab(tabName) {
         const root = getRoot();
-        if (!root) return;
+        if (!root) return false;
         closeHelp?.();
         if (!tabName) {
             setMenuOpen(false);
-            return;
+            return false;
         }
         if (root.dataset.activeTab === tabName) {
             setMenuOpen(false);
-            return;
+            return true;
         }
         const panelName = tabName === 'tables' ? 'turn-summary' : tabName;
+        if (!root.querySelector(`.bakemono-workbench-panel[data-bakemono-panel="${panelName}"]`)) return false;
+        const verdict = isOpen() ? confirmLeave?.(tabName) ?? true : true;
+        if (verdict === true) return showTab(root, tabName, panelName);
+        return Promise.resolve(verdict).then(ok => !!ok && showTab(root, tabName, panelName));
+    }
+
+    function showTab(root, tabName, panelName) {
         const panels = [...root.querySelectorAll('.bakemono-workbench-panel')];
         const targetPanel = panels.find(panel => panel.dataset.bakemonoPanel === panelName);
-        if (!targetPanel) return;
+        if (!targetPanel) return false;
         root.dataset.activeTab = tabName;
         const title = document.getElementById('bakemono-workbench-title');
         if (title) title.textContent = getPanelTitle?.(tabName) || '';
@@ -119,6 +129,9 @@ export function createWorkbenchNavigation({
         panels.forEach(panel => {
             panel.classList.toggle('is-active', panel.dataset.bakemonoPanel === panelName);
         });
+        // All panels share one scroll surface; a new page always starts at its top.
+        const main = root.querySelector('.bakemono-workbench-main');
+        if (main) main.scrollTop = 0;
         renderAll?.();
         requestAnimationFrame(() => setMenuOpen(false));
         syncMobileCollapsibles(targetPanel);
@@ -127,6 +140,7 @@ export function createWorkbenchNavigation({
         } else if (tabName === 'prompts') {
             stabilizeMobileScroll('prompts');
         }
+        return true;
     }
 
     function open() {
@@ -139,12 +153,19 @@ export function createWorkbenchNavigation({
     }
 
     function close() {
+        const verdict = isOpen() ? confirmLeave?.(null) ?? true : true;
+        if (verdict === true) return hide();
+        return Promise.resolve(verdict).then(ok => !!ok && hide());
+    }
+
+    function hide() {
         const root = getRoot();
         closeHelp?.();
         clearFeedback?.();
         setMenuOpen(false);
         root?.classList.add('bakemono-workbench-hidden');
         root?.setAttribute('aria-hidden', 'true');
+        return true;
     }
 
     return {

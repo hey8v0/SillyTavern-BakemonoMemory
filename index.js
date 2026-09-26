@@ -104,6 +104,7 @@ import { createOperationFeedback } from './src/ui/operation-feedback.js';
 import { installWorkbenchParentNavigation, organizeWorkbenchOwnedSections } from './src/ui/workbench-layout.js';
 import { createWorkbenchNavigation } from './src/ui/workbench-navigation.js';
 import { createPageSettings } from './src/ui/page-settings.js';
+import { createUnsavedChangesDialog } from './src/ui/unsaved-changes-dialog.js';
 import { createWorkbenchShellEvents } from './src/ui/workbench-shell-events.js';
 import { createSillyTavernEntry } from './src/ui/sillytavern-entry.js';
 import { createDefaultConfiguration } from './src/config/defaults.js';
@@ -742,6 +743,7 @@ const workbenchNavigation = createWorkbenchNavigation({
         injectionPreview.close({ restoreFocus: false });
     },
     clearFeedback: () => operationFeedback.clear(),
+    confirmLeave: tabName => pageSettings?.confirmLeave(tabName) ?? true,
 });
 const {
     close: closeWorkbench,
@@ -1926,8 +1928,8 @@ const {
 
 const summaryBrowserEvents = createSummaryBrowserEvents({
     query: $,
-    focusSummaryRecord: (key, type) => {
-        switchWorkbenchTab('preview');
+    focusSummaryRecord: async (key, type) => {
+        if (!await switchWorkbenchTab('preview')) return;
         if (!summaryBrowserUi.focusRecord(key, type)) toastr.info('这条摘要已不在当前聊天中，请刷新后查看。');
     },
     getSummaryBrowserActiveType,
@@ -2255,6 +2257,10 @@ pageSettings = createPageSettings({
         }[getActiveWorkbenchTab()] || workbenchRenderScopes.SUMMARY);
     },
     notify: message => toastr.warning(message),
+    askLeave: createUnsavedChangesDialog({
+        documentRef: document,
+        getHost: () => document.getElementById('bakemono-workbench-root'),
+    }).ask,
     async savePage(tab, state) {
         if (ensureState() !== state) throw new Error('聊天已切换，请在当前聊天重新保存。');
         if (tab === 'vector') return applyVectorMemorySettings();
