@@ -18,9 +18,7 @@ export function createScanController({
     renderWorkbenchScope,
     workbenchRenderScopes,
     query,
-    readRuleFieldsFromUi,
     persistSharedConfigurationFromState,
-    toastr,
     confirmDanger,
     defaultScanRules,
     defaultClassificationRules,
@@ -115,14 +113,6 @@ export function createScanController({
     }
 
     function bindEvents() {
-        query('#bakemono-memory-apply-rules').off('click').on('click', () => {
-            const state = getState();
-            readRuleFieldsFromUi(state);
-            scanBakemonoBlocks({ persist: false });
-            persistSharedConfigurationFromState(state);
-            renderWorkbenchScope(workbenchRenderScopes.SCAN, '扫描规则已应用、刷新预览并同步到所有角色卡。');
-            toastr.success('扫描规则已全局保存。');
-        });
         query('#bakemono-memory-reset-rules').off('click').on('click', () => {
             const confirmed = confirmDanger(
                 '恢复默认扫描与预览规则？',

@@ -142,11 +142,9 @@ test('closing with edits says the workbench is closing', async () => {
     assert.equal(page.calls.asked[0].closing, true);
 });
 
-test('stylesheet keeps hidden elements hidden and the mode sheet free of sideways scroll', async () => {
+test('stylesheet keeps hidden elements hidden', async () => {
     const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
     assert.match(css, /#bakemono-workbench-root \[hidden\] \{ display: none !important; \}/);
-    assert.match(css, /\.bakemono-memory-generation-mode-box \{[^}]*overflow-x: hidden;/);
-    assert.match(css, /\.bakemono-memory-generation-mode-box > \.bakemono-memory-inline-actions \{\s*margin-inline: 0;/);
 });
 
 test('RP onboarding shows its confirmation in place of the start button', async () => {

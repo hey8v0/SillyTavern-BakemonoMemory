@@ -3,15 +3,12 @@ export function createContentConfigurationEvents({
     navigatorRef,
     getState,
     defaultInjectionTemplate,
-    normalizeInjectionMemoryBody,
     syncInjection,
     persistSharedConfigurationFromState,
     renderWorkbenchScope,
     workbenchRenderScopes,
     toastr,
     confirmDanger,
-    saveState,
-    readPromptFieldsFromUi,
     defaultStageGenerationPrompt,
     defaultEpicGenerationPrompt,
     defaultStoryGenerationPrompt,
@@ -26,19 +23,6 @@ export function createContentConfigurationEvents({
     renderInjectionContent,
 } = {}) {
     function bindInjectionEvents() {
-        query('#bakemono-memory-apply-injection').off('click').on('click', () => {
-            const state = getState();
-            state.injection.template = String(query('#bakemono-memory-injection-template').val() || defaultInjectionTemplate);
-            state.generatedMemory = normalizeInjectionMemoryBody(
-                query('#bakemono-memory-source-content').val() || '',
-                state.injection.template,
-                defaultInjectionTemplate,
-            );
-            syncInjection();
-            persistSharedConfigurationFromState(state);
-            renderWorkbenchScope(workbenchRenderScopes.INJECTION, '注入内容已应用，注入设置已同步到所有角色卡。');
-            toastr.success('注入内容已应用，设置已全局保存。');
-        });
         query('#bakemono-memory-copy-injection').off('click').on('click', async () => {
             syncInjection();
             const content = String(query('#bakemono-memory-injection-content').val() || '');
@@ -57,22 +41,11 @@ export function createContentConfigurationEvents({
             persistSharedConfigurationFromState(state);
             renderWorkbenchScope(workbenchRenderScopes.INJECTION, '注入模板已恢复默认。');
         });
-        query('#bakemono-memory-clear-injection').off('click').on('click', () => {
-            const confirmed = confirmDanger(
-                '清空记忆正文？',
-                ['这会清空手动编辑的记忆正文；已保存摘要仍在，但当前自定义正文会消失。'],
-            );
-            if (!confirmed) return;
-            const state = getState();
-            state.generatedMemory = '';
-            syncInjection();
-            saveState();
-            renderWorkbenchScope(workbenchRenderScopes.INJECTION, '注入内容已清空。');
-        });
         // These fields stay drafts until the user explicitly saves this page.
         query('#bakemono-memory-injection-enabled, #bakemono-memory-role').off('change');
         query('#bakemono-memory-depth').off('input');
-        query('#bakemono-memory-source-content, #bakemono-memory-injection-template').off('input').on('input', () => {
+        // The memory body is derived from saved records (read-only); only the template previews live.
+        query('#bakemono-memory-injection-template').off('input').on('input', () => {
             const state = getState();
             const previewState = {
                 ...state,
@@ -89,13 +62,6 @@ export function createContentConfigurationEvents({
     }
 
     function bindPromptEvents() {
-        query('#bakemono-memory-apply-prompts').off('click').on('click', () => {
-            const state = getState();
-            readPromptFieldsFromUi(state);
-            persistSharedConfigurationFromState(state);
-            renderWorkbenchScope(workbenchRenderScopes.PROMPTS, '生成提示词已应用，并同步到所有角色卡。');
-            toastr.success('生成提示词已全局保存。');
-        });
         const resetPrompt = ({ selector, title, warning, key, value, status }) => {
             query(selector).off('click').on('click', () => {
                 if (!confirmDanger(title, [warning])) return;

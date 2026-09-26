@@ -1,9 +1,9 @@
 export function createWorkbenchActionController({
     workbenchRenderScopes,
     scanBakemonoBlocks,
-    chooseStageGenerationMode,
+    generateStageDraft,
     generateStageBatchTasks,
-    chooseEpicGenerationMode,
+    generateEpicDraft,
     generateEpicBatchTasks,
     generateBackfillQueue,
     generateBatchSummaryQueue,
@@ -25,7 +25,6 @@ export function createWorkbenchActionController({
     hideBeforeRecentMessages,
     applyAutoHideRecentSettings,
     restoreAutoHiddenMessages,
-    applyVectorMemorySettings,
     buildVectorMemoryIndex,
     pauseVectorIndex,
     testVectorMemoryRetrieval,
@@ -40,11 +39,11 @@ export function createWorkbenchActionController({
         if (action === 'scan') {
             scanBakemonoBlocks();
         } else if (action === 'generate-stage') {
-            await chooseStageGenerationMode();
+            await generateStageDraft();
         } else if (action === 'generate-stage-batch') {
             await generateStageBatchTasks();
         } else if (action === 'generate-epic') {
-            await chooseEpicGenerationMode();
+            await generateEpicDraft();
         } else if (action === 'generate-epic-batch') {
             await generateEpicBatchTasks();
         } else if (action === 'backfill') {
@@ -89,8 +88,6 @@ export function createWorkbenchActionController({
             await applyAutoHideRecentSettings();
         } else if (action === 'restore-auto-hidden') {
             await restoreAutoHiddenMessages();
-        } else if (action === 'vector-apply') {
-            await applyVectorMemorySettings();
         } else if (action === 'vector-index') {
             await runVisibleOperation('正在建立/刷新向量索引...', () => buildVectorMemoryIndex(), '向量索引已刷新');
         } else if (action === 'vector-pause') {

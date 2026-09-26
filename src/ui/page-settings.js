@@ -1,11 +1,12 @@
+// The sticky save bar is the only save control for these pages.
 const pages = {
-    vector: { label: '向量设置', save: '[data-bakemono-action="vector-apply"]', fields: /^bakemono-memory-vector-/ },
-    scan: { label: '扫描规则', save: '#bakemono-memory-apply-rules', fields: /^bakemono-memory-(scan-mode|include-tags|exclude-tags|full-min-length|include-hidden|class-|layout-)/ },
-    automation: { label: '自动总结', save: '#bakemono-memory-apply-automation', fields: /^bakemono-memory-(auto-|backfill-batch-size$)/ },
-    generation: { label: '生成接口', save: '#bakemono-memory-apply-generation-api', fields: /^bakemono-memory-(api-provider|custom-)/ },
-    prompts: { label: '生成提示词', save: '#bakemono-memory-apply-prompts', fields: /^bakemono-memory-(story|missing|stage|epic)-prompt$/ },
-    injection: { label: '注入设置', save: '#bakemono-memory-apply-injection', fields: /^bakemono-memory-(injection-(template|enabled)|depth|role)$/ },
-    'turn-summary': { label: '摘要与表格设置', save: '#bakemono-memory-apply-turn-settings', fields: /^bakemono-memory-(turn-|inline-|table-(prompt|enabled|inject-memory|auto-apply|schema-scope)$)/ },
+    vector: { label: '向量设置', fields: /^bakemono-memory-vector-/ },
+    scan: { label: '扫描规则', fields: /^bakemono-memory-(scan-mode|include-tags|exclude-tags|full-min-length|include-hidden|class-|layout-)/ },
+    automation: { label: '自动总结', fields: /^bakemono-memory-(auto-|backfill-batch-size$)/ },
+    generation: { label: '生成接口', fields: /^bakemono-memory-(api-provider|custom-)/ },
+    prompts: { label: '生成提示词', fields: /^bakemono-memory-(story|missing|stage|epic)-prompt$/ },
+    injection: { label: '注入设置', fields: /^bakemono-memory-(injection-(template|enabled)|depth|role)$/ },
+    'turn-summary': { label: '摘要与表格设置', fields: /^bakemono-memory-(turn-|inline-|table-(prompt|enabled|inject-memory|auto-apply|schema-scope)$)/ },
 };
 const immediateFields = new Set(['bakemono-memory-vector-enabled', 'bakemono-memory-table-inject-memory', 'bakemono-memory-table-schema-scope']);
 
@@ -150,7 +151,7 @@ export function createPageSettings({ documentRef, getState, getActiveTab, savePa
     function onClick(event) {
         const tab = tabKey(getActiveTab());
         if (!pages[tab]) return;
-        if (event.target.closest('#bakemono-memory-page-save, ' + pages[tab].save)) {
+        if (event.target.closest('#bakemono-memory-page-save')) {
             event.preventDefault(); event.stopImmediatePropagation(); void save();
         } else if (event.target.closest('#bakemono-memory-page-discard')) {
             event.preventDefault(); discard();

@@ -103,10 +103,11 @@ export function createWorkbenchHeaderUi({
     }
 
     function getInjectionStatus(state = getState()) {
-        if (!state.injection?.enabled) return { short: '注入关', full: '已关闭' };
+        if (!state.injection?.enabled) return { short: '注入已关', full: '已关闭' };
         const characterCount = renderInjectionContent(state).length;
-        if (!characterCount) return { short: '注入空', full: '已开启 · 暂无可注入内容' };
-        return { short: '注入开', full: `已开启 · 已组装 ${characterCount.toLocaleString()} 字符；发送情况请查看上一轮` };
+        if (!characterCount) return { short: '无可注入', full: '已开启 · 暂无可注入内容' };
+        const size = characterCount >= 10000 ? `${(characterCount / 10000).toFixed(1)}万` : characterCount.toLocaleString();
+        return { short: `注入 ${size}字`, full: `已开启 · 已组装 ${characterCount.toLocaleString()} 字符；发送情况请查看上一轮` };
     }
 
     function render(tabName, state = getState()) {

@@ -106,7 +106,7 @@
             </div>
             <div class="bakemono-memory-health-stats" aria-label="记忆覆盖情况">
               <div><strong id="bakemono-memory-index-ready-floor">0</strong><span>已覆盖楼层</span></div>
-              <div><strong id="bakemono-memory-index-pending-count">0</strong><span>待识别楼层</span></div>
+              <div><strong id="bakemono-memory-index-pending-count">0</strong><span>尚无摘要楼层</span></div>
               <div><strong id="bakemono-memory-count-drafts">0</strong><span>待确认</span></div>
             </div>
             <div class="bakemono-memory-health-progress" aria-label="楼层覆盖比例"><span id="bakemono-memory-scene-progress-fill"></span></div>
@@ -610,14 +610,9 @@
           <input id="bakemono-memory-record-filter" class="text_pole" type="search" placeholder="搜索事件、角色、地点或楼层">
         </label>
         <div class="bakemono-memory-record-quick-filters" aria-label="常用状态筛选">
-          <button type="button" class="is-active" data-bakemono-record-status="all">全部</button>
-          <button type="button" data-bakemono-record-status="injected">已选入</button>
-          <button type="button" data-bakemono-record-status="archived">已归档</button>
-        </div>
-        <div class="bakemono-memory-record-stat-strip" aria-label="记忆档案概览">
-          <div><strong id="bakemono-memory-record-stat-total">0</strong><span>记忆记录</span></div>
-          <div><strong id="bakemono-memory-record-stat-injected">0</strong><span>已选入记忆</span></div>
-          <div><strong id="bakemono-memory-record-stat-archived">0</strong><span>已归档</span></div>
+          <button type="button" class="is-active" data-bakemono-record-status="all">全部 <strong id="bakemono-memory-record-stat-total">0</strong></button>
+          <button type="button" data-bakemono-record-status="injected">已选入 <strong id="bakemono-memory-record-stat-injected">0</strong></button>
+          <button type="button" data-bakemono-record-status="archived">已归档 <strong id="bakemono-memory-record-stat-archived">0</strong></button>
         </div>
         <details class="bakemono-memory-record-filter-disclosure bakemono-memory-console-disclosure">
           <summary>
@@ -787,12 +782,6 @@
           <div class="bakemono-memory-persistence-protection" role="status">
             <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
             <span><strong>崩溃恢复保护已开启</strong><small>摘要、草稿和正文补丁会优先写入本地恢复日志；TT 空间不足时自动切换轻量日志，仍不足也不会阻断酒馆正式保存。</small></span>
-          </div>
-          <div class="bakemono-memory-inline-actions">
-            <button class="menu_button" id="bakemono-memory-apply-turn-settings">
-              <i class="fa-solid fa-floppy-disk"></i>
-              <span>应用设置</span>
-            </button>
           </div>
         </details>
 
@@ -1106,7 +1095,7 @@
         <div class="bakemono-memory-summary-mode-tabs" aria-label="总结生成方式">
           <button type="button" class="is-active" data-bakemono-summary-mode="stage">阶段总结</button>
           <button type="button" data-bakemono-summary-mode="epic">多次总结</button>
-          <button type="button" data-bakemono-summary-mode="batch">批量生成</button>
+          <button type="button" data-bakemono-summary-mode="batch">补写旧聊天</button>
         </div>
 
         <article class="bakemono-memory-scene-panel bakemono-memory-summary-generation-panel">
@@ -1122,7 +1111,11 @@
           <div class="bakemono-memory-hero-actions">
             <button class="menu_button is-workflow-primary" id="bakemono-memory-summary-primary-action" data-bakemono-action="generate-stage">
               <i class="fa-solid fa-wand-magic-sparkles"></i>
-              <span>生成阶段总结</span>
+              <span>生成一条阶段总结</span>
+            </button>
+            <button class="menu_button" id="bakemono-memory-summary-batch-action" data-bakemono-action="generate-stage-batch">
+              <i class="fa-solid fa-list-check"></i>
+              <span>分批生成</span>
             </button>
           </div>
         </article>
@@ -1303,9 +1296,6 @@
           <div class="bakemono-memory-automation-hero-actions">
             <button type="button" class="menu_button" id="bakemono-memory-automation-next-action" hidden></button>
             <button type="button" class="menu_button" data-bakemono-tab="turn-summary">摘要来源</button>
-            <button class="menu_button bakemono-memory-automation-primary" id="bakemono-memory-apply-automation">
-              <i class="fa-solid fa-floppy-disk"></i><span>应用自动设置</span>
-            </button>
             <button class="menu_button" data-bakemono-tab="drafts">
               <i class="fa-solid fa-inbox"></i><span>查看待确认</span>
             </button>
@@ -1449,10 +1439,6 @@
                 <option value="true">流式（部分中转更稳定）</option>
               </select>
             </label>
-            <button class="menu_button bakemono-memory-automation-primary" id="bakemono-memory-apply-generation-api" type="button">
-              <i class="fa-solid fa-floppy-disk"></i>
-              <span>应用模型设置</span>
-            </button>
           </div>
         </details>
 
@@ -1578,10 +1564,6 @@
         </details>
 
         <div class="bakemono-memory-inline-actions bakemono-memory-scan-save-actions">
-          <button class="menu_button" id="bakemono-memory-apply-rules">
-            <i class="fa-solid fa-floppy-disk"></i>
-            <span>应用扫描规则</span>
-          </button>
           <button class="menu_button" id="bakemono-memory-reset-rules">
             <i class="fa-solid fa-rotate-left"></i>
               <span>恢复默认规则</span>
@@ -1633,10 +1615,6 @@
           <summary><span><i class="fa-solid fa-sliders"></i> 向量配置</span><small id="bakemono-memory-vector-config-summary">本地向量 · 召回 0 条</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看向量配置说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">先把当前剧情改写成多条检索句，再用向量相似度初筛、重排分档；高相关内容发全文，较相关内容发摘要，避免召回过多撑爆上下文。</span></button></summary>
           <div class="bakemono-memory-vector-disclosure-body">
           <div class="bakemono-memory-inline-actions">
-            <button class="menu_button" data-bakemono-action="vector-apply">
-              <i class="fa-solid fa-floppy-disk"></i>
-              <span>应用配置</span>
-            </button>
             <button class="menu_button danger_button" data-bakemono-action="vector-clear">
               <i class="fa-solid fa-trash"></i>
               <span>清空索引</span>
@@ -1940,17 +1918,17 @@
           <header><span>最终注入预览</span><small id="bakemono-memory-injection-char-count">约 0 字符</small></header>
           <textarea id="bakemono-memory-injection-content" class="text_pole" rows="7" spellcheck="false" readonly aria-label="最终注入预览"></textarea>
           <div class="bakemono-memory-injection-preview-actions">
-            <button class="menu_button bakemono-memory-injection-primary" id="bakemono-memory-apply-injection"><i class="fa-solid fa-floppy-disk"></i><span>应用编辑</span></button>
             <button class="menu_button" id="bakemono-memory-copy-injection"><i class="fa-solid fa-copy"></i><span>复制内容</span></button>
           </div>
         </article>
 
         <details class="bakemono-memory-injection-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-pen-to-square"></i> 编辑记忆与模板</span><small>完整正文与注入外壳</small></summary>
+          <summary><span><i class="fa-solid fa-pen-to-square"></i> 注入模板</span><small>记忆正文与注入外壳</small></summary>
           <div class="bakemono-memory-injection-disclosure-body">
             <label class="bakemono-memory-editor">
-              <span>记忆正文</span>
-              <textarea id="bakemono-memory-source-content" class="text_pole textarea_compact" rows="10" spellcheck="false"></textarea>
+              <span>记忆正文 · 只读</span>
+              <textarea id="bakemono-memory-source-content" class="text_pole textarea_compact" rows="10" spellcheck="false" readonly aria-describedby="bakemono-memory-source-content-note"></textarea>
+              <small id="bakemono-memory-source-content-note">由已保存的摘要、表格与剧情状态自动组成。要修改内容，请在“总结”或“记忆库”中编辑对应记录。</small>
             </label>
             <label class="bakemono-memory-editor">
               <span>注入模板</span>
@@ -1972,10 +1950,9 @@
         </details>
 
         <details class="bakemono-memory-injection-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-shield-halved"></i> 模板维护</span><small>恢复默认或清空记忆正文</small></summary>
+          <summary><span><i class="fa-solid fa-shield-halved"></i> 模板维护</span><small>恢复默认模板</small></summary>
           <div class="bakemono-memory-injection-disclosure-body bakemono-memory-injection-maintenance">
             <button class="menu_button" id="bakemono-memory-reset-template"><i class="fa-solid fa-rotate-left"></i><span>恢复默认模板</span></button>
-            <button class="menu_button danger_button" id="bakemono-memory-clear-injection"><i class="fa-solid fa-eraser"></i><span>清空记忆正文</span></button>
           </div>
         </details>
       </section>
@@ -2037,10 +2014,6 @@
             </div>
           </div>
         </details>
-
-        <div class="bakemono-memory-prompts-primary-actions">
-          <button class="menu_button" id="bakemono-memory-apply-prompts"><i class="fa-solid fa-floppy-disk"></i><span>应用提示词</span></button>
-        </div>
 
         <details class="bakemono-memory-prompts-editor-disclosure bakemono-memory-console-disclosure">
           <summary><span><i class="fa-solid fa-shield-halved"></i> 恢复默认提示词</span><small>按类型单独恢复</small></summary>
@@ -2205,7 +2178,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.8.8 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.8.9 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

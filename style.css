@@ -1535,12 +1535,7 @@
 .bakemono-memory-generation-mode-box {
   width: min(480px, calc(100vw - 32px));
   max-height: min(78vh, 520px);
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-.bakemono-memory-generation-mode-box > .bakemono-memory-inline-actions {
-  margin-inline: 0;
+  overflow: auto;
 }
 
 @media (min-width: 720px) {
@@ -10000,7 +9995,8 @@ details[open] > summary > .bakemono-memory-help-trigger {
 
   .bakemono-memory-badge {
     min-width: 0;
-    max-width: 62px;
+    /* Fits "无可注入" and "注入 1,367字" without truncation. */
+    max-width: 104px;
     min-height: 30px;
     padding: 5px 8px;
     font-size: 12px !important;
@@ -13227,6 +13223,35 @@ details[open] > summary > .bakemono-memory-help-trigger {
     #bakemono-workbench-root .rp-core-ui .rp-story-sheet { padding: 16px; }
     #bakemono-workbench-root .rp-core-ui .rp-story-date { font-size: 1.4em; }
     #bakemono-workbench-root .rp-core-ui .rp-story-time { font-size: 1.65em; }
+}
+
+/* Record filter chips carry their own counts (the separate stat strip was removed). */
+.bakemono-memory-record-quick-filters > button strong {
+  margin-left: 4px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Read-only memory body on the injection page. */
+#bakemono-memory-source-content[readonly] {
+  opacity: 0.85;
+  cursor: default;
+}
+
+#bakemono-memory-source-content-note {
+  display: block;
+  margin-top: 6px;
+  color: var(--bk-ink-soft);
+  font-size: 0.82em;
+  line-height: 1.6;
+}
+
+/* Summary card: one primary action with its batch variant beside it. */
+#bakemono-memory-summary-batch-action:disabled,
+#bakemono-memory-summary-primary-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 /* Unsaved settings reminder: shown when leaving a page or closing the workbench. */

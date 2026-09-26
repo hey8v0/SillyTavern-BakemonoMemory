@@ -61,10 +61,8 @@ export function createMemoryRecordsUi({
         query('#bakemono-memory-record-stat-injected').text(stats.byStatus[memoryRecordStatuses.INJECTED] || 0);
         query('#bakemono-memory-record-stat-archived').text(stats.byStatus[memoryRecordStatuses.ARCHIVED] || 0);
 
+        // Kind counts already head this panel; the line adds only what the grid does not show.
         const description = [
-            `剧情摘要 ${stats.byKind[blockTypes.STORY] || 0}`,
-            `阶段总结 ${stats.byKind[blockTypes.STAGE] || 0}`,
-            `多次总结 ${stats.byKind[blockTypes.EPIC] || 0}`,
             `已覆盖 ${stats.byStatus[memoryRecordStatuses.COVERED] || 0}`,
             `已归档 ${stats.byStatus[memoryRecordStatuses.ARCHIVED] || 0}`,
         ].join(' · ');

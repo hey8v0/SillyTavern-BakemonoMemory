@@ -7,11 +7,6 @@ export function createSummaryTargetController({
     parseLooseNumberRange,
     toastr,
     saveState,
-    getIsBusy,
-    generateStageDraft,
-    generateStageBatchTasks,
-    generateEpicDraft,
-    generateEpicBatchTasks,
     confirmDanger,
     getSourceMessageIdsFromBlocks,
     formatSourceRange,
@@ -242,93 +237,6 @@ export function createSummaryTargetController({
         });
     }
     
-    function promptGenerationModeSelection(kind) {
-        const kindLabel = kind === 'epic' ? '多次总结' : '阶段总结';
-        const batchLabel = kind === 'epic' ? '批量多次总结' : '批量阶段总结';
-        const singleHint = kind === 'epic'
-            ? '选范围，生成一条上层草稿。'
-            : '选范围，生成一条阶段草稿。';
-        const batchHint = kind === 'epic'
-            ? '大量总结分批入队。'
-            : '大量摘要分批入队。';
-    
-        return new Promise(resolve => {
-            document.querySelector('.bakemono-memory-generation-mode-dialog')?.remove();
-    
-            const overlay = document.createElement('div');
-            overlay.className = 'bakemono-memory-target-dialog bakemono-memory-generation-mode-dialog';
-            overlay.innerHTML = `
-                <section class="bakemono-memory-target-box bakemono-memory-generation-mode-box" role="dialog" aria-modal="true">
-                    <header>
-                        <div>
-                            <span>选择生成方式</span>
-                            <h3>${kindLabel}</h3>
-                        </div>
-                        <button type="button" class="menu_button" data-bakemono-mode-cancel><i class="fa-solid fa-xmark"></i></button>
-                    </header>
-                    <div class="bakemono-memory-generation-mode-list">
-                        <button type="button" class="menu_button bakemono-memory-generation-mode-option" data-bakemono-mode-choice="single">
-                            <i class="fa-solid fa-wand-magic-sparkles"></i>
-                            <span>
-                                <strong>单次生成</strong>
-                                <small>${singleHint}</small>
-                            </span>
-                        </button>
-                        <button type="button" class="menu_button bakemono-memory-generation-mode-option" data-bakemono-mode-choice="batch">
-                            <i class="fa-solid fa-list-check"></i>
-                            <span>
-                                <strong>${batchLabel}</strong>
-                                <small>${batchHint}</small>
-                            </span>
-                        </button>
-                    </div>
-                    <footer class="bakemono-memory-inline-actions">
-                        <button type="button" class="menu_button" data-bakemono-mode-cancel><i class="fa-solid fa-ban"></i><span>取消</span></button>
-                    </footer>
-                </section>
-            `;
-    
-            const close = value => {
-                overlay.remove();
-                resolve(value);
-            };
-            overlay.querySelectorAll('[data-bakemono-mode-cancel]').forEach(button => {
-                button.addEventListener('click', () => close(null));
-            });
-            overlay.querySelectorAll('[data-bakemono-mode-choice]').forEach(button => {
-                button.addEventListener('click', () => close(button.dataset.bakemonoModeChoice));
-            });
-    
-            const host = document.getElementById('bakemono-workbench-root') || document.body;
-            host.append(overlay);
-            overlay.querySelector('[data-bakemono-mode-choice]')?.focus();
-        });
-    }
-    
-    async function chooseStageGenerationMode() {
-        if (getIsBusy?.()) {
-            return;
-        }
-        const mode = await promptGenerationModeSelection('stage');
-        if (mode === 'single') {
-            await generateStageDraft();
-        } else if (mode === 'batch') {
-            await generateStageBatchTasks();
-        }
-    }
-    
-    async function chooseEpicGenerationMode() {
-        if (getIsBusy?.()) {
-            return;
-        }
-        const mode = await promptGenerationModeSelection('epic');
-        if (mode === 'single') {
-            await generateEpicDraft();
-        } else if (mode === 'batch') {
-            await generateEpicBatchTasks();
-        }
-    }
-    
     function confirmGenerationTargets(kind, targets, totalLength) {
         const state = ensureState();
         const kindLabel = kind === 'epic' ? '多次总结' : '阶段总结';
@@ -352,12 +260,9 @@ export function createSummaryTargetController({
     
 
     return {
-        chooseEpicGenerationMode,
-        chooseStageGenerationMode,
         confirmGenerationTargets,
         getTargetSelectionLabel,
         parseGenerationTargetInput,
-        promptGenerationModeSelection,
         promptGenerationTargetSelection,
         readGenerationTargetSettings,
     };

@@ -101,9 +101,9 @@ test('mobile header keeps one compact static injection state', () => {
     assert.doesNotMatch(settingsSource, /bakemono-workbench-context-trigger|bakemono-workbench-context-popover|bakemono-workbench-context-caret/);
     assert.match(source, /createWorkbenchHeaderUi\(\{/);
     assert.match(workbenchHeaderUiSource, /function getPanelShortKicker\(/);
-    assert.match(workbenchHeaderUiSource, /short: '注入开'/);
-    assert.match(workbenchHeaderUiSource, /short: '注入空'/);
-    assert.match(workbenchHeaderUiSource, /short: '注入关'/);
+    assert.match(workbenchHeaderUiSource, /short: `注入 \$\{size\}字`/);
+    assert.match(workbenchHeaderUiSource, /short: '无可注入'/);
+    assert.match(workbenchHeaderUiSource, /short: '注入已关'/);
     assert.doesNotMatch(source, /function setWorkbenchContextOpen\(/);
     assert.match(styleSource, /grid-template-rows:\s*70px minmax\(0, 1fr\)/);
     assert.match(styleSource, /\.bakemono-workbench-header\s*\{[^}]*min-height:\s*70px;/s);
@@ -601,7 +601,6 @@ test('closed workbench and background queues avoid heavy DOM rendering', () => {
 test('scan rules and scanning share one controller boundary', () => {
     assert.match(scanControllerSource, /function scanBakemonoBlocks\(/);
     assert.match(scanControllerSource, /function bindEvents\(/);
-    assert.match(scanControllerSource, /bakemono-memory-apply-rules/);
     assert.match(scanControllerSource, /bakemono-memory-reset-rules/);
     assert.doesNotMatch(source, /bakemono-memory-apply-rules|bakemono-memory-reset-rules/);
 });
@@ -969,18 +968,12 @@ test('injection defaults mark their end and start at the front of chat history',
     assert.match(contentConfigurationEventsSource, /function bindInjectionEvents\(/);
     assert.match(contentConfigurationEventsSource, /function bindPromptEvents\(/);
     assert.match(contentConfigurationEventsSource, /function bindWorkflowEvents\(/);
-    assert.match(contentConfigurationEventsSource, /bakemono-memory-apply-injection/);
     assert.match(contentConfigurationEventsSource, /bakemono-memory-reset-stage-prompt/);
     assert.match(contentConfigurationEventsSource, /bakemono-memory-workflow-mode/);
     assert.doesNotMatch(source, /bakemono-memory-apply-injection|bakemono-memory-reset-stage-prompt|bakemono-memory-workflow-mode/);
 });
 
 test('automation and generation API controls share one event boundary', () => {
-    assert.match(automationConfigurationEventsSource, /bakemono-memory-apply-automation/);
-    assert.match(automationConfigurationEventsSource, /readAutomationFieldsFromUi\(state\)/);
-    assert.match(automationConfigurationEventsSource, /bakemono-memory-apply-generation-api/);
-    assert.match(automationConfigurationEventsSource, /readCustomApiFieldsFromUi\(state\)/);
-    assert.match(settingsSource, /id="bakemono-memory-apply-generation-api"/);
     assert.match(automationConfigurationEventsSource, /fetchCustomApiModels\(\)/);
     assert.match(automationConfigurationEventsSource, /bakemono-memory-stage-target-mode/);
     assert.doesNotMatch(source, /bakemono-memory-apply-automation|bakemono-memory-fetch-models|bakemono-memory-stage-target-mode/);

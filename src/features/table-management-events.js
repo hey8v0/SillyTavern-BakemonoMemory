@@ -20,8 +20,6 @@ export function createTableManagementEvents({
     deleteActiveTableProfile,
     saveCurrentTableProfileRows,
     loadActiveTableProfileRows,
-    readTurnSummaryFieldsFromUi,
-    syncInlineGenerationPrompts,
     persistSharedConfigurationFromState,
     updateInjectionFromSummaries,
     defaultTurnSummaryPrompt,
@@ -105,14 +103,6 @@ export function createTableManagementEvents({
     function bindPromptEvents() {
         query('#bakemono-memory-turn-source').off('change.bakemonoSummarySource').on('change.bakemonoSummarySource', function () {
             syncSummarySourceControls(query, this.value);
-        });
-        query('#bakemono-memory-apply-turn-settings').off('click').on('click', () => {
-            const state = getState();
-            readTurnSummaryFieldsFromUi(state);
-            syncInlineGenerationPrompts(state);
-            persistSharedConfigurationFromState(state);
-            renderWorkbenchScope(workbenchRenderScopes.TABLES, '正文摘要设置已应用，并同步到所有角色卡。');
-            toastr.success('正文摘要设置已全局保存。');
         });
         query('#bakemono-memory-table-inject-memory').off('change.bakemonoTableInjection').on('change.bakemonoTableInjection', function () {
             const state = getState();

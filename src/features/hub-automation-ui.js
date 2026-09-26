@@ -44,7 +44,7 @@ export function createHubAutomationUi({
             : floorStats.activeTaskCount
                 ? '正在整理记忆'
                 : floorStats.missing
-                    ? `${floorStats.missing.toLocaleString()} 楼等待识别`
+                    ? `${floorStats.missing.toLocaleString()} 楼尚无摘要`
                     : enabledCount ? '记忆编排正常' : '等待启用后台工具';
         query('#bakemono-memory-data-hub-title').text(orchestrationTitle);
         query('#bakemono-memory-data-hub-enabled').text(`${enabledCount} 项开启`);

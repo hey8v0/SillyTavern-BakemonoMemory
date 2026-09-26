@@ -220,7 +220,7 @@ export function createWorkflowOverviewModel({
             return { badge: '等待正文', title: '等待聊天内容', copy: '当前聊天还没有可整理的助手正文。', tone: 'idle' };
         }
         if (!floorStats.summarized) {
-            return { badge: '等待记忆', title: '尚未建立剧情记忆', copy: `${floorStats.missing.toLocaleString()} 楼正文还没有识别为可用记忆。`, tone: 'attention' };
+            return { badge: '等待摘要', title: '尚未建立摘要记忆', copy: `${floorStats.missing.toLocaleString()} 楼正文还没有摘要。剧情状态单独记录，不受影响。`, tone: 'attention' };
         }
         if (floorStats.missing) {
             const firstMissing = Number.isInteger(Number(floorStats.firstMissingFloor))
