@@ -25,6 +25,15 @@ export function applySummarySourceChoice(state, choice) {
     }
 }
 
+// Where summaries live decides how they are gathered and injected. Summaries
+// written into replies are already in the chat, so only plugin-stored ones
+// (independent/manual) are injected until a stage summary covers them.
+export function workflowForSummarySource(choice) {
+    return ['independent', 'manual'].includes(choice)
+        ? { workflowMode: 'generic', memoryStrategy: 'generic', stageSourceMode: 'backfill', outputMode: 'plain' }
+        : { workflowMode: 'bakemono', memoryStrategy: 'bakemono', stageSourceMode: 'summaries', outputMode: 'bakemono' };
+}
+
 export function normalizeTurnSummaryTriggerTiming(value) {
     return value === turnSummaryTriggerTimings.NEXT_USER
         ? turnSummaryTriggerTimings.NEXT_USER

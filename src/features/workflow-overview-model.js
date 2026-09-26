@@ -12,21 +12,16 @@ export function createWorkflowOverviewModel({
     getUnsummarizedStoryBlocks,
     getIsBusy,
     isTaskQueueRunning,
-    scanBlocks,
-    updateInjection,
-    saveState,
-    renderSettings,
     logWarning,
-    query,
 }) {
     function getMemoryStrategyLabel(strategy = getState().memoryStrategy) {
         return strategy === memoryStrategies.GENERIC ? '补课摘要会临时注入' : '普通摘要不重复注入';
     }
 
     function getWorkflowModeLabel(mode = getState().workflowMode) {
-        if (mode === workflowModes.GENERIC) return '补课旧聊天';
+        if (mode === workflowModes.GENERIC) return '摘要存在插件里';
         if (mode === workflowModes.MIXED) return '高级自定义';
-        return '已有摘要';
+        return '摘要写在回复里';
     }
 
     function getStageSourceModeLabel(mode = getStageSourceMode()) {
@@ -176,36 +171,6 @@ export function createWorkflowOverviewModel({
         }
     }
 
-    function applyWorkflowPreset(mode) {
-        const state = getState();
-        if (mode === workflowModes.MIXED) {
-            state.workflowMode = workflowModes.MIXED;
-            state.stageSourceMode = stageSourceModes.AUTO;
-            state.outputMode = 'custom';
-        } else if (mode === workflowModes.GENERIC) {
-            state.workflowMode = workflowModes.GENERIC;
-            state.memoryStrategy = memoryStrategies.GENERIC;
-            state.stageSourceMode = stageSourceModes.BACKFILL;
-            state.outputMode = 'plain';
-        } else {
-            state.workflowMode = workflowModes.BAKEMONO;
-            state.memoryStrategy = memoryStrategies.BAKEMONO;
-            state.stageSourceMode = stageSourceModes.SUMMARIES;
-            state.outputMode = 'bakemono';
-        }
-
-        scanBlocks({ persist: false });
-        updateInjection();
-        saveState();
-        renderSettings(`已切换到：${getWorkflowModeLabel(state.workflowMode)}。扫描、自动总结和提示词配置已保留。`);
-    }
-
-    function bindEvents(rootSelector = '#bakemono-workbench-root') {
-        query(rootSelector).off('click.bakemonoWorkflow').on('click.bakemonoWorkflow', '[data-bakemono-workflow-preset]', function () {
-            applyWorkflowPreset(this.dataset.bakemonoWorkflowPreset);
-        });
-    }
-
     function getOverviewHealth(floorStats, state = getState()) {
         if (!state.injection?.enabled) {
             return { badge: '注入关闭', title: '长期记忆暂未注入', copy: '已保存内容仍保留在档案中，不会发送给模型。', tone: 'paused' };
@@ -233,19 +198,17 @@ export function createWorkflowOverviewModel({
 
     function getWorkflowStatusText(state = getState(), stats, uncoveredStory = 0) {
         if (state.workflowMode === workflowModes.GENERIC) {
-            return `补课模式：未被阶段总结覆盖的补课摘要会临时注入。当前注入普通摘要 ${stats.story} 个，待压缩摘要 ${uncoveredStory} 个。`;
+            return `摘要存在插件里：未被阶段总结覆盖的摘要会注入。当前注入普通摘要 ${stats.story} 个，待压缩摘要 ${uncoveredStory} 个。`;
         }
         if (state.workflowMode === workflowModes.MIXED) {
-            return '高级模式：请先确认扫描预览和阶段材料来源，再生成总结。';
+            return '高级自定义：请先确认扫描预览和阶段材料来源，再生成总结。';
         }
         return uncoveredStory
-            ? `已有摘要模式：普通摘要不会重复注入。当前有 ${uncoveredStory} 个摘要可用于生成阶段总结。`
-            : '已有摘要模式：适合配合正文摘要正则使用，普通摘要不重复占用 token。';
+            ? `摘要写在回复里：普通摘要已在聊天上下文中，不重复注入。当前有 ${uncoveredStory} 个摘要可用于生成阶段总结。`
+            : '摘要写在回复里：适合配合正文摘要正则使用，普通摘要不重复占用 token。';
     }
 
     return {
-        applyWorkflowPreset,
-        bindEvents,
         getCurrentFloorMemoryIndex,
         getMemoryOrchestrationPlan,
         getMemoryStrategyLabel,

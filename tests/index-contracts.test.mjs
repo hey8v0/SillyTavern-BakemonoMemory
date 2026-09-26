@@ -409,8 +409,9 @@ test('archive and timeline pages keep the demo hierarchy without dropping contro
     assert.match(archiveControllerSource, /function bindEvents\(/);
     assert.match(archiveControllerSource, /bakemonoAutoArchiveToggle/);
     assert.match(archiveControllerSource, /bakemonoAutoArchiveCount/);
-    assert.match(workflowOverviewModelSource, /function bindEvents\(/);
-    assert.match(workflowOverviewModelSource, /bakemonoWorkflow/);
+    // Workflow presets were replaced by the summary-source question on the workflow page.
+    assert.doesNotMatch(settingsSource, /data-bakemono-workflow-preset/);
+    assert.match(settingsSource, /name="bakemono-memory-summary-source"/);
     assert.doesNotMatch(source, /bakemonoAutoArchiveToggle|bakemonoAutoArchiveCount|bakemonoWorkflow/);
 });
 
@@ -679,7 +680,6 @@ test('all business mutations use scoped rendering and reserve renderAll for life
         'generateStageBatchTasks',
         'generateEpicBatchTasks',
         'generateMissingSummaryQueue',
-        'applyWorkflowPreset',
         'applyPromptPresetToState',
         'renderAreaPresetChange',
         'bindSettingsEvents',
@@ -690,8 +690,6 @@ test('all business mutations use scoped rendering and reserve renderAll for life
                 ? summaryGenerationControllerSource
                 : name === 'generateMissingSummaryQueue'
                     ? summaryBackfillControllerSource
-                : name === 'applyWorkflowPreset'
-                    ? workflowOverviewModelSource
                 : ['applyPromptPresetToState', 'renderAreaPresetChange'].includes(name)
                     ? configurationControllerSource
                 : source;
@@ -967,9 +965,7 @@ test('injection defaults mark their end and start at the front of chat history',
     assert.match(chatStateServiceSource, /migrateBuiltInInjectionDefaults\(state\.injection, legacyInjectionTemplate, defaultInjectionTemplate\)/);
     assert.match(contentConfigurationEventsSource, /function bindInjectionEvents\(/);
     assert.match(contentConfigurationEventsSource, /function bindPromptEvents\(/);
-    assert.match(contentConfigurationEventsSource, /function bindWorkflowEvents\(/);
     assert.match(contentConfigurationEventsSource, /bakemono-memory-reset-stage-prompt/);
-    assert.match(contentConfigurationEventsSource, /bakemono-memory-workflow-mode/);
     assert.doesNotMatch(source, /bakemono-memory-apply-injection|bakemono-memory-reset-stage-prompt|bakemono-memory-workflow-mode/);
 });
 

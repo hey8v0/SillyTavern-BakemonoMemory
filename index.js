@@ -67,7 +67,8 @@ import { createRpStateUi } from './src/features/rp-state-ui.js';
 import { createRpProtocolDisplay, ensureRpDisplayFilter } from './src/features/rp-protocol-display.js';
 import { findChatSource } from './src/rp-core/chat-sources.js';
 import { renderRpStateMemory } from './src/rp-core/memory.js';
-import { shouldRunTurnProcessing } from './src/features/turn-trigger-policy.js';
+import { shouldRunTurnProcessing, summarySourceChoice } from './src/features/turn-trigger-policy.js';
+import { createSummarySourceWizard } from './src/features/summary-source-wizard.js';
 import { createGenerationClient } from './src/features/generation-client.js';
 import { createSummaryDraftService } from './src/features/summary-draft-service.js';
 import { createContentBlockService } from './src/features/content-block-service.js';
@@ -1089,7 +1090,17 @@ const {
     readPromptFieldsFromUi,
     readRuleFieldsFromUi,
     readTurnSummaryFieldsFromUi,
+    readWorkflowFieldsFromUi,
 } = configurationService;
+const summarySourceWizard = createSummarySourceWizard({
+    documentRef: document, getState: ensureState, defaultScanRules,
+    openBackfill: async batchMode => {
+        if (!await switchWorkbenchTab('preview')) return;
+        summaryGenerationUi.setMode('batch');
+        renderSummaryGenerationPanel();
+        $('#bakemono-memory-batch-summary-mode').val(batchMode);
+    },
+});
 
 const configurationController = createConfigurationController({
     getState: ensureState,
@@ -1499,13 +1510,6 @@ contentConfigurationEvents = createContentConfigurationEvents({
     defaultEpicGenerationPrompt,
     defaultStoryGenerationPrompt,
     defaultMissingSummaryPrompt,
-    memoryStrategies,
-    updateInjectionFromSummaries,
-    workflowModes,
-    stageSourceModes,
-    scanBlocks: options => scanBakemonoBlocks(options),
-    defaultState,
-    extensionPromptRoles: extension_prompt_roles,
     renderInjectionContent,
 });
 
@@ -1582,15 +1586,9 @@ const workflowOverviewModel = createWorkflowOverviewModel({
     getUnsummarizedStoryBlocks,
     getIsBusy: () => isBusy,
     isTaskQueueRunning: () => summaryTaskQueue.isRunning(),
-    scanBlocks: options => scanBakemonoBlocks(options),
-    updateInjection: () => updateInjectionFromSummaries(),
-    saveState,
-    renderSettings: status => renderWorkbenchScope(workbenchRenderScopes.SETTINGS, status),
     logWarning: (...args) => console.warn(...args),
-    query: $,
 });
 const {
-    bindEvents: bindWorkflowOverviewEvents,
     getCurrentFloorMemoryIndex,
     getMemoryOrchestrationPlan,
     getMemoryStrategyLabel,
@@ -1625,7 +1623,6 @@ const overviewWorkbenchUi = createOverviewWorkbenchUi({
     defaultAutomation,
     defaultScanRules,
     defaultState,
-    getWorkflowModeLabel,
     getCurrentFloorMemoryIndex,
     getOverviewHealth,
     getActiveTab: () => getActiveWorkbenchTab(),
@@ -1678,7 +1675,6 @@ const hubAutomationUi = createHubAutomationUi({
     getActiveGlobalConfig,
     getPromptPresets,
     getSelectedPromptPresetId,
-    getWorkflowModeLabel,
     getStageMaterialOverview,
     getStageSourceModeLabel,
     defaultAutomation,
@@ -2116,8 +2112,10 @@ const reviewQueueEvents = createReviewQueueEvents({
 
 workbenchRenderer = createWorkbenchRenderer({
     afterRender: (tab, state) => {
+        if (tab === 'settings') summarySourceWizard.render(state);
         pageSettings?.render(tab, state);
-        if (tab === 'turn-summary' || tab === 'tables') syncSummarySourceControls($, $('#bakemono-memory-turn-source').val());
+        if (tab === 'settings') summarySourceWizard.refresh();
+        if (tab === 'turn-summary' || tab === 'tables') syncSummarySourceControls($, summarySourceChoice(state));
     },
     renderRpState: state => rpStateUi.render(state),
     documentRef: document,
@@ -2243,10 +2241,11 @@ pageSettings = createPageSettings({
         if (tab === 'vector') return applyVectorMemorySettings();
         const readers = { scan: readRuleFieldsFromUi, automation: readAutomationFieldsFromUi,
             generation: readCustomApiFieldsFromUi, prompts: readPromptFieldsFromUi,
-            injection: readInjectionFieldsFromUi, 'turn-summary': readTurnSummaryFieldsFromUi };
+            injection: readInjectionFieldsFromUi, 'turn-summary': readTurnSummaryFieldsFromUi,
+            settings: readWorkflowFieldsFromUi };
         if (!readers[tab]) throw new Error('当前页面没有可保存的设置。');
         readers[tab](state);
-        if (tab === 'scan') scanBakemonoBlocks({ persist: false, render: false });
+        if (tab === 'scan' || tab === 'settings') scanBakemonoBlocks({ persist: false, render: false });
         syncInjection();
         const config = persistSharedConfigurationFromState(state);
         const revision = state.activeConfigSignature;
@@ -2288,9 +2287,9 @@ function getKindLabel(kind) {
 
 function bindSettingsEvents() {
     pageSettings.bind(document.getElementById('bakemono-workbench-root'));
+    summarySourceWizard.bind(document.getElementById('bakemono-workbench-root'));
     workbenchShellEvents.bind();
     bindArchiveEvents();
-    bindWorkflowOverviewEvents();
     reviewQueueEvents.bind();
     summaryBrowserEvents.bind();
     bindSummaryGenerationEvents();

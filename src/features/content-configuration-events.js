@@ -13,13 +13,6 @@ export function createContentConfigurationEvents({
     defaultEpicGenerationPrompt,
     defaultStoryGenerationPrompt,
     defaultMissingSummaryPrompt,
-    memoryStrategies,
-    updateInjectionFromSummaries,
-    workflowModes,
-    stageSourceModes,
-    scanBlocks,
-    defaultState,
-    extensionPromptRoles,
     renderInjectionContent,
 } = {}) {
     function bindInjectionEvents() {
@@ -105,50 +98,9 @@ export function createContentConfigurationEvents({
         });
     }
 
-    function bindWorkflowEvents() {
-        query('#bakemono-memory-memory-strategy').off('change').on('change', function () {
-            const state = getState();
-            state.memoryStrategy = Object.values(memoryStrategies).includes(this.value) ? this.value : memoryStrategies.BAKEMONO;
-            updateInjectionFromSummaries();
-            persistSharedConfigurationFromState(state);
-            renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '记忆策略已切换。');
-        });
-        query('#bakemono-memory-workflow-mode').off('change').on('change', function () {
-            const state = getState();
-            state.workflowMode = Object.values(workflowModes).includes(this.value) ? this.value : workflowModes.BAKEMONO;
-            if (state.workflowMode === workflowModes.GENERIC) {
-                state.memoryStrategy = memoryStrategies.GENERIC;
-                state.stageSourceMode = stageSourceModes.BACKFILL;
-                state.outputMode = 'plain';
-            } else if (state.workflowMode === workflowModes.BAKEMONO) {
-                state.memoryStrategy = memoryStrategies.BAKEMONO;
-                state.stageSourceMode = stageSourceModes.SUMMARIES;
-                state.outputMode = 'bakemono';
-            }
-            scanBlocks({ persist: false });
-            updateInjectionFromSummaries();
-            persistSharedConfigurationFromState(state);
-            renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '工作流模式已切换，已有扫描和自动总结配置已保留。');
-        });
-        query('#bakemono-memory-stage-source-mode').off('change').on('change', function () {
-            const state = getState();
-            state.stageSourceMode = Object.values(stageSourceModes).includes(this.value) ? this.value : stageSourceModes.SUMMARIES;
-            scanBlocks({ persist: false });
-            persistSharedConfigurationFromState(state);
-            renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '阶段总结材料已切换。');
-        });
-        query('#bakemono-memory-output-mode').off('change').on('change', function () {
-            const state = getState();
-            state.outputMode = ['bakemono', 'plain', 'custom'].includes(this.value) ? this.value : 'bakemono';
-            persistSharedConfigurationFromState(state);
-            renderWorkbenchScope(workbenchRenderScopes.SETTINGS, '输出风格已切换。');
-        });
-    }
-
     function bind() {
         bindInjectionEvents();
         bindPromptEvents();
-        bindWorkflowEvents();
     }
 
     return { bind };

@@ -1,4 +1,5 @@
 import { summarySourceChoice } from './turn-trigger-policy.js';
+import { summarySourceLabels } from './summary-source-wizard.js';
 
 export function syncSummarySourceControls(query, choice) {
     query('#bakemono-memory-turn-trigger-timing').prop('disabled', !['independent', 'legacy'].includes(choice));
@@ -32,7 +33,7 @@ export function createTurnSummaryUi({
     }
 
     function render(state = getState()) {
-        query('#bakemono-memory-turn-source').val(summarySourceChoice(state));
+        query('#bakemono-memory-turn-source-label').text(summarySourceLabels[summarySourceChoice(state)] || summarySourceLabels.legacy);
         syncSummarySourceControls(query, summarySourceChoice(state));
         query('#bakemono-memory-turn-trigger-timing').val(state.turnSummary.triggerTiming === 'next_user' ? 'next_user' : 'immediate');
         query('#bakemono-memory-turn-processing-mode').val(state.turnSummary.processingMode || turnProcessingModes.BOTH);

@@ -13,7 +13,7 @@ export function createWorkbenchHeaderUi({
             'prompt-inspector': '提示词清单',
             'data-hub': '自动与数据',
             'settings-hub': '设置中心',
-            settings: '工作流设置',
+            settings: '摘要方式',
             preview: '总结',
             records: '记忆库',
             tables: '表格',

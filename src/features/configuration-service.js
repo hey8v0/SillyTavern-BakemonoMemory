@@ -123,8 +123,23 @@ export function createConfigurationService({
         return state;
     }
 
+    // Summary source and the workflow fields it implies are saved together from the workflow page.
+    function readWorkflowFieldsFromUi(state = getState()) {
+        const choice = String(query('input[name="bakemono-memory-summary-source"]:checked').val() || '');
+        if (choice) applySummarySourceChoice(state, choice);
+        const pick = (selector, allowed, current) => {
+            const value = String(query(selector).val() || '');
+            return allowed.includes(value) ? value : current;
+        };
+        state.workflowMode = pick('#bakemono-memory-workflow-mode', Object.values(workflowModes), state.workflowMode);
+        state.memoryStrategy = pick('#bakemono-memory-memory-strategy', Object.values(memoryStrategies), state.memoryStrategy);
+        state.stageSourceMode = pick('#bakemono-memory-stage-source-mode', Object.values(stageSourceModes), state.stageSourceMode);
+        state.outputMode = pick('#bakemono-memory-output-mode', ['bakemono', 'plain', 'custom'], state.outputMode);
+        return state;
+    }
+
     function readTurnSummaryFieldsFromUi(state = getState()) {
-        if (!query('#bakemono-memory-turn-source').length) {
+        if (!query('#bakemono-memory-turn-trigger-timing').length) {
             return state;
         }
         state.turnSummary = {
@@ -158,7 +173,6 @@ export function createConfigurationService({
             summaryPrompt: String(query('#bakemono-memory-inline-summary-prompt').val() || defaultInlineSummaryPrompt),
             tablePrompt: String(query('#bakemono-memory-inline-table-prompt').val() || defaultInlineTablePrompt),
         };
-        applySummarySourceChoice(state, String(query('#bakemono-memory-turn-source').val() || 'legacy'));
         setTableSchemaScope(state.tableDatabase.schemaScope, state);
         return state;
     }
@@ -340,5 +354,6 @@ export function createConfigurationService({
         readPromptFieldsFromUi,
         readRuleFieldsFromUi,
         readTurnSummaryFieldsFromUi,
+        readWorkflowFieldsFromUi,
     };
 }

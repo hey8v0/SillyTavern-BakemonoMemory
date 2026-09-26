@@ -1,5 +1,6 @@
 // The sticky save bar is the only save control for these pages.
 const pages = {
+    settings: { label: '摘要方式', fields: /^bakemono-memory-(summary-source-(existing|inline|independent|manual)|workflow-mode|memory-strategy|stage-source-mode|output-mode)$/ },
     vector: { label: '向量设置', fields: /^bakemono-memory-vector-/ },
     scan: { label: '扫描规则', fields: /^bakemono-memory-(scan-mode|include-tags|exclude-tags|full-min-length|include-hidden|class-|layout-)/ },
     automation: { label: '自动总结', fields: /^bakemono-memory-(auto-|backfill-batch-size$)/ },
@@ -45,7 +46,13 @@ export function createPageSettings({ documentRef, getState, getActiveTab, savePa
             .filter(el => pages[tab]?.fields.test(el.id) && !el.readOnly && el.type !== 'file'
                 && !immediateFields.has(el.id) && !/preset|test-query|query-preview|models$/.test(el.id));
     }
-    const value = el => el.type === 'checkbox' ? !!el.checked : el.value;
+    const checkable = el => el.type === 'checkbox' || el.type === 'radio';
+    const value = el => checkable(el) ? !!el.checked : el.value;
+    // A radio group is one setting: checking one silently unchecks the others.
+    const radioGroups = new Map();
+    // Fields filled in by one choice (data-bakemono-edit-group) also count as one change.
+    const editGroup = id => radioGroups.get(id) || documentRef.getElementById(id)?.dataset?.bakemonoEditGroup || id;
+    const editCount = draft => new Set([...draft.edits.keys()].map(editGroup)).size;
     const snapshot = tab => new Map(controls(tab).map(el => [el.id, value(el)]));
     function entry(state, tab) {
         if (!drafts.has(state)) drafts.set(state, new Map());
@@ -71,11 +78,11 @@ export function createPageSettings({ documentRef, getState, getActiveTab, savePa
         for (const el of controls(tab)) {
             if (!numberIssue(el)) el.removeAttribute('aria-invalid');
             if (!draft.edits.has(el.id)) { draft.base.set(el.id, value(el)); continue; }
-            if (el.type === 'checkbox') el.checked = draft.edits.get(el.id);
+            if (checkable(el)) el.checked = draft.edits.get(el.id);
             else if (el.value !== draft.edits.get(el.id)) el.value = draft.edits.get(el.id);
         }
         documentRef.getElementById('bakemono-memory-page-save-status').textContent =
-            `${pages[tab].label} · ${saving ? '正在保存…' : draft.status || (draft.edits.size ? `未保存 · ${draft.edits.size} 项修改` : '无未保存修改')}`;
+            `${pages[tab].label} · ${saving ? '正在保存…' : draft.status || (draft.edits.size ? `未保存 · ${editCount(draft)} 项修改` : '无未保存修改')}`;
         documentRef.getElementById('bakemono-memory-page-save').disabled = saving;
         documentRef.getElementById('bakemono-memory-page-discard').hidden = !draft.edits.size;
         documentRef.getElementById('bakemono-memory-page-discard').disabled = saving;
@@ -85,8 +92,12 @@ export function createPageSettings({ documentRef, getState, getActiveTab, savePa
         const tab = tabKey(getActiveTab()), state = getState();
         if (!pages[tab] || !controls(tab).includes(event.target)) return;
         const draft = entry(state, tab), el = event.target;
-        if (value(el) === draft.base.get(el.id)) draft.edits.delete(el.id);
-        else draft.edits.set(el.id, value(el));
+        const group = el.type === 'radio' ? controls(tab).filter(item => item.type === 'radio' && item.name === el.name) : [el];
+        for (const item of group) {
+            if (item.type === 'radio') radioGroups.set(item.id, item.name);
+            if (value(item) === draft.base.get(item.id)) draft.edits.delete(item.id);
+            else draft.edits.set(item.id, value(item));
+        }
         draft.revision++; draft.status = ''; render(tab, state);
     }
     async function save() {
@@ -126,12 +137,13 @@ export function createPageSettings({ documentRef, getState, getActiveTab, savePa
         if (saving) return;
         const tab = tabKey(getActiveTab()), draft = entry(getState(), tab);
         for (const el of controls(tab)) if (draft.base.has(el.id)) {
-            if (el.type === 'checkbox') el.checked = draft.base.get(el.id); else el.value = draft.base.get(el.id);
+            if (checkable(el)) el.checked = draft.base.get(el.id); else el.value = draft.base.get(el.id);
         }
         drafts.get(getState())?.delete(tab); refresh(); render();
     }
     function unsavedCount(tab) {
-        return pages[tab] ? drafts.get(getState())?.get(tab)?.edits.size || 0 : 0;
+        const draft = pages[tab] && drafts.get(getState())?.get(tab);
+        return draft ? editCount(draft) : 0;
     }
     // Leaving a settings page (nextTab) or closing the workbench (null) with
     // unsaved edits asks first. Returns true, or a promise when the user decides.

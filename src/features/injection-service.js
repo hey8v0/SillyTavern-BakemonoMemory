@@ -81,7 +81,7 @@ export function createInjectionService({
         const diagnostic = state.injection?.enabled === false ? '长期记忆注入已关闭。'
             : memory ? '当前有效记忆已组装；是否进入模型上下文，以“查看上一轮”核对为准。'
             : savedSummaries ? `已有 ${savedSummaries} 条阶段／多次总结，但没有有效可选内容。请到记忆库查看来源失效、空内容或覆盖状态；无需先删除总结。`
-            : !shouldInjectStory && state.storySummaries?.length ? '已有摘要模式不直接注入普通摘要；当前没有有效的阶段／多次总结。'
+            : !shouldInjectStory && state.storySummaries?.length ? '摘要写在回复里时不单独注入普通摘要；当前没有有效的阶段／多次总结。'
             : '当前没有可注入的记忆内容。';
     
         return {

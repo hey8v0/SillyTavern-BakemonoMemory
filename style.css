@@ -13254,6 +13254,133 @@ details[open] > summary > .bakemono-memory-help-trigger {
   box-shadow: none;
 }
 
+/* Summary-source wizard: one question decides source, materials and injection. */
+.bakemono-memory-source-wizard {
+  min-width: 0;
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+
+.bakemono-memory-source-wizard > legend {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 0;
+}
+
+.bakemono-memory-source-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.bakemono-memory-source-option {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 4px 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border: 1px solid var(--bk-line);
+  border-radius: var(--bk-radius-card, 14px);
+  background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.bakemono-memory-source-option > input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.bakemono-memory-source-option > i {
+  margin-top: 3px;
+  color: var(--bk-ink-soft);
+  text-align: center;
+}
+
+.bakemono-memory-source-option strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.95em;
+}
+
+.bakemono-memory-source-option small {
+  display: block;
+  color: var(--bk-ink-soft);
+  font-size: 0.82em;
+  line-height: 1.6;
+}
+
+.bakemono-memory-source-option:hover {
+  border-color: var(--bk-line-strong);
+}
+
+.bakemono-memory-source-option:has(input:checked) {
+  border-color: var(--bk-accent);
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+}
+
+.bakemono-memory-source-option:has(input:checked) > i {
+  color: var(--bk-accent);
+}
+
+.bakemono-memory-source-option:has(input:focus-visible) {
+  outline: 2px solid var(--bk-accent);
+  outline-offset: 2px;
+}
+
+.bakemono-memory-source-effect,
+.bakemono-memory-source-note {
+  margin: 12px 0 0;
+  font-size: 0.85em;
+  line-height: 1.7;
+}
+
+.bakemono-memory-source-effect {
+  color: var(--bk-ink-soft);
+}
+
+.bakemono-memory-source-note {
+  padding: 8px 12px;
+  border-left: 3px solid var(--bk-accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
+}
+
+.bakemono-memory-source-note .menu_button {
+  margin: 6px 0 0;
+}
+
+.bakemono-memory-source-backfill {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 14px;
+  font-size: 0.85em;
+  color: var(--bk-ink-soft);
+}
+
+.bakemono-memory-source-current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.bakemono-memory-source-current > span {
+  flex-basis: 100%;
+}
+
+.bakemono-memory-injection-settings {
+  margin: 0 0 16px;
+}
+
 /* Unsaved settings reminder: shown when leaving a page or closing the workbench. */
 .bakemono-memory-unsaved-dialog {
   width: min(420px, calc(100vw - 32px));

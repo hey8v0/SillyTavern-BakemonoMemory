@@ -39,9 +39,11 @@ const ui = createTurnSummaryUi({ documentRef: document, query, getState: () => s
     renderTableProfileControls: noop, renderInlinePromptPresetControls: noop, renderTableList: noop, renderTableEditDrafts: noop });
 const config = createConfigurationService({ query, getState: () => state,
     defaultState: { turnSummary: { worldInfoMaxContext: 4096 } }, turnProcessingModes: { BOTH: 'both' },
-    tableSchemaScopes: { CHAT: 'chat' }, setTableSchemaScope: noop });
+    tableSchemaScopes: { CHAT: 'chat' }, setTableSchemaScope: noop,
+    memoryStrategies: { BAKEMONO: 'bakemono', GENERIC: 'generic' }, workflowModes: { BAKEMONO: 'bakemono', GENERIC: 'generic', MIXED: 'mixed' },
+    stageSourceModes: { SUMMARIES: 'summaries', BACKFILL: 'backfill', RAW: 'raw', MIXED: 'mixed', AUTO: 'auto' } });
 ui.render();
-assert.equal(query('#bakemono-memory-turn-source').val(), 'manual');
+assert.equal(document.getElementById('bakemono-memory-turn-source-label').textContent, '需要时再手动生成');
 assert.match(document.getElementById('bakemono-memory-turn-runtime-label').textContent, /仅手动/);
 assert.equal(query('#bakemono-memory-turn-trigger-timing').prop('disabled'), true);
 config.readTurnSummaryFieldsFromUi();
@@ -52,12 +54,18 @@ assert.equal(state.turnSummary.prompt, '自定义摘要提示');
 assert.equal(state.inlineGeneration.summaryPrompt, '自定义随文提示');
 
 createTableManagementEvents({ query }).bind();
-const source = document.getElementById('bakemono-memory-turn-source');
-source.value = 'independent';
-handlers.get('#bakemono-memory-turn-source:change.bakemonoSummarySource').call(source);
-assert.equal(query('#bakemono-memory-turn-trigger-timing').prop('disabled'), false);
-assert.equal(state.turnSummary.auto, false, 'choice alone does not save or launch work');
+// The source is chosen on the workflow page; saving the summary page leaves it unchanged.
 config.readTurnSummaryFieldsFromUi();
+assert.equal(state.turnSummary.auto, false);
+document.getElementById('bakemono-memory-summary-source-independent').setAttribute('checked', '');
+// The wizard fills the advanced fields for the chosen source before saving.
+for (const [id, value] of Object.entries({ 'workflow-mode': 'generic', 'memory-strategy': 'generic', 'stage-source-mode': 'backfill', 'output-mode': 'plain' })) {
+    query('#bakemono-memory-' + id).val(value);
+}
+assert.equal(state.turnSummary.auto, false, 'choice alone does not save or launch work');
+config.readWorkflowFieldsFromUi();
+ui.render();
+assert.equal(query('#bakemono-memory-turn-trigger-timing').prop('disabled'), false);
 assert.equal(state.turnSummary.auto, true);
 assert.equal(state.turnSummary.enabled, true);
 assert.equal(state.stageSourceMode, 'backfill');

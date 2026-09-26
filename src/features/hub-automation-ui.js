@@ -1,4 +1,5 @@
 import { stageAutomationStatus } from '../summary/automation-status.js';
+import { getSummarySourceShortLabel } from './summary-source-wizard.js';
 
 export function createHubAutomationUi({
     documentRef,
@@ -10,7 +11,6 @@ export function createHubAutomationUi({
     getActiveGlobalConfig,
     getPromptPresets,
     getSelectedPromptPresetId,
-    getWorkflowModeLabel,
     getStageMaterialOverview,
     getAutoStageTargets = targets => targets,
     getIsBusy = () => false,
@@ -58,7 +58,7 @@ export function createHubAutomationUi({
         query('#bakemono-memory-data-hub-vector-copy').text(vectorEnabled
             ? (vectorCount ? '索引健康' : '等待建立索引')
             : '尚未开启');
-        query('#bakemono-memory-settings-hub-workflow').text(getWorkflowModeLabel(state.workflowMode));
+        query('#bakemono-memory-settings-hub-workflow').text(getSummarySourceShortLabel(state));
         query('#bakemono-memory-settings-hub-scan').text(scanMode === 'full' ? '全文管线' : '标签块');
         query('#bakemono-memory-settings-hub-injection').text(injectionStatus.short);
         query('#bakemono-memory-settings-hub-generation').text(apiProvider === 'custom'

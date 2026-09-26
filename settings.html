@@ -155,7 +155,7 @@
                 <em>已生效</em>
               </header>
               <dl>
-                <div><dt>工作方式</dt><dd id="bakemono-memory-overview-config-workflow">—</dd></div>
+                <div><dt>摘要方式</dt><dd id="bakemono-memory-overview-config-workflow">—</dd></div>
                 <div><dt>扫描识别</dt><dd id="bakemono-memory-overview-config-scan">—</dd></div>
                 <div><dt>生成模型</dt><dd id="bakemono-memory-overview-config-model">—</dd></div>
                 <div><dt>后台整理</dt><dd id="bakemono-memory-overview-config-auto">—</dd></div>
@@ -291,7 +291,7 @@
         <div class="bakemono-memory-hub-group-title bakemono-memory-settings-divider"><span>日常使用</span><i></i></div>
         <div class="bakemono-memory-settings-ledger">
           <button type="button" class="menu_button" data-bakemono-nav="settings">
-            <span>01</span><i class="fa-solid fa-sliders"></i><strong>工作流</strong><em id="bakemono-memory-settings-hub-workflow">自定义</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            <span>01</span><i class="fa-solid fa-sliders"></i><strong>摘要方式</strong><em id="bakemono-memory-settings-hub-workflow">自定义</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
           </button>
           <button type="button" class="menu_button" data-bakemono-nav="scan">
             <span>02</span><i class="fa-solid fa-filter"></i><strong>扫描与识别</strong><em id="bakemono-memory-settings-hub-scan">标签块</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
@@ -327,25 +327,44 @@
       <section class="bakemono-workbench-panel bakemono-memory-settings-panel" data-bakemono-panel="settings">
         <header class="bakemono-memory-page-intro bakemono-memory-settings-intro">
           <span class="bakemono-memory-next-kicker">工作方式</span>
-          <h3>工作流设置</h3>
+          <h3>摘要方式</h3>
         </header>
 
-        <div class="bakemono-memory-workflow-selector">
-          <div class="bakemono-memory-section-head bakemono-memory-workflow-choice-head">
-            <div><span class="bakemono-memory-next-kicker">选择一种方式</span><h3>这段聊天现在是什么状态？</h3></div>
+        <fieldset class="bakemono-memory-source-wizard" aria-describedby="bakemono-memory-summary-source-effect">
+          <legend class="bakemono-memory-section-head"><h3>新回复的摘要从哪里来？</h3></legend>
+          <p id="bakemono-memory-summary-source-legacy" class="bakemono-memory-source-note" hidden>当前是旧版组合设置，保持不变也能继续工作；选择一种方式并保存后会替换它。</p>
+          <div class="bakemono-memory-source-options">
+            <label class="bakemono-memory-source-option">
+              <input type="radio" name="bakemono-memory-summary-source" id="bakemono-memory-summary-source-existing" value="existing">
+              <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+              <span><strong>回复里已经自带摘要</strong><small>角色卡或预设让模型在回复里写摘要块，插件负责读取、汇总和收纳。不额外调用模型。</small></span>
+            </label>
+            <label class="bakemono-memory-source-option">
+              <input type="radio" name="bakemono-memory-summary-source" id="bakemono-memory-summary-source-inline" value="inline">
+              <i class="fa-solid fa-pen-nib" aria-hidden="true"></i>
+              <span><strong>让模型在回复里顺带写摘要</strong><small>插件在提示词里加入摘要要求，模型把摘要写进回复。不额外调用模型。</small></span>
+            </label>
+            <label class="bakemono-memory-source-option">
+              <input type="radio" name="bakemono-memory-summary-source" id="bakemono-memory-summary-source-independent" value="independent">
+              <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+              <span><strong>每次回复后另外生成摘要</strong><small>回复结束后单独调用一次模型生成摘要。会增加用量。</small></span>
+            </label>
+            <label class="bakemono-memory-source-option">
+              <input type="radio" name="bakemono-memory-summary-source" id="bakemono-memory-summary-source-manual" value="manual">
+              <i class="fa-solid fa-hand-pointer" aria-hidden="true"></i>
+              <span><strong>需要时再手动生成</strong><small>只在“自动记忆”页点“处理最新正文”时调用模型。</small></span>
+            </label>
           </div>
-          <div class="bakemono-memory-workflow-picker" aria-label="工作流选择">
-            <button type="button" class="bakemono-memory-workflow-card" data-bakemono-workflow-preset="bakemono">
-              <i class="fa-solid fa-book-open"></i><span><strong>已有摘要</strong><small>正文里已有摘要块，继续汇总和收纳</small></span><i class="fa-solid fa-check bakemono-memory-workflow-check"></i>
-            </button>
-            <button type="button" class="bakemono-memory-workflow-card" data-bakemono-workflow-preset="generic">
-              <i class="fa-solid fa-file-circle-plus"></i><span><strong>补课旧聊天</strong><small>以前没有摘要，分批整理旧楼层</small></span><i class="fa-solid fa-check bakemono-memory-workflow-check"></i>
-            </button>
-            <button type="button" class="bakemono-memory-workflow-card" data-bakemono-workflow-preset="mixed">
-              <i class="fa-solid fa-sliders"></i><span><strong>自定义</strong><small>自己组合扫描、材料来源和输出风格</small></span><i class="fa-solid fa-check bakemono-memory-workflow-check"></i>
-            </button>
+          <p id="bakemono-memory-summary-source-effect" class="bakemono-memory-source-effect" role="status" aria-live="polite"></p>
+          <p id="bakemono-memory-summary-source-custom" class="bakemono-memory-source-note" hidden>
+            <span id="bakemono-memory-summary-source-custom-text">下方“高级”里的搭配已单独调整，与所选方式的默认搭配不同。</span>
+            <button type="button" class="menu_button" data-bakemono-summary-source-reset>恢复默认搭配</button>
+          </p>
+          <div class="bakemono-memory-source-backfill">
+            <span>旧楼层还没有摘要？</span>
+            <button type="button" class="menu_button" data-bakemono-summary-backfill>去补写旧聊天</button>
           </div>
-        </div>
+        </fieldset>
 
         <article class="bakemono-memory-workflow-status-hero">
           <div><i class="fa-solid fa-route"></i><small id="bakemono-memory-workflow-label">摘要块手账 / 摘要总结模式</small></div>
@@ -473,18 +492,18 @@
         </details>
 
         <details class="bakemono-memory-advanced-options bakemono-memory-settings-block">
-          <summary><span><i class="fa-solid fa-gear"></i> 工作流细节</span><small>材料、输出与注入位置</small></summary>
+          <summary><span><i class="fa-solid fa-gear"></i> 高级：分别调整</span><small>选择上面的方式会自动填好这里</small></summary>
         <div class="bakemono-memory-options">
           <label class="bakemono-memory-field">
             <span>记忆策略</span>
-            <select id="bakemono-memory-memory-strategy" class="text_pole">
+            <select id="bakemono-memory-memory-strategy" class="text_pole" data-bakemono-edit-group="bakemono-memory-summary-source">
               <option value="bakemono">摘要块手账模式</option>
               <option value="generic">通用全文补课模式</option>
             </select>
           </label>
           <label class="bakemono-memory-field">
             <span>工作流模式</span>
-            <select id="bakemono-memory-workflow-mode" class="text_pole">
+            <select id="bakemono-memory-workflow-mode" class="text_pole" data-bakemono-edit-group="bakemono-memory-summary-source">
               <option value="bakemono">摘要块手账</option>
               <option value="generic">通用插件补课</option>
               <option value="mixed">混合工作流</option>
@@ -492,7 +511,7 @@
           </label>
           <label class="bakemono-memory-field">
             <span>阶段材料</span>
-            <select id="bakemono-memory-stage-source-mode" class="text_pole">
+            <select id="bakemono-memory-stage-source-mode" class="text_pole" data-bakemono-edit-group="bakemono-memory-summary-source">
               <option value="summaries">正文标签 + 插件摘要</option>
               <option value="backfill">仅插件已保存摘要</option>
               <option value="raw">普通正文总结</option>
@@ -502,26 +521,10 @@
           </label>
           <label class="bakemono-memory-field">
             <span>输出风格</span>
-            <select id="bakemono-memory-output-mode" class="text_pole">
+            <select id="bakemono-memory-output-mode" class="text_pole" data-bakemono-edit-group="bakemono-memory-summary-source">
               <option value="bakemono">摘要手账</option>
               <option value="plain">通用纯文本</option>
               <option value="custom">自定义模板</option>
-            </select>
-          </label>
-          <label class="checkbox_label bakemono-memory-switch">
-            <input type="checkbox" id="bakemono-memory-injection-enabled">
-            <span>注入剧情记忆</span>
-          </label>
-          <label class="bakemono-memory-field">
-            <span>深度</span>
-            <input id="bakemono-memory-depth" class="text_pole" type="number" min="0" max="10000" step="1">
-          </label>
-          <label class="bakemono-memory-field">
-            <span>角色</span>
-            <select id="bakemono-memory-role" class="text_pole">
-              <option value="0">系统</option>
-              <option value="1">用户</option>
-              <option value="2">助手</option>
             </select>
           </label>
         </div>
@@ -674,16 +677,11 @@
           <h3>剧情表格</h3>
         </header>
         <div class="bakemono-memory-options bakemono-turn-panel-card">
-          <label class="bakemono-memory-field">
-            <span>摘要来源</span>
-            <select id="bakemono-memory-turn-source" class="text_pole">
-              <option value="existing">读取正文已有摘要</option>
-              <option value="inline">随正文生成摘要</option>
-              <option value="independent">独立生成摘要 · 自动</option>
-              <option value="manual">独立生成摘要 · 仅手动</option>
-              <option value="legacy" hidden>保留旧组合设置</option>
-            </select>
-          </label>
+          <div class="bakemono-memory-field bakemono-memory-source-current">
+            <span>摘要方式</span>
+            <strong id="bakemono-memory-turn-source-label">回复里已经自带摘要</strong>
+            <button type="button" class="menu_button" data-bakemono-nav="settings">更改</button>
+          </div>
           <label class="bakemono-memory-field">
             <span>独立处理时机</span>
             <select id="bakemono-memory-turn-trigger-timing" class="text_pole">
@@ -1295,7 +1293,7 @@
           <div class="bakemono-memory-automation-progress" aria-hidden="true"><span id="bakemono-memory-automation-progress-bar"></span></div>
           <div class="bakemono-memory-automation-hero-actions">
             <button type="button" class="menu_button" id="bakemono-memory-automation-next-action" hidden></button>
-            <button type="button" class="menu_button" data-bakemono-tab="turn-summary">摘要来源</button>
+            <button type="button" class="menu_button" data-bakemono-nav="settings">摘要方式</button>
             <button class="menu_button" data-bakemono-tab="drafts">
               <i class="fa-solid fa-inbox"></i><span>查看待确认</span>
             </button>
@@ -1903,6 +1901,25 @@
           <p id="bakemono-memory-injection-runtime-description">开启后，长期总结、表格和向量召回会按当前模板进入上下文。</p>
         </article>
 
+        <div class="bakemono-memory-options bakemono-memory-injection-settings">
+          <label class="checkbox_label bakemono-memory-switch">
+            <input type="checkbox" id="bakemono-memory-injection-enabled">
+            <span>注入剧情记忆</span>
+          </label>
+          <label class="bakemono-memory-field">
+            <span>插入深度</span>
+            <input id="bakemono-memory-depth" class="text_pole" type="number" min="0" max="10000" step="1">
+          </label>
+          <label class="bakemono-memory-field">
+            <span>消息角色</span>
+            <select id="bakemono-memory-role" class="text_pole">
+              <option value="0">系统</option>
+              <option value="1">用户</option>
+              <option value="2">助手</option>
+            </select>
+          </label>
+        </div>
+
         <div class="bakemono-memory-section-head bakemono-memory-injection-source-head">
           <div><span class="bakemono-memory-next-kicker">来源分层</span><h3>这一轮从哪里取记忆</h3></div>
           <span id="bakemono-memory-injection-source-total">0 条</span>
@@ -2178,7 +2195,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.8.9 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.9.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

@@ -79,7 +79,7 @@ test('leaving or closing waits for the unsaved-settings decision', async () => {
 
 function createSettingsDom(tab = 'turn-summary') {
     const elements = {};
-    const field = { id: 'bakemono-memory-turn-source', type: 'select-one', value: 'existing', readOnly: false,
+    const field = { id: 'bakemono-memory-turn-trigger-timing', type: 'select-one', value: 'immediate', readOnly: false,
         removeAttribute() {}, setAttribute() {} };
     for (const id of ['bakemono-memory-page-savebar', 'bakemono-memory-page-save-status', 'bakemono-memory-page-save', 'bakemono-memory-page-discard']) {
         elements[id] = { id, hidden: false, disabled: false, textContent: '', classList: classList() };
@@ -103,7 +103,7 @@ function editedPage({ choice, confirmed = true, tab = 'turn-summary' }) {
     });
     ui.bind(dom.root);
     ui.render();
-    dom.field.value = 'inline';
+    dom.field.value = 'next_user';
     dom.listeners.input({ target: dom.field });
     return { ui, dom, calls };
 }
@@ -132,7 +132,7 @@ for (const [choice, confirmed, expected, savedPages] of [
         assert.equal(result, expected);
         assert.deepEqual(page.calls.asked, [{ label: '摘要与表格设置', count: 1, closing: false }]);
         assert.deepEqual(page.calls.saved, savedPages);
-        assert.equal(page.dom.field.value, choice === 'discard' ? 'existing' : 'inline');
+        assert.equal(page.dom.field.value, choice === 'discard' ? 'immediate' : 'next_user');
     });
 }
 

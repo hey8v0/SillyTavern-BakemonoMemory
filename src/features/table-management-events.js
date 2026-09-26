@@ -1,5 +1,3 @@
-import { syncSummarySourceControls } from './turn-summary-ui.js';
-
 export function createTableManagementEvents({
     query,
     getState,
@@ -101,9 +99,6 @@ export function createTableManagementEvents({
     }
 
     function bindPromptEvents() {
-        query('#bakemono-memory-turn-source').off('change.bakemonoSummarySource').on('change.bakemonoSummarySource', function () {
-            syncSummarySourceControls(query, this.value);
-        });
         query('#bakemono-memory-table-inject-memory').off('change.bakemonoTableInjection').on('change.bakemonoTableInjection', function () {
             const state = getState();
             state.tableDatabase.injectMemory = !!this.checked;

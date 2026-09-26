@@ -116,7 +116,7 @@ function saveAdapterFixture(globalSave, chatSave) {
     const state = { activeConfigSignature: 'initial' }, calls = [];
     const f = { state, current: state, calls };
     const readerNames = ['readRuleFieldsFromUi', 'readAutomationFieldsFromUi', 'readCustomApiFieldsFromUi',
-        'readPromptFieldsFromUi', 'readInjectionFieldsFromUi', 'readTurnSummaryFieldsFromUi'];
+        'readPromptFieldsFromUi', 'readInjectionFieldsFromUi', 'readTurnSummaryFieldsFromUi', 'readWorkflowFieldsFromUi'];
     const host = Object.fromEntries(readerNames.map(name => [name, s => { assert.equal(s, state); calls.push(name); }]));
     f.save = vm.runInNewContext('(async function(tab, state) {' + body + '\n})', { ...host,
         ensureState: () => f.current, applyVectorMemorySettings: async () => true,

@@ -1,3 +1,5 @@
+import { getSummarySourceShortLabel } from './summary-source-wizard.js';
+
 export function createOverviewWorkbenchUi({
     query,
     getState,
@@ -5,7 +7,6 @@ export function createOverviewWorkbenchUi({
     defaultAutomation,
     defaultScanRules,
     defaultState,
-    getWorkflowModeLabel,
     getCurrentFloorMemoryIndex,
     getOverviewHealth,
     getActiveTab,
@@ -23,7 +24,7 @@ export function createOverviewWorkbenchUi({
 
         query('#bakemono-memory-overview-config-scope').text(activeConfig ? '全部聊天' : '当前聊天');
         query('#bakemono-memory-overview-config-name').text(activeConfig?.name || '当前聊天配置');
-        query('#bakemono-memory-overview-config-workflow').text(getWorkflowModeLabel(state.workflowMode));
+        query('#bakemono-memory-overview-config-workflow').text(getSummarySourceShortLabel(state));
         query('#bakemono-memory-overview-config-scan').text(scanMode === 'full' ? '全文管线' : '标签块模式');
         query('#bakemono-memory-overview-config-model').text(apiProvider === 'custom'
             ? (String(state.automation?.customApi?.model || '').trim() || '自定义接口')
