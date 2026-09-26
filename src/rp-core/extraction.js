@@ -5,7 +5,7 @@ import { expandStatePayload, resolveStateEvents } from './state-update.js';
 import { prepareAutomaticRegistration } from './automatic-registration.js';
 import { normalizeEntityIdentities } from './identity.js';
 import { classifyCandidate } from './validation.js';
-import { atomicCandidateGroups } from './groups.js';
+import { atomicCandidateGroups, createdId, referencedIds } from './groups.js';
 import { normalizeProtocolEvents } from './protocol.js';
 import { resolveModelReferences } from './model-references.js';
 
@@ -157,10 +157,15 @@ export function prepareExtraction(original, raw, source, { floor, order = floor,
     if (autoApply && (!repeat || allowNewOnRepeat)) {
         for (const group of groups) {
             if (repeat && group.candidates.some(candidate => candidate.change !== 'added' || candidate.previousIds.length)) continue;
-            if (group.cyclic || group.candidates.some(candidate => candidate.status !== 'pending' || candidate.blockedReason || !candidate.evidence && !candidate.origin || classifyCandidate(candidate).status !== 'valid')) continue;
+            const separable = modelOwned && !group.cyclic && !group.candidates.some(candidate => candidate.group);
+            if (group.cyclic || group.candidates.some(candidate => candidate.status !== 'pending' || candidate.blockedReason || !candidate.evidence && !candidate.origin || classifyCandidate(candidate).status !== 'valid')) {
+                if (separable) core = acceptIndividually(core, group.candidates, source, { floor, applyFact });
+                continue;
+            }
             try { core = decideCandidate(core, group.candidates[0].id, 'accept', source, { floor, applyFact }); }
             catch (error) {
-                for (const candidate of group.candidates) core.candidates.find(item => item.id === candidate.id).reason = String(error?.message || error);
+                if (separable) core = acceptIndividually(core, group.candidates, source, { floor, applyFact });
+                else for (const candidate of group.candidates) core.candidates.find(item => item.id === candidate.id).reason = String(error?.message || error);
             }
         }
     }
@@ -177,6 +182,25 @@ export function prepareExtraction(original, raw, source, { floor, order = floor,
         protocolIssues: protocol.issues, protocolRepairs: protocol.repairs, ...(modelOwned ? { recordingPolicy: 'model' } : {}) });
     return { core, baseRevision: original.revision, sourceRevision: source.revision, repeat, items,
         projection: replayLedger(core, applyFact) };
+}
+
+// A group formed only by same-batch references is not a promise from the model; when it fails as a whole,
+// keep every member that still stands and skip only the failing ones and whatever builds on them.
+function acceptIndividually(core, members, source, options) {
+    const lost = new Map();
+    for (const member of members) {
+        const current = core.candidates.find(item => item.id === member.id);
+        const missing = referencedIds(member).find(id => lost.has(id));
+        let reason = current.status !== 'pending' ? current.reason || '未采用' : missing == null ? '' : `依赖的“${lost.get(missing)}”没有记下`;
+        if (!reason) {
+            try { core = decideSingleCandidate(core, member.id, 'accept', source, options); continue; }
+            catch (error) { reason = String(error?.message || error); }
+        }
+        core.candidates.find(item => item.id === member.id).reason = reason;
+        const id = createdId(member);
+        if (id != null) lost.set(id, member.data?.name || member.data?.title || id);
+    }
+    return core;
 }
 
 export function decideCandidate(original, candidateId, decision, source, options = {}) {

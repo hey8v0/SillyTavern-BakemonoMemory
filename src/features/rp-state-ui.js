@@ -94,10 +94,11 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         }
         const channel = flow.channel(state), lastBatch = [...core.batches].filter(item => !item.superseded).sort((a, b) => (a.sourceFloor ?? a.floor) - (b.sourceFloor ?? b.floor)).at(-1);
         const maintenance = !core.settings.enabled ? '剧情状态已关闭' : !channel ? '自动维护已暂停' : channel === 'inline' ? '随正文维护' : channel === 'reply' ? '复用回复后处理' : '独立提取';
-        const footer = `<footer class="rp-footer"><small>${nav.floor == null ? esc(maintenance) + (lastBatch ? ` · ${lastBatch.protocolStatus === 'missing' ? '摘要状态已读取' : '已处理到'} ${lastBatch.sourceFloor ?? lastBatch.floor} 楼` : ' · 尚未处理正文') : '当时已记录的状态 · 只读'}</small><div class="rp-controls">${nav.floor == null ? button("settings", "维护设置") + button("extract", "用模型重新提取") + '<details class="rp-add-menu"><summary>添加记录</summary><div class="rp-controls">' + Object.entries({people:"人物",relationships:"关系",locations:"地点",items:"物品",plans:"约定"}).map(([kind,label]) => button("new",label,'data-rp-kind="' + kind + '"')).join("") + '</div></details>' : ""}${help('模型整理后自动保存；格式无效的项目跳过，不需要逐条确认。状态变化由模型输出事件，摘要不生成事实。不必开启回复后处理。说法、观察与事实分别保存；关闭维护不删除记录。')}</div></footer>`;
+        const progress = nav.floor == null ? service.progress?.(state) : null;
+        const processedFloor = progress ? progress.latest : lastBatch ? lastBatch.sourceFloor ?? lastBatch.floor : null;
+        const footer = `<footer class="rp-footer"><small>${nav.floor == null ? esc(maintenance) + (processedFloor != null ? ` · ${lastBatch?.protocolStatus === 'missing' ? '摘要状态已读取' : '已处理到'} ${processedFloor} 楼` : ' · 尚未处理正文') : '当时已记录的状态 · 只读'}</small><div class="rp-controls">${nav.floor == null ? button("settings", "维护设置") + button("extract", "用模型重新提取") + '<details class="rp-add-menu"><summary>添加记录</summary><div class="rp-controls">' + Object.entries({people:"人物",relationships:"关系",locations:"地点",items:"物品",plans:"约定"}).map(([kind,label]) => button("new",label,'data-rp-kind="' + kind + '"')).join("") + '</div></details>' : ""}${help('模型整理后自动保存；格式无效的项目跳过，不需要逐条确认。状态变化由模型输出事件，摘要不生成事实。不必开启回复后处理。说法、观察与事实分别保存；关闭维护不删除记录。')}</div></footer>`;
         const maintenanceNotices = document.createElement('div');
         if (nav.floor == null) {
-            const progress = service.progress?.(state);
             if (progress?.missingCount) maintenanceNotices.insertAdjacentHTML('beforeend', '<small class="rp-progress">从第 ' + progress.start + ' 楼开始 · ' + (progress.latest == null ? '尚未完成维护' : '最近完成第 ' + progress.latest + ' 楼') + (progress.missingCount ? ' · 未处理 ' + progress.missingCount + ' 楼（' + progress.missingFrom + '–' + progress.missingTo + '）' : '') + '</small>');
             const failed = core.extractionJobs?.filter(job => job.status !== 'done') || [];
             if (failed.length) {
@@ -113,6 +114,8 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         }
         if (lastBatch?.protocolStatus === 'incomplete' && nav.floor == null) maintenanceNotices.insertAdjacentHTML('beforeend', '<p class="rp-status-warning" role="status">该次事件块未完整输出；请重新提取正文。</p>');
         if (lastBatch?.protocolIssues?.length && nav.floor == null) maintenanceNotices.insertAdjacentHTML('beforeend', `<details class="rp-status-warning rp-protocol-issues"><summary>第 ${esc(lastBatch.floor)} 楼有 ${lastBatch.protocolIssues.length} 项格式问题</summary><p>下列项及其关联操作暂未处理；其他候选已继续校验。修正事件块后可重新处理。</p><ul>${lastBatch.protocolIssues.map(issue => `<li>第 ${esc(issue.index)} 项：${esc(issue.reason)}</li>`).join('')}</ul></details>`);
+        const skipped = nav.floor == null && lastBatch && !(nav.tab === 'history' && nav.filter === 'pending') ? core.candidates.filter(item => lastBatch.candidateIds.includes(item.id) && item.status === 'rejected' && !item.superseded) : [];
+        if (skipped.length) maintenanceNotices.insertAdjacentHTML('beforeend', `<div class="rp-notice rp-error"><div><strong>第 ${esc(lastBatch.sourceFloor ?? lastBatch.floor)} 楼有 ${skipped.length} 条变化没记上</strong><small>${esc(skipped[0].reason || '格式无效')}${skipped.length > 1 ? ' 等' : ''}</small></div>${button('pending', '查看')}</div>`);
         const invalidFacts = view.pending.filter(item => isCurrentRpRecord(view, { id: item.factId }));
         if (invalidFacts.length) maintenanceNotices.insertAdjacentHTML('beforeend', `<div class="rp-notice rp-error"><div><strong>${invalidFacts.length} 项旧记录暂未采用</strong><small>这些记录暂不参与当前状态</small></div>${button('facts', '查看')}</div>`);
         if (nav.tab === 'directory') {
@@ -125,7 +128,7 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         root.insertAdjacentHTML('beforeend', maintenanceNotices.innerHTML);
         if (nav.tab === 'overview') {
             if (!hasData) {
-                root.insertAdjacentHTML('beforeend', `<section class="rp-blank"><span class="rp-blank-mark"><i class="fa-solid fa-film" aria-hidden="true"></i></span><h3>${nav.floor != null ? '当时尚无状态记录' : core.settings.enabled ? '等故事写下下一页' : '自动维护已暂停'}</h3><p>${!channel && core.settings.enabled ? '尚未运行：请在维护设置中选择可用的方式。' : '人物、关系与约定，会随着剧情进展自动记录。'}</p><div class="rp-controls">${nav.floor != null ? '' : channel === 'inline' ? button('capture', '重新读取最新回复') : channel === 'independent' ? button('extract', '立即提取最新回复') + button('stop', '停止提取') : ''}</div></section>${footer}`);
+                root.insertAdjacentHTML('beforeend', `<section class="rp-blank"><span class="rp-blank-mark"><i class="fa-solid fa-film" aria-hidden="true"></i></span><h3>${nav.floor != null ? '当时尚无状态记录' : core.settings.enabled ? '等故事写下下一页' : '自动维护已暂停'}</h3><p>${!channel && core.settings.enabled ? '尚未运行：请在维护设置中选择可用的方式。' : '人物、关系与约定，会随着剧情进展自动记录。'}</p><div class="rp-controls">${nav.floor != null ? '' : channel === 'inline' ? button('capture', '读取最新回复') : channel === 'independent' ? button('extract', '立即提取最新回复') + button('stop', '停止提取') : ''}</div></section>${footer}`);
                 return;
             }
             const applied = new Set(view.applied);
@@ -134,7 +137,7 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
                 .map(item => ({ kind: 'facts', id: item.id, title: describeRecord(item, projection), record: item }));
             root.insertAdjacentHTML('beforeend', presentation.overview(projection, lastBatch, nav.floor, recentRows, facts, currentInformation(core, view, { floor: nav.floor })));
             if (channel === 'independent' && nav.floor == null) root.insertAdjacentHTML('beforeend', `<div class="rp-controls rp-run-controls">${button('extract', '立即提取最新回复')}${button('stop', '停止提取')}</div>${core.extractionJobs?.some(job => ['running', 'paused', 'failed'].includes(job.status)) ? '<p role="status">有未完成提取；可手动重试，不会自动重复计费。</p>' : ''}`);
-            if (channel === 'inline' && !lastBatch && nav.floor == null) root.insertAdjacentHTML('beforeend', `<div class="rp-controls rp-run-controls">${button('capture', '重新读取最新回复')}</div>`);
+            if (channel === 'inline' && !lastBatch && nav.floor == null) root.insertAdjacentHTML('beforeend', `<div class="rp-controls rp-run-controls">${button('capture', '读取最新回复')}</div>`);
             root.insertAdjacentHTML('beforeend', footer); return;
         }
         if (nav.tab === 'clock') {

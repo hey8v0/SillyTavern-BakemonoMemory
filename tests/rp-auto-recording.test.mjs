@@ -138,3 +138,25 @@ test('I07 summary edits do not invalidate body-owned state or trigger re-ingesti
     assert.equal(f.state.rpCore.revision, revision);
     assert.equal(f.service.view().projection.clock.date, '2024-04-12T23:45');
 });
+test('one bad event in a linked batch drops only itself and what builds on it', async () => {
+    const f = await fixture();
+    await f.service.ingest(JSON.stringify({ version: 2, events: [
+        { action: 'person_registered', data: { id: '甲', name: '甲' } },
+        { action: 'person_registered', data: { id: '乙', name: '乙' } },
+        { action: 'relationship_recorded', data: { id: 'r', from: '甲', to: '乙', kind: 'friend' } },
+        { action: 'promise_created', data: { id: 'p', title: '一起看海', participants: ['甲', '乙'] } },
+        { action: 'plan_accepted', data: { id: 'p' } },
+        { action: 'item_registered', data: { id: 'k', name: '钥匙', holder: '甲', quantity: -1 } },
+        { action: 'item_lent', data: { id: 'k', from: '甲', to: '乙', loanId: 'loan' } },
+    ] }), 0);
+    const p = f.service.view().projection, candidates = f.state.rpCore.candidates;
+    assert.equal(p.people.length, 2);
+    assert.equal(p.relationships.length, 1);
+    assert.equal(p.plans.length, 1);
+    const reason = action => candidates.find(item => item.action === action).reason;
+    assert.equal(candidates.find(item => item.action === 'person_registered').status, 'accepted');
+    assert.match(reason('plan_accepted'), /约定已经接受/);
+    assert.equal(p.items.length, 0);
+    assert.match(reason('item_registered'), /数量/);
+    assert.match(reason('item_lent'), /依赖的“钥匙”没有记下/);
+});

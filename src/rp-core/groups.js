@@ -1,4 +1,4 @@
-const created = event => {
+export const createdId = event => {
     if (event.track !== 'facts') return null;
     if (event.action === 'state_updated' && event.data.create) return event.data.id;
     if (['person_created', 'person_registered', 'relationship_established', 'relationship_recorded', 'plan_proposed', 'promise_created', 'item_acquired', 'item_registered', 'location_created'].includes(event.action)) return event.data.id;
@@ -6,7 +6,7 @@ const created = event => {
     if (event.action === 'person_state_started') return event.data.stateId;
     return null;
 };
-const refs = event => {
+export const referencedIds = event => {
     const data = event.action === 'state_updated' ? { ...event.data.values, id: event.data.id } : event.data;
     return ['id', 'from', 'to', 'owner', 'holder', 'location', 'parent', 'loanId', 'stateId', 'target']
         .flatMap(key => data[key] == null ? [] : [data[key]]).concat(data.participants || [], data.present || []);
@@ -19,14 +19,14 @@ export function atomicCandidateGroups(candidates) {
     const join = (a, b) => { parents[root(a)] = root(b); };
     const owners = new Map(), declared = new Map();
     candidates.forEach((event, index) => {
-        const id = created(event);
+        const id = createdId(event);
         if (id) owners.set(id, index);
         if (event.group) {
             if (declared.has(event.group)) join(index, declared.get(event.group));
             else declared.set(event.group, index);
         }
     });
-    const dependencies = candidates.map((event, index) => new Set(refs(event).filter(id => owners.has(id) && owners.get(id) !== index).map(id => owners.get(id))));
+    const dependencies = candidates.map((event, index) => new Set(referencedIds(event).filter(id => owners.has(id) && owners.get(id) !== index).map(id => owners.get(id))));
     dependencies.forEach((ids, index) => ids.forEach(owner => join(index, owner)));
     const groups = new Map();
     candidates.forEach((_, index) => { const key = root(index); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(index); });
