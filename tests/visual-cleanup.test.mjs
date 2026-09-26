@@ -4,9 +4,11 @@ import { readFile } from 'node:fs/promises';
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('decorative tape stripes are gone; only the custom theme texture keeps a repeating gradient', async () => {
+test('decorative tape stripes are gone; only the custom theme texture and the story-state clapper keep a repeating gradient', async () => {
     const css = await read('style.css');
-    assert.equal((css.match(/repeating-linear-gradient/g) || []).length, 1);
+    const rules = css.split('}').filter(rule => rule.includes('repeating-linear-gradient'));
+    assert.equal(rules.length, 3);
+    assert.equal(rules.filter(rule => /\.rp-clap-(top|bottom) \{/.test(rule)).length, 2);
     assert.match(css, /\.bakemono-workbench-root\.bakemono-custom-theme \.bakemono-workbench \{[^}]*repeating-linear-gradient/);
 });
 

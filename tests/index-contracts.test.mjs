@@ -980,11 +980,11 @@ test('automation and generation API controls share one event boundary', () => {
     assert.doesNotMatch(source, /bakemono-memory-apply-automation|bakemono-memory-fetch-models|bakemono-memory-stage-target-mode/);
 });
 
-test('appearance settings ship protected warm-paper day and night presets', () => {
-    assert.match(themeSchemaSource, /id: 'bakemono-warm-paper-day'/);
-    assert.match(themeSchemaSource, /id: 'bakemono-warm-paper-night'/);
-    assert.match(themeSchemaSource, /name: '暖纸日间'/);
-    assert.match(themeSchemaSource, /name: '暖纸夜间'/);
+test('appearance settings ship protected film-slate day and night presets', () => {
+    assert.match(themeSchemaSource, /id: 'bakemono-whiteboard-day'/);
+    assert.match(themeSchemaSource, /id: 'bakemono-slate-night'/);
+    assert.match(themeSchemaSource, /name: '白板 · 日'/);
+    assert.match(themeSchemaSource, /name: '场记板 · 夜'/);
     assert.match(themeControllerSource, /builtInCustomThemePresetIds\.has/);
 });
 

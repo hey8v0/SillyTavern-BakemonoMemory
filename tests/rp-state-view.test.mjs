@@ -55,3 +55,10 @@ test('state navigation is isolated by chat, preserves page, and detail back rest
     assert.equal(navigation.get(a).page, 2);
     assert.equal(navigation.get(a).search, '戒指');
 });
+
+test('change descriptions say where a person went and who made a claim', async () => {
+    const { describeRecord } = await import('../src/rp-core/state-view.js');
+    const projection = { people: [{ id: 'a', name: '旅人' }, { id: 'b', name: '莉娜' }], locations: [{ id: 'forge', name: '铁匠铺' }], items: [], plans: [], relationships: [] };
+    assert.equal(describeRecord({ action: 'person_moved', data: { id: 'a', location: 'forge' } }, projection), '人物移动 · 旅人 · → 铁匠铺');
+    assert.equal(describeRecord({ track: 'claims', action: 'claim_made', data: { speaker: 'b', description: '矿坑塌了' } }, projection), '角色说法 · 莉娜 · 矿坑塌了');
+});

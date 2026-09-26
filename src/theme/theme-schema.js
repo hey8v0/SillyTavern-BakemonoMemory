@@ -11,6 +11,25 @@ export function refreshBuiltInThemePresets(ui, definitions, { sanitizeCustomThem
     }
 }
 
+// Earlier built-ins: an untouched stored copy is dropped, an edited or in-use one stays as a normal preset.
+export const retiredBuiltInThemeTokens = Object.freeze({
+    'bakemono-warm-paper-day': { paper: '#f6f3eb', ink: '#303238', accent: '#616a88' },
+    'bakemono-warm-paper-night': { paper: '#27292c', ink: '#e8e6df', accent: '#a3afcd' },
+});
+
+export function themeChoiceLabel(ui = {}) {
+    if (ui.themeMode !== 'custom') return '跟随酒馆';
+    return ({ 'bakemono-whiteboard-day': '白板 · 日', 'bakemono-slate-night': '场记板 · 夜' })[ui.selectedThemePresetId] || '自定义';
+}
+
+export function retireBuiltInThemePresets(ui, retired = retiredBuiltInThemeTokens) {
+    const inUse = id => ui.themeMode === 'custom' && ui.selectedThemePresetId === id;
+    ui.themePresets = ui.themePresets.filter(preset => {
+        const marks = retired[preset.id];
+        return !marks || inUse(preset.id) || Object.entries(marks).some(([key, value]) => preset.tokens?.[key] !== value);
+    });
+}
+
 export function createThemeSchema({ getHash } = {}) {
     const CUSTOM_THEME_SCHEMA = 'bakemono-memory-theme/v1';
     const CUSTOM_THEME_LIBRARY_SCHEMA = 'bakemono-memory-theme-library/v1';
@@ -27,72 +46,74 @@ export function createThemeSchema({ getHash } = {}) {
         'backdrop',
         'danger',
     ];
+    const constraints = {
+        opaqueSurfaces: true,
+        contrast: 'WCAG AA',
+        doNotChange: ['layout', 'plugin logic', 'configuration structure', 'memory data'],
+    };
+    const aiInstructions = '只修改 tokens、effects、name 与 appearance，保留 $schema 和字段结构；返回完整 JSON，不要加入 CSS、脚本或解释文字。所有颜色必须为六位十六进制色值。';
     const defaultCustomTheme = {
         $schema: CUSTOM_THEME_SCHEMA,
-        name: '暖纸日间',
+        name: '白板 · 日',
         appearance: 'light',
         tokens: {
-            paper: '#f6f3eb',
-            paperRaised: '#fcfaf5',
-            paperSoft: '#e9eaf0',
-            ink: '#303238',
-            muted: '#656870',
-            accent: '#616a88',
-            secondary: '#486b59',
-            accentStrong: '#434e70',
-            line: '#d8d5ce',
-            backdrop: '#272b38',
-            danger: '#9d4a46',
+            paper: '#f2eee5',
+            paperRaised: '#f8f5ee',
+            paperSoft: '#e7e1d4',
+            ink: '#23201b',
+            muted: '#5f584d',
+            accent: '#a8600f',
+            secondary: '#5c7a64',
+            accentStrong: '#8a4d0a',
+            line: '#d4ccbc',
+            backdrop: '#2a2621',
+            danger: '#b23b28',
         },
         effects: {
             gradientStrength: 0,
             gradientAngle: 145,
             grain: 0,
-            shadow: 18,
-            radius: 12,
+            shadow: 10,
+            radius: 4,
         },
-        constraints: {
-            opaqueSurfaces: true,
-            contrast: 'WCAG AA',
-            doNotChange: ['layout', 'plugin logic', 'configuration structure', 'memory data'],
-        },
-        aiInstructions: '只修改 tokens、effects、name 与 appearance，保留 $schema 和字段结构；返回完整 JSON，不要加入 CSS、脚本或解释文字。所有颜色必须为六位十六进制色值。',
+        constraints,
+        aiInstructions,
     };
+    // Film-slate pair shown as “白板 · 日 / 场记板 · 夜” on the appearance page.
     const builtInCustomThemeDefinitions = Object.freeze([
         {
             ...structuredClone(defaultCustomTheme),
-            id: 'bakemono-warm-paper-day',
-            name: '暖纸日间',
+            id: 'bakemono-whiteboard-day',
             createdAt: 'default',
             updatedAt: 'default',
         },
         {
             $schema: CUSTOM_THEME_SCHEMA,
-            id: 'bakemono-warm-paper-night',
-            name: '暖纸夜间',
+            id: 'bakemono-slate-night',
+            name: '场记板 · 夜',
             appearance: 'dark',
             tokens: {
-                paper: '#27292c',
-                paperRaised: '#2d3034',
-                paperSoft: '#353b49',
-                ink: '#e8e6df',
-                muted: '#b0b1b5',
-                accent: '#a3afcd',
-                secondary: '#b0ccb7',
-                accentStrong: '#c0cbe4',
-                line: '#484b50',
-                backdrop: '#191b1e',
-                danger: '#e0a29d',
+                paper: '#151412',
+                paperRaised: '#1c1a17',
+                paperSoft: '#24211d',
+                ink: '#ece5d6',
+                muted: '#b3ab9c',
+                accent: '#e0a045',
+                secondary: '#8fa88a',
+                accentStrong: '#e8b25e',
+                line: '#3a3630',
+                backdrop: '#0b0a09',
+                danger: '#e0735f',
             },
             effects: {
                 gradientStrength: 0,
                 gradientAngle: 150,
                 grain: 0,
-                shadow: 22,
-                radius: 12,
+                shadow: 14,
+                radius: 4,
             },
-            constraints: structuredClone(defaultCustomTheme.constraints),
-            aiInstructions: defaultCustomTheme.aiInstructions,
+            constraints: structuredClone(constraints),
+            aiInstructions,
             createdAt: 'default',
             updatedAt: 'default',
         },

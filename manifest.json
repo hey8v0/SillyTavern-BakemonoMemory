@@ -7,7 +7,7 @@
   "generate_interceptor": "bakemonoMemoryRecallInterceptor",
   "css": "style.css",
   "author": "Codex",
-  "version": "1.9.3",
+  "version": "1.10.0",
   "homePage": "https://github.com/hey8v0/SillyTavern-BakemonoMemory",
   "auto_update": false
 }

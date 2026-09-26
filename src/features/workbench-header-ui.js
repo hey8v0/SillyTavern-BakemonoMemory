@@ -1,3 +1,4 @@
+import { themeChoiceLabel } from '../theme/theme-schema.js';
 export function createWorkbenchHeaderUi({
     documentRef,
     getState,
@@ -29,7 +30,7 @@ export function createWorkbenchHeaderUi({
             prompts: '生成提示词',
             archive: '楼层收纳',
             config: '整套配置',
-            appearance: '自定义主题',
+            appearance: '外观与主题',
             maintenance: '撤回与事务',
             help: '使用说明',
         };
@@ -62,7 +63,7 @@ export function createWorkbenchHeaderUi({
             prompts: '生成风格 · 四类提示词',
             archive: `聊天收纳 · ${(state.hiddenMessageIds?.length || 0).toLocaleString()} 层已隐藏`,
             config: '配置预设 · 跨聊天复用',
-            appearance: `外观主题 · ${getAppearanceSettings().themeMode === 'custom' ? '自定义' : '跟随酒馆'}`,
+            appearance: `外观主题 · ${themeChoiceLabel(getAppearanceSettings())}`,
             maintenance: `安全维护 · ${(state.autoSummaryTransactions?.length || 0).toLocaleString()} 条事务`,
             help: '帮助中心 · 随时可查',
         };

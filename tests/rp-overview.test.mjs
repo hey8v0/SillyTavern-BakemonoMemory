@@ -79,10 +79,11 @@ test('separate locations are not silently presented as one current scene', () =>
 test('overview uses direct date place person relationship plan and item targets in a single sheet', () => {
     const view = crowded();
     const html = ui.overview(view, { floor: 42 }, null, [], []);
-    assert.match(html, /class="rp-story-sheet/);
+    assert.match(html, /class="rp-slate/);
     assert.match(html, /data-rp-action="clock"/);
     for (const kind of ['locations', 'people', 'relationships', 'plans', 'items']) assert.match(html, new RegExp('data-rp-kind="' + kind + '"'));
-    assert.doesNotMatch(html, /rp-overview-link|rp-scene-actions|场景详情|<h3>人物关系/);
+    assert.doesNotMatch(html, /rp-overview-link|rp-scene-actions|场景详情/);
+    assert.doesNotMatch(html, /<svg/, 'thirty people do not fit a relationship graph; the list is used instead');
     assert.match(html, /其余 22 段关系/);
     assert.match(html, /data-rp-action="relationships"/);
     assert.match(html, /data-rp-action="people"/);
@@ -115,4 +116,32 @@ test('overview escapes names and IDs, preserves direction, floor and unknown tim
     assert.match(html, /第 2 楼/);
     assert.match(html, /雨季/);
     assert.match(html, /→/);
+});
+
+test('relationship graph draws the scene and its direct relations, up to six people', () => {
+    const view = createProjection();
+    view.scene = { location: 'forge', present: ['a', 'b'] };
+    view.locations = [{ id: 'forge', name: '铁匠铺' }];
+    view.people = [{ id: 'a', name: '旅人' }, { id: 'b', name: '格伦' }, { id: 'c', name: '莉娜' }, { id: 'd', name: '<b>领主</b>' }];
+    view.relationships = [{ id: 'r1', from: 'a', to: 'c', kind: '受托人', status: 'active' }, { id: 'r2', from: 'c', to: 'b', kind: '老朋友', mutual: true, status: 'active' }];
+    const info = [{ id: 'o', track: 'observations', data: { speaker: 'a', subject: 'b', description: '格伦似乎知道内情' } }];
+    const svg = ui.relationGraph(view, info);
+    assert.match(svg, /<svg/);
+    for (const id of ['a', 'b', 'c']) assert.match(svg, new RegExp('data-rp-id="' + id + '"'));
+    assert.doesNotMatch(svg, /data-rp-id="d"/, 'unrelated people stay off the graph');
+    assert.match(svg, /铁匠铺 · 在场/);
+    assert.match(svg, /marker-start/, 'mutual relations point both ways');
+    assert.match(svg, /is-guess/);
+    view.people.push(...Array.from({ length: 5 }, (_, i) => ({ id: 'x' + i, name: '路人' + i })));
+    view.relationships.push(...Array.from({ length: 5 }, (_, i) => ({ id: 'rx' + i, from: 'a', to: 'x' + i, kind: '同行', status: 'active' })));
+    assert.equal(ui.relationGraph(view, info), '', 'eight related people fall back to the list');
+});
+
+test('plan remaining time uses hours when story time and deadline are minute-precise', async () => {
+    const { planRemaining } = await import('../src/features/rp-state-presentation.js');
+    const view = { clock: { date: '1023-10-14T23:40' } };
+    assert.equal(planRemaining({ status: 'accepted', due: '1023-10-15T06:00' }, view), '还剩 6 小时 20 分');
+    assert.equal(planRemaining({ status: 'accepted', due: '1023-10-14T22:00' }, view), '已逾期');
+    assert.equal(planRemaining({ status: 'completed', due: '1023-10-15T06:00' }, view), '');
+    assert.equal(planRemaining({ status: 'proposed', dueDescription: '通行证到手后' }, view), '通行证到手后');
 });

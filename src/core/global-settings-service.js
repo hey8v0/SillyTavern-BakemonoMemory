@@ -1,4 +1,4 @@
-import { refreshBuiltInThemePresets } from '../theme/theme-schema.js';
+import { refreshBuiltInThemePresets, retireBuiltInThemePresets } from '../theme/theme-schema.js';
 
 export function createGlobalSettingsService({
     extensionSettings,
@@ -53,9 +53,10 @@ export function createGlobalSettingsService({
             : storedCustomTheme
                 ? [normalizeCustomThemePreset({ ...storedCustomTheme, id: storedCustomTheme.id || 'bakemono-legacy-custom-theme' })]
                 : [];
+        retireBuiltInThemePresets(settings.ui);
         refreshBuiltInThemePresets(settings.ui, builtInCustomThemeDefinitions, { sanitizeCustomTheme, normalizeCustomThemePreset });
         if (!settings.ui.selectedThemePresetId || !settings.ui.themePresets.some(preset => preset.id === settings.ui.selectedThemePresetId)) {
-            settings.ui.selectedThemePresetId = 'bakemono-warm-paper-day';
+            settings.ui.selectedThemePresetId = 'bakemono-whiteboard-day';
         }
         if (!Array.isArray(extensionSettings[storageKey].promptPresets)) {
             extensionSettings[storageKey].promptPresets = [structuredClone(defaultPromptPreset), structuredClone(defaultGenericPromptPreset)];

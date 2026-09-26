@@ -62,7 +62,8 @@ export function selectStoryOverview(view, facts = []) {
     const deadline = item => readStoryDate(item.due)?.milliseconds ?? Infinity;
     const plans = view.plans.filter(item => ['accepted', 'proposed'].includes(item.status))
         .sort((a, b) => deadline(a) - deadline(b) || recent(a, b)).slice(0, 2);
-    const itemRelevance = item => presentIds.has(item.holder) ? 2 : location && item.location === location.id ? 1 : 0;
+    // Borrowed things usually carry a promise, so they outrank ordinary belongings.
+    const itemRelevance = item => (presentIds.has(item.holder) ? 2 : location && item.location === location.id ? 1 : 0) + (item.loan ? 1 : 0);
     const items = view.items.filter(item => item.status !== 'destroyed' && item.quantity !== 0)
         .sort((a, b) => itemRelevance(b) - itemRelevance(a) || recent(a, b)).slice(0, 2);
     const people = (present.length ? present : [...view.people].sort(recent)).slice(0, 4);
@@ -73,160 +74,258 @@ export function selectStoryOverview(view, facts = []) {
         itemsLabel: items.length && items.every(item => presentIds.has(item.holder)) ? '随身' : '物品' };
 }
 
-export function createRpStatePresentation({ escapeHtml: esc }) {
-    const icon = name => `<i class="fa-solid fa-${name}" aria-hidden="true"></i>`;
-    const chip = (value, type = '') => `<span class="rp-chip ${type}">${esc(value)}</span>`;
-    const avatar = (name, secondary = false) => `<span class="rp-avatar${secondary ? ' rp-avatar-secondary' : ''}" aria-hidden="true">${esc(Array.from(name || '人')[0])}</span>`;
-    const link = (kind, id, html, css = '') => `<button type="button" class="${css}" data-rp-action="detail" data-rp-kind="${esc(kind)}" data-rp-id="${esc(id)}">${html}</button>`;
-    const chevron = '<span class="rp-chevron" aria-hidden="true">›</span>';
-    const empty = text => `<p class="rp-empty">${esc(text)}</p>`;
-    const head = title => `<div class="rp-section-head"><h3>${esc(title)}</h3></div>`;
-    const fields = pairs => `<dl class="rp-facts-grid">${pairs.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value == null || value === '' ? '尚未记录' : value)}</dd></div>`).join('')}</dl>`;
+const pad = value => String(value).padStart(2, '0');
+const shorten = (value, length) => { const chars = Array.from(String(value ?? '')); return chars.length > length ? chars.slice(0, length).join('') + '…' : chars.join(''); };
+const firstChar = (value, fallback) => Array.from(String(value || fallback))[0];
 
-    function relationship(item, view) {
-        const from = entityName(view, item.from), to = entityName(view, item.to);
-        const label = relationshipName(view, item).split(' · ').at(-1);
-        const milestone = [...(item.milestones || []), ...(item.conflicts || [])].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
-        const span = item.elapsedDays == null ? '' : ` · ${item.status === 'ended' ? '曾持续' : '已持续'} ${item.elapsedDays} 天`;
-        return link('relationships', item.id, `<span class="rp-relation-top"><span class="rp-duo">${avatar(from, true)}${avatar(to)}</span><span class="rp-row-copy"><strong>${esc(from)} <span class="rp-arrow">${item.mutual ? '↔' : '→'}</span> ${esc(to)}</strong><small>${esc(label)} · ${esc(stateLabels[item.status] || '状态未定')}${esc(span)}</small></span>${chevron}</span>${milestone ? `<span class="rp-relation-bottom">${chip('最近')}<span>${esc(milestone.description)}</span></span>` : ''}`, 'rp-relation-card');
-    }
-
-    function appointment(item, view) {
-        const date = readStoryDate(item.due);
-        return link('plans', item.id, `<span class="rp-calendar"><small>${date ? `${date.month} 月` : '未定'}</small><b>${date ? date.day : '—'}</b></span><span class="rp-row-copy"><strong>${esc(item.title || '未命名约定')}</strong><small>${esc((item.participants || []).map(id => entityName(view, id)).join('、'))}</small>${chip(planStatusLabel(item), item.timing?.status === 'overdue' && ['accepted', 'proposed'].includes(item.status) ? 'rp-attention' : '')}</span>${chevron}`, 'rp-appointment');
-    }
-
-    function person(item, view) {
-        const sub = [item.location ? '最后已知：' + locationTrail(view, item.location) : '位置尚未记录',
-            ...(item.states || []).filter(state => state.active).slice(0, 1).map(state => state.description)];
-        return link('people', item.id, `${avatar(item.name)}<span class="rp-row-copy"><strong>${esc(item.name)}</strong><small>${esc(sub.join(' · '))}</small></span>${chevron}`, 'rp-person rp-row');
-    }
-
-    function directoryRow(row, view) {
-        const item = row.record;
-        let title = row.title, detail = row.detail, symbol = '', badge = '';
-        if (row.kind === 'people') symbol = `<span class="rp-directory-avatar" aria-hidden="true">${esc(Array.from(item.name || '人')[0])}</span>`;
-        else if (row.kind === 'relationships') {
-            title = entityName(view, item.from) + (item.mutual ? ' ↔ ' : ' → ') + entityName(view, item.to);
-            detail = relationshipName(view, item).split(' · ').at(-1);
-            badge = item.status === 'active' ? '已成立' : stateLabels[item.status] || '';
-        } else if (['claims', 'observations'].includes(row.kind)) {
-            title = informationName(view, item.data.speaker) + (item.data.subject ? ' → ' + informationName(view, item.data.subject) : '');
-            detail = item.data.description; badge = row.kind === 'claims' ? '说法' : '观察';
-        } else {
-            symbol = `<span class="rp-directory-symbol">${icon(({ items: 'key', plans: 'calendar-days', locations: 'location-dot' })[row.kind])}</span>`;
-            if (row.kind === 'items') {
-                detail = [item.holder ? entityName(view, item.holder) + '持有' : item.location ? locationTrail(view, item.location) : '', item.loan ? '借用中' : ''].filter(Boolean).join(' · ');
-                if (['damaged', 'destroyed'].includes(item.status)) badge = stateLabels[item.status];
-            } else if (row.kind === 'plans') detail = [item.due?.replace('T', ' ') || item.dueDescription, planStatusLabel(item)].filter(Boolean).join(' · ');
-            else detail = [item.parent ? locationTrail(view, item.parent) : '', view.scene?.location === item.id ? '当前场景' : ''].filter(Boolean).join(' · ');
+// Time left on an open plan. Minute-precise story time and deadline give hours; otherwise the day-based label.
+export function planRemaining(plan, view) {
+    if (!['proposed', 'accepted'].includes(plan.status)) return '';
+    const due = readStoryDate(plan.due), now = readStoryDate(view.clock?.date);
+    if (due?.precision === 'minute' && now?.precision === 'minute') {
+        const minutes = Math.round((due.milliseconds - now.milliseconds) / 60000);
+        if (minutes < 0) return '已逾期';
+        if (minutes < 48 * 60) {
+            const hours = Math.floor(minutes / 60), rest = minutes % 60;
+            return minutes ? '还剩 ' + [hours ? hours + ' 小时' : '', rest ? rest + ' 分' : ''].filter(Boolean).join(' ') : '即将到期';
         }
-        return link(row.kind, row.id, `${symbol}<span class="rp-directory-copy"><strong>${esc(title)}</strong>${detail ? `<small>${esc(detail)}</small>` : ''}</span>${badge ? `<span class="rp-directory-badge">${esc(badge)}</span>` : ''}${chevron}`, 'rp-directory-row');
     }
-    function directoryRows(rows, view) {
-        const labels = { people: '人物', relationships: '关系', claims: '角色说法', observations: '观察', items: '物品', plans: '约定', locations: '地点' };
-        return '<div class="rp-directory-list">' + Object.entries(labels).map(([kind, label]) => {
-            const group = rows.filter(row => row.kind === kind);
-            return group.length ? `<section class="rp-directory-group" data-rp-group="${kind}" aria-label="${label}">${kind === 'people' ? '' : `<h4>${label}</h4>`}${group.map(row => directoryRow(row, view)).join('')}</section>` : '';
+    return planStatusLabel(plan).split(' · ').slice(1).join(' · ') || plan.dueDescription || '';
+}
+
+export function createRpStatePresentation({ escapeHtml: esc }) {
+    const chevron = '<span class="rp-chevron" aria-hidden="true">›</span>';
+    const tag = (value, type = '') => `<span class="rp-tag${type ? ' ' + type : ''}">${esc(value)}</span>`;
+    const label = text => `<span class="rp-label">${esc(text)}</span>`;
+    const link = (kind, id, html, css = '') => `<button type="button" class="${css}" data-rp-action="detail" data-rp-kind="${esc(kind)}" data-rp-id="${esc(id)}">${html}</button>`;
+    const route = (action, html, css = 'rp-more', extra = '') => `<button type="button" class="${css}" data-rp-action="${action}" ${extra}>${html}</button>`;
+    const more = (action, text) => route(action, `${esc(text)} ${chevron}`);
+    const empty = text => `<p class="rp-empty">${esc(text)}</p>`;
+    const head = (title, english = '', action = '', count = 0) => `<div class="rp-sec-head"><h3>${esc(title)}${english ? label(english) : ''}</h3>${action ? more(action, '全部' + (count ? ' ' + count : '')) : ''}</div>`;
+    const fields = pairs => {
+        const shown = pairs.filter(([, value]) => value != null && value !== '');
+        return shown.length ? `<dl class="rp-facts">${shown.map(([name, value]) => `<dt>${esc(name)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>` : '';
+    };
+    const row = (kind, id, glyph, title, sub, trailing = '', symbol = false) => link(kind, id,
+        `<span class="rp-glyph${symbol ? ' is-symbol' : ''}" aria-hidden="true">${esc(glyph)}</span><span class="rp-row-main"><strong>${esc(title)}</strong>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${trailing}${chevron}`, 'rp-row');
+    const activeStates = person => (person.states || []).filter(state => state.active !== false && !state.ended && !state.endedAt);
+    const isOpenPlan = plan => ['accepted', 'proposed'].includes(plan.status);
+
+    function relationRow(item, view) {
+        const arrow = item.mutual ? '↔' : '→';
+        const kind = relationshipName(view, item).split(' · ').at(-1);
+        const span = item.elapsedDays > 0 ? `${item.status === 'ended' ? '曾持续' : '已持续'} ${item.elapsedDays} 天` : '';
+        return row('relationships', item.id, arrow, `${entityName(view, item.from)} ${arrow} ${entityName(view, item.to)}`,
+            [kind, span].filter(Boolean).join(' · '), tag(item.status === 'active' ? '已成立' : stateLabels[item.status] || '状态未定', item.status === 'active' ? 'is-live' : ''), true);
+    }
+    function itemRow(item, view) {
+        const where = item.holder ? entityName(view, item.holder) + ' 持有' : item.location ? locationTrail(view, item.location) : '持有者未记录';
+        const badge = item.loan ? tag('借用', 'is-live') : ['damaged', 'destroyed'].includes(item.status) ? tag(stateLabels[item.status], 'is-alert')
+            : item.quantity > 1 ? tag('×' + item.quantity) : '';
+        return row('items', item.id, firstChar(item.name, '物'), item.name || '未命名物品', where + (item.loan ? ' · 借用中' : ''), badge);
+    }
+    function callRow(plan, view) {
+        const due = readStoryDate(plan.due), now = readStoryDate(view.clock?.date);
+        const sameDay = due && now && due.year === now.year && due.month === now.month && due.day === now.day;
+        const when = !due ? '未定' : due.precision === 'minute' ? `${pad(due.hour)}:${pad(due.minute)}` : `${due.month}·${due.day}`;
+        const whenNote = due?.precision === 'minute' && !sameDay ? `${due.month}·${due.day}` : '';
+        const remaining = planRemaining(plan, view);
+        const urgent = isOpenPlan(plan) && (plan.timing?.status === 'overdue' || /小时|分|即将|今日|逾期/.test(remaining));
+        const people = (plan.participants || []).map(id => entityName(view, id)).join('、');
+        return link('plans', plan.id, `<span class="rp-when${urgent ? ' is-soon' : ''}"><b>${esc(when)}</b>${whenNote ? `<small>${esc(whenNote)}</small>` : ''}</span><span class="rp-row-main"><strong>${esc(plan.title || '未命名约定')}</strong><small>${esc([people, remaining || plan.dueDescription].filter(Boolean).join(' · '))}</small></span>${tag(stateLabels[plan.status] || '状态未定', plan.timing?.status === 'overdue' && isOpenPlan(plan) ? 'is-alert' : urgent ? 'is-live' : '')}${chevron}`, 'rp-call');
+    }
+    function memo(item, view) {
+        const data = item.data, guess = item.track !== 'claims';
+        const heard = Array.isArray(data.heardBy) && data.heardBy.length ? data.heardBy.map(value => informationName(view, value)).join('、') + ' 知道' : guess ? '只在心里' : '';
+        return link(item.track, item.id, `<span class="rp-memo-who"><span>${esc(informationName(view, data.speaker))}${data.subject ? ' → ' + esc(informationName(view, data.subject)) : ''}</span>${tag(guess ? '推测' : '说法', guess ? 'is-live' : '')}</span><q>${esc(data.description)}</q>${heard || item.floor != null ? `<span class="rp-memo-who"><span>${esc(heard)}</span>${item.floor != null ? `<span class="rp-mono">第 ${esc(item.floor)} 楼</span>` : ''}</span>` : ''}`, 'rp-memo' + (guess ? ' is-guess' : ''));
+    }
+
+    function directoryRow(entry, view) {
+        const item = entry.record;
+        if (entry.kind === 'people') {
+            const present = view.scene?.present?.includes(item.id);
+            return row('people', entry.id, firstChar(item.name, '人'), item.name || '未命名', entry.detail, present ? tag('在场', 'is-live') : '');
+        }
+        if (entry.kind === 'relationships') return relationRow(item, view);
+        if (['claims', 'observations'].includes(entry.kind)) {
+            const who = informationName(view, item.data.speaker) + (item.data.subject ? ' → ' + informationName(view, item.data.subject) : '');
+            return row(entry.kind, entry.id, entry.kind === 'claims' ? '说' : '察', who, item.data.description, tag(entry.kind === 'claims' ? '说法' : '推测'), true);
+        }
+        if (entry.kind === 'items') return itemRow(item, view);
+        if (entry.kind === 'plans') return row('plans', entry.id, '约', item.title || '未命名约定',
+            [item.due?.replace('T', ' ') || item.dueDescription, planRemaining(item, view)].filter(Boolean).join(' · '), tag(stateLabels[item.status] || '状态未定', isOpenPlan(item) ? 'is-live' : ''), true);
+        const current = view.scene?.location === item.id;
+        return row('locations', entry.id, firstChar(item.name, '地'), item.name || '未命名地点', item.parent ? locationTrail(view, item.parent) : '', current ? tag('当前场景', 'is-live') : '');
+    }
+    function directoryRows(list, view) {
+        const labels = { people: '人物', relationships: '关系', claims: '角色说法', observations: '推测', items: '物品', plans: '约定', locations: '地点' };
+        return '<div class="rp-groups">' + Object.entries(labels).map(([kind, name]) => {
+            const group = list.filter(entry => entry.kind === kind);
+            return group.length ? `<section class="rp-group" data-rp-group="${kind}" aria-label="${name}"><div class="rp-group-head"><h4>${name}</h4>${label(group.length + ' 条')}</div><div class="rp-list">${group.map(entry => directoryRow(entry, view)).join('')}</div></section>` : '';
         }).join('') + '</div>';
     }
-    function rows(rows, view, { recent = false, directory = false } = {}) {
-        if (!rows.length) return empty('暂无记录');
-        if (directory) return directoryRows(rows, view);
-        const kind = rows[0].kind;
-        if (kind === 'people') return `<div class="rp-sheet rp-person-list">${rows.map(row => person(row.record, view)).join('')}</div>`;
-        if (kind === 'relationships') return `<div class="rp-card-list">${rows.map(row => relationship(row.record, view)).join('')}</div>`;
-        if (kind === 'plans') return `<div class="rp-card-list">${rows.map(row => appointment(row.record, view)).join('')}</div>`;
-        if (kind === 'items') return `<div class="rp-item-grid">${rows.map(({ record: item }) => `<section class="rp-sheet rp-item-card"><div class="rp-item-title"><span class="rp-object-icon">${icon('box-open')}</span><span class="rp-row-copy"><strong>${esc(item.name)}</strong>${chip(item.loan ? '借用中' : stateLabels[item.status] || '状态未定')}</span>${link('items', item.id, '详情 ›', 'rp-link')}</div>${fields([['持有者', entityName(view, item.holder)], ['所有者', entityName(view, item.owner)]])}</section>`).join('')}</div>`;
-        if (kind === 'locations') return `<div class="rp-card-list">${rows.map(({ record: item }) => {
-            const present = view.people.filter(person => view.scene?.location === item.id && view.scene?.present?.includes(person.id));
-            return link('locations', item.id, `<span class="rp-eyebrow">${esc(locationTrail(view, item.id))}</span><strong>${esc(item.name)}</strong>${present.length ? chip(`${present.length} 人在此`) + `<small>${esc(present.slice(0, 4).map(person => person.name).join('、'))}${present.length > 4 ? '…' : ''}</small>` : '<small>暂无人物位置记录</small>'}`, 'rp-place-card');
-        }).join('')}</div>`;
-        if (recent) return `<div class="rp-recent">${rows.map(row => link(row.kind, row.id, `<span class="rp-floor">${row.record.floor} 楼</span><span class="rp-row-copy">${esc(row.title)}</span>${chevron}`, 'rp-change-row')).join('')}</div>`;
+    // Change history as a timeline: one block per floor, each change as “verb · what”.
+    function timelineRows(list) {
         const groups = [];
-        for (const row of rows) {
+        for (const entry of list) {
+            const floor = entry.record.order ?? entry.record.floor;
             let group = groups.at(-1);
-            if (!group || group.floor !== row.record.floor) groups.push(group = { floor: row.record.floor, rows: [] });
-            group.rows.push(row);
+            if (!group || group.floor !== floor) groups.push(group = { floor, rows: [] });
+            group.rows.push(entry);
         }
-        return groups.map(group => `<section class="rp-history-group"><h3>第 ${esc(group.floor ?? '未知')} 楼</h3>${group.rows.map(row => link(row.kind, row.id, `${chip(row.status, ['待确认', '待复核', '已撤回'].includes(row.status) ? 'rp-attention' : '')}<strong>${esc(row.title)}</strong>${row.kind === 'candidate' ? `<small>${esc(row.detail)}</small>` : ''}`, 'rp-history-entry')).join('')}</section>`).join('');
+        const quiet = new Set(['事实', '角色说法', '观察']);
+        return `<div class="rp-timeline">${groups.map(group => `<section class="rp-take"><div class="rp-take-head"><h4>第 ${esc(group.floor ?? '未知')} 楼</h4></div>${group.rows.map(entry => {
+            const [verb, ...rest] = String(entry.title).split(' · ');
+            const lost = ['未采用', '待重新提取'].includes(entry.status);
+            const what = rest.join(' · ') || verb;
+            const note = lost ? entry.detail : entry.kind === 'candidate' ? entry.detail : '';
+            return link(entry.kind, entry.id, `<span class="rp-verb">${esc(lost ? '没记上' : rest.length ? verb : '记录')}</span><span class="rp-row-main"><strong>${esc(lost ? entry.title : what)}</strong>${note ? `<small>${esc(note)}</small>` : ''}</span>${entry.status && !quiet.has(entry.status) && !lost ? tag(entry.status, ['待确认', '待复核', '已撤回'].includes(entry.status) ? 'is-alert' : '') : ''}${chevron}`, 'rp-event' + (lost ? ' is-lost' : ''));
+        }).join('')}</section>`).join('')}</div>`;
+    }
+    function rows(list, view, { directory = false, timeline = false } = {}) {
+        if (!list.length) return empty('暂无记录');
+        if (directory) return directoryRows(list, view);
+        if (timeline || !['people', 'relationships', 'items', 'plans', 'locations'].includes(list[0].kind)) return timelineRows(list);
+        return `<div class="rp-list">${list.map(entry => entry.kind === 'plans' ? callRow(entry.record, view) : directoryRow(entry, view)).join('')}</div>`;
+    }
+
+    // At most six people: the current scene plus everyone directly related to it. Returns '' when it would not fit.
+    function relationGraph(view, info = []) {
+        const byId = new Map(view.people.map(person => [person.id, person]));
+        const present = (view.scene?.present || []).filter(id => byId.has(id));
+        const active = view.relationships.filter(item => item.status === 'active' && byId.has(item.from) && byId.has(item.to) && item.from !== item.to);
+        const ids = new Set(present);
+        const edges = present.length ? active.filter(item => ids.has(item.from) || ids.has(item.to)) : active;
+        edges.forEach(item => { ids.add(item.from); ids.add(item.to); });
+        const find = value => byId.get(value) || view.people.find(person => person.name === value || person.aliases?.includes(value));
+        const guesses = info.map(item => ({ item, from: find(item.data.speaker), to: find(item.data.subject) }))
+            .filter(guess => guess.from && guess.to && guess.from !== guess.to && ids.has(guess.from.id) && ids.has(guess.to.id)).slice(0, 3);
+        if (ids.size < 2 || ids.size > 6 || !edges.length && !guesses.length) return '';
+        const here = [...ids].filter(id => present.includes(id)), away = [...ids].filter(id => !present.includes(id));
+        const layout = here.length && away.length ? [away, here] : here.length ? [here] : [away.slice(0, Math.ceil(away.length / 2)), away.slice(Math.ceil(away.length / 2))];
+        const width = 360, top = 70, gap = 132, radius = 21, spot = new Map();
+        layout.forEach((ids, line) => ids.forEach((id, index) => spot.set(id, { x: 30 + (index + .5) * (width - 60) / ids.length, y: top + line * gap, line, index })));
+        const height = top + (layout.length - 1) * gap + 64, f = value => Math.round(value * 10) / 10, placed = [];
+        const curve = (from, to, bend) => {
+            const p = spot.get(from), q = spot.get(to), mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+            const length = Math.hypot(q.x - p.x, q.y - p.y) || 1, normal = { x: -(q.y - p.y) / length, y: (q.x - p.x) / length };
+            const skip = p.line === q.line && Math.abs(p.index - q.index) > 1 ? -52 : 0;
+            const control = { x: mid.x + normal.x * (bend + skip), y: mid.y + normal.y * (bend + skip) };
+            const trim = (point) => { const dx = control.x - point.x, dy = control.y - point.y, d = Math.hypot(dx, dy) || 1; return { x: point.x + dx / d * (radius + 3), y: point.y + dy / d * (radius + 3) }; };
+            const start = trim(p), end = trim(q);
+            return { d: `M${f(start.x)} ${f(start.y)} Q${f(control.x)} ${f(control.y)} ${f(end.x)} ${f(end.y)}`,
+                at: { x: .25 * start.x + .5 * control.x + .25 * end.x, y: .25 * start.y + .5 * control.y + .25 * end.y } };
+        };
+        const caption = (at, text) => {
+            const w = Array.from(text).length * 12 + 12, box = { x: at.x - w / 2, y: at.y - 10, w, h: 20 };
+            for (let tries = 0; tries < 4 && placed.some(other => box.x < other.x + other.w && other.x < box.x + box.w && box.y < other.y + other.h && other.y < box.y + box.h); tries++) box.y += 20;
+            placed.push(box);
+            return `<g class="rp-edge-label"><rect x="${f(box.x)}" y="${f(box.y)}" width="${f(box.w)}" height="20" rx="2"></rect><text x="${f(at.x)}" y="${f(box.y + 10)}">${esc(text)}</text></g>`;
+        };
+        let lines = '', captions = '';
+        for (const item of edges) {
+            const path = curve(item.from, item.to, 0);
+            lines += `<path class="rp-edge" d="${path.d}" marker-end="url(#rp-graph-arrow)"${item.mutual ? ' marker-start="url(#rp-graph-arrow)"' : ''}></path>`;
+            captions += caption(path.at, shorten(relationshipName(view, item).split(' · ').at(-1), 6));
+        }
+        for (const guess of guesses) {
+            const path = curve(guess.from.id, guess.to.id, 26);
+            lines += `<path class="rp-edge is-guess" d="${path.d}" marker-end="url(#rp-graph-arrow)"></path>`;
+            captions += caption(path.at, (guess.item.track === 'claims' ? '说法：' : '推测：') + shorten(guess.item.data.description, 5));
+        }
+        const hereLine = here.length ? layout.indexOf(here) : -1;
+        const scene = view.locations.find(item => item.id === view.scene?.location);
+        const frame = hereLine < 0 ? '' : `<rect class="rp-scene-frame" x="12" y="${top + hereLine * gap - 48}" width="${width - 24}" height="104" rx="3"></rect><text class="rp-scene-frame-label" x="24" y="${top + hereLine * gap - 30}">${esc(shorten(scene?.name || '当前场景', 8))} · 在场</text>`;
+        const nodes = [...spot].map(([id, at]) => {
+            const person = byId.get(id);
+            return `<g class="rp-node${present.includes(id) ? ' is-here' : ''}" data-rp-action="detail" data-rp-kind="people" data-rp-id="${esc(id)}" tabindex="0" role="button" aria-label="${esc(person.name)}的档案"><circle cx="${f(at.x)}" cy="${f(at.y)}" r="${radius}"></circle><text class="rp-node-initial" x="${f(at.x)}" y="${f(at.y)}">${esc(firstChar(person.name, '人'))}</text><text class="rp-node-name" x="${f(at.x)}" y="${f(at.y + 38)}">${esc(shorten(person.name, 5))}</text></g>`;
+        }).join('');
+        const summary = edges.map(item => `${entityName(view, item.from)}${item.mutual ? '与' : '对'}${entityName(view, item.to)}：${relationshipName(view, item).split(' · ').at(-1)}`).join('；');
+        return `<div class="rp-graph"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(summary || '人物关系')}"><defs><marker id="rp-graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"></path></marker></defs>${frame}${lines}${captions}${nodes}</svg><p class="rp-graph-legend"><span><i></i>已成立的关系</span>${guesses.length ? '<span><i class="is-dashed"></i>推测 / 说法</span>' : ''}</p></div>`;
     }
 
     function scene(view, lastBatch, historicalFloor) {
         const date = storyDateLabel(view.clock.date);
-        const positions = [...new Set(view.people.map(item => item.location).filter(Boolean))];
-        const places = (view.scene?.location ? [view.scene.location] : []).map(id => locationTrail(view, id)).filter(Boolean);
-        const located = view.people.filter(item => view.scene?.present?.includes(item.id)).slice(0, 4);
-        return `<section class="rp-overview rp-sheet"><div class="rp-scene-top"><span class="rp-eyebrow">${date.year ? esc(date.year) : '此刻'} · ${historicalFloor == null ? '当前故事' : '历史快照'}</span>${historicalFloor != null || lastBatch ? `<span class="rp-floor">第 ${esc(historicalFloor ?? lastBatch.sourceFloor ?? lastBatch.floor)} 楼</span>` : ''}</div><h3>${esc(date.date || view.clock.description || '剧情时间待记录')}${date.time ? `<span class="rp-scene-period">${esc(date.time)}</span>` : ''}</h3>${date.date && view.clock.description ? `<p>${esc(view.clock.description)}</p>` : ''}<p class="rp-scene-place">${icon('location-dot')}${esc(places.join('；') || '人物位置尚未记录')}${positions.length > 3 ? '…' : ''}</p>${located.length ? `<div class="rp-cast"><span class="rp-eyebrow">${positions.length === 1 ? '在此' : '人物'}</span>${located.map(item => link('people', item.id, `${avatar(item.name)}${esc(item.name)}`, 'rp-cast-person')).join('')}</div>` : ''}</section>`;
+        const place = view.scene?.location ? locationTrail(view, view.scene.location) : '';
+        const present = view.people.filter(item => view.scene?.present?.includes(item.id)).map(item => item.name);
+        const floor = historicalFloor ?? lastBatch?.sourceFloor ?? lastBatch?.floor;
+        return `<section class="rp-scene-card">${label((date.year || '此刻') + ' · ' + (historicalFloor == null ? '当前故事' : '历史快照') + (floor != null ? ` · 第 ${floor} 楼` : ''))}<h3 class="rp-detail-title" tabindex="-1">${esc(date.date || view.clock.description || '剧情时间待记录')}${date.time ? `<small>${esc(date.time)}</small>` : ''}</h3>${fields([['时间描述', date.date ? view.clock.description : ''], ['场景', place || '人物位置尚未记录'], ['在场', present.join('、')]])}</section>`;
     }
 
-    function information(item, view) {
-        const data = item.data;
-        return link(item.track, item.id, `<span class="rp-story-copy"><strong>${esc(informationName(view, data.speaker))}${data.subject ? ' → ' + esc(informationName(view, data.subject)) : ''}</strong><small>${esc(data.description)}</small></span>${chip(item.track === 'claims' ? '说法' : '观察')}${chevron}`, 'rp-story-entry rp-story-information');
-    }
-    function overview(view, lastBatch, historicalFloor, recentRows = [], facts = [], informationRows = []) {
-        const selection = selectStoryOverview(view, facts), date = storyDateLabel(view.clock.date);
-        const route = (action, html, css = 'rp-story-more') => `<button type="button" class="${css}" data-rp-action="${action}">${html}</button>`;
-        const more = (action, count, unit) => count > 0 ? route(action, `其余 ${count} ${unit} ${chevron}`) : '';
-        const heading = (text, action = '', count = 0) => `<div class="rp-story-section-head"><h4>${esc(text)}</h4>${action ? route(action, '全部' + (count ? ' ' + count : '') + ' ›') : ''}</div>`;
-        const dateText = esc(date.date || view.clock.description || '时间未记录');
-        const time = view.clock.date?.includes('T') ? view.clock.date.split('T')[1] : '';
-        const weekday = date.time.split(' · ')[0];
-        let html = `<section class="rp-story-sheet" aria-label="当前故事总览"><div class="rp-story-tools">${route('directory', '全部记录')}${route('context-preview', '注入预览')}</div><div class="rp-story-scene"><div class="rp-scene-top"><span class="rp-eyebrow">${date.year ? esc(date.year) : '此刻'} · ${historicalFloor == null ? '当前故事' : '历史快照'}</span>${historicalFloor != null || lastBatch ? `<span class="rp-floor">第 ${esc(historicalFloor ?? lastBatch.sourceFloor ?? lastBatch.floor)} 楼</span>` : ''}</div><h3 class="rp-story-heading" tabindex="-1">${route('clock', `<span class="rp-story-date-block"><span class="rp-story-date">${dateText}</span><span class="rp-story-weekday">${esc([weekday, date.date ? view.clock.description : ''].filter(Boolean).join(' · '))}</span></span>${time ? `<span class="rp-story-time">${esc(time)}</span>` : ''}`, 'rp-story-clock')}</h3>`;
-        const placeHtml = `${icon('location-dot')}<span class="rp-story-place-name">${esc(selection.location ? locationTrail(view, selection.location.id) : '场景未记录')}</span>${chevron}`;
-        html += `<div class="rp-story-place">${selection.location ? link('locations', selection.location.id, placeHtml, 'rp-story-place-link') : route('locations', placeHtml, 'rp-story-place-link')}${selection.location ? more('locations', view.locations.length - 1, '处地点') : ''}</div></div>`;
-        if (view.people.length) html += `<div class="rp-story-cast">${heading(selection.peopleLabel === '在此' ? '在场 · ' + (view.scene?.present?.length || 0) : '人物', 'people', view.people.length)}${selection.people.map(item => {
-            const active = (item.states || []).filter(state => state.active !== false && !state.ended && !state.endedAt);
-            const status = active.slice(0, 2).map(state => state.description).join('；');
-            return link('people', item.id, `${avatar(item.name)}<span class="rp-story-copy"><strong>${esc(item.name)}</strong><small>${esc(status || (item.location ? locationTrail(view, item.location) : '状态未记录'))}</small></span>${active.length > 2 ? chip('+' + (active.length - 2)) : ''}${chevron}`, 'rp-story-person');
-        }).join('')}</div>`;
-        const info = informationRows.filter(item => informationInvolves(item, selection.people)).slice(0, 2);
-        if (view.relationships.length || info.length) html += `<div class="rp-story-relations">${selection.relationships.length || info.length ? heading('关系与说法', 'relationships') : ''}${selection.relationships.map(item => {
-            const names = `${esc(entityName(view, item.from))} <span class="rp-arrow">${item.mutual ? '↔' : '→'}</span> ${esc(entityName(view, item.to))}`;
-            const type = relationshipName(view, item).split(' · ').at(-1);
-            return link('relationships', item.id, `<span class="rp-story-copy"><strong>${names}</strong><small>${esc(type)}</small></span>${chip('已成立')}${chevron}`, 'rp-story-relation rp-story-entry');
-        }).join('')}${info.map(item => information(item, view)).join('')}${more('relationships', selection.relationshipsRemaining, '段关系')}</div>`;
-        if (view.items.length) html += `<div class="rp-story-items">${selection.items.length ? heading('随身与场景物品', 'items') : ''}${selection.items.map(item => link('items', item.id, `${icon('key')}<span class="rp-story-copy"><strong>${esc(item.name)}</strong><small>${esc(item.holder ? entityName(view, item.holder) + ' 持有' : item.location ? locationTrail(view, item.location) : '持有者未记录')}${item.loan ? ' · 借用' : ''}</small></span>${chevron}`, 'rp-story-item rp-story-entry')).join('')}${more('items', selection.itemsRemaining, '件物品')}</div>`;
-        if (view.plans.length) html += `<div class="rp-story-plans">${selection.plans.length ? heading('尚未完成', 'plans') : ''}${selection.plans.map(item => link('plans', item.id, `${icon('calendar-days')}<span class="rp-story-copy"><strong>${esc(item.title || '未命名约定')}</strong><small>${esc(planStatusLabel(item))}${item.due || item.dueDescription ? ' · ' + esc(item.due?.replace('T', ' ') || item.dueDescription) : ''}</small></span>${chevron}`, 'rp-story-plan rp-story-entry')).join('')}${more('plans', selection.plansRemaining, '项约定')}</div>`;
-        html += `<div class="rp-story-recent">${route('history', `变化记录 ${chevron}`)}</div></section>`;
+    function overview(view, lastBatch, historicalFloor, recentRows = [], facts = [], informationRows = [], meta = {}) {
+        const selection = selectStoryOverview(view, facts);
+        const date = readStoryDate(view.clock.date), dateLabel = storyDateLabel(view.clock.date);
+        const floor = historicalFloor ?? lastBatch?.sourceFloor ?? lastBatch?.floor;
+        const place = selection.location;
+        const rootPlace = place ? locationTrail(view, place.id).split(' / ')[0] : '';
+        const presentCount = view.scene?.present?.length || 0;
+        const openPlans = view.plans.filter(isOpenPlan).length;
+        const dateValue = date ? `${date.month}·${date.day}<small>${esc(dateLabel.year)} · ${esc(dateLabel.time.split(' · ')[0])}</small>` : esc(view.clock.description || '未记录');
+        let html = `<section class="rp-slate${meta.animate ? ' is-clapping' : ''}" aria-label="当前场景"><div class="rp-clap" aria-hidden="true"><i class="rp-clap-top"></i><i class="rp-clap-bottom"></i></div>
+<div class="rp-slate-head"><span class="rp-slate-title">${esc(rootPlace || '当前故事')}${date && view.clock.description ? ' · ' + esc(view.clock.description) : ''}</span>${label(historicalFloor == null ? meta.maintenance || '当前故事' : '历史快照 · 只读')}</div>
+<div class="rp-slate-grid">
+<div class="rp-cell">${label('场 · SCENE')}${place ? link('locations', place.id, `${esc(place.name)} ${chevron}`, 'rp-slate-value') : route('locations', `未记录 ${chevron}`, 'rp-slate-value is-empty')}</div>
+<div class="rp-cell">${label('镜 · TAKE')}<span class="rp-slate-value">${floor != null ? `第 ${esc(floor)} 楼` : '—'}</span></div>
+<div class="rp-cell">${label('日期 · DATE')}${route('clock', dateValue, 'rp-slate-value')}</div>
+<div class="rp-cell">${label('时刻 · TIME')}<span class="rp-slate-value is-timecode">${date?.precision === 'minute' ? `${pad(date.hour)}:${pad(date.minute)}` : '—'}</span></div>
+</div><div class="rp-slate-foot"><span>在场 <b>${presentCount}</b> · 人物 ${view.people.length} · 约定 ${openPlans}</span><span>${historicalFloor == null ? meta.processedFloor != null ? `已处理到 ${esc(meta.processedFloor)} 楼` : '尚未处理正文' : `第 ${esc(historicalFloor)} 楼时`}</span>${view.locations.length > 1 ? more('locations', `地点 ${view.locations.length}`) : ''}</div></section>`;
+
+        if (view.people.length) html += `<section class="rp-sec rp-sec-cast">${head(presentCount ? '在场' : '人物', 'CAST', 'people', view.people.length)}<div class="rp-strip">${selection.people.map((person, index) => {
+            const here = view.scene?.present?.includes(person.id), states = activeStates(person);
+            return link('people', person.id, `<span class="rp-frame-no">${presentCount ? here ? '在场' : '不在场' : '人物'} · ${pad(index + 1)}</span><span class="rp-frame-initial" aria-hidden="true">${esc(firstChar(person.name, '人'))}</span><strong>${esc(person.name)}</strong><small>${esc(states[0]?.description || (person.location ? locationTrail(view, person.location) : '状态未记录'))}${states.length > 1 ? ` 等 ${states.length} 项` : ''}</small>`, 'rp-frame' + (here || !presentCount ? '' : ' is-away'));
+        }).join('')}</div>${selection.peopleRemaining > 0 ? more('people', `其余 ${selection.peopleRemaining} 人`) : ''}</section>`;
+
+        const notes = informationRows.filter(item => informationInvolves(item, selection.people)).slice(0, 2);
+        if (view.relationships.length || informationRows.length) {
+            const graph = relationGraph(view, informationRows);
+            html += `<section class="rp-sec rp-sec-relations">${head('人物关系', 'RELATIONS', 'relationships', view.relationships.length)}${graph || (selection.relationships.length ? `<div class="rp-list">${selection.relationships.map(item => relationRow(item, view)).join('')}</div>` : view.relationships.length ? empty('没有进行中的关系') : '')}${!graph && selection.relationshipsRemaining > 0 ? more('relationships', `其余 ${selection.relationshipsRemaining} 段关系`) : ''}</section>`;
+        }
+        if (view.plans.length) html += `<section class="rp-sec rp-sec-plans">${head('通告单', 'CALL SHEET', 'plans', view.plans.length)}${selection.plans.length ? `<div class="rp-list">${selection.plans.map(item => callRow(item, view)).join('')}</div>` : empty('没有进行中的约定')}${selection.plansRemaining > 0 ? more('plans', `其余 ${selection.plansRemaining} 项约定`) : ''}</section>`;
+        if (view.items.length) html += `<section class="rp-sec rp-sec-items">${head('道具表', 'PROPS', 'items', view.items.length)}${selection.items.length ? `<div class="rp-list">${selection.items.map(item => itemRow(item, view)).join('')}</div>` : empty('没有在用的道具')}${selection.itemsRemaining > 0 ? more('items', `其余 ${selection.itemsRemaining} 件物品`) : ''}</section>`;
+        if (notes.length) html += `<section class="rp-sec rp-sec-notes">${head('场记笔记', 'NOTES', 'directory')}${notes.map(item => memo(item, view)).join('')}</section>`;
+        html += `<div class="rp-overview-end">${more('history', '全部变化')}</div>`;
         return html;
     }
 
     function entityDetail(kind, item, core, view, floor, ledgerView = { projection: view }) {
-        const title = kind === 'relationships' ? relationshipName(view, item).replace(' → ', item.mutual ? ' ↔ ' : ' → ') : item.name || item.title;
-        const captions = { people: '人物档案', relationships: '人物关系', plans: '共同约定', items: '物品档案', locations: '地点档案' };
-        let html = `<div class="rp-detail-hero">${kind === 'people' ? avatar(item.name) : ''}<div><span class="rp-eyebrow">${captions[kind]}</span><h3 tabindex="-1" class="rp-detail-title">${esc(title)}</h3></div></div>`;
-        html += `<button type="button" class="rp-link" data-rp-action="${kind}">全部${({ people: '人物', relationships: '关系', plans: '约定', items: '物品', locations: '地点' })[kind]} ›</button>`;
+        const title = kind === 'relationships' ? `${entityName(view, item.from)} ${item.mutual ? '↔' : '→'} ${entityName(view, item.to)}` : item.name || item.title;
+        const captions = { people: '人物档案 · CAST', relationships: '人物关系', plans: '约定 · CALL', items: '道具 · PROP', locations: '地点 · LOCATION' };
+        const lede = kind === 'people' ? (item.location ? locationTrail(view, item.location) + (view.scene?.present?.includes(item.id) ? ' · 在场' : '') : '')
+            : kind === 'relationships' ? relationshipName(view, item).split(' · ').at(-1) + ' · ' + (stateLabels[item.status] || '状态未定')
+                : kind === 'plans' ? [stateLabels[item.status], planRemaining(item, view)].filter(Boolean).join(' · ')
+                    : kind === 'items' ? (item.loan ? '借用中' : stateLabels[item.status] || '') : locationTrail(view, item.parent) || '';
+        let html = `<header class="rp-entry-head">${label(captions[kind])}<h3 tabindex="-1" class="rp-detail-title">${esc(title)}</h3>${lede ? `<p class="rp-lede">${esc(lede)}</p>` : ''}</header>`;
+        const section = (name, body) => body ? `<section class="rp-entry-sec"><h4>${esc(name)}</h4>${body}</section>` : '';
         if (kind === 'people') {
-            html += fields([['最近确认位置', item.location ? locationTrail(view, item.location) : null], ['年龄', item.age?.value == null ? null : `${item.age.value} 岁`], ['别名', (item.aliases || []).join('、')], ['特征', (item.traits || []).join('；')]]);
+            html += fields([['年龄', item.age?.value == null ? null : `${item.age.value} 岁`], ['别名', (item.aliases || []).join('、')], ['特征', (item.traits || []).join('；')]]);
             if (item.age?.basis === 'reported') html += `<p class="rp-note">年龄依据：${esc(item.age.asOf || '日期未定')}时的描述。</p>`;
             const states = (item.states || []).filter(state => state.active);
-            if (states.length) html += head('当前状态') + `<ul class="rp-plain-list">${states.map(state => `<li>${esc(state.description)}${state.target ? ' → ' + esc(entityName(view, state.target)) : ''} · ${esc({ private: '私人状态', author: '作者信息', observable: '可观察' }[state.visibility] || '可见性未记录')}</li>`).join('')}</ul>`;
-            const relationships = view.relationships.filter(relation => relation.from === item.id || relation.to === item.id);
-            if (relationships.length) html += head('与 TA 有关的人') + relationships.slice(0, 3).map(relation => relationship(relation, view)).join('');
+            html += section('当前状态', states.length ? `<ul class="rp-plain-list">${states.map(state => `<li>${esc(state.description)}${state.target ? ' → ' + esc(entityName(view, state.target)) : ''}<small>${esc({ private: '只有自己知道', author: '作者信息', observable: '看得出来' }[state.visibility] || '可见性未记录')}</small></li>`).join('')}</ul>` : '');
+            const relations = view.relationships.filter(relation => relation.from === item.id || relation.to === item.id);
+            html += section('关系', relations.length ? `<div class="rp-list">${relations.slice(0, 6).map(relation => relationRow(relation, view)).join('')}</div>` : '');
             const info = currentInformation(core, ledgerView, { floor }).filter(record => informationInvolves(record, [item])).slice(0, 5);
-            if (info.length) html += head('相关说法与观察') + info.map(record => information(record, view)).join('');
-            const items = view.items.filter(object => object.holder === item.id || object.owner === item.id);
-            if (items.length) html += head('相关物品') + `<div class="rp-chips">${items.slice(0, 5).map(object => link('items', object.id, esc(object.name) + (object.loan ? ' · 借用' : ''), 'rp-entity-link')).join('')}</div>`;
-            const plans = view.plans.filter(plan => plan.participants.includes(item.id) && ['accepted', 'proposed'].includes(plan.status));
-            if (plans.length) html += head('接下来的约定') + plans.slice(0, 3).map(plan => appointment(plan, view)).join('');
+            html += section('相关说法与推测', info.map(record => memo(record, view)).join(''));
+            const objects = view.items.filter(object => object.holder === item.id || object.owner === item.id);
+            html += section('道具', objects.length ? `<div class="rp-list">${objects.slice(0, 6).map(object => itemRow(object, view)).join('')}</div>` : '');
+            const plans = view.plans.filter(plan => plan.participants?.includes(item.id) && isOpenPlan(plan));
+            html += section('接下来的约定', plans.length ? `<div class="rp-list">${plans.slice(0, 3).map(plan => callRow(plan, view)).join('')}</div>` : '');
         } else if (kind === 'relationships') {
-            html += chip(stateLabels[item.status] || '状态未定') + fields([['关系开始于', item.since], ['一起走过', item.elapsedDays == null ? null : `${item.elapsedDays} 天`], [item.status === 'ended' ? '结束于' : '下一纪念日', item.status === 'ended' ? item.endedAt : item.anniversary?.nextDate]]);
+            html += fields([['开始于', item.since], ['一起走过', item.elapsedDays > 0 ? `${item.elapsedDays} 天` : null], [item.status === 'ended' ? '结束于' : '下一纪念日', item.status === 'ended' ? item.endedAt : item.anniversary?.nextDate]]);
             const milestones = [...(item.milestones || []).map(event => ({ ...event, label: '共同经历' })), ...(item.conflicts || []).map(event => ({ ...event, label: '冲突' }))].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).slice(0, 10);
-            if (milestones.length) html += head('共同经历与变化') + milestones.map(event => `<section class="rp-history-group"><small>${esc(event.date || '日期未定')} · ${event.label}</small><p>${esc(event.description)}</p></section>`).join('');
-            const plans = view.plans.filter(plan => plan.participants.includes(item.from) && plan.participants.includes(item.to));
-            if (plans.length) html += head('共同约定') + plans.slice(0, 3).map(plan => appointment(plan, view)).join('');
-        } else if (kind === 'plans') html += chip(planStatusLabel(item)) + fields([['参与者', item.participants.map(id => entityName(view, id)).join('、')], ['约定日期', item.due], ['履约状态', stateLabels[item.status]], ['结果', item.outcome || '尚无结果']]);
-        else if (kind === 'items') html += chip(item.loan ? '借用中' : stateLabels[item.status] || '状态未定') + fields([['持有者', entityName(view, item.holder)], ['所有者', entityName(view, item.owner)], ['存放地点', item.location ? locationTrail(view, item.location) : null], ['数量', item.quantity], ['状态', stateLabels[item.status]]]);
+            html += section('共同经历与变化', milestones.length ? `<ul class="rp-plain-list">${milestones.map(event => `<li>${esc(event.description)}<small>${esc(event.date || '日期未定')} · ${event.label}</small></li>`).join('')}</ul>` : '');
+            const plans = view.plans.filter(plan => plan.participants?.includes(item.from) && plan.participants?.includes(item.to));
+            html += section('共同约定', plans.length ? `<div class="rp-list">${plans.slice(0, 3).map(plan => callRow(plan, view)).join('')}</div>` : '');
+        } else if (kind === 'plans') html += fields([['参与者', (item.participants || []).map(id => entityName(view, id)).join('、')], ['约定日期', item.due?.replace('T', ' ') || item.dueDescription], ['履约状态', stateLabels[item.status]], ['结果', item.outcome]]);
+        else if (kind === 'items') html += fields([['持有者', item.holder ? entityName(view, item.holder) : null], ['所有者', item.owner ? entityName(view, item.owner) : null], ['存放地点', item.location ? locationTrail(view, item.location) : null], ['数量', item.quantity], ['状态', stateLabels[item.status]]]);
         else {
             html += fields([['地点层级', locationTrail(view, item.id)]]);
             const present = view.people.filter(person => view.scene?.location === item.id && view.scene?.present?.includes(person.id));
-            html += head('在此的人物') + (present.length ? `<div class="rp-sheet">${present.slice(0, 20).map(item => person(item, view)).join('')}</div>` : empty('暂无人物位置记录'));
+            html += section('在此的人物', present.length ? `<div class="rp-list">${present.slice(0, 20).map(person => row('people', person.id, firstChar(person.name, '人'), person.name, activeStates(person)[0]?.description || '')).join('')}</div>` : empty('暂无人物位置记录'));
         }
         const facts = relatedFacts(core, view, kind, item.id, floor).slice(0, 5);
-        if (facts.length) html += `<details class="rp-evidence-editor"><summary>来源与变化记录</summary>${facts.map(fact => link('facts', fact.id, `<span class="rp-floor">${esc(fact.floor)} 楼</span><span>${esc(describeRecord(fact, view))}</span>${chevron}`, 'rp-change-row')).join('')}</details>`;
-        else html += '<small class="rp-baseline-note">当前基线中的已知状态</small>';
+        html += facts.length ? section('来源与变化', `<div class="rp-list">${facts.map(fact => link('facts', fact.id, `<span class="rp-verb">第 ${esc(fact.floor)} 楼</span><span class="rp-row-main"><strong>${esc(describeRecord(fact, view))}</strong></span>${chevron}`, 'rp-event')).join('')}</div>`)
+            : '<p class="rp-note">当前基线中的已知状态</p>';
         return html;
     }
-    return { rows, scene, overview, entityDetail, empty, fields, chip, head };
+    return { rows, scene, overview, entityDetail, relationGraph, empty, fields, tag, chip: tag, label, head, route, more };
 }

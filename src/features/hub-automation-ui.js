@@ -1,3 +1,4 @@
+import { themeChoiceLabel } from '../theme/theme-schema.js';
 import { stageAutomationStatus } from '../summary/automation-status.js';
 import { getSummarySourceShortLabel } from './summary-source-wizard.js';
 
@@ -35,7 +36,6 @@ export function createHubAutomationUi({
         const automationModeLabel = automationMode === 'commit_hide' ? '自动保存' : automationMode === 'draft' ? '生成草稿' : '仅提醒';
         const injectionStatus = getInjectionHeaderStatus(state);
         const scanMode = state.scanRules?.mode || defaultScanRules.mode;
-        const themeMode = getAppearanceSettings().themeMode;
         const apiProvider = state.automation?.apiProvider || defaultAutomation.apiProvider;
         const selectedConfig = getActiveGlobalConfig() || getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
 
@@ -64,7 +64,7 @@ export function createHubAutomationUi({
         query('#bakemono-memory-settings-hub-generation').text(apiProvider === 'custom'
             ? (String(state.automation?.customApi?.model || '').trim() || '自定义接口')
             : '酒馆主模型');
-        query('#bakemono-memory-settings-hub-theme').text(themeMode === 'custom' ? '自定义' : '跟随酒馆');
+        query('#bakemono-memory-settings-hub-theme').text(themeChoiceLabel(getAppearanceSettings()));
         query('#bakemono-memory-settings-hub-config').text(selectedConfig?.name || '导入导出');
     }
 

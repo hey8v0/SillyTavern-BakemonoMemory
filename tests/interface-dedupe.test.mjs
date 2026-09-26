@@ -101,6 +101,7 @@ test('status wording separates summaries from RP state and names what each RP bu
     assert.match(rp, /button\('capture', '读取最新回复'\)/);
     assert.match(rp, /条变化没记上/);
     assert.match(rp, /progress\.latest/);
-    assert.match(rp, /button\("extract", "用模型重新提取"\)/);
+    assert.match(rp, /data-rp-action="extract"><span class="rp-set-text"><strong>用模型重新整理最新回复<\/strong>[\s\S]*?\+1 次请求/);
+    assert.doesNotMatch(rp, /<footer[^`]*data-rp-action="extract"/, 'the paid re-extract lives in settings, not the page footer');
     assert.doesNotMatch(rp, /button\(['"](?:capture|extract)['"], ['"](?:检查最新正文|重新提取最新正文|处理最新正文)/);
 });

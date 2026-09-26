@@ -33,7 +33,7 @@ test('directory rows expose avatars, compact relationship and statement labels a
     assert.match(html, /data-rp-group="people"/);
     assert.match(html, /data-rp-group="relationships"/);
     assert.match(html, /data-rp-group="claims"/);
-    assert.match(html, /rp-directory-avatar/);
+    assert.match(html, /class="rp-glyph"/);
     assert.match(html, /胃痛持续/);
     assert.match(html, /已成立/);
     assert.match(html, /否认交往/);

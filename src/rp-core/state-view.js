@@ -10,6 +10,7 @@ export const actionLabels = {
     plan_proposed: '提出计划', promise_created: '作出承诺', plan_accepted: '接受约定', plan_reopened: '重新开启约定', item_restored: '恢复物品', person_state_revised: '修订临时状态', person_trait_removed: '移除特征', plan_modified: '修改约定', plan_completed: '履行约定', plan_cancelled: '取消约定', plan_failed: '约定失败',
     item_acquired: '获得物品', item_registered: '登记物品', item_lent: '借出物品', item_returned: '归还物品', item_gifted: '赠送物品', item_placed: '放置物品', item_consumed: '消耗物品', item_quantity_changed: '数量变化', item_damaged: '物品损坏', item_destroyed: '物品销毁',
     location_created: '登记地点', location_reparented: '调整地点层级', clock_set: '设置剧情时间', clock_advanced: '推进剧情时间',
+    claim_made: '角色说法', observation_recorded: '推测',
 };
 const kinds = { romantic: '恋爱', partner: '伴侣', married: '婚姻' };
 export function entityName(projection, id) {
@@ -32,7 +33,9 @@ export function describeRecord(record, projection) {
     const data = record.data || {}, relation = projection.relationships?.find(item => item.id === data.id);
     const subject = relation ? relationshipName(projection, relation) : data.name || data.title
         || (data.id ? entityName(projection, data.id) : record.action === 'scene_recorded' ? entityName(projection, data.location) : '');
-    return [actionLabels[record.action] || '信息记录', subject, data.description || data.trait || data.date || ''].filter(Boolean).join(' · ');
+    const speaker = ['claims', 'observations'].includes(record.track) && data.speaker ? informationName(projection, data.speaker) : '';
+    const destination = record.action === 'person_moved' && data.location ? '→ ' + entityName(projection, data.location) : '';
+    return [actionLabels[record.action] || '信息记录', subject || speaker, destination || data.description || data.trait || data.date || ''].filter(Boolean).join(' · ');
 }
 export function describeStateValues(data, projection) {
     const labels = { name: '名称', title: '标题', location: '位置', parent: '上级地点', from: '人物', to: '关联人物', owner: '所有者', holder: '持有者', quantity: '数量', status: '状态', kind: '关系', mutual: '双向', since: '开始日期', endedAt: '结束日期', due: '约定日期', date: '剧情日期', description: '描述', birthDate: '出生日期', states: '临时状态', participants: '参与者', aliases: '别名', traits: '特征', outcome: '结果', milestones: '共同经历', conflicts: '冲突' };

@@ -4,7 +4,7 @@ import { createRpStatePresentation, storyDateLabel, planStatusLabel, locationTra
 import { createProjection } from '../src/rp-core/domain.js';
 import { createLedger } from '../src/rp-core/ledger.js';
 import { buildStatePage } from '../src/rp-core/state-view.js';
-import { createThemeSchema, refreshBuiltInThemePresets } from '../src/theme/theme-schema.js';
+import { createThemeSchema, refreshBuiltInThemePresets, retireBuiltInThemePresets, themeChoiceLabel } from '../src/theme/theme-schema.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const ui = createRpStatePresentation({ escapeHtml: esc });
@@ -34,11 +34,14 @@ test('state presentation is read-only, escaped, and keeps directed relationships
     const html = ui.rows(buildStatePage(core, view, { tab: 'people', filter: 'relationships' }).rows, projection);
     assert.match(html, /&lt;img src=x&gt;/);
     assert.doesNotMatch(html, /<img|↔/);
-    assert.match(html, /已持续 0 天/);
+    assert.doesNotMatch(html, /已持续 0 天/, 'a zero-day span is noise');
+    projection.relationships[0].elapsedDays = 3;
+    assert.match(ui.rows(buildStatePage(core, view, { tab: 'people', filter: 'relationships' }).rows, projection), /已持续 3 天/);
+    projection.relationships[0].elapsedDays = 0;
     const detail = ui.entityDetail('items', projection.items[0], core, projection, null);
     assert.match(detail, /持有者<\/dt><dd>乙/);
     assert.match(detail, /所有者<\/dt><dd>&lt;img src=x&gt;/);
-    assert.match(detail, /数量<\/dt><dd>尚未记录/);
+    assert.doesNotMatch(detail, /数量<\/dt>/, 'unknown fields are left out');
     assert.match(detail, /借用中/);
     assert.equal(JSON.stringify({ projection, core }), before);
 });
@@ -66,12 +69,13 @@ test('entity source details and scene floor exclude later knowledge; location cy
 
 const schema = createThemeSchema({ getHash: value => value.length });
 const themeOptions = { sanitizeCustomTheme: schema.sanitizeCustomTheme, normalizeCustomThemePreset: schema.normalizeCustomThemePreset };
-test('warm-paper themes carry the approved day and night palettes with readable text', () => {
+test('film-slate themes carry the approved day and night palettes with readable text', () => {
     const [day, night] = schema.builtInCustomThemeDefinitions;
-    assert.equal(day.tokens.paper, '#f6f3eb');
-    assert.equal(day.tokens.accentStrong, '#434e70');
-    assert.equal(night.tokens.paper, '#27292c');
-    assert.equal(night.tokens.accentStrong, '#c0cbe4');
+    assert.equal(day.id, 'bakemono-whiteboard-day');
+    assert.equal(day.tokens.paper, '#f2eee5');
+    assert.equal(night.id, 'bakemono-slate-night');
+    assert.equal(night.tokens.paper, '#151412');
+    assert.equal(night.appearance, 'dark');
     function luminance(hex) {
         const rgb = hex.slice(1).match(/../g).map(value => parseInt(value, 16) / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
         return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
@@ -93,7 +97,7 @@ test('installed built-in palette upgrades its active snapshot, preserves custom 
     const custom = { ...structuredClone(old), id: 'my-theme', name: '我的主题' };
     const settings = { themePresets: [old, custom], customTheme: schema.sanitizeCustomTheme(old), selectedThemePresetId: old.id, themeMode: 'custom' };
     refreshBuiltInThemePresets(settings, schema.builtInCustomThemeDefinitions, themeOptions);
-    assert.equal(settings.customTheme.tokens.paper, '#f6f3eb');
+    assert.equal(settings.customTheme.tokens.paper, '#f2eee5');
     assert.deepEqual(settings.themePresets.find(theme => theme.id === custom.id), custom);
     assert.equal(settings.selectedThemePresetId, old.id);
     const once = JSON.stringify(settings);
@@ -109,4 +113,23 @@ test('built-in refresh preserves separately edited active values and following-h
     refreshBuiltInThemePresets(settings, schema.builtInCustomThemeDefinitions, themeOptions);
     assert.equal(JSON.stringify(settings.customTheme), custom);
     assert.equal(settings.themeMode, 'tavern');
+});
+
+test('untouched retired warm-paper presets are dropped, edited or active ones stay as ordinary presets', () => {
+    const day = { id: 'bakemono-warm-paper-day', name: '暖纸日间', tokens: { paper: '#f6f3eb', ink: '#303238', accent: '#616a88' } };
+    const night = { id: 'bakemono-warm-paper-night', name: '暖纸夜间', tokens: { paper: '#27292c', ink: '#e8e6df', accent: '#a3afcd' } };
+    const edited = { ...structuredClone(day), tokens: { ...day.tokens, paper: '#ffffff' } };
+    const settings = { themeMode: 'tavern', selectedThemePresetId: night.id, themePresets: [day, night, { id: 'mine', tokens: {} }] };
+    retireBuiltInThemePresets(settings);
+    assert.deepEqual(settings.themePresets.map(item => item.id), ['mine']);
+    const active = { themeMode: 'custom', selectedThemePresetId: night.id, themePresets: [edited, structuredClone(night)] };
+    retireBuiltInThemePresets(active);
+    assert.deepEqual(active.themePresets.map(item => item.id), [day.id, night.id]);
+});
+
+test('theme choice label names the quick film-slate looks', () => {
+    assert.equal(themeChoiceLabel({ themeMode: 'tavern', selectedThemePresetId: 'bakemono-slate-night' }), '跟随酒馆');
+    assert.equal(themeChoiceLabel({ themeMode: 'custom', selectedThemePresetId: 'bakemono-slate-night' }), '场记板 · 夜');
+    assert.equal(themeChoiceLabel({ themeMode: 'custom', selectedThemePresetId: 'bakemono-whiteboard-day' }), '白板 · 日');
+    assert.equal(themeChoiceLabel({ themeMode: 'custom', selectedThemePresetId: 'mine' }), '自定义');
 });

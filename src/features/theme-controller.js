@@ -20,6 +20,8 @@ export function createThemeController({
 } = {}) {
     let appearanceThemeDraft = null;
     let appearanceThemeSection = 'palette';
+    let customEditorOpen = false;
+    const quickThemeIds = { day: 'bakemono-whiteboard-day', night: 'bakemono-slate-night' };
 
     function getAppearanceSettings() {
         ensureGlobalSettings();
@@ -31,6 +33,41 @@ export function createThemeController({
         return ui.themePresets.find(preset => preset.id === ui.selectedThemePresetId) || ui.themePresets[0] || null;
     }
     
+    function readHostColor(name) {
+        const view = documentRef.defaultView;
+        const value = view?.getComputedStyle?.(documentRef.documentElement).getPropertyValue(name).trim();
+        if (!value || !documentRef.body) return null;
+        const probe = documentRef.createElement('span');
+        probe.style.display = 'none';
+        probe.style.color = value;
+        documentRef.body.append(probe);
+        const resolved = view.getComputedStyle(probe).color;
+        probe.remove();
+        const parts = /rgba?\(([^)]+)\)/.exec(resolved || '')?.[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+        return parts?.length >= 3 && parts.every(Number.isFinite) ? { r: parts[0], g: parts[1], b: parts[2], a: parts[3] ?? 1 } : null;
+    }
+
+    // A translucent tavern theme would let the chat show through the workbench; lay its tint over a solid
+    // backdrop (dark or light, matching the theme's text) so every surface derived from it stays opaque.
+    function opaqueTavernTint() {
+        const tint = readHostColor('--SmartThemeBlurTintColor');
+        if (!tint) return null;
+        const text = readHostColor('--SmartThemeBodyColor');
+        const lightText = !text || (0.2126 * text.r + 0.7152 * text.g + 0.0722 * text.b) / 255 > 0.5;
+        const base = lightText ? [17, 16, 15] : [244, 241, 234];
+        const mix = (value, index) => Math.round(value * tint.a + base[index] * (1 - tint.a));
+        return `rgb(${mix(tint.r, 0)}, ${mix(tint.g, 1)}, ${mix(tint.b, 2)})`;
+    }
+
+    function getThemeChoice() {
+        const ui = getAppearanceSettings();
+        if (ui.themeMode !== 'custom') return 'tavern';
+        if (customEditorOpen) return 'custom';
+        const quick = Object.entries(quickThemeIds).find(([, id]) => id === ui.selectedThemePresetId)?.[0];
+        const preset = quick && ui.themePresets.find(item => item.id === ui.selectedThemePresetId);
+        return preset && JSON.stringify(sanitizeCustomTheme(preset)) === JSON.stringify(sanitizeCustomTheme(ui.customTheme)) ? quick : 'custom';
+    }
+
     function applyAppearanceTheme(themeOverride = null, modeOverride = null) {
         const root = documentRef.getElementById('bakemono-workbench-root');
         if (!root) {
@@ -53,6 +90,9 @@ export function createThemeController({
             danger: '--bakemono-theme-danger',
         };
         root.classList.toggle('bakemono-custom-theme', mode === 'custom');
+        const tint = mode === 'tavern' ? opaqueTavernTint() : null;
+        if (tint) root.style.setProperty('--SmartThemeBlurTintColor', tint);
+        else root.style.removeProperty('--SmartThemeBlurTintColor');
         root.dataset.bakemonoThemeMode = mode;
         root.dataset.bakemonoThemeAppearance = mode === 'custom' ? theme.appearance : '';
         root.style.colorScheme = mode === 'custom' ? theme.appearance : '';
@@ -114,12 +154,14 @@ export function createThemeController({
             presetSelect.append(query('<option>').val(preset.id).text(preset.name));
         }
         presetSelect.val(ui.selectedThemePresetId);
-        query('[data-bakemono-theme-mode]').each(function () {
-            const active = this.dataset.bakemonoThemeMode === ui.themeMode;
+        const choice = getThemeChoice();
+        // The workbench root also carries data-bakemono-theme-mode; only the choice buttons are meant here.
+        query('.bakemono-memory-theme-mode [data-bakemono-theme-mode]').each(function () {
+            const active = this.dataset.bakemonoThemeMode === choice;
             this.classList.toggle('is-active', active);
             this.setAttribute('aria-pressed', String(active));
         });
-        query('#bakemono-memory-custom-theme-editor').prop('hidden', ui.themeMode !== 'custom');
+        query('#bakemono-memory-custom-theme-editor').prop('hidden', choice !== 'custom');
         query('#bakemono-memory-theme-name').val(theme.name);
         query('#bakemono-memory-theme-appearance').val(theme.appearance);
         query('[data-bakemono-theme-color]').each(function () {
@@ -207,7 +249,7 @@ export function createThemeController({
         }
         const preset = getSelectedCustomThemePreset();
         if (preset && builtInCustomThemePresetIds.has(preset.id)) {
-            toastr.warning('内置暖纸主题不能删除；修改它时会自动另存为新配置。');
+            toastr.warning('内置主题不能删除；修改它时会自动另存为新配置。');
             return false;
         }
         if (!preset || !confirmDanger(`删除主题配置“${preset.name}”？`, ['不会删除摘要、表格或其他插件配置。'])) return false;
@@ -305,9 +347,29 @@ export function createThemeController({
 
     function setThemeMode(mode) {
         const ui = getAppearanceSettings();
-        ui.themeMode = mode === 'custom' ? 'custom' : 'tavern';
+        customEditorOpen = mode === 'custom';
+        ui.themeMode = mode === 'tavern' ? 'tavern' : 'custom';
+        if (quickThemeIds[mode]) {
+            selectCustomThemePreset(quickThemeIds[mode]);
+            return;
+        }
         saveGlobalSettings();
         renderAppearanceSettings();
+    }
+
+    // SillyTavern sets its theme variables on the root element; follow changes while the plugin is open.
+    let hostThemeObserver = null;
+    function watchHostTheme() {
+        const Observer = documentRef.defaultView?.MutationObserver;
+        if (hostThemeObserver || !Observer) return;
+        let pending = false;
+        hostThemeObserver = new Observer(() => {
+            if (pending || getAppearanceSettings().themeMode !== 'tavern') return;
+            pending = true;
+            documentRef.defaultView.requestAnimationFrame(() => { pending = false; applyAppearanceTheme(); });
+        });
+        hostThemeObserver.observe(documentRef.documentElement, { attributes: true, attributeFilter: ['style', 'class'] });
+        if (documentRef.body) hostThemeObserver.observe(documentRef.body, { attributes: true, attributeFilter: ['style', 'class'] });
     }
 
     function setEditorSection(section) {
@@ -324,8 +386,9 @@ export function createThemeController({
 
     function bindEvents(rootElement) {
         if (!rootElement) return;
+        watchHostTheme();
         const root = query(rootElement);
-        root.off('click.bakemonoThemeMode').on('click.bakemonoThemeMode', '[data-bakemono-theme-mode]', function () {
+        root.off('click.bakemonoThemeMode').on('click.bakemonoThemeMode', '.bakemono-memory-theme-mode [data-bakemono-theme-mode]', function () {
             setThemeMode(this.dataset.bakemonoThemeMode);
         });
         query('#bakemono-memory-theme-preset-select').off('change').on('change', function () {
@@ -381,6 +444,7 @@ export function createThemeController({
         downloadCustomThemeLibraryJson,
         getAppearanceSettings,
         getSelectedCustomThemePreset,
+        getThemeChoice,
         importCustomThemeJson,
         parseCustomThemeJson,
         previewCustomThemeFromUi,
