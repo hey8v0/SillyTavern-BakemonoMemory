@@ -152,12 +152,13 @@ export function createSummaryGenerationController({
         let targetConfig = state.generationTargets.stage;
         if (!options.automatic) {
             readGenerationTargetSettings();
-            targetConfig = await promptGenerationTargetSelection('stage', allTargets.length);
+            targetConfig = options.targetConfig || await promptGenerationTargetSelection('stage', allTargets.length);
             if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
             if (!targetConfig) {
                 renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消阶段总结生成。');
                 return;
             }
+            if (targetConfig.batch) return generateStageBatchTasks({ targetConfig });
         }
         const targets = options.automatic
             ? getAutoStageTargets(allTargets)
@@ -216,7 +217,7 @@ export function createSummaryGenerationController({
         });
     }
 
-    async function generateStageBatchTasks() {
+    async function generateStageBatchTasks(options = {}) {
         if (getIsBusy()) {
             return;
         }
@@ -230,12 +231,13 @@ export function createSummaryGenerationController({
             return;
         }
 
-        const targetConfig = await promptGenerationTargetSelection('stage', allTargets.length, { batch: true });
+        const targetConfig = options.targetConfig || await promptGenerationTargetSelection('stage', allTargets.length, { batch: true });
         if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
         if (!targetConfig) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量阶段总结。');
             return;
         }
+        if (!targetConfig.batch) return generateStageDraft({ targetConfig });
 
         const config = targetConfig || state.generationTargets.stage || defaultGenerationTargets.stage;
         const batches = partitionGenerationTargets(filterCovered(allTargets,config), 'stage', config);
@@ -318,12 +320,13 @@ export function createSummaryGenerationController({
         let targetConfig = state.generationTargets.epic;
         if (!options.automatic) {
             readGenerationTargetSettings();
-            targetConfig = await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length || allStoryFallback.length, { sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length, story: allStoryFallback.length } });
+            targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length || allStoryFallback.length, { sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length, story: allStoryFallback.length } });
             if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
             if (!targetConfig) {
                 renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消多次总结生成。');
                 return;
             }
+            if (targetConfig.batch) return generateEpicBatchTasks({ targetConfig });
         }
         const pool = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets, story: allStoryFallback }, targetConfig.sourceMode);
         const targets = selectGenerationTargets(filterCovered(pool,options.automatic ? {} : targetConfig), targetConfig);
@@ -378,7 +381,7 @@ export function createSummaryGenerationController({
         });
     }
 
-    async function generateEpicBatchTasks() {
+    async function generateEpicBatchTasks(options = {}) {
         if (getIsBusy()) {
             return;
         }
@@ -396,12 +399,13 @@ export function createSummaryGenerationController({
             return;
         }
 
-        const targetConfig = await promptGenerationTargetSelection('epic', sourceBlocks.length, { batch: true, sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length, story: allStoryFallback.length } });
+        const targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', sourceBlocks.length, { batch: true, sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length, story: allStoryFallback.length } });
         if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
         if (!targetConfig) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量多次总结。');
             return;
         }
+        if (!targetConfig.batch) return generateEpicDraft({ targetConfig });
 
         sourceBlocks = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets, story: allStoryFallback }, targetConfig.sourceMode);
         const config = targetConfig || state.generationTargets.epic || defaultGenerationTargets.epic;

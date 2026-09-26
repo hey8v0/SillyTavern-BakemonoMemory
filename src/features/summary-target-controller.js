@@ -101,11 +101,12 @@ export function createSummaryTargetController({
     function promptGenerationTargetSelection(kind, totalLength, options = {}) {
         const state = ensureState();
         const defaults = defaultGenerationTargets[kind] || defaultGenerationTargets.stage;
-        const isBatch = !!options.batch;
         const current = {
             ...defaults,
             ...(state.generationTargets?.[kind] || {}),
         };
+        // One dialog for both: "生成一条" or "分批生成"; the last choice is remembered per kind.
+        const initialBatch = options.batch ?? !!current.batch;
         const kindLabel = kind === 'epic' ? '多次总结' : '阶段总结';
         const suggestedRange = current.mode === targetSelectionModes.RANGE
             ? (inferNextRange(current.range) || current.range || defaults.range)
@@ -125,9 +126,14 @@ export function createSummaryTargetController({
                         <button type="button" class="menu_button" data-bakemono-target-cancel><i class="fa-solid fa-xmark"></i></button>
                     </header>
                     <div class="bakemono-memory-target-body">
-                        <p>${isBatch
-                            ? `本次可用材料：${totalLength} 个。设置每批数量后会分批加入队列。`
-                            : `本次可用材料：${totalLength} 个。你可以只合并一部分，避免一次压得太简洁。`}</p>
+                        <p data-bakemono-target-summary></p>
+                        <label class="bakemono-memory-field">
+                            <span>生成方式</span>
+                            <select class="text_pole" data-bakemono-target-output>
+                                <option value="single">生成一条${kindLabel}</option>
+                                <option value="batch">分批生成（大量材料分批入队）</option>
+                            </select>
+                        </label>
                         ${kind === 'epic' && options.sourceCounts ? `<label class="bakemono-memory-field"><span>本次总结材料</span><select class="text_pole" data-bakemono-target-source>${Object.entries({stage: '阶段总结 → 多次总结', epic: '已有多次总结 → 继续压缩', story: '普通摘要 → 多次总结'}).map(([key, label]) => `<option value="${key}" ${options.sourceCounts[key] ? '' : 'disabled'}>${label}（${options.sourceCounts[key] || 0} 条）</option>`).join('')}</select></label>` : ''}
                         <label class="bakemono-memory-field">
                             <span>读取范围</span>
@@ -139,7 +145,7 @@ export function createSummaryTargetController({
                         </label>
                         <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
                             <label class="bakemono-memory-field">
-                                <span>${isBatch ? '每批数量' : 'N 个'}</span>
+                                <span data-bakemono-target-count-label>N 个</span>
                                 <input class="text_pole" data-bakemono-target-count type="number" min="1" step="1">
                             </label>
                             <label class="bakemono-memory-field">
@@ -163,6 +169,16 @@ export function createSummaryTargetController({
             const rangeInput = overlay.querySelector('[data-bakemono-target-range]');
             const hint = overlay.querySelector('[data-bakemono-target-hint]');
             const sourceInput = overlay.querySelector('[data-bakemono-target-source]');
+            const outputInput = overlay.querySelector('[data-bakemono-target-output]');
+            outputInput.value = initialBatch ? 'batch' : 'single';
+            const isBatch = () => outputInput.value === 'batch';
+            const available = () => sourceInput ? options.sourceCounts[sourceInput.value] || 0 : totalLength;
+            const syncSummary = () => {
+                overlay.querySelector('[data-bakemono-target-summary]').textContent = isBatch()
+                    ? `本次可用材料：${available()} 个。设置每批数量后会分批加入队列。`
+                    : `本次可用材料：${available()} 个。你可以只合并一部分，避免一次压得太简洁。`;
+                overlay.querySelector('[data-bakemono-target-count-label]').textContent = isBatch() ? '每批数量' : 'N 个';
+            };
             if (sourceInput) sourceInput.value = options.sourceCounts[current.sourceMode] ? current.sourceMode : Object.keys(options.sourceCounts).find(key => options.sourceCounts[key] > 0);
     
             modeInput.value = current.mode || targetSelectionModes.ALL;
@@ -177,12 +193,13 @@ export function createSummaryTargetController({
             };
             const syncHint = () => {
                 const mode = modeInput.value;
-                countInput.disabled = !isBatch && mode !== targetSelectionModes.OLDEST;
+                syncSummary();
+                countInput.disabled = !isBatch() && mode !== targetSelectionModes.OLDEST;
                 rangeInput.disabled = mode !== targetSelectionModes.RANGE;
                 if (mode === targetSelectionModes.RANGE && !rangeInput.value.trim()) {
                     rangeInput.value = suggestedRange || '0-20';
                 }
-                if (isBatch) {
+                if (isBatch()) {
                     hint.textContent = mode === targetSelectionModes.RANGE
                         ? `只处理指定楼层范围，并按每批 ${countInput.value || current.count || defaults.count} 个材料入队。`
                         : `会按来源楼层从早到晚分批；每批 ${countInput.value || current.count || defaults.count} 个材料。`;
@@ -207,6 +224,7 @@ export function createSummaryTargetController({
                     mode: Object.values(targetSelectionModes).includes(modeInput.value) ? modeInput.value : targetSelectionModes.ALL,
                     count: Math.max(1, Number(countInput.value || current.count || defaults.count)),
                     range: String(rangeInput.value || '').trim(),
+                    batch: isBatch(),
                 };
                 if (parsed.mode === targetSelectionModes.RANGE && !parseLooseNumberRange(parsed.range).ids.size) {
                     toastr.warning('请填写可识别的楼层范围，例如 0-20 或 0-20, 35-50。');
@@ -222,18 +240,18 @@ export function createSummaryTargetController({
             });
             const syncSourceCount = () => {
                 if (!sourceInput) return;
-                overlay.querySelector('.bakemono-memory-target-body > p').textContent = `本次可用材料：${options.sourceCounts[sourceInput.value] || 0} 个。`;
                 syncHint();
             };
             sourceInput?.addEventListener('change', syncSourceCount);
             syncSourceCount();
             modeInput.addEventListener('change', syncHint);
+            outputInput.addEventListener('change', syncHint);
             countInput.addEventListener('input', syncHint);
             syncHint();
     
             const host = document.getElementById('bakemono-workbench-root') || document.body;
             host.append(overlay);
-            modeInput.focus();
+            outputInput.focus();
         });
     }
     

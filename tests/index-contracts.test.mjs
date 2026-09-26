@@ -334,7 +334,8 @@ test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
     assert.match(styleSource, /--bk-type-meta:\s*12px/);
     assert.match(styleSource, /--bk-type-copy:\s*13px/);
     assert.match(styleSource, /--bk-type-label:\s*14px/);
-    assert.match(styleSource, /\.bakemono-memory-record-main strong\s*\{[^}]*font-size:\s*var\(--bk-type-label\)\s*!important;/s);
+    // A never-matching @media (max-width: 0px) block used to hold a disabled copy of this scale.
+    assert.doesNotMatch(styleSource, /@media \(max-width: 0px\)/);
     assert.match(styleSource, /\.bakemono-memory-page-intro p,[\s\S]*?font-size:\s*13px\s*!important;/s);
     assert.match(styleSource, /\.bakemono-memory-timeline-meta,[\s\S]*?font-size:\s*12px\s*!important;/s);
 });

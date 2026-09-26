@@ -47,22 +47,30 @@ function summaryCardFixture({ totalCount = 0, story = [], stage = [], epic = [] 
     return { primary, batch, text, render };
 }
 
-test('summary card offers single and batch generation directly and disables them without material', () => {
+test('summary card has one generate action and disables it without material', () => {
     const empty = summaryCardFixture();
     empty.render('stage');
     assert.equal(empty.primary.disabled, true);
-    assert.equal(empty.batch.disabled, true);
     assert.match(empty.text['#bakemono-memory-summary-generation-description'], /还没有剧情摘要/);
 
     const ready = summaryCardFixture({ totalCount: 3, story: [{}, {}, {}] });
     ready.render('stage');
     assert.deepEqual([ready.primary.disabled, ready.primary.dataset.bakemonoAction], [false, 'generate-stage']);
-    assert.deepEqual([ready.batch.disabled, ready.batch.dataset.bakemonoAction], [false, 'generate-stage-batch']);
     ready.render('epic');
-    assert.deepEqual([ready.primary.dataset.bakemonoAction, ready.batch.dataset.bakemonoAction], ['generate-epic', 'generate-epic-batch']);
+    assert.equal(ready.primary.dataset.bakemonoAction, 'generate-epic');
     assert.equal(ready.primary.disabled, false, 'story summaries are valid fallback material for multi summaries');
     ready.render('batch');
-    assert.deepEqual([ready.primary.hidden, ready.batch.hidden], [true, true]);
+    assert.equal(ready.primary.hidden, true);
+});
+
+test('single or batch generation is chosen inside the range dialog', async () => {
+    assert.doesNotMatch(await read('settings.html'), /bakemono-memory-summary-batch-action/);
+    assert.match(await read('src/features/summary-target-controller.js'), /data-bakemono-target-output[\s\S]*?<option value="batch">分批生成/);
+    const generation = await read('src/features/summary-generation-controller.js');
+    assert.match(generation, /if \(targetConfig\.batch\) return generateStageBatchTasks\(\{ targetConfig \}\);/);
+    assert.match(generation, /if \(!targetConfig\.batch\) return generateStageDraft\(\{ targetConfig \}\);/);
+    assert.match(generation, /if \(targetConfig\.batch\) return generateEpicBatchTasks\(\{ targetConfig \}\);/);
+    assert.match(generation, /if \(!targetConfig\.batch\) return generateEpicDraft\(\{ targetConfig \}\);/);
 });
 
 test('generate actions start the chosen generator without an extra mode popup', async () => {

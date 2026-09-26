@@ -33,12 +33,11 @@ export function createSummaryGenerationUi({ documentRef, query, getState, getSta
         const modes = {
             stage: {
                 action: 'generate-stage',
-                batchAction: 'generate-stage-batch',
                 empty: !materials.totalCount,
                 emptyHint: '还没有剧情摘要。先在“自动记忆”里开启摘要，或用“补写旧聊天”整理旧楼层。',
                 icon: 'fa-wand-magic-sparkles',
                 title: '整理下一段长期记忆',
-                button: '生成一条阶段总结',
+                button: '生成阶段总结',
                 code: `${uncoveredStoryCount} 条待整理`,
                 description: `${getStageSourceModeLabel(materials.sourceMode)} · ${materials.totalCount} 条材料 · ${coveredStoryCount} 条已收录`
                     + (materials.invalid?.length ? ' · ' + materials.invalid.length + ' 条材料无效：' + materials.invalid.slice(0, 3).join('；') : '')
@@ -47,12 +46,11 @@ export function createSummaryGenerationUi({ documentRef, query, getState, getSta
             },
             epic: {
                 action: 'generate-epic',
-                batchAction: 'generate-epic-batch',
                 empty: !(storyBlocks.length + upperLevelMaterialCount),
                 emptyHint: '还没有可压缩的总结。先生成阶段总结，或积累剧情摘要。',
                 icon: 'fa-layer-group',
                 title: '把多个阶段连成时间线',
-                button: '生成一条多次总结',
+                button: '生成多次总结',
                 code: `${upperLevelMaterialCount} 条材料`,
                 description: `${stageBlocks.length} 条阶段总结与 ${epicBlocks.length} 条上层总结可继续压缩，适合整理一卷或一条长期剧情线。`,
                 progress: upperLevelMaterialCount ? Math.min(100, Math.round((epicBlocks.length / upperLevelMaterialCount) * 100)) : 0,
@@ -86,12 +84,6 @@ export function createSummaryGenerationUi({ documentRef, query, getState, getSta
             if (icon) icon.className = `fa-solid ${current.icon}`;
             const label = primary.querySelector('span');
             if (label) label.textContent = current.button;
-        }
-        const batchButton = documentRef.getElementById('bakemono-memory-summary-batch-action');
-        if (batchButton) {
-            batchButton.hidden = mode === 'batch';
-            batchButton.disabled = !!current.empty;
-            if (current.batchAction) batchButton.dataset.bakemonoAction = current.batchAction;
         }
         const batchPanel = documentRef.querySelector('[data-bakemono-owned-section="batch"]');
         if (batchPanel) {
