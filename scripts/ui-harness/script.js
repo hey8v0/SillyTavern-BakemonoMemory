@@ -68,7 +68,23 @@ if (typeof location !== 'undefined' && new URLSearchParams(location.search).has(
 }
 export const chat = lines.map(([name,is_user,mes],i)=>({ name, is_user, is_system:false, mes, send_date: new Date(now - (lines.length-i)*600000).toISOString(), swipe_id:0, swipes:[mes], extra:{} }));
 export const itemizedPrompts = [];
-export const itemizedParams = {};
+export async function itemizedParams() { return { modelUsed: 'gpt-4.1（模拟）', presetName: '长篇叙事' }; }
+// ?prompt: a last request for 提示词检查器, built when read so it carries the plugin's live injection.
+if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('prompt')) {
+ const card = '【角色描述】\n莉娜，渡鸦酒馆的老板娘，左手有一道旧烫伤。说话慢，习惯先擦完杯子再回答。';
+ const world = '【雾港镇】港口小镇，领主维克多三年前封了北路。\n【北方矿坑】铁矿，三天前坍塌，入口有卫兵把守。';
+ itemizedPrompts.push({
+  mesId: chat.findLastIndex(message => !message.is_user),
+  charDescription: card, worldInfoString: world, userPersona: '旅人：从南边来的信使，随身带着一张旧地图。',
+  get mesSendString() { return chat.map(message => `${message.name}：${message.mes}`).join('\n'); },
+  get allAnchors() { return Object.values(window.__injected || {}).filter(Boolean).join('\n\n'); },
+  get rawPrompt() {
+   return [{ role: 'system', content: card }, { role: 'system', content: world },
+    ...Object.values(window.__injected || {}).filter(Boolean).map(content => ({ role: 'system', content })),
+    ...chat.map(message => ({ role: message.is_user ? 'user' : 'assistant', content: message.mes }))];
+  },
+ });
+}
 export async function generateRaw(){ throw new Error('模拟环境：未连接模型'); }
 export async function saveChatConditional(){ return true; }
 export function saveSettingsDebounced(){}

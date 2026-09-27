@@ -136,55 +136,39 @@
         </div>
       </section>
 
-      <section class="bakemono-workbench-panel bakemono-memory-prompt-inspector-panel" data-bakemono-panel="prompt-inspector">
-        <article class="bakemono-memory-prompt-inspector-ticket" aria-live="polite">
-          <span class="bakemono-memory-prompt-inspector-mark" aria-hidden="true"><i class="fa-solid fa-receipt"></i></span>
-          <div>
-            <small>最终消息合计</small>
-            <strong id="bakemono-memory-prompt-inspector-total">— Token</strong>
-            <dl class="bakemono-memory-prompt-inspector-meta">
-              <div><dt>模型</dt><dd id="bakemono-memory-prompt-inspector-model">等待记录</dd></div>
-              <div><dt>预设</dt><dd id="bakemono-memory-prompt-inspector-preset">—</dd></div>
-              <div><dt>回复</dt><dd id="bakemono-memory-prompt-inspector-floor">—</dd></div>
-              <div><dt>条目</dt><dd id="bakemono-memory-prompt-inspector-count">等待记录</dd></div>
-            </dl>
-          </div>
-        </article>
+      <section class="bakemono-workbench-panel bakemono-memory-prompt-inspector-panel bk-sum bk-auto bk-insp" data-bakemono-panel="prompt-inspector">
+        <section class="bk-auto-status" aria-live="polite">
+          <div class="bk-sum-kicker"><span>上一轮发给模型的内容</span><span id="bakemono-memory-prompt-inspector-floor">—</span></div>
+          <h3 class="bk-insp-total"><span id="bakemono-memory-prompt-inspector-total">—</span><small>Token</small></h3>
+          <div class="bk-sum-meta"><span id="bakemono-memory-prompt-inspector-model">等待记录</span> · 预设 <span id="bakemono-memory-prompt-inspector-preset">—</span></div>
+          <div class="bk-home-stack bk-inj-stack" id="bakemono-memory-prompt-inspector-stack" aria-hidden="true" hidden></div>
+          <div class="bk-inj-legend bk-insp-legend" id="bakemono-memory-prompt-inspector-legend" hidden></div>
+          <p class="bk-insp-mine" id="bakemono-memory-prompt-inspector-mine" hidden></p>
+        </section>
 
-        <div class="bakemono-memory-prompt-inspector-views" role="tablist" aria-label="提示词清单视图">
-          <button type="button" role="tab" aria-selected="true" aria-controls="bakemono-memory-prompt-inspector-list" class="is-active" data-bakemono-prompt-view="full">完整</button>
-          <button type="button" role="tab" aria-selected="false" aria-controls="bakemono-memory-prompt-inspector-list" data-bakemono-prompt-view="sources">按来源</button>
-          <button type="button" role="tab" aria-selected="false" aria-controls="bakemono-memory-prompt-inspector-list" data-bakemono-prompt-view="messages">按消息</button>
+        <div class="bk-insp-views">
+          <div role="tablist" aria-label="提示词的看法">
+            <button type="button" role="tab" aria-selected="true" aria-controls="bakemono-memory-prompt-inspector-list" class="is-active" data-bakemono-prompt-view="sources">按来源</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="bakemono-memory-prompt-inspector-list" data-bakemono-prompt-view="messages">按消息</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="bakemono-memory-prompt-inspector-list" data-bakemono-prompt-view="full">全文</button>
+          </div>
+          <span class="bk-insp-count" id="bakemono-memory-prompt-inspector-count"></span>
         </div>
 
-        <form id="bakemono-memory-prompt-inspector-search-form" class="bakemono-memory-prompt-inspector-search" role="search">
-          <div class="bakemono-memory-prompt-inspector-search-field">
-            <input id="bakemono-memory-prompt-inspector-query" type="search" inputmode="search" autocomplete="off" placeholder="输入关键词后搜索" aria-label="搜索上一轮提示词" aria-controls="bakemono-memory-prompt-inspector-list">
-            <button id="bakemono-memory-prompt-inspector-search-submit" type="submit" aria-label="执行搜索" title="搜索"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></button>
-          </div>
-          <div id="bakemono-memory-prompt-inspector-search-navigation" class="bakemono-memory-prompt-inspector-search-navigation" hidden>
-            <span class="bakemono-memory-prompt-inspector-search-position">
-              <strong id="bakemono-memory-prompt-inspector-search-scope">匹配位置</strong>
-              <output id="bakemono-memory-prompt-inspector-search-status" aria-live="polite">0 / 0</output>
-            </span>
-            <button id="bakemono-memory-prompt-inspector-search-previous" type="button" aria-label="上一个匹配" title="上一个匹配"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i></button>
-            <button id="bakemono-memory-prompt-inspector-search-next" type="button" aria-label="下一个匹配" title="下一个匹配"><i class="fa-solid fa-arrow-down" aria-hidden="true"></i></button>
-            <button id="bakemono-memory-prompt-inspector-clear" type="button" aria-label="清空搜索" title="清空搜索"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
-          </div>
+        <form id="bakemono-memory-prompt-inspector-search-form" class="bk-insp-search" role="search">
+          <input id="bakemono-memory-prompt-inspector-query" type="search" inputmode="search" autocomplete="off" placeholder="搜角色名、地点或一句话" aria-label="搜索上一轮提示词" aria-controls="bakemono-memory-prompt-inspector-list">
+          <button id="bakemono-memory-prompt-inspector-search-submit" class="bk-sum-link" type="submit">搜索</button>
         </form>
+        <div id="bakemono-memory-prompt-inspector-search-navigation" class="bakemono-memory-prompt-inspector-search-navigation bk-insp-nav" hidden>
+          <span class="bk-insp-where"><strong id="bakemono-memory-prompt-inspector-search-scope">匹配位置</strong><output id="bakemono-memory-prompt-inspector-search-status" aria-live="polite">0 / 0</output></span>
+          <button id="bakemono-memory-prompt-inspector-search-previous" type="button" aria-label="上一处" title="上一处">↑</button>
+          <button id="bakemono-memory-prompt-inspector-search-next" type="button" aria-label="下一处" title="下一处">↓</button>
+          <button id="bakemono-memory-prompt-inspector-clear" type="button" aria-label="清空搜索" title="清空搜索">×</button>
+        </div>
 
-        <div class="bakemono-memory-prompt-inspector-divider" aria-hidden="true"><span id="bakemono-memory-prompt-inspector-view-label">完整 Prompt</span><i></i></div>
-        <div id="bakemono-memory-prompt-inspector-list" class="bakemono-memory-prompt-inspector-list" role="tabpanel"></div>
-        <div id="bakemono-memory-prompt-inspector-search-empty" class="bakemono-memory-prompt-inspector-empty" hidden>
-          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-          <strong>没有找到匹配内容</strong>
-          <span>换一个角色名、地点或剧情关键词试试。</span>
-        </div>
-        <div id="bakemono-memory-prompt-inspector-empty" class="bakemono-memory-prompt-inspector-empty" hidden>
-          <i class="fa-regular fa-file-lines" aria-hidden="true"></i>
-          <strong>还没有上一轮提示词</strong>
-          <span>先在酒馆中生成一条回复，再回到这里查看。</span>
-        </div>
+        <div id="bakemono-memory-prompt-inspector-list" class="bakemono-memory-prompt-inspector-list bk-insp-list" role="tabpanel"></div>
+        <p id="bakemono-memory-prompt-inspector-search-empty" class="bk-insp-empty" hidden>没有找到。换一个角色名、地点或剧情关键词试试。</p>
+        <p id="bakemono-memory-prompt-inspector-empty" class="bk-insp-empty" hidden>还没有上一轮的记录。先在酒馆里生成一条回复，再回来看。</p>
       </section>
 
       <section class="bakemono-workbench-panel bk-sum bk-hub" data-bakemono-panel="data-hub">
@@ -1236,7 +1220,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.24.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.25.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

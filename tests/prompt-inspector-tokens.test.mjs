@@ -90,3 +90,8 @@ test('prompt inspector keeps source browsing separate from the authoritative fin
     assert.deepEqual(entries.map(entry => entry.label), ['角色卡', 'User 人设', '世界书', '聊天记录', '扩展注入']);
     assert.equal(entries.find(entry => entry.label === '世界书').getContent(), 'triggered world book');
 });
+
+test('message rows carry their number, role name and role apart, for the numbered list', async () => {
+    const entries = await buildFinalPromptEntries([{ role: 'system', content: '设定' }, { role: 'user', content: '你好' }], { countTokens });
+    assert.deepEqual(entries.map(item => [item.number, item.name, item.role, item.tokens]), [['01', '系统消息', 'system', 2], ['02', '用户消息', 'user', 2]]);
+});

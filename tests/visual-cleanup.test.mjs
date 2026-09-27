@@ -41,7 +41,8 @@ test('overview and data hub carry no decorative codes or English labels', async 
     assert.doesNotMatch(html, /MEMORY STATUS|SC\. 00|bakemono-memory-hub-ticket-number/);
     // English appears only as a small mono label after the Chinese name (“记忆状态 · STATUS”).
     assert.match(html, /记忆状态 · STATUS/);
-    assert.match(html, /<dt>条目<\/dt><dd id="bakemono-memory-prompt-inspector-count">/);
+    // The inspector counts its rows beside the view tabs.
+    assert.match(html, /class="bk-insp-count" id="bakemono-memory-prompt-inspector-count"/);
 });
 
 test('following the tavern theme re-syncs the opaque background on every kind of host theme change', async () => {

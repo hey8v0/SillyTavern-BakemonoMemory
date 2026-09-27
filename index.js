@@ -1530,6 +1530,15 @@ const promptInspector = createPromptInspector({
     getItemizedPrompts: () => itemizedPrompts,
     getItemizedParams: (...args) => itemizedParams(...args),
     countTokens: value => overviewTokenManifest.getOverviewTokenCount(value),
+    getPluginInjection: () => {
+        const state = ensureState();
+        const text = Object.values(overviewTokenManifest.getOverviewInjectionSources(state)).filter(value => String(value || '').trim()).join('\n\n');
+        const parts = getInjectionMemoryParts(state);
+        // Each piece the plugin adds (memory, inline summary/table rules, state upkeep) is recognised by its first real line.
+        const pieces = [state.injection?.enabled ? renderInjectionContent(state, parts) : '', parts.inlineValues?.summaryValue, parts.inlineValues?.tableValue, parts.rpMaintenance];
+        const markers = pieces.map(piece => String(String(piece || '').split('\n').find(line => line.trim().length >= 6) || '').trim()).filter(Boolean);
+        return { text, markers, found: promptText => overviewTokenManifest.doesLastPromptMatchCurrentInjection(promptText, state) };
+    },
     countImageTokens: async (url, detail) => {
         const baseCost = 85;
         if (!url || detail === 'low') return baseCost;

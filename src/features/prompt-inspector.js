@@ -129,6 +129,9 @@ export async function buildFinalPromptEntries(rawPrompt, {
         const content = formatPromptMessageContent(message);
         return {
             key: `message-${position}`,
+            number: String(position).padStart(2, '0'),
+            name: role.label,
+            role: String(message?.role || 'other').toLowerCase(),
             label: `${String(position).padStart(2, '0')} · ${role.label}`,
             description: `${role.description} · 上一轮最终请求`,
             icon: role.icon,
@@ -203,13 +206,15 @@ export function createPromptInspector({
     countImageTokens,
     countVideoTokens,
     getActiveTab,
+    // What 剧情剪辑台 put into the prompt: { text, markers, found(promptText) }.
+    getPluginInjection = () => null,
     notifySuccess = () => {},
     notifyError = () => {},
     logWarning = (...args) => console.warn(...args),
 } = {}) {
     let renderRevision = 0;
     let openEntryKey = '';
-    let activeView = 'full';
+    let activeView = 'sources';
     let currentUsage = null;
     let searchQuery = '';
     let searchResults = [];
@@ -309,8 +314,6 @@ export function createPromptInspector({
             button.classList.toggle('is-active', selected);
             button.setAttribute('aria-selected', String(selected));
         });
-        const labels = { full: '完整 Prompt', sources: '来源拆分', messages: '最终消息顺序' };
-        setText('bakemono-memory-prompt-inspector-view-label', labels[activeView] || '内容条目');
     }
 
     function setEmptyState(empty) {
@@ -487,6 +490,9 @@ export function createPromptInspector({
             const item = entries.get(String(row.dataset.promptEntryKey || ''));
             const matches = !query || !!item && matchingEntryKeys.has(item.key);
             row.hidden = !matches;
+            const hits = row.querySelector('[data-prompt-hits]'), tokens = row.querySelector('[data-prompt-tokens]');
+            if (hits) { hits.hidden = !query; hits.textContent = query ? `${(searchResultsByEntry.get(item?.key) || []).length.toLocaleString()} 处` : ''; }
+            if (tokens) tokens.hidden = !!query;
             if (matches) {
                 visibleCount += 1;
                 if (!query && row.classList.contains('is-open')) renderHighlightedContent(row.querySelector('pre'), item.getContent(), '');
@@ -497,8 +503,8 @@ export function createPromptInspector({
         });
         if (searchEmpty) searchEmpty.hidden = !query || visibleCount > 0;
         setText('bakemono-memory-prompt-inspector-count', query
-            ? `${searchResults.length.toLocaleString()}${searchTruncated ? '+' : ''} 处 · ${visibleCount.toLocaleString()} 个条目`
-            : `${entries.size.toLocaleString()} 个条目`);
+            ? `${visibleCount.toLocaleString()} 条里找到`
+            : `${entries.size.toLocaleString()} 条`);
         updateSearchNavigation();
         if (searchResults.length) openSearchResult(0, { smooth: focusFirst });
         else if (!query && openEntryKey) {
@@ -515,6 +521,40 @@ export function createPromptInspector({
         input?.focus();
     }
 
+    const escapeText = value => String(value ?? '').replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]);
+    // Each source keeps one colour wherever it shows: the header bar, the legend and the row's dot.
+    const sourceTones = { 'source-character': 'people', 'source-persona': 'voice', 'source-world-info': 'thread',
+        'source-examples': 'plain', 'source-chat': 'wall', 'source-extensions': 'event', 'source-bias': 'plain' };
+    const roleTones = { system: 'plain', developer: 'plain', user: 'people', assistant: 'wall' };
+    function entryTone(item, plugin) {
+        if (sourceTones[item.key]) return sourceTones[item.key];
+        if (item.role) {
+            const content = String(item.getContent() || '');
+            return plugin?.markers?.some(marker => content.includes(marker)) ? 'event' : roleTones[item.role] || 'plain';
+        }
+        return 'plain';
+    }
+    function renderSourceStack(sources, total, plugin, pluginTokens, promptText) {
+        const stack = document.getElementById('bakemono-memory-prompt-inspector-stack');
+        const legend = document.getElementById('bakemono-memory-prompt-inspector-legend');
+        const mine = document.getElementById('bakemono-memory-prompt-inspector-mine');
+        const shown = sources.filter(item => item.tokens > 0);
+        if (stack) {
+            stack.innerHTML = shown.map(item => `<i data-tone="${sourceTones[item.key] || 'plain'}" style="flex-grow:${item.tokens}"></i>`).join('');
+            stack.hidden = !shown.length;
+        }
+        if (legend) {
+            legend.innerHTML = shown.map(item => `<span data-tone="${sourceTones[item.key] || 'plain'}"><b>${item.tokens.toLocaleString()}</b>${escapeText(item.label)}</span>`).join('');
+            legend.hidden = !shown.length;
+        }
+        if (!mine) return;
+        const found = !!plugin?.text && plugin.found?.(promptText);
+        mine.hidden = !plugin;
+        mine.innerHTML = !plugin?.text ? '剧情剪辑台这一轮没有注入内容。'
+            : found ? `其中剧情剪辑台注入 <b>${pluginTokens.toLocaleString()}</b> Token，占 ${total ? Math.max(1, Math.round(pluginTokens / total * 100)) : 0}%。`
+            : '上一轮里没有找到剧情剪辑台现在的注入内容，可能之后改过设置。';
+    }
+
     async function render() {
         const revision = ++renderRevision;
         const list = document.getElementById('bakemono-memory-prompt-inspector-list');
@@ -529,7 +569,7 @@ export function createPromptInspector({
         if (searchInput) searchInput.value = searchQuery;
         setSearchEnabled(false);
         setText('bakemono-memory-prompt-inspector-count', '正在读取');
-        setText('bakemono-memory-prompt-inspector-total', '— Token');
+        setText('bakemono-memory-prompt-inspector-total', '—');
         setText('bakemono-memory-prompt-inspector-model', '正在读取');
         setText('bakemono-memory-prompt-inspector-preset', '—');
         setText('bakemono-memory-prompt-inspector-floor', '—');
@@ -545,31 +585,39 @@ export function createPromptInspector({
         currentUsage = usage;
         const messageEntries = await buildMessageEntries(usage);
         const resolvedEntries = await buildEntries(usage, activeView);
+        const sourceEntries = activeView === 'sources' ? resolvedEntries : await buildPromptSourceEntries(usage.entry, { countTokens });
+        const plugin = getPluginInjection?.() || null;
+        const pluginTokens = plugin?.text ? Math.max(0, Number(await countTokens?.(plugin.text)) || 0) : 0;
         if (revision !== renderRevision || getActiveTab?.() !== 'prompt-inspector') return;
         resolvedEntries.forEach(item => entries.set(item.key, item));
         const model = String(usage.params?.modelUsed || '').trim();
         const preset = String(usage.params?.presetName || '').trim();
-        setText('bakemono-memory-prompt-inspector-count', `${resolvedEntries.length.toLocaleString()} 个条目`);
+        setText('bakemono-memory-prompt-inspector-count', `${resolvedEntries.length.toLocaleString()} 条`);
         const displayedTotal = messageEntries.reduce((sum, item) => sum + Number(item.tokens || 0), 0) || usage.total;
-        setText('bakemono-memory-prompt-inspector-total', `${displayedTotal.toLocaleString()} Token`);
-        setText('bakemono-memory-prompt-inspector-model', model || '未记录');
+        setText('bakemono-memory-prompt-inspector-total', displayedTotal.toLocaleString());
+        setText('bakemono-memory-prompt-inspector-model', model || '模型未记录');
         setText('bakemono-memory-prompt-inspector-preset', preset && preset !== '(Unknown)' ? preset : '未记录');
         setText('bakemono-memory-prompt-inspector-floor', `第 ${usage.messageId.toLocaleString()} 楼`);
+        renderSourceStack(sourceEntries, displayedTotal, plugin, pluginTokens, usage.promptText);
         const fragment = document.createDocumentFragment();
         resolvedEntries.forEach(item => {
             const article = document.createElement('article');
-            article.className = 'bakemono-memory-prompt-inspector-item';
+            article.className = 'bakemono-memory-prompt-inspector-item bk-insp-item';
             article.dataset.promptEntryKey = item.key;
+            article.dataset.tone = entryTone(item, plugin);
+            const pluginPart = item.role && article.dataset.tone === 'event';
+            const name = item.number ? `<span class="bk-insp-no">${item.number}</span>${escapeText(item.name)}${pluginPart ? ' · 剧情剪辑台' : ''}` : escapeText(item.label);
             article.innerHTML = `
-                <button type="button" class="bakemono-memory-prompt-inspector-item-toggle" data-bakemono-prompt-entry="${item.key}" aria-expanded="false">
-                    <span class="bakemono-memory-prompt-inspector-item-mark" aria-hidden="true"><i class="fa-solid ${item.icon}"></i></span>
-                    <span class="bakemono-memory-prompt-inspector-item-copy"><strong>${item.label}</strong><small>${item.description}</small></span>
-                    <em><b>${item.tokens.toLocaleString()}</b><small> Token</small></em>
-                    <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                <button type="button" class="bakemono-memory-prompt-inspector-item-toggle bk-insp-row" data-bakemono-prompt-entry="${item.key}" aria-expanded="false">
+                    <span class="bk-insp-dot" aria-hidden="true"></span>
+                    <span class="bk-insp-name">${name}</span>
+                    <span class="bk-insp-tok" data-prompt-tokens>${item.tokens.toLocaleString()}</span>
+                    <span class="bk-insp-hits" data-prompt-hits hidden></span>
+                    <span class="bk-tbl-set-chev" aria-hidden="true">›</span>
                 </button>
                 <div class="bakemono-memory-prompt-inspector-item-body" hidden>
-                    <header><span>实际内容</span><button type="button" data-bakemono-prompt-copy="${item.key}"><i class="fa-regular fa-copy" aria-hidden="true"></i>复制</button></header>
                     <pre></pre>
+                    <div class="bk-tbl-set-actions"><button type="button" class="bk-sum-link" data-bakemono-prompt-copy="${item.key}">复制</button></div>
                 </div>`;
             fragment.append(article);
         });
