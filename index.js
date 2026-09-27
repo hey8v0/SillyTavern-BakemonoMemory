@@ -1100,6 +1100,7 @@ const summarySourceWizard = createSummarySourceWizard({
     openBackfill: async batchMode => {
         if (!await switchWorkbenchTab('preview')) return;
         summaryGenerationUi.setMode('batch');
+        summaryGenerationUi.setBatchOpen(true);
         setSummaryBrowserActiveType('story');
         renderSummaryGenerationPanel();
         renderPreviewSections();

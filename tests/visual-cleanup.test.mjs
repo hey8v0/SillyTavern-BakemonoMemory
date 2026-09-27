@@ -51,5 +51,7 @@ test('following the tavern theme re-syncs the opaque background on every kind of
     assert.match(source, /setInterval\(/);
     assert.match(source, /if \(key === lastHostThemeKey\) return;/, 're-applies only when a host colour actually changed');
     const css = await read('style.css');
-    for (const name of ['--ns-faint', '--rp-faint']) assert.ok(css.includes(name + ': color-mix(in srgb, var(--SmartThemeBodyColor) 62%'), name);
+    assert.ok(css.includes('--ns-faint: color-mix(in srgb, var(--ns-ink) 72%'), '--ns-faint');
+    assert.ok(css.includes('--rp-faint: color-mix(in srgb, var(--ns-ink, var(--SmartThemeBodyColor)) 72%'), '--rp-faint');
+    assert.ok(css.includes('[data-bakemono-theme-mode="tavern"] { --ns-ink: color-mix(in srgb, var(--SmartThemeBodyColor) 82%, #fff); }'), 'tavern ink is lifted toward white on dark themes');
 });

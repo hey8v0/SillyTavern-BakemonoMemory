@@ -60,7 +60,8 @@ test('summary card has one generate action and disables it without material', ()
     assert.equal(ready.primary.dataset.bakemonoAction, 'generate-epic');
     assert.equal(ready.primary.disabled, false, 'story summaries are valid fallback material for multi summaries');
     ready.render('batch');
-    assert.equal(ready.primary.hidden, true);
+    assert.equal(ready.primary.dataset.bakemonoAction, undefined, 'under 剧情摘要 the button only unfolds the form');
+    assert.equal(ready.primary.dataset.bakemonoBatchToggle, '');
 });
 
 test('single or batch generation is chosen inside the range dialog', async () => {

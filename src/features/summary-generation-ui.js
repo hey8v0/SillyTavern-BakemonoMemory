@@ -11,7 +11,14 @@ function floorSpan(blocks) {
 
 export function createSummaryGenerationUi({ documentRef, query, getState, getStageMaterialOverview, getStageSourceModeLabel, getCurrentFloorMemoryIndex }) {
     let mode = 'stage';
+    let batchOpen = false;
     let snapshot = { story: [], stage: [], epic: [] };
+
+    // The 补写旧聊天 form stays folded until asked for; the level's button opens and closes it.
+    function setBatchOpen(open) {
+        batchOpen = !!open;
+        return batchOpen;
+    }
 
     function getMode() {
         return mode;
@@ -79,12 +86,12 @@ export function createSummaryGenerationUi({ documentRef, query, getState, getSta
                 progress: upperLevelMaterialCount ? Math.min(100, Math.round((epicBlocks.length / upperLevelMaterialCount) * 100)) : 0,
             },
             batch: {
-                action: 'batch-summary',
+                action: '',
                 title: missing ? `有 ${missing.toLocaleString()} 楼还没有摘要` : '补写旧聊天的剧情摘要',
-                button: '开始批量摘要',
+                button: batchOpen ? '收起补写表单' : '补写旧聊天',
                 code: `${storyBlocks.length} 条已识别`,
                 description: missing
-                    ? `${firstMissing}在下面选范围补写，摘要会写回原楼层并进入待确认。`
+                    ? `${firstMissing}点“补写旧聊天”选范围，摘要会写回原楼层并进入待确认。`
                     : '按楼层范围补写缺失摘要或整理旧正文；任务会分批运行，并统一进入待确认。',
                 progress: 0,
             },
@@ -101,17 +108,26 @@ export function createSummaryGenerationUi({ documentRef, query, getState, getSta
         if (progressBar) progressBar.hidden = mode === 'batch';
         const primary = documentRef.getElementById('bakemono-memory-summary-primary-action');
         if (primary) {
-            primary.hidden = mode === 'batch';
+            primary.hidden = false;
             // Empty material has nothing to generate; the hint above says where to start instead.
             primary.disabled = !!current.empty;
-            primary.dataset.bakemonoAction = current.action;
+            // Under 剧情摘要 the button only unfolds the form; the form's own button starts the work.
+            if (current.action) {
+                primary.dataset.bakemonoAction = current.action;
+                delete primary.dataset.bakemonoBatchToggle;
+                primary.removeAttribute?.('aria-expanded');
+            } else {
+                delete primary.dataset.bakemonoAction;
+                primary.dataset.bakemonoBatchToggle = '';
+                primary.setAttribute?.('aria-expanded', String(batchOpen));
+            }
             const label = primary.querySelector('span');
             if (label) label.textContent = current.button;
         }
         const batchPanel = documentRef.querySelector('[data-bakemono-owned-section="batch"]');
         if (batchPanel) {
-            batchPanel.hidden = mode !== 'batch';
-            if (mode === 'batch') batchPanel.open = true;
+            batchPanel.hidden = mode !== 'batch' || !batchOpen;
+            if (!batchPanel.hidden) batchPanel.open = true;
         }
     }
 
@@ -121,7 +137,12 @@ export function createSummaryGenerationUi({ documentRef, query, getState, getSta
             setMode(this.dataset.bakemonoSummaryMode || this.dataset.bakemonoPreviewType || 'stage');
             render();
         });
+        query(rootSelector).off('click.bakemonoBatchToggle').on('click.bakemonoBatchToggle', '[data-bakemono-batch-toggle]', () => {
+            setBatchOpen(!batchOpen);
+            render();
+            if (batchOpen) documentRef.getElementById('bakemono-memory-batch-summary-mode')?.focus({ preventScroll: true });
+        });
     }
 
-    return { bindEvents, getMode, render, setMode };
+    return { bindEvents, getMode, render, setBatchOpen, setMode };
 }

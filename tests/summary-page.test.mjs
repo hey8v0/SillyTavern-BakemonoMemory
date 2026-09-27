@@ -57,7 +57,8 @@ test('each level of the summary page has its own next step', () => {
     assert.equal(ui.setMode('story'), 'batch');
     ui.render();
     assert.equal(text['#bakemono-memory-summary-generation-title'], '有 4 楼还没有摘要');
-    assert.equal(primary.hidden, true, '补写旧聊天 starts from the form below');
+    assert.equal(primary.dataset.bakemonoBatchToggle, '', '补写旧聊天 unfolds the form; its own button starts the work');
+    assert.equal(primary.dataset.bakemonoAction, undefined);
     ui.setMode('epic'); ui.render();
     assert.equal(text['#bakemono-memory-summary-generation-title'], '1 条阶段总结可以串成一卷');
     assert.equal(primary.dataset.bakemonoAction, 'generate-epic');
