@@ -367,6 +367,16 @@ export function createSummaryPreviewRenderer({
         return item;
     }
 
+    // For pages that show summary text outside the summary list (待确认): a readable title, the first beat, the document.
+    function describeSummary(block) {
+        const parts = summaryParts(block);
+        return { title: displayTitle(block, parts), lead: firstBeat(parts) };
+    }
+
+    function createSummaryDocument(block) {
+        return renderDocument(block, summaryParts(block));
+    }
+
     function setSummaryOpen(item, open) {
         item.classList.toggle('is-open', !!open);
         item.querySelectorAll(':scope > .bk-sum-story-h [data-bakemono-summary-toggle], :scope > .bk-sum-chapter-h [data-bakemono-summary-toggle]')
@@ -386,6 +396,8 @@ export function createSummaryPreviewRenderer({
 
     return {
         createBakemonoNotebook,
+        createSummaryDocument,
+        describeSummary,
         extractSectionText,
         getBracketMetaLine,
         getPreferredSummaryTitle,

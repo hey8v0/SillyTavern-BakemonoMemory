@@ -437,11 +437,13 @@ test('review desk keeps drafts first while preserving task and history operation
     assert.match(reviewQueueEventsSource, /bakemonoTaskAction/);
     assert.match(reviewQueueEventsSource, /bakemonoAutoTransaction/);
     assert.doesNotMatch(source, /bakemonoDraftAction|bakemonoTaskAction|bakemonoAutoTransaction/);
-    assert.match(reviewQueueUiSource, /data-bakemono-draft-editor-toggle/);
-    assert.match(reviewQueueUiSource, /bakemono-memory-draft-editor-disclosure/);
+    // Only 保存 sits outside a draft; edit, regenerate, locate and discard live behind its “⋯” with an in-sheet confirm.
     assert.match(reviewQueueUiSource, /data-bakemono-draft-action="commit"/);
-    assert.match(reviewQueueUiSource, /data-bakemono-draft-action="regenerate"/);
-    assert.match(reviewQueueUiSource, /data-bakemono-draft-action="discard"/);
+    assert.doesNotMatch(reviewQueueUiSource, /data-bakemono-draft-action="(regenerate|discard)"/);
+    assert.match(reviewQueueUiSource, /data-bakemono-draft-menu/);
+    assert.match(reviewQueueEventsSource, /sheetConfirm\('用同样的材料再生成一次，会多一次模型请求/);
+    assert.match(reviewQueueEventsSource, /discardDraft\(draftId, \{ confirmed: true \}\)/);
+    assert.match(settingsSource, /class="bakemono-workbench-panel bk-sum bk-rev" data-bakemono-panel="drafts"/);
 });
 
 test('automatic memory and tables keep the demo status-first hierarchy', () => {

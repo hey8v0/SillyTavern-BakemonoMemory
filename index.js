@@ -89,6 +89,7 @@ import { createHubAutomationUi } from './src/features/hub-automation-ui.js';
 import { createSummaryBrowserUi } from './src/features/summary-browser-ui.js';
 import { createSummaryBrowserEvents } from './src/features/summary-browser-events.js';
 import { createSummaryActionSheet } from './src/features/summary-action-sheet.js';
+import { createActionSheet } from './src/ui/action-sheet.js';
 import { createWorkbenchPageOverviews } from './src/features/workbench-page-overviews.js';
 import { createReviewQueueUi } from './src/features/review-queue-ui.js';
 import { createReviewQueueEvents } from './src/features/review-queue-events.js';
@@ -577,6 +578,17 @@ const scanController = createScanController({
 });
 const { bindEvents: bindScanEvents, scanBakemonoBlocks } = scanController;
 
+const actionSheet = createActionSheet({ documentRef: document });
+// Close the workbench and bring a chat floor into view (定位原文 on 总结 and 待确认).
+function locateChatFloor(floor) {
+    const message = document.querySelector(`#chat .mes[mesid="${floor}"]`);
+    if (!message) {
+        toastr.info(`第 ${floor} 楼还没在聊天里载入，请先在聊天里往上翻到那一楼。`);
+        return;
+    }
+    closeWorkbench();
+    message.scrollIntoView({ block: 'center', behavior: 'auto' });
+}
 const summaryPreviewRenderer = createSummaryPreviewRenderer({
     documentRef: document,
     getState: ensureState,
@@ -590,6 +602,8 @@ const summaryPreviewRenderer = createSummaryPreviewRenderer({
 });
 const {
     createBakemonoNotebook,
+    createSummaryDocument,
+    describeSummary,
     getPreviewSummaryText,
     getSummaryGroup,
     parsePreviewMeta,
@@ -1843,6 +1857,9 @@ const reviewQueueUi = createReviewQueueUi({
     isMissingSummaryTask,
     getKindLabel,
     blockTypes,
+    escapeHtml,
+    describeSummary,
+    createSummaryDocument,
 });
 const {
     changeHistoryPage,
@@ -1943,20 +1960,12 @@ const summaryBrowserEvents = createSummaryBrowserEvents({
 });
 
 const summaryActionSheet = createSummaryActionSheet({
-    documentRef: document,
+    sheet: actionSheet,
     escapeHtml,
     findSavedSummaryByHash,
     getSummaryDependents,
     startEdit: item => summaryBrowserUi.startEdit(item),
-    locateFloor: floor => {
-        const message = document.querySelector(`#chat .mes[mesid="${floor}"]`);
-        if (!message) {
-            toastr.info(`第 ${floor} 楼还没在聊天里载入，请先在聊天里往上翻到那一楼。`);
-            return;
-        }
-        closeWorkbench();
-        message.scrollIntoView({ block: 'center', behavior: 'auto' });
-    },
+    locateFloor: locateChatFloor,
     deleteSummary: hash => deleteSavedSummary(hash, { confirmed: true }),
 });
 
@@ -2139,6 +2148,12 @@ const reviewQueueEvents = createReviewQueueEvents({
     rollbackAutoSummaryTransaction,
     changeHistoryPage,
     renderHistory,
+    sheet: actionSheet,
+    escapeHtml,
+    toggleDraft: item => reviewQueueUi.toggleDraft(item),
+    startDraftEdit: item => reviewQueueUi.startDraftEdit(item),
+    stopDraftEdit: item => reviewQueueUi.stopDraftEdit(item),
+    locateFloor: locateChatFloor,
 });
 
 workbenchRenderer = createWorkbenchRenderer({

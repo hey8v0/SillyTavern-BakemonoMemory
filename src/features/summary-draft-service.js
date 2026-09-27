@@ -530,7 +530,9 @@ export function createSummaryDraftService({
         if (!options.silent) {
             renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '草稿已确认保存。');
             const status=getSummaryStatus(state,summary);
-            toastr.success(status.valid ? `草稿已保存${state.injection?.enabled === false ? '，注入已关闭' : '并进入有效记忆'}。` : `已保存为待重建：${status.reason}`);
+            const commitId = state.history[0]?.id;
+            toastr.success((status.valid ? `草稿已保存${state.injection?.enabled === false ? '，注入已关闭' : '并进入有效记忆'}。` : `已保存为待重建：${status.reason}。`) + '点这里撤回。', '',
+                { timeOut: 8000, extendedTimeOut: 4000, onclick: () => serial(undoLastCommit)({ confirmed: true, expectedCommitId: commitId }).catch(() => {}) });
         }
         return summary;
     }
@@ -545,22 +547,27 @@ export function createSummaryDraftService({
         return state.stageSummaries.length;
     }
     
-    function discardDraft(draftId) {
+    function discardDraft(draftId, { confirmed: preconfirmed = false } = {}) {
         const state = ensureState();
-        const draft = state.drafts.find(item => item.id === draftId);
-        const confirmed = confirmDanger(
+        const index = state.drafts.findIndex(item => item.id === draftId);
+        const draft = state.drafts[index];
+        const confirmed = preconfirmed || confirmDanger(
             `丢弃草稿「${draft?.title || getKindLabel(draft?.kind) || '未命名草稿'}」？`,
-            ['草稿丢弃后不会写入长期记忆，也不能从草稿箱恢复。'],
+            ['草稿丢弃后不会写入长期记忆。'],
         );
-        if (!confirmed) {
+        if (!confirmed || index < 0) {
             return;
         }
-        const before = state.drafts.length;
-        state.drafts = state.drafts.filter(draft => draft.id !== draftId);
-        if (state.drafts.length !== before) {
+        state.drafts.splice(index, 1);
+        saveState();
+        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '草稿已丢弃。');
+        // Put the draft back where it was, as long as the chat has not changed in between.
+        toastr.info('草稿已丢弃。点这里撤回。', '', { timeOut: 8000, extendedTimeOut: 4000, onclick: () => {
+            if (ensureState() !== state || state.drafts.some(item => item.id === draftId)) return;
+            state.drafts.splice(Math.min(index, state.drafts.length), 0, draft);
             saveState();
-            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '草稿已丢弃。');
-        }
+            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '已撤回丢弃。');
+        } });
     }
     
     async function regenerateDraft(draftId) {
@@ -588,14 +595,18 @@ export function createSummaryDraftService({
         }, '草稿已重新生成', workbenchRenderScopes.DRAFTS);
     }
     
-    async function undoLastCommit() {
+    async function undoLastCommit({ confirmed: preconfirmed = false, expectedCommitId = null } = {}) {
         const state = ensureState();
         const commit = state.history[0];
         if (!commit) {
             toastr.info('暂无可撤回的保存记录。');
             return;
         }
-        const confirmed = confirmDanger(
+        if (expectedCommitId && commit.id !== expectedCommitId) {
+            toastr.info('这次保存之后又有新的保存，请到“待确认 → 记录”里撤回。');
+            return;
+        }
+        const confirmed = preconfirmed || confirmDanger(
             `撤回上次保存「${commit.summary?.title || getKindLabel(commit.kind)}」？`,
             ['已保存摘要会从长期记忆中移除，原草稿会放回草稿箱。'],
         );

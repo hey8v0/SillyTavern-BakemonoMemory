@@ -1061,64 +1061,32 @@
         </div>
       </section>
 
-      <section class="bakemono-workbench-panel" data-bakemono-panel="drafts">
-        <div class="bakemono-memory-review-tabs" role="tablist" aria-label="待确认页面分类">
-          <button type="button" class="is-active" role="tab" aria-selected="true" data-bakemono-review-view="drafts">
-            <span>草稿</span><strong id="bakemono-memory-review-draft-count">0</strong>
-          </button>
-          <button type="button" role="tab" aria-selected="false" data-bakemono-review-view="tasks">
-            <span>任务</span><strong id="bakemono-memory-review-task-count">0</strong>
-          </button>
-          <button type="button" role="tab" aria-selected="false" data-bakemono-review-view="history">
-            <span>记录</span><strong id="bakemono-memory-review-history-count">0</strong>
-          </button>
-        </div>
+      <section class="bakemono-workbench-panel bk-sum bk-rev" data-bakemono-panel="drafts">
+        <nav class="bk-sum-levels" role="tablist" aria-label="待确认分类">
+          <button type="button" class="is-active" role="tab" aria-selected="true" data-bakemono-review-view="drafts"><span>草稿</span><b><span id="bakemono-memory-review-draft-count">0</span> 条</b></button>
+          <button type="button" role="tab" aria-selected="false" data-bakemono-review-view="tasks"><span>任务</span><b><span id="bakemono-memory-review-task-count">0</span> 项</b></button>
+          <button type="button" role="tab" aria-selected="false" data-bakemono-review-view="history"><span>记录</span><b><span id="bakemono-memory-review-history-count">0</span> 次</b></button>
+        </nav>
 
         <section class="bakemono-memory-review-view is-active" data-bakemono-review-panel="drafts" role="tabpanel">
           <div id="bakemono-rp-review" class="rp-core-ui" hidden></div>
-          <div class="bakemono-memory-review-section-head bakemono-memory-section-head">
-            <div>
-              <span class="bakemono-memory-next-kicker">等待决定</span>
-              <h3>先看内容，再保存</h3>
-            </div>
-            <span class="bakemono-memory-review-note">不会自动入库</span>
-          </div>
-          <div id="bakemono-memory-draft-list" class="bakemono-memory-draft-list"></div>
+          <div id="bakemono-memory-draft-list" class="bk-rev-drafts"></div>
         </section>
 
         <section class="bakemono-memory-review-view" data-bakemono-review-panel="tasks" role="tabpanel" hidden>
-          <div class="bakemono-memory-review-section-head bakemono-memory-section-head">
-            <div>
-              <span class="bakemono-memory-next-kicker">后台进度</span>
-              <h3>生成任务</h3>
-            </div>
-            <button class="bakemono-memory-review-head-action" type="button" data-bakemono-action="clear-queue">
-              <i class="fa-solid fa-broom"></i><span>清理完成</span>
-            </button>
-          </div>
-          <div id="bakemono-memory-task-list" class="bakemono-memory-task-list"></div>
+          <div id="bakemono-memory-task-list" class="bk-rev-tasks"></div>
+          <div class="bk-rev-foot"><button type="button" class="bk-sum-link" data-bakemono-action="clear-queue">清理已完成的任务</button></div>
         </section>
 
         <section class="bakemono-memory-review-view" data-bakemono-review-panel="history" role="tabpanel" hidden>
-          <div class="bakemono-memory-review-section-head bakemono-memory-section-head">
-            <div>
-              <span class="bakemono-memory-next-kicker">最近保存</span>
-              <h3>变更记录</h3>
+          <div class="bk-rev-head">
+            <div class="bk-rev-grow"><h3>最近保存</h3><span class="bk-sum-meta"><span id="bakemono-memory-history-latest">还没有保存过。</span></span></div>
+            <div class="bk-rev-links">
+              <button type="button" class="bk-sum-link" data-bakemono-action="undo">撤回上次保存</button>
+              <button type="button" class="bk-sum-link is-alert" data-bakemono-action="clear-history">清理记录</button>
             </div>
-            <span class="bakemono-memory-review-note">可撤回最近一次</span>
           </div>
-          <details class="bakemono-memory-review-maintenance bakemono-memory-console-disclosure">
-            <summary><span><i class="fa-solid fa-shield-halved"></i> 维护与恢复</span><small>撤回或清理记录</small></summary>
-            <div class="bakemono-memory-inline-actions">
-              <button class="menu_button" data-bakemono-action="undo">
-                <i class="fa-solid fa-rotate-left"></i><span>撤回上次保存</span>
-              </button>
-              <button class="menu_button danger_button" data-bakemono-action="clear-history">
-                <i class="fa-solid fa-broom"></i><span>清理保存记录</span>
-              </button>
-            </div>
-          </details>
-          <div id="bakemono-memory-history-list" class="bakemono-memory-history-list"></div>
+          <div id="bakemono-memory-history-list" class="bk-rev-history"></div>
         </section>
       </section>
 
@@ -2014,7 +1982,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.13.1 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.14.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">
