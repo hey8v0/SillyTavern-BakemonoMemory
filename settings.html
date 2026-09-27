@@ -914,86 +914,62 @@
         </section>
       </section>
 
-      <section class="bakemono-workbench-panel" data-bakemono-panel="automation">
-        <article class="bakemono-memory-automation-hero">
-          <div class="bakemono-memory-automation-runtime-line">
-            <span class="bakemono-memory-automation-runtime-dot"></span>
-            <small id="bakemono-memory-automation-runtime-label">自动总结未开启</small>
-            <span id="bakemono-memory-automation-mode-badge">提醒</span>
+      <section class="bakemono-workbench-panel bk-sum bk-auto bk-stage" data-bakemono-panel="automation">
+        <section class="bk-auto-status bk-stage-status" aria-live="polite">
+          <div class="bk-sum-kicker"><span>自动总结</span><span id="bakemono-memory-automation-mode-badge">已关闭</span></div>
+          <h3 id="bakemono-memory-automation-runtime-title">自动总结已关闭</h3>
+          <div class="bk-vec-meter bk-stage-meter" aria-hidden="true"><span id="bakemono-memory-automation-progress-bar"></span></div>
+          <div class="bk-sum-meta bk-stage-facts"><span id="bakemono-memory-automation-rule-status"></span><span id="bakemono-memory-automation-facts"></span></div>
+          <p id="bakemono-memory-automation-runtime-description" class="bk-auto-note"></p>
+          <div class="bk-sum-actions">
+            <button class="menu_button bk-auto-redo" type="button" data-bakemono-action="generate-stage"><span>现在就整理</span><small class="bk-tbl-cost">+1 次请求</small></button>
+            <button type="button" class="bk-sum-link" id="bakemono-memory-automation-next-action" hidden></button>
           </div>
-          <strong id="bakemono-memory-automation-runtime-title">等待开启自动规则</strong>
-          <p id="bakemono-memory-automation-runtime-description">开启后会根据未整理的摘要数量或字数判断何时生成阶段总结。</p>
-          <div class="bakemono-memory-automation-progress" aria-hidden="true"><span id="bakemono-memory-automation-progress-bar"></span></div>
-          <div class="bakemono-memory-automation-hero-actions">
-            <button type="button" class="menu_button" id="bakemono-memory-automation-next-action" hidden></button>
-            <button type="button" class="menu_button" data-bakemono-nav="settings">摘要方式</button>
-            <button class="menu_button" data-bakemono-tab="drafts">
-              <i class="fa-solid fa-inbox"></i><span>查看待确认</span>
-            </button>
-          </div>
-        </article>
+        </section>
 
-        <div class="bakemono-memory-section-head bakemono-memory-automation-section-head">
-          <div><span class="bakemono-memory-next-kicker">核心规则</span><h3>何时整理，整理到哪里</h3></div>
-          <span id="bakemono-memory-automation-rule-status">尚未启用</span>
-        </div>
-        <div class="bakemono-memory-automation-settings-list">
-          <label class="bakemono-memory-automation-setting-row">
-            <span><strong>启用自动总结</strong><small>达到阈值后按下方模式处理</small></span>
-            <input type="checkbox" id="bakemono-memory-auto-enabled">
-          </label>
-          <label class="bakemono-memory-automation-setting-row">
-            <span><strong>处理方式</strong><small>提醒、生成草稿或自动保存</small></span>
-            <select id="bakemono-memory-auto-mode" class="text_pole">
-              <option value="remind">仅提醒</option>
-              <option value="draft">自动生成草稿</option>
-              <option value="commit_hide">自动保存并隐藏已覆盖楼层</option>
-            </select>
-          </label>
-          <label class="bakemono-memory-automation-setting-row">
-            <span><strong>触发依据</strong><small>按未整理片段数或累计字数</small></span>
-            <select id="bakemono-memory-auto-trigger" class="text_pole">
-              <option value="floors">未总结片段数</option>
-              <option value="chars">未总结字数</option>
-            </select>
-          </label>
-          <label class="bakemono-memory-automation-setting-row" data-bakemono-auto-rule="floors">
-            <span><strong>片段触发间隔</strong><small id="bakemono-memory-automation-floor-hint">每 10 个未整理片段</small></span>
-            <input id="bakemono-memory-auto-floor-interval" class="text_pole" type="number" min="1" step="1">
-          </label>
-          <label class="bakemono-memory-automation-setting-row" data-bakemono-auto-rule="chars">
-            <span><strong>字数触发间隔</strong><small id="bakemono-memory-automation-char-hint">每 12000 字</small></span>
-            <input id="bakemono-memory-auto-char-interval" class="text_pole" type="number" min="100" step="100">
-          </label>
-          <label class="bakemono-memory-automation-setting-row">
-            <span><strong>自动隐藏时保留正文</strong><small id="bakemono-memory-automation-preserve-hint">最近 5 楼</small></span>
-            <input id="bakemono-memory-auto-hide-preserve-recent" class="text_pole" type="number" min="0" step="1">
-          </label>
-        </div>
+        <span class="bk-auto-label">什么时候整理</span>
+        <section class="bk-auto-ways bk-stage-rules">
+          <label class="bk-tbl-switch bk-auto-row"><span class="bk-tbl-switch-copy">自动整理成阶段总结<small>攒够了按下面的方式处理；关着时只能手动整理</small></span><input type="checkbox" id="bakemono-memory-auto-enabled" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
+          <div class="bk-vec-row bk-auto-row bk-stage-goal"><span>攒够多少再整理<small id="bakemono-memory-automation-goal-note">没整理的剧情摘要条数</small></span>
+            <span class="bk-stage-num">
+              <select id="bakemono-memory-auto-trigger" aria-label="按什么算">
+                <option value="floors">按条数</option>
+                <option value="chars">按字数</option>
+              </select>
+              <input id="bakemono-memory-auto-floor-interval" type="number" min="1" step="1" aria-label="攒够几条摘要" data-bakemono-auto-rule="floors">
+              <input id="bakemono-memory-auto-char-interval" type="number" min="100" step="100" aria-label="攒够多少字" data-bakemono-auto-rule="chars">
+              <span class="bk-stage-unit" id="bakemono-memory-automation-goal-unit">条</span>
+            </span>
+          </div>
+          <select id="bakemono-memory-auto-mode" hidden aria-hidden="true" tabindex="-1">
+            <option value="remind">只提醒</option>
+            <option value="draft">生成草稿等我确认</option>
+            <option value="commit_hide">直接保存并隐藏旧楼层</option>
+          </select>
+          <div id="bakemono-memory-automation-ways"></div>
+          <label class="bk-vec-row bk-auto-row" data-bk-stage-when="commit_hide"><span>隐藏时保留最近几楼<small>这几楼的原文一直留在上下文里</small></span><input id="bakemono-memory-auto-hide-preserve-recent" type="number" min="0" step="1"></label>
+        </section>
 
-        <details class="bakemono-memory-automation-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-box-archive"></i> 自动配置预设</span><small>切换、保存或删除</small></summary>
-          <div class="bakemono-memory-automation-disclosure-body">
-          <div class="bakemono-memory-preset-controls">
-            <label class="bakemono-memory-field">
-              <span>配置</span>
-              <select id="bakemono-memory-automation-preset-select" class="text_pole"></select>
-            </label>
-            <label class="bakemono-memory-field bakemono-memory-preset-name">
-              <span>名称</span>
-              <input id="bakemono-memory-automation-preset-name" class="text_pole" type="text" placeholder="我的自动总结配置">
-            </label>
-            <button class="menu_button" id="bakemono-memory-save-automation-preset">
-              <i class="fa-solid fa-floppy-disk"></i>
-              <span>另存为预设</span>
-            </button>
-            <button class="menu_button" id="bakemono-memory-delete-automation-preset">
-              <i class="fa-solid fa-trash"></i>
-              <span>删除</span>
-            </button>
-          </div>
-          </div>
-        </details>
+        <span class="bk-auto-label">最近整理</span>
+        <section id="bakemono-memory-automation-recent" class="bk-stage-recent"></section>
+
+        <section class="bk-tbl-settings bk-auto-settings" aria-label="自动总结设置">
+          <span class="bk-tbl-settings-label">设置</span>
+          <button type="button" class="bk-tbl-set bk-tbl-set-link bk-stage-link" data-bakemono-nav="generation"><span class="bk-tbl-set-copy">生成用的模型<small>阶段总结和补写都用这里的模型</small></span><span class="bk-vec-set-val" id="bakemono-memory-automation-model-label">酒馆主模型</span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></button>
+          <button type="button" class="bk-tbl-set bk-tbl-set-link bk-stage-link" data-bakemono-nav="prompts"><span class="bk-tbl-set-copy">阶段总结的提示词<small>怎么写一章，在“生成提示词”里改</small></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></button>
+          <details class="bk-tbl-set">
+            <summary><span class="bk-tbl-set-copy">预设<small>把这一页的设置存起来，换角色卡时切换</small></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+            <div class="bk-tbl-set-body">
+              <label class="bk-sum-field"><span>预设</span><select id="bakemono-memory-automation-preset-select"></select></label>
+              <label class="bk-sum-field"><span>预设名称</span><input id="bakemono-memory-automation-preset-name" type="text" placeholder="我的自动总结设置"></label>
+              <div class="bk-tbl-set-actions">
+                <button type="button" class="bk-sum-link" id="bakemono-memory-save-automation-preset">另存为预设</button>
+                <button type="button" class="bk-sum-link is-alert" id="bakemono-memory-delete-automation-preset">删除预设…</button>
+              </div>
+            </div>
+          </details>
+          <p class="bk-tbl-set-note">“直接保存并隐藏旧楼层”会先生成阶段总结，再自动保存，然后按上面的设置保留最近几楼。</p>
+        </section>
 
         <details class="bakemono-memory-automation-disclosure bakemono-memory-console-disclosure" data-bakemono-owned-section="generation">
           <summary><span><i class="fa-solid fa-network-wired"></i> 生成 API</span><small>酒馆主模型或自定义接口</small></summary>
@@ -1072,11 +1048,6 @@
             </label>
           </div>
         </details>
-
-        <div class="bakemono-memory-prompt-hint bakemono-memory-automation-safety-note">
-          <i class="fa-solid fa-shield-heart"></i>
-          <span>“自动保存并隐藏”会先生成阶段总结草稿，再自动写入长期记忆，并按这里的设置保留最近几楼。</span>
-        </div>
       </section>
 
       <section class="bakemono-workbench-panel" data-bakemono-panel="scan">
@@ -1642,7 +1613,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.19.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.20.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

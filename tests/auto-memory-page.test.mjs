@@ -47,3 +47,28 @@ test('the rewrite reply can carry this turn’s keywords on one line', () => {
     assert.deepEqual(payload.queries, ['莉娜把后门钥匙交给了谁']);
     assert.deepEqual(payload.keywords, ['莉娜', '后门钥匙', '渡鸦酒馆']);
 });
+
+test('自动总结 says how far the next chapter is and lists the latest chapters, drafts first', async () => {
+    const { createHubAutomationUi } = await import('../src/features/hub-automation-ui.js');
+    const texts = new Map(), nodes = new Map();
+    const query = selector => ({ text(value) { texts.set(selector, value); return this; }, css() { return this; }, toggleClass() { return this; },
+        prop() { return this; }, val: () => ({ '#bakemono-memory-auto-mode': 'draft', '#bakemono-memory-auto-trigger': 'floors' })[selector] });
+    const node = id => { if (!nodes.has(id)) nodes.set(id, { id, innerHTML: '', dataset: {}, hidden: false, remove() {} }); return nodes.get(id); };
+    const state = {
+        automation: { enabled: true, mode: 'draft', triggerType: 'floors', floorInterval: 10 },
+        stageSummaries: [{ hash: 's1', title: '雾港镇的雨夜', sourceMessageIds: [1, 60], createdAt: '2026-09-20T10:00:00Z' }],
+        drafts: [{ id: 'd1', kind: 'stage', title: '钟楼下的约定', sourceMessageIds: [151, 172], createdAt: '2026-09-27T10:00:00Z' }],
+    };
+    const targets = Array.from({ length: 7 }, (_, i) => ({ hash: `b${i}`, content: '摘要', messageId: 100 + i }));
+    const ui = createHubAutomationUi({ query, getState: () => state, documentRef: { getElementById: node, querySelectorAll: () => [] },
+        getStageMaterialOverview: () => ({ targets, issues: [], coveredCount: 0, excludedCount: 0 }), getCurrentFloorMemoryIndex: () => ({ records: [] }),
+        defaultAutomation: { mode: 'remind', triggerType: 'floors', floorInterval: 10, charInterval: 12000 }, describeSummary: block => ({ title: block.title }) });
+    ui.renderAutomationOverview();
+    assert.equal(texts.get('#bakemono-memory-automation-runtime-title'), '再攒 3 条摘要就整理成下一章');
+    assert.match(texts.get('#bakemono-memory-automation-rule-status'), /7 \/ 10/);
+    assert.equal(texts.get('#bakemono-memory-automation-mode-badge'), '生成草稿等我确认');
+    const recent = node('bakemono-memory-automation-recent').innerHTML;
+    assert.ok(recent.indexOf('钟楼下的约定') < recent.indexOf('雾港镇的雨夜'));
+    assert.match(recent, /第 151–172 楼/); assert.match(recent, /草稿等确认/); assert.match(recent, /data-bakemono-summary-focus="s1"/);
+    assert.match(node('bakemono-memory-automation-ways').innerHTML, /整理完怎么办[\s\S]*生成草稿等我确认/);
+});

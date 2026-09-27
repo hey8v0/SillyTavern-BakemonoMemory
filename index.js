@@ -1706,6 +1706,8 @@ const hubAutomationUi = createHubAutomationUi({
     getStageSourceModeLabel,
     defaultAutomation,
     defaultScanRules,
+    describeSummary,
+    escapeHtml,
 });
 const {
     renderAutomationOverview,
@@ -2354,6 +2356,7 @@ function bindSettingsEvents() {
     pageSettings.bind(document.getElementById('bakemono-workbench-root'));
     summarySourceWizard.bind(document.getElementById('bakemono-workbench-root'));
     turnSummaryUi.bind(document.getElementById('bakemono-workbench-root'));
+    hubAutomationUi.bindAutomation(document.getElementById('bakemono-workbench-root'));
     workbenchShellEvents.bind();
     bindArchiveEvents();
     reviewQueueEvents.bind();

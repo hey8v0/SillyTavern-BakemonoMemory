@@ -970,7 +970,8 @@ test('frequent prompt and floor-archive tools live directly in the settings cent
     assert.match(settingsSource, /data-bakemono-nav="maintenance">\s*<i class="fa-solid fa-shield-halved"><\/i>/);
     const settingsHub = settingsSource.slice(settingsSource.indexOf('data-bakemono-panel="settings-hub"'), settingsSource.indexOf('data-bakemono-panel="settings"'));
     assert.doesNotMatch(settingsHub, /<span>0\d<\/span>/, 'settings rows carry no decorative numbers');
-    assert.doesNotMatch(settingsSource, /data-bakemono-panel="generation"[\s\S]*?data-bakemono-nav="prompts"/);
+    const generationPanel = settingsSource.slice(settingsSource.indexOf('data-bakemono-panel="generation"'), settingsSource.indexOf('data-bakemono-panel="config"'));
+    assert.doesNotMatch(generationPanel, /data-bakemono-nav="prompts"/);
 });
 
 test('injection defaults mark their end and start at the front of chat history', () => {

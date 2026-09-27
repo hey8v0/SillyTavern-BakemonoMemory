@@ -3691,121 +3691,24 @@
 
 /* Vector recall and automation demo precision pass ------------------------ */
 
-.bakemono-memory-automation-section-head .bakemono-memory-next-kicker {
-  font-weight: 850;
-  letter-spacing: 0.15em;
-}
-
-.bakemono-memory-automation-hero {
-  position: relative;
-  display: grid;
-  gap: 7px;
-  margin-bottom: 14px;
-  padding: 18px;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 38%, var(--bk-line));
-  border-radius: 20px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, var(--bk-paper-raised)), var(--bk-paper-raised));
-  box-shadow: 0 10px 24px color-mix(in srgb, var(--bk-shadow) 14%, transparent);
-}
-
-.bakemono-memory-automation-runtime-line {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--bk-accent);
-}
-
-.bakemono-memory-automation-runtime-line small {
-  min-width: 0;
-  overflow: hidden;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bakemono-memory-automation-runtime-line > span:last-child,
-#bakemono-memory-automation-rule-status {
-  flex: 0 0 auto;
-  min-height: 23px;
-  display: inline-flex;
-  align-items: center;
-  margin-left: auto;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
-  color: var(--bk-accent);
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.bakemono-memory-automation-runtime-dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
-}
-
-.bakemono-memory-automation-hero.is-running .bakemono-memory-automation-runtime-dot {
-  background: var(--bk-accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
-}
-
-.bakemono-memory-automation-hero.is-ready .bakemono-memory-automation-runtime-dot {
-  background: color-mix(in srgb, #c48a3d 68%, var(--SmartThemeBodyColor));
-}
-
-.bakemono-memory-automation-hero > strong {
-  color: var(--SmartThemeBodyColor);
-  font-family: var(--bk-display);
-  font-size: 22px;
-  line-height: 1.25;
-}
-
-.bakemono-memory-automation-hero > p {
-  margin: 0;
-  color: var(--bk-ink-soft);
-  line-height: 1.65;
-}
-
-.bakemono-memory-automation-progress {
-  height: 5px;
-  margin: 4px 0 3px;
-}
-
-.bakemono-memory-automation-progress > span {
-  width: 0;
-  height: 100%;
-  display: block;
-  transition: width 180ms var(--bk-ease);
-}
-
-.bakemono-memory-automation-primary {
-  width: 100%;
-  min-height: 41px;
-  border-color: transparent !important;
-  border-radius: 12px;
-  background: var(--bk-accent) !important;
-  color: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, white 6%) !important;
-  font-weight: 850;
-}
 
 
 
 
 
-.bakemono-memory-automation-section-head {
-  margin: 0 2px 9px;
-}
 
-.bakemono-memory-automation-section-head h3 {
-  margin-top: 3px;
-  font-size: 18px;
-}
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3844,90 +3747,22 @@
   width: 100%;
 }
 
-.bakemono-memory-automation-hero-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 5px;
-}
 
-.bakemono-memory-automation-hero-actions .menu_button {
-  width: 100%;
-  min-height: 41px;
-  border-radius: 12px;
-  font-size: 9px;
-}
 
-.bakemono-memory-automation-settings-list {
-  display: grid;
-  margin-bottom: 12px;
-  border-block: 1px solid var(--bk-line);
-}
 
-.bakemono-memory-automation-setting-row {
-  min-width: 0;
-  min-height: 62px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(96px, 150px);
-  gap: 12px;
-  align-items: center;
-  padding: 9px 4px;
-}
 
-.bakemono-memory-automation-setting-row[hidden] {
-  display: none;
-}
 
-.bakemono-memory-automation-setting-row + .bakemono-memory-automation-setting-row {
-  border-top: 1px solid var(--bk-line);
-}
 
-.bakemono-memory-automation-setting-row > span {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
 
-.bakemono-memory-automation-setting-row strong {
-  color: var(--SmartThemeBodyColor);
-}
 
-.bakemono-memory-automation-setting-row small {
-  color: var(--bk-ink-soft);
-}
 
-.bakemono-memory-automation-setting-row > .text_pole {
-  width: 100%;
-  min-width: 0;
-  min-height: 34px;
-  margin: 0;
-  padding: 6px 8px;
-  border-radius: 10px;
-  font-size: 8px;
-}
 
-.bakemono-memory-automation-setting-row > input[type="checkbox"] {
-  width: 34px;
-  height: 18px;
-  justify-self: end;
-  accent-color: var(--SmartThemeQuoteColor);
-}
 
-.bakemono-memory-automation-safety-note {
-  margin: 11px 0 0;
-}
 
 @media (max-width: 430px) {
-  .bakemono-memory-automation-hero {
-    padding: 16px;
-  }
 
 
 
-  .bakemono-memory-automation-setting-row {
-    grid-template-columns: minmax(0, 1fr) minmax(88px, 124px);
-    gap: 9px;
-  }
 
   .bakemono-memory-automation-disclosure-body .bakemono-memory-mini-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -5163,8 +4998,7 @@
 
 .bakemono-workbench-root .bakemono-memory-field > span,
 .bakemono-workbench-root .bakemono-memory-editor > span,
-.bakemono-workbench-root .bakemono-memory-console-disclosure > summary > span,
-.bakemono-workbench-root .bakemono-memory-automation-setting-row strong {
+.bakemono-workbench-root .bakemono-memory-console-disclosure > summary > span {
   font-size: var(--bk-type-label) !important;
   line-height: 1.45;
 }
@@ -5173,7 +5007,6 @@
 .bakemono-workbench-root select,
 .bakemono-workbench-root textarea,
 .bakemono-workbench-root .bakemono-memory-prompt-hint,
-.bakemono-workbench-root .bakemono-memory-automation-hero > p,
 .bakemono-workbench-root .bakemono-memory-maintenance-safety-card p {
   font-size: var(--bk-type-copy) !important;
 }
@@ -5196,15 +5029,11 @@
   min-width: 0;
 }
 
-.bakemono-workbench-root .bakemono-memory-automation-primary,
-.bakemono-workbench-root .bakemono-memory-automation-hero-actions .menu_button,
 .bakemono-workbench-root .bakemono-memory-maintenance-grid .menu_button,
 .bakemono-workbench-root .bakemono-memory-maintenance-danger-grid .menu_button {
   font-size: var(--bk-type-copy) !important;
 }
 
-.bakemono-workbench-root .bakemono-memory-automation-runtime-line > span:last-child,
-.bakemono-workbench-root #bakemono-memory-automation-rule-status,
 .bakemono-workbench-root #bakemono-memory-maintenance-auto-count {
   font-size: var(--bk-type-meta) !important;
 }
@@ -5651,7 +5480,6 @@ details[open] > summary > .bakemono-memory-help-trigger {
 
 
   .bakemono-workbench-root .bakemono-memory-page-intro p,
-.bakemono-workbench-root .bakemono-memory-automation-hero > p,
 .bakemono-workbench-root .bakemono-memory-workflow-status-hero > p,
 .bakemono-workbench-root .bakemono-memory-scan-status-hero > p,
 .bakemono-workbench-root .bakemono-memory-injection-status-hero > p,
@@ -7649,13 +7477,13 @@ details[open] > summary > .bakemono-memory-help-trigger {
   box-shadow: 0 3px 12px color-mix(in srgb, var(--bk-shadow) 22%, transparent);
 }
 
-#bakemono-workbench-root :is(.bakemono-memory-automation-progress, .bakemono-memory-scene-progress) {
+#bakemono-workbench-root .bakemono-memory-scene-progress {
   overflow: hidden;
   border-radius: 999px;
   background: var(--bk-paper-soft);
 }
 
-#bakemono-workbench-root :is(.bakemono-memory-automation-progress, .bakemono-memory-scene-progress) > span {
+#bakemono-workbench-root .bakemono-memory-scene-progress > span {
   border-radius: inherit;
   background: linear-gradient(90deg, color-mix(in srgb, var(--bk-accent) 65%, var(--bk-paper)), var(--bk-accent));
 }
@@ -8932,7 +8760,7 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .bk-tbl-settings { margin-top: 28px; border-top: 1px solid var(--ns-rule-strong); }
 #bakemono-workbench-root .bk-tbl-settings-label { display: block; padding: 14px 0 4px; font: 500 10.5px/1.4 var(--ns-mono); letter-spacing: .16em; color: var(--ns-faint); }
 #bakemono-workbench-root .bk-tbl-set { display: block; margin: 0; padding: 0; border: 0; border-bottom: 1px solid var(--ns-rule); border-radius: 0; background: none; box-shadow: none; }
-#bakemono-workbench-root .bk-tbl-set > summary, #bakemono-workbench-root .bk-tbl-page .bk-tbl-set-link { display: flex !important; align-items: center; gap: 12px; width: 100% !important; min-height: 52px; padding: 12px 0 !important; list-style: none; color: var(--ns-text); cursor: pointer; }
+#bakemono-workbench-root .bk-tbl-set > summary, #bakemono-workbench-root :is(.bk-tbl-page, .bk-stage) .bk-tbl-set-link { display: flex !important; align-items: center; gap: 12px; width: 100% !important; min-height: 52px; padding: 12px 0 !important; list-style: none; color: var(--ns-text); cursor: pointer; }
 #bakemono-workbench-root .bk-tbl-set > summary::-webkit-details-marker { display: none; }
 #bakemono-workbench-root .bk-tbl-set-copy { flex: 1; min-width: 0; }
 #bakemono-workbench-root .bk-tbl-set-copy small { display: block; font-size: .84em; color: var(--ns-faint); }
@@ -9145,3 +8973,28 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .bk-auto-what b.is-done, #bakemono-workbench-root .bk-auto-steps b { color: var(--ns-c-done); }
 #bakemono-workbench-root .bk-auto-table { color: var(--ns-c-people); }
 #bakemono-workbench-root .bk-tbl-cell dt { color: var(--ns-c-people); }
+
+/* Automatic stage summaries (自动总结): how far the next chapter is, when to summarise, the latest chapters. Shares the
+   自动记忆 rows (.bk-auto) and the 表格 settings rows; links replace the model and prompt settings kept elsewhere. */
+#bakemono-workbench-root[data-active-tab="automation"] .bakemono-workbench-main { background: var(--bk-paper); }
+#bakemono-workbench-root .bk-stage-meter { margin-top: 10px; }
+#bakemono-workbench-root .bk-stage-meter > span { background: var(--ns-c-event); }
+#bakemono-workbench-root .bk-stage-facts { margin-top: 8px; }
+#bakemono-workbench-root .bk-stage-num { display: inline-flex; align-items: baseline; gap: 8px; }
+#bakemono-workbench-root .bk-auto .bk-stage-num select { width: auto; }
+#bakemono-workbench-root .bk-auto .bk-stage-num input[type="number"] { width: 5.5em; text-align: right; font: 14px var(--ns-mono); }
+#bakemono-workbench-root .bk-stage-unit { font-size: .88em; color: var(--ns-faint); }
+#bakemono-workbench-root .bk-stage .bk-stage-goal { grid-template-columns: minmax(0, 1fr) auto; }
+#bakemono-workbench-root .bk-auto .bk-stage-recent button.bk-stage-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; width: 100%; padding: 11px 0; border-bottom: 1px dashed var(--ns-rule); text-align: left; }
+#bakemono-workbench-root .bk-stage-row:last-child { border-bottom: 0; }
+#bakemono-workbench-root .bk-stage-row strong { display: block; font: 600 1.02em/1.45 var(--ns-serif); color: var(--ns-c-event); }
+#bakemono-workbench-root .bk-stage-row small { display: block; font: 12px/1.6 var(--ns-mono); color: var(--ns-faint); }
+#bakemono-workbench-root .bk-stage-state { font: 500 12px var(--ns-mono); color: var(--ns-c-done); white-space: nowrap; }
+#bakemono-workbench-root .bk-stage-state.is-draft { color: var(--ns-muted); }
+#bakemono-workbench-root .bk-stage-issues { margin-top: 8px; font-size: .92em; color: var(--ns-muted); }
+#bakemono-workbench-root .bk-stage-issues > summary { cursor: pointer; color: var(--ns-alert); }
+#bakemono-workbench-root .bk-stage-issues p { margin: 6px 0 0; }
+#bakemono-workbench-root .bk-stage .bk-tbl-set-link .bk-vec-set-val { margin-left: auto; }
+@media (max-width: 520px) {
+  #bakemono-workbench-root .bk-stage .bk-stage-goal { grid-template-columns: minmax(0, 1fr); }
+}
