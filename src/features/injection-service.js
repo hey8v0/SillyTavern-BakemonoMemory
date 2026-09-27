@@ -1,6 +1,7 @@
 import { isMemoryCurrent, storyTimeContext, refreshMemoryLinks, activeStoryCoverage } from '../memory/story-state.js';
 import { storyStateEditGuide } from './table-memory-model.js';
 import {resolveSummaryGraph} from '../memory/summary-provenance.js';
+import { isFirstReplyTurn, openingFloors, openingNote } from '../shared/opening.js';
 
 export function createInjectionService({
     ensureState,
@@ -87,7 +88,7 @@ export function createInjectionService({
         return {
             memory, diagnostic,
             sources,
-            rpMaintenance: rpContext?.maintenance ?? rpExtractionFlow?.prompt('inline', state) ?? '',
+            rpMaintenance: withOpeningNote(rpContext?.maintenance ?? rpExtractionFlow?.prompt('inline', state) ?? '', '剧情状态'),
             rpContext,
             inlineValues,
             stats: {
@@ -129,15 +130,25 @@ export function createInjectionService({
             .replaceAll('{{writableTables}}', formatSpecificTablesForPrompt(getWritableTables(state), { includeRows }));
     }
     
+    // On the first reply the 开场白 is still unrecorded; ask for it in the same reply instead of a request of its own.
+    function withOpeningNote(value, part, state = ensureState()) {
+        if (!value || !getChat || !isFirstReplyTurn(getChat())) return value;
+        if (part === '摘要') {
+            const floors = openingFloors(getChat());
+            if ((state.blocks || []).some(block => floors.includes(block.messageId) && block.sourceKind !== 'raw' && !block.isGeneratedSummary)) return value;
+        }
+        return value + '\n\n' + openingNote(part);
+    }
+
     function getInlinePromptValues(state) {
         const summaryValue = state.inlineGeneration?.summaryEnabled
-            ? renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state)
+            ? withOpeningNote(renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state), '摘要', state)
             : '';
         let tableValue = state.inlineGeneration?.tableEnabled
             ? renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state)
             : '';
         if (tableValue && !tableValue.includes(storyStateEditGuide)) tableValue += '\n\n' + [storyTimeContext(state), storyStateEditGuide].filter(Boolean).join('\n\n');
-        return { summaryValue, tableValue };
+        return { summaryValue, tableValue: withOpeningNote(tableValue, '表格', state) };
     }
 
     function syncInlineGenerationPrompts(state = ensureState(), parts = getInjectionMemoryParts(state)) {

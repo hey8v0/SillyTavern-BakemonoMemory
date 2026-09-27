@@ -42,7 +42,7 @@ export function createContentConfigurationEvents({
             const state = getState();
             const previewState = {
                 ...state,
-                generatedMemory: String(query('#bakemono-memory-source-content').val() || ''),
+                generatedMemory: String(state.generatedMemory || ''),
                 injection: {
                     ...state.injection,
                     template: String(query('#bakemono-memory-injection-template').val() || ''),
@@ -50,7 +50,7 @@ export function createContentConfigurationEvents({
             };
             const content = renderInjectionContent(previewState, { memory: previewState.generatedMemory });
             query('#bakemono-memory-injection-content').val(content);
-            query('#bakemono-memory-injection-char-count').text(`约 ${content.length.toLocaleString()} 字符`);
+            query('#bakemono-memory-injection-char-count').text(`${content.length.toLocaleString()} 字`);
         });
     }
 

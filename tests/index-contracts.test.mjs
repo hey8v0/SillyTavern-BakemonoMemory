@@ -151,12 +151,14 @@ test('settings center owns global preferences while feature settings stay with t
     // 楼层收纳 is its own page now, not a section moved in at startup.
     assert.doesNotMatch(settingsSource, /data-bakemono-owned-section="archive"/);
     assert.match(settingsSource, /data-bakemono-panel="archive"[\s\S]*?id="bakemono-memory-auto-hide-enabled"/);
-    assert.match(settingsSource, /data-bakemono-owned-section="generation"/);
+    // 生成模型 is its own page now, not the 生成 API block moved in from 自动总结.
+    assert.doesNotMatch(settingsSource, /data-bakemono-owned-section="generation"/);
+    assert.match(settingsSource, /data-bakemono-panel="generation"[\s\S]*?name="bakemono-memory-api-provider" id="bakemono-memory-api-provider-custom"/);
     assert.match(settingsSource, /data-bakemono-owned-section="config"/);
     assert.match(source, /organizeWorkbenchOwnedSections\(getSummaryGenerationMode\(\)\)/);
     assert.match(workbenchLayoutSource, /export function organizeWorkbenchOwnedSections\(/);
     assert.match(workbenchLayoutSource, /\['batch', 'bakemono-memory-batch-summary-slot'\]/);
-    assert.match(workbenchLayoutSource, /\['generation', 'bakemono-memory-generation-settings-slot'\]/);
+    assert.doesNotMatch(workbenchLayoutSource, /bakemono-memory-generation-settings-slot/);
     assert.match(workbenchLayoutSource, /\['config', 'bakemono-memory-config-settings-slot'\]/);
     assert.doesNotMatch(settingsSource, /id="bakemono-memory-undo"|id="bakemono-memory-hide"|id="bakemono-memory-restore"/);
     assert.doesNotMatch(settingsSource, />专家设置</);
@@ -340,8 +342,8 @@ test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
 });
 
 test('expanded disclosures expose anchored help and important operations expose live feedback', () => {
-    // The 表格, 向量记忆 and 自动记忆 pages show their explanations as plain notes in their settings lists instead of help buttons.
-    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 4);
+    // The 表格, 向量记忆, 自动记忆 and 生成提示词 pages show their explanations as plain notes in their settings lists instead of help buttons.
+    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 3);
     assert.match(settingsSource, /class="bakemono-memory-help-content"/);
     assert.match(source, /import \{ createHelpPopover \} from '\.\/src\/ui\/help-popover\.js';/);
     assert.match(source, /const helpPopover = createHelpPopover\(\)/);
@@ -963,7 +965,7 @@ test('frequent prompt and floor-archive tools live directly in the settings cent
     assert.match(settingsSource, /id="bakemono-memory-archive-reel"/);
     assert.match(workbenchLayoutSource, /archive: \{ target: 'settings-hub', label: '返回设置中心' \}/);
     assert.match(workbenchLayoutSource, /prompts: \{ target: 'settings-hub', label: '返回设置中心' \}/);
-    assert.match(workbenchLayoutSource, /\['config', 'generation', 'archive'\]\.includes\(sectionName\)/);
+    assert.match(workbenchLayoutSource, /\['config', 'archive'\]\.includes\(sectionName\)/);
     assert.match(settingsSource, /data-bakemono-nav="maintenance"[^>]*><span class="bk-hub-glyph">/);
     const settingsHub = settingsSource.slice(settingsSource.indexOf('data-bakemono-panel="settings-hub"'), settingsSource.indexOf('data-bakemono-panel="settings"'));
     assert.doesNotMatch(settingsHub, /<span>0\d<\/span>/, 'settings rows carry no decorative numbers');

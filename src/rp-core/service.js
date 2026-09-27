@@ -9,6 +9,7 @@ import { locateEvidence, suggestEvidenceRepair, sourceStamp } from './source.js'
 import { deriveTimeViews } from './time-views.js';
 import { missingReferences } from './references.js';
 import { prepareReferenceRepair } from './reference-repair.js';
+import { openingFloors } from '../shared/opening.js';
 
 export function createRpCoreService({ getState, getChat, saveState, saveChat, makeSourceId, getChatIdentity = () => getState().chatIdentity || getState().chatId || '' }) {
     const transactions = createRpTransactions({ getState, saveState, saveChat });
@@ -173,6 +174,19 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         const next = structuredClone(core); next.ruleVersion = 3;
         appendRecord(next, event, { floor: lastFloor() });
         await transactions.commit(state, expectedRevision, next);
+        return view(state);
+    }
+    // Duplicates (夏尔 / 夏尔·凡多姆海恩) are folded into one person; the ledger keeps the merge, so it can be undone like any change.
+    async function mergePeople(fromId, intoId, { expectedRevision = getState().rpCore?.revision } = {}) {
+        const state = getState(), core = state.rpCore;
+        assertLedgerVersion(core);
+        if (core.revision !== expectedRevision) throw new Error('状态已变化，请重新打开');
+        const event = { track: 'facts', action: 'person_merged', ruleVersion: 3, protocolVersion: 2,
+            data: { id: fromId, into: intoId }, origin: { kind: 'user', intent: 'correction' } };
+        applyDomainFact(view(state).projection, event);
+        const next = structuredClone(core); next.ruleVersion = 3;
+        appendRecord(next, event, { floor: lastFloor() });
+        await transactions.commit(state, core.revision, next);
         return view(state);
     }
     async function editTemporary(personId, stateId, values, { expectedRevision, end = false } = {}) {
@@ -359,15 +373,15 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
     function progress(state = getState()) {
         const core = state.rpCore;
         if (!core) return null;
-        const sources = currentChatSources(getChat(), state), missing = [];
+        const sources = currentChatSources(getChat(), state), missing = [], opening = openingFloors(getChat());
         let latest = null;
         getChat().forEach((message, floor) => {
-            if (!message || message.is_user || message.is_system || floor < core.baseline.floor) return;
+            if (!message || message.is_user || message.is_system || floor < core.baseline.floor || opening.includes(floor)) return;
             const source = readChatSource(message, state), key = source && source.messageId + '|' + source.variantId;
             const processed = key && sources.get(key) && core.batches.some(batch => !batch.superseded && batch.sourceKey === key && batch.sourceStamp === sourceStamp(source));
             if (processed) latest = floor; else missing.push(floor);
         });
-        return { start: core.baseline.floor, latest, missingCount: missing.length, missingFrom: missing[0], missingTo: missing.at(-1) };
+        return { start: core.baseline.floor, latest, missingCount: missing.length, missingFrom: missing[0], missingTo: missing.at(-1), opening };
     }
-    return { enable, migrate, backup, validateRestore, restore, clear, progress, ingest, editEntity, editTemporary, lifecycle, editInformation, reconcilePending, review, previewReview, previewEvidenceRepair, evidenceChoices, evidenceSuggestion, referenceIssues, previewReferenceRepair, configure, setExtractionJob, view, memoryView };
+    return { enable, migrate, backup, validateRestore, restore, clear, progress, ingest, editEntity, mergePeople, editTemporary, lifecycle, editInformation, reconcilePending, review, previewReview, previewEvidenceRepair, evidenceChoices, evidenceSuggestion, referenceIssues, previewReferenceRepair, configure, setExtractionJob, view, memoryView };
 }

@@ -28,6 +28,21 @@ export function messageRevision(message) {
     return getHash(`${message?.mes || ''}|${message?.swipe_id ?? ''}|${!!message?.is_user}`);
 }
 
+// Hashing every floor is the slow part of a source check, and it runs several times per click on long chats.
+// Remember each message's hashes until its text, swipe, role or the excluded tags change.
+const hashCache = new WeakMap();
+function messageHashes(message, excludes, excludeKey) {
+    const hit = message && typeof message === 'object' ? hashCache.get(message) : null;
+    if (hit && hit.mes === message.mes && hit.swipe === message.swipe_id && hit.user === !!message.is_user
+        && hit.date === message.send_date && hit.name === message.name && hit.excludeKey === excludeKey) return hit;
+    const entry = { mes: message?.mes, swipe: message?.swipe_id, user: !!message?.is_user, date: message?.send_date, name: message?.name, excludeKey,
+        revision: messageRevision(message),
+        memoryRevision: messageRevision({ ...message, mes: stripConfiguredTags(message?.mes || '', excludes).trim() }),
+        anchor: getHash(JSON.stringify([message?.send_date || '', message?.name || '', !!message?.is_user])) };
+    if (message && typeof message === 'object') hashCache.set(message, entry);
+    return entry;
+}
+
 function captureSources(previous = [], chat = [], state = {}) {
     const used = new Set();
     const exact = new Map(), anchors = new Map();
@@ -37,11 +52,10 @@ function captureSources(previous = [], chat = [], state = {}) {
         if (!anchors.has(item.anchor)) anchors.set(item.anchor, []);
         exact.get(key).push(item); anchors.get(item.anchor).push(item);
     }
+    const excludes = [...new Set([...parseList(state.scanRules?.excludeTags), ...parseList(state.vectorMemory?.excludeTags), 'script', 'style'])];
+    const excludeKey = excludes.join('|');
     const sources = chat.map((message, floor) => {
-        const revision = messageRevision(message);
-        const memoryRevision = messageRevision({ ...message, mes: stripConfiguredTags(message?.mes || '',
-            [...new Set([...parseList(state.scanRules?.excludeTags), ...parseList(state.vectorMemory?.excludeTags), 'script', 'style'])]).trim() });
-        const anchor = getHash(JSON.stringify([message?.send_date || '', message?.name || '', !!message?.is_user]));
+        const { revision, memoryRevision, anchor } = messageHashes(message, excludes, excludeKey);
         let match = exact.get(`${anchor}:${revision}`)?.find(item => !used.has(item.id));
         if (!match) {
             const candidates = (anchors.get(anchor) || []).filter(item => !used.has(item.id));

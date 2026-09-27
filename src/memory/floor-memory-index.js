@@ -1,5 +1,6 @@
 import { getHash } from '../shared/text.js';
 import { getSummaryStatus, resolveSummaryGraph, summarySourceFloors } from './summary-provenance.js';
+import { openingFloors } from '../shared/opening.js';
 
 function finiteIds(values = []) {
     return [...new Set((Array.isArray(values) ? values : [values])
@@ -114,6 +115,21 @@ export function buildFloorMemoryIndex({ messages = [], state = {} } = {}) {
             floor.vectorState = state.vectorMemory?.dirty ? 'pending' : 'indexed';
             floor.vectorRecordCount += 1;
         });
+    }
+
+    // 开场白 without a summary of its own is recorded with the first reply, so it is never a gap.
+    const opening = openingFloors(Array.isArray(messages) ? messages : []);
+    const firstReply = [...floors.values()].filter(floor => !opening.includes(floor.id) && floor.id > (opening.at(-1) ?? -1))
+        .sort((a, b) => a.id - b.id)[0];
+    for (const id of opening) {
+        const floor = floors.get(id);
+        if (!floor || floor.summaryState !== 'missing') continue;
+        if (firstReply && firstReply.summaryState !== 'missing') {
+            floor.summaryState = firstReply.summaryState;
+            addUnique(floor.summarySources, '随第一轮记下');
+        } else {
+            floors.delete(id);
+        }
     }
 
     const records = [...floors.values()].sort((a, b) => a.id - b.id);

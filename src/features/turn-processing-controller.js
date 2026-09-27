@@ -1,5 +1,6 @@
 import { storyTimeContext } from '../memory/story-state.js';
 import { stripRpProtocol } from '../rp-core/extraction-flow.js';
+import { firstUserFloor, openingFloors } from '../shared/opening.js';
 
 export function createTurnProcessingController({
     getContext,
@@ -110,6 +111,23 @@ export function createTurnProcessingController({
             return [];
         }
         const blocks = [];
+        // First turn: the 开场白 before the first user message was never recorded, so it goes into this request.
+        const sourceChat = getContext().chat || getChat() || [];
+        if (turn.userMessage && turn.userMessage.messageId === firstUserFloor(sourceChat)) {
+            for (const floor of openingFloors(sourceChat)) {
+                if ((state.blocks || []).some(block => block.messageId === floor && block.sourceKind !== 'raw' && !block.isGeneratedSummary)) continue;
+                const message = sourceChat[floor];
+                blocks.push({
+                    hash: getHash(`turn-opening|${floor}|${message.mes || ''}`),
+                    type: blockTypes.STORY,
+                    messageId: floor,
+                    blockIndex: 0,
+                    title: `开场白 ${floor}`,
+                    content: stripExcludedTurnContent(message.mes || '', state, { applyIncludeTags: true }),
+                    sourceFilter:'turn-v1',sourceExcludeTags:getTurnExcludeTags(state),sourceIncludeTags:parseList(state.turnSummary?.includeTags || ''),
+                });
+            }
+        }
         if (state.turnSummary.includeUserMessage !== false && turn.userMessage) {
             blocks.push({
                 hash: getHash(`turn-user|${turn.userMessage.messageId}|${turn.userMessage.mes || ''}`),

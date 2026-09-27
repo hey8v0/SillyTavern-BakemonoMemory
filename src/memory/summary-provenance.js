@@ -7,8 +7,12 @@ const kindKeys = {story:'storySummaries',stage:'stageSummaries',epic:'epicSummar
 export const newSummaryId = () => 'summary-' + (globalThis.crypto?.randomUUID?.() || Date.now()+'-'+Math.random().toString(36).slice(2));
 export const summaryKey = item => item?.id || item?.hash;
 export const inputSignature = snapshot => getHash(JSON.stringify(snapshot || null));
-export function registerSummaryChat(state, chat) { chats.set(state, chat); cache.delete(state); }
+// The graph's signature already covers every source revision, so the same chat array keeps its cached graph.
+export function registerSummaryChat(state, chat) { if (chats.get(state) === chat) return; chats.set(state, chat); cache.delete(state); }
 export function invalidateSummaryGraph(state) { cache.delete(state); }
+// While held, the graph is reused without re-reading every summary (for a burst of checks that change nothing).
+const held = new WeakSet();
+export function holdSummaryGraph(state, hold) { if (hold) held.add(state); else held.delete(state); }
 export function summaryNodes(state) {
     const nodes = Object.entries(kindKeys).flatMap(([type,key]) => (state[key] || []).map(item => ({...item,type,saved:true})));
     for (const block of state.blocks || []) {
@@ -47,6 +51,7 @@ function checkSource(state, input) {
     return failure('source_changed',refFloor(input)+(tries.every(t => t.countChanged) ? '摘要标签数量变化' : '的实际输入版本变化'));
 }
 export function resolveSummaryGraph(state) {
+    if (held.has(state) && cache.has(state)) return cache.get(state);
     const nodes = summaryNodes(state);
     const signature = getHash(JSON.stringify([nodes,state.chronicle?.sources,state.chronicle?.links,currentExcludes(state)]));
     if (cache.get(state)?.signature === signature) return cache.get(state);
@@ -129,6 +134,12 @@ export function resolveSummaryGraph(state) {
         return failure('source_changed',refFloor(ref)+'的原输入版本变化');
     }
     nodes.forEach(check);
+    const sourceById = new Map((state.chronicle?.sources || []).map(source => [source.id, source]));
+    const scannedByFloor = new Map();
+    for (const node of nodes) if (!node.saved) {
+        if (!scannedByFloor.has(node.messageId)) scannedByFloor.set(node.messageId, []);
+        scannedByFloor.get(node.messageId).push(node);
+    }
     const coveredBy = new Map(), coveredStoryHashes=new Set(), coveredStageHashes=new Set(), coveredEpicHashes=new Set();
     const cover = (parent,child) => {
         if (parent.key === child.key || !result.get(parent.key)?.valid || !result.get(child.key)?.valid) return;
@@ -148,8 +159,8 @@ export function resolveSummaryGraph(state) {
         }
         // A floor shift can change scan hashes, but only the same identified source and consumed block match.
         for(const input of parent.provenance?.inputs || []) if(input.kind==='tag'||input.kind==='body'){
-            const source=state.chronicle?.sources?.find(s=>s.id===input.sourceId);
-            for(const child of nodes) if(!child.saved && child.messageId===source?.floor && getHash(child.content||'')===input.revision)cover(parent,child);
+            const source=sourceById.get(input.sourceId);
+            for(const child of scannedByFloor.get(source?.floor) || []) if(getHash(child.content||'')===input.revision)cover(parent,child);
         }
     }
     const graph = {signature,nodes,byKey,byHash,result,edges,coveredBy,coveredStoryHashes,coveredStageHashes,coveredEpicHashes};

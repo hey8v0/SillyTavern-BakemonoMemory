@@ -32,6 +32,13 @@ export function createSummaryTaskQueue({
     let activeState = null;
     const retrying = new Set();
     const cancelledQueueTaskIds = new Set();
+    let savePending = false;
+    function saveSoon() {
+        if (savePending) return;
+        savePending = true;
+        queueMicrotask(() => { savePending = false; saveState(); });
+    }
+
     function enqueueSummaryTask({ kind, prompt, systemPrompt, sourceHashes = [], sourceStageHashes = [], sourceMessageIds = [], trigger = 'manual', label = '', metadata = {}, autoStart = true, silent = false }) {
         const state = ensureState();
         const task = {
@@ -52,7 +59,9 @@ export function createSummaryTaskQueue({
         };
         task.metadata = { ...metadata, sourceFingerprint: getTaskSourceSignature(task) };
         state.taskQueue.push(task);
-        saveState();
+        // Batches queue several tasks in one go; one save after the loop is enough.
+        if (silent && !autoStart) saveSoon();
+        else saveState();
         if (!silent) {
             renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '任务已加入队列。');
         }

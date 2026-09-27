@@ -12,6 +12,9 @@ test('upper summary material selection can explicitly recompress epic despite re
     assert.equal(selectEpicSourcePool(pools, 'stage'), pools.stage);
     assert.deepEqual(selectEpicSourcePool({...pools, epic:[]}, 'epic'), []);
     assert.equal(selectEpicSourcePool(pools), pools.stage);
+    // Story summaries are 阶段总结 material, never 多次总结 material.
+    assert.equal(selectEpicSourcePool(pools, 'story'), pools.stage);
+    assert.deepEqual(selectEpicSourcePool({ stage: [], epic: [], story: [{hash:'raw'}] }), []);
 });
 import { createSummaryTaskQueue } from '../src/features/summary-task-queue.js';
 import { renderGenerationPrompt } from '../src/shared/prompt-utils.js';

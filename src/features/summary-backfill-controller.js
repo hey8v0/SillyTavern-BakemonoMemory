@@ -323,6 +323,7 @@ export function createSummaryBackfillController({
 
     async function generateMissingSummaryQueue(options = {}) {
         if (getIsBusy()) {
+            toastr?.info?.('上一个任务还在进行，完成后再试。');
             return;
         }
 
@@ -378,6 +379,7 @@ export function createSummaryBackfillController({
 
     async function generateBackfillQueue(options = {}) {
         if (getIsBusy()) {
+            toastr?.info?.('上一个任务还在进行，完成后再试。');
             return;
         }
 

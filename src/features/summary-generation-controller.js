@@ -4,9 +4,10 @@ import { inspectSummaryMaterials } from '../summary/material-quality.js';
 import { stageAutomationStatus } from '../summary/automation-status.js';
 export { inspectSummaryMaterials } from '../summary/material-quality.js';
 
+// 多次总结 only re-summarises 阶段总结 or earlier 多次总结; story summaries go through 阶段总结 first.
 export function selectEpicSourcePool(pools, mode = 'auto') {
-    if (['stage', 'epic', 'story'].includes(mode)) return pools[mode] || [];
-    return pools.stage?.length ? pools.stage : pools.epic?.length ? pools.epic : pools.story || [];
+    if (['stage', 'epic'].includes(mode)) return pools[mode] || [];
+    return pools.stage?.length ? pools.stage : pools.epic || [];
 }
 
 function validateSummaryMaterials(blocks) {
@@ -62,6 +63,7 @@ export function createSummaryGenerationController({
     confirmDanger,
     confirm,
 }) {
+    const checkOnce = fn => summarySources?.once ? summarySources.once(fn) : fn();
     function filterCovered(blocks, config = {}) {
         const state=getState(), graph=resolveSummaryGraph(state);
         return blocks.filter(block => {
@@ -129,6 +131,7 @@ export function createSummaryGenerationController({
 
     async function generateStageDraft(options = {}) {
         if (getIsBusy()) {
+            toastr?.info?.('上一个任务还在进行，完成后再试。');
             return;
         }
 
@@ -219,6 +222,7 @@ export function createSummaryGenerationController({
 
     async function generateStageBatchTasks(options = {}) {
         if (getIsBusy()) {
+            toastr?.info?.('上一个任务还在进行，完成后再试。');
             return;
         }
 
@@ -270,31 +274,33 @@ export function createSummaryGenerationController({
             return;
         }
 
-        batches.forEach((targets, index) => {
-            const prompt = buildStageUserPrompt(targets);
-            const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
-            enqueueSummaryTask({
-                kind: blockTypes.STAGE,
-                label: `阶段总结 第 ${index + 1}/${batches.length} 批 · ${targets.length} 个片段`,
-                prompt,
-                systemPrompt: buildStageSystemPrompt(),
-                sourceHashes: targets.map(block => block.hash),
-                sourceMessageIds,
-                trigger: 'batch_stage',
-                metadata: {
-                    inputSnapshot: summarySources?.capture(targets),
-                    sourceRange: formatSourceRange(sourceMessageIds),
-                    sourceStart: getSourceStart(sourceMessageIds),
-                    sourceEnd: getSourceEnd(sourceMessageIds),
-                    sourceSortKey: getSourceStart(sourceMessageIds),
-                    sourceMode: getStageSourceMode(),
-                    batchIndex: index + 1,
-                    batchTotal: batches.length,
-                    selectionLabel: `批量阶段总结：第 ${index + 1}/${batches.length} 批，${targets.length}/${allTargets.length} 个`,
-                },
-                autoStart: false,
-                silent: true,
-            });
+        checkOnce(() => {
+            batches.forEach((targets, index) => {
+                const prompt = buildStageUserPrompt(targets);
+                const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
+                enqueueSummaryTask({
+                    kind: blockTypes.STAGE,
+                    label: `阶段总结 第 ${index + 1}/${batches.length} 批 · ${targets.length} 个片段`,
+                    prompt,
+                    systemPrompt: buildStageSystemPrompt(),
+                    sourceHashes: targets.map(block => block.hash),
+                    sourceMessageIds,
+                    trigger: 'batch_stage',
+                    metadata: {
+                        inputSnapshot: summarySources?.capture(targets),
+                        sourceRange: formatSourceRange(sourceMessageIds),
+                        sourceStart: getSourceStart(sourceMessageIds),
+                        sourceEnd: getSourceEnd(sourceMessageIds),
+                        sourceSortKey: getSourceStart(sourceMessageIds),
+                        sourceMode: getStageSourceMode(),
+                        batchIndex: index + 1,
+                        batchTotal: batches.length,
+                        selectionLabel: `批量阶段总结：第 ${index + 1}/${batches.length} 批，${targets.length}/${allTargets.length} 个`,
+                    },
+                    autoStart: false,
+                    silent: true,
+                });
+        });
         });
 
         renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `已加入 ${batches.length} 个阶段总结批次任务。`);
@@ -304,6 +310,7 @@ export function createSummaryGenerationController({
 
     async function generateEpicDraft(options = {}) {
         if (getIsBusy()) {
+            toastr?.info?.('上一个任务还在进行，完成后再试。');
             return;
         }
 
@@ -311,8 +318,7 @@ export function createSummaryGenerationController({
         const state = getState();
         const allStageTargets = getUnsummarizedStageBlocks({includeCovered:!options.automatic});
         const allMultiTargets = getUnsummarizedMultiSummaryBlocks({includeCovered:!options.automatic});
-        const allStoryFallback = getStoryMaterialBlocks();
-        if (!allStageTargets.length && !allMultiTargets.length && !allStoryFallback.length) {
+        if (!allStageTargets.length && !allMultiTargets.length) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有可用于生成多次总结的内容。');
             toastr.info('没有可用于生成多次总结的内容。');
             return;
@@ -320,7 +326,7 @@ export function createSummaryGenerationController({
         let targetConfig = state.generationTargets.epic;
         if (!options.automatic) {
             readGenerationTargetSettings();
-            targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length || allStoryFallback.length, { sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length, story: allStoryFallback.length } });
+            targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length, { sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length } });
             if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
             if (!targetConfig) {
                 renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消多次总结生成。');
@@ -328,7 +334,7 @@ export function createSummaryGenerationController({
             }
             if (targetConfig.batch) return generateEpicBatchTasks({ targetConfig });
         }
-        const pool = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets, story: allStoryFallback }, targetConfig.sourceMode);
+        const pool = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets }, targetConfig.sourceMode);
         const targets = selectGenerationTargets(filterCovered(pool,options.automatic ? {} : targetConfig), targetConfig);
         const nextLevel = getNextMultiSummaryLevel(targets);
         const sourcePoolSize = pool.length;
@@ -345,7 +351,7 @@ export function createSummaryGenerationController({
             const confirmed = confirm([
                 `即将生成【${getMultiSummaryLabel(nextLevel)}】草稿。`,
                 '',
-                `本次材料：${pool === allStageTargets ? '阶段总结 → 多次总结' : pool === allMultiTargets ? '已有多次总结 → 继续压缩' : '普通摘要 → 多次总结'}，${targets.length}/${sourcePoolSize} 个`,
+                `本次材料：${pool === allStageTargets ? '阶段总结 → 多次总结' : '已有多次总结 → 继续压缩'}，${targets.length}/${sourcePoolSize} 个`,
                 `当前范围：${getTargetSelectionLabel('epic', targets.length, sourcePoolSize)}`,
                 getSummaryMaterialPreview(targets),
                 `上次多次总结：${latestEpicAt ? new Date(latestEpicAt).toLocaleString() : '尚未生成'}`,
@@ -383,6 +389,7 @@ export function createSummaryGenerationController({
 
     async function generateEpicBatchTasks(options = {}) {
         if (getIsBusy()) {
+            toastr?.info?.('上一个任务还在进行，完成后再试。');
             return;
         }
 
@@ -391,15 +398,14 @@ export function createSummaryGenerationController({
         readGenerationTargetSettings();
         const allStageTargets = getUnsummarizedStageBlocks({includeCovered:true});
         const allMultiTargets = getUnsummarizedMultiSummaryBlocks({includeCovered:true});
-        const allStoryFallback = getStoryMaterialBlocks();
-        let sourceBlocks = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets, story: allStoryFallback });
+        let sourceBlocks = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets });
         if (!sourceBlocks.length) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '没有可用于生成多次总结的内容。');
             toastr.info('没有可用于生成多次总结的内容。');
             return;
         }
 
-        const targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', sourceBlocks.length, { batch: true, sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length, story: allStoryFallback.length } });
+        const targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', sourceBlocks.length, { batch: true, sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length } });
         if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
         if (!targetConfig) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量多次总结。');
@@ -407,7 +413,7 @@ export function createSummaryGenerationController({
         }
         if (!targetConfig.batch) return generateEpicDraft({ targetConfig });
 
-        sourceBlocks = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets, story: allStoryFallback }, targetConfig.sourceMode);
+        sourceBlocks = selectEpicSourcePool({ stage: allStageTargets, epic: allMultiTargets }, targetConfig.sourceMode);
         const config = targetConfig || state.generationTargets.epic || defaultGenerationTargets.epic;
         const batches = partitionGenerationTargets(filterCovered(sourceBlocks,config), 'epic', config);
         if (!batches.length) {
@@ -435,33 +441,35 @@ export function createSummaryGenerationController({
             return;
         }
 
-        batches.forEach((targets, index) => {
-            const nextLevel = getNextMultiSummaryLevel(targets);
-            const prompt = buildEpicUserPrompt(targets);
-            const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
-            enqueueSummaryTask({
-                kind: blockTypes.EPIC,
-                label: `${getMultiSummaryLabel(nextLevel)} 第 ${index + 1}/${batches.length} 批 · ${targets.length} 个片段`,
-                prompt,
-                systemPrompt: buildEpicSystemPrompt(),
-                sourceHashes: targets.map(block => block.hash),
-                sourceStageHashes: targets.filter(block => block.type === blockTypes.STAGE || block.type === blockTypes.EPIC).map(block => block.hash),
-                sourceMessageIds,
-                trigger: 'batch_epic',
-                metadata: {
-                    inputSnapshot: summarySources?.capture(targets),
-                    sourceRange: formatSourceRange(sourceMessageIds),
-                    sourceStart: getSourceStart(sourceMessageIds),
-                    sourceEnd: getSourceEnd(sourceMessageIds),
-                    sourceSortKey: getSourceStart(sourceMessageIds),
-                    level: nextLevel,
-                    batchIndex: index + 1,
-                    batchTotal: batches.length,
-                    selectionLabel: `批量多次总结：第 ${index + 1}/${batches.length} 批，${targets.length}/${sourceBlocks.length} 个`,
-                },
-                autoStart: false,
-                silent: true,
-            });
+        checkOnce(() => {
+            batches.forEach((targets, index) => {
+                const nextLevel = getNextMultiSummaryLevel(targets);
+                const prompt = buildEpicUserPrompt(targets);
+                const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
+                enqueueSummaryTask({
+                    kind: blockTypes.EPIC,
+                    label: `${getMultiSummaryLabel(nextLevel)} 第 ${index + 1}/${batches.length} 批 · ${targets.length} 个片段`,
+                    prompt,
+                    systemPrompt: buildEpicSystemPrompt(),
+                    sourceHashes: targets.map(block => block.hash),
+                    sourceStageHashes: targets.filter(block => block.type === blockTypes.STAGE || block.type === blockTypes.EPIC).map(block => block.hash),
+                    sourceMessageIds,
+                    trigger: 'batch_epic',
+                    metadata: {
+                        inputSnapshot: summarySources?.capture(targets),
+                        sourceRange: formatSourceRange(sourceMessageIds),
+                        sourceStart: getSourceStart(sourceMessageIds),
+                        sourceEnd: getSourceEnd(sourceMessageIds),
+                        sourceSortKey: getSourceStart(sourceMessageIds),
+                        level: nextLevel,
+                        batchIndex: index + 1,
+                        batchTotal: batches.length,
+                        selectionLabel: `批量多次总结：第 ${index + 1}/${batches.length} 批，${targets.length}/${sourceBlocks.length} 个`,
+                    },
+                    autoStart: false,
+                    silent: true,
+                });
+        });
         });
 
         renderWorkbenchScope(workbenchRenderScopes.SUMMARY, `已加入 ${batches.length} 个多次总结批次任务。`);

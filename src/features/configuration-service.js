@@ -69,7 +69,8 @@ export function createConfigurationService({
     }
 
     function readCustomApiFieldsFromUi(state = getState()) {
-        if (!query('#bakemono-memory-api-provider').length) {
+        const provider = query('input[name="bakemono-memory-api-provider"]');
+        if (!provider.length) {
             return state;
         }
         state.automation = state.automation && typeof state.automation === 'object'
@@ -78,7 +79,7 @@ export function createConfigurationService({
         const currentModels = Array.isArray(state.automation.customApi?.models)
             ? state.automation.customApi.models
             : [];
-        state.automation.apiProvider = String(query('#bakemono-memory-api-provider').val() || defaultAutomation.apiProvider);
+        state.automation.apiProvider = String(provider.filter(':checked').val() || defaultAutomation.apiProvider);
         state.automation.customApi = {
             ...structuredClone(defaultAutomation.customApi),
             ...(state.automation.customApi || {}),

@@ -75,7 +75,7 @@ export function createWorkbenchShellEvents({
             helpPopover.close();
             stabilizeMobileWorkbenchScroll(rootElement?.dataset.activeTab || '');
         });
-        root.off('click.bakemonoPromptEditorScroll').on('click.bakemonoPromptEditorScroll', '.bakemono-memory-prompt-editor-item > summary', () => {
+        root.off('click.bakemonoPromptEditorScroll').on('click.bakemonoPromptEditorScroll', '.bk-prm-h', () => {
             stabilizeMobileWorkbenchScroll('prompts');
         });
         root.off('click.bakemonoAction').on('click.bakemonoAction', '[data-bakemono-action]', async function () {

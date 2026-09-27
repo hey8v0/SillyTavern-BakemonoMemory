@@ -49,6 +49,41 @@ function setParent(state, location, parent) {
     location.parent = parent ?? null;
 }
 
+// Two records turned out to be one person (夏尔 / 夏尔·凡多姆海恩): everything that pointed at the duplicate now
+// points at the kept person, whose aliases gain the duplicate's names. Older history still names the duplicate
+// through `merged`.
+function mergePerson(state, fromId, intoId) {
+    requireValue(fromId !== intoId, '不能合并到自己');
+    const from = find(state.people, fromId), into = find(state.people, intoId);
+    const swap = id => id === fromId ? intoId : id;
+    into.aliases = [...new Set([...into.aliases, from.name, ...from.aliases])].filter(name => name !== into.name);
+    into.traits = [...new Set([...into.traits, ...from.traits])];
+    const stateIds = new Set(into.states.map(item => item.id));
+    into.states.push(...from.states.map(item => ({ ...item, id: stateIds.has(item.id) ? item.id + '~' + fromId : item.id })));
+    into.location ??= from.location;
+    into.birthDate ??= from.birthDate;
+    into.ageEvidence ??= from.ageEvidence;
+    state.people = state.people.filter(person => person.id !== fromId);
+    for (const person of state.people) for (const item of person.states) if (item.target != null) item.target = swap(item.target);
+    const kept = [];
+    for (const relation of state.relationships) {
+        relation.from = swap(relation.from); relation.to = swap(relation.to);
+        if (relation.from === relation.to) continue;
+        if (relation.status === 'active' && kept.some(other => other.status === 'active' && other.from === relation.from
+            && other.to === relation.to && other.kind === relation.kind)) continue;
+        kept.push(relation);
+    }
+    state.relationships = kept;
+    for (const plan of state.plans) plan.participants = [...new Set(plan.participants.map(swap))];
+    for (const item of state.items) {
+        item.owner = swap(item.owner); item.holder = swap(item.holder);
+        if (item.loan) { item.loan.from = swap(item.loan.from); item.loan.to = swap(item.loan.to); }
+    }
+    if (state.scene?.present) state.scene.present = [...new Set(state.scene.present.map(swap))];
+    state.merged = { ...(state.merged || {}), [fromId]: intoId };
+    for (const [old, target] of Object.entries(state.merged)) if (target === fromId) state.merged[old] = intoId;
+}
+
 export function applyDomainFact(projection, event) {
     const classification = classifyCandidate({ ...event, track: 'facts' });
     requireValue(classification.status === 'valid', classification.reason);
@@ -84,6 +119,8 @@ export function applyDomainFact(projection, event) {
         requireValue(!temporary.ended && temporary.endedAt == null, '临时状态已经结束');
         temporary.ended = true;
         temporary.endedAt = state.clock.date;
+    } else if (action === 'person_merged') {
+        mergePerson(state, data.id, data.into);
     } else if (action === 'scene_recorded') {
         find(state.locations, data.location);
         if (local && data.present) data.present.forEach(id => find(state.people, id));

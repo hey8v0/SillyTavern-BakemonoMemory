@@ -134,7 +134,7 @@ export function createSummaryTargetController({
                                 <option value="batch">分批生成（大量材料分批入队）</option>
                             </select>
                         </label>
-                        ${kind === 'epic' && options.sourceCounts ? `<label class="bakemono-memory-field"><span>本次总结材料</span><select class="text_pole" data-bakemono-target-source>${Object.entries({stage: '阶段总结 → 多次总结', epic: '已有多次总结 → 继续压缩', story: '普通摘要 → 多次总结'}).map(([key, label]) => `<option value="${key}" ${options.sourceCounts[key] ? '' : 'disabled'}>${label}（${options.sourceCounts[key] || 0} 条）</option>`).join('')}</select></label>` : ''}
+                        ${kind === 'epic' && options.sourceCounts ? `<label class="bakemono-memory-field"><span>本次总结材料</span><select class="text_pole" data-bakemono-target-source>${Object.entries({stage: '阶段总结 → 多次总结', epic: '已有多次总结 → 继续压缩'}).map(([key, label]) => `<option value="${key}" ${options.sourceCounts[key] ? '' : 'disabled'}>${label}（${options.sourceCounts[key] || 0} 条）</option>`).join('')}</select></label>` : ''}
                         <label class="bakemono-memory-field">
                             <span>读取范围</span>
                             <select class="text_pole" data-bakemono-target-mode>

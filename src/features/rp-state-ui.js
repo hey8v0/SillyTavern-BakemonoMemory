@@ -2,6 +2,7 @@ import { buildStatePage, createStateNavigation, describeRecord, describeStateVal
 import { currentInformation, informationName } from '../rp-core/current-information.js';
 import { createRpStateEditors } from './rp-state-editors.js';
 import { createRpStatePresentation } from './rp-state-presentation.js';
+import { likelyDuplicatePeople, sameShortName } from '../rp-core/references.js';
 
 export function createRpStateUi({ documentRef: document, getState, service, flow, navigate, refresh, escapeHtml: esc, locateSource, promptLibrary, confirm = message => globalThis.confirm(message), download = null, chooseFile = null, getContextPreview = null }) {
     const navigation = createStateNavigation(), renderedStates = new WeakMap();
@@ -86,10 +87,16 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
         if (nav.floor != null) return '';
         const skipped = lastBatch && (nav.tab === 'overview' || nav.tab === 'history' && nav.filter !== 'pending') ? core.candidates.filter(item => lastBatch.candidateIds.includes(item.id) && item.status === 'rejected' && !item.superseded && isCurrentRpRecord(view, item)) : [];
         if (skipped.length) out.push(notice(`第 ${lastBatch.sourceFloor ?? lastBatch.floor} 楼有 ${skipped.length} 条变化没记上`, (skipped[0].reason || '格式无效') + (skipped.length > 1 ? ' 等' : ''), textLink('pending', '查看')));
+        if (['overview', 'directory'].includes(nav.tab) && !nav.selected) {
+            const duplicates = likelyDuplicatePeople(view.projection.people);
+            if (duplicates.length) out.push(notice('可能有重复的人物', duplicates.slice(0, 3).map(pair => `${pair.drop.name} / ${pair.keep.name}`).join('；') + '。打开人物可以合并。',
+                textLink('detail', '去合并', `data-rp-kind="people" data-rp-id="${esc(duplicates[0].keep.id)}"`), false));
+        }
         if (nav.tab !== 'overview') return out.join('');
         const invalidFacts = view.pending.filter(item => isCurrentRpRecord(view, { id: item.factId }));
         if (invalidFacts.length) out.push(notice(`${invalidFacts.length} 项旧记录暂未采用`, '这些记录暂不参与当前状态', textLink('facts', '查看')));
-        const failed = core.extractionJobs?.filter(job => job.status !== 'done') || [];
+        // Older versions tried the 开场白 on its own and left a failed job; the first reply records it now.
+        const failed = core.extractionJobs?.filter(job => job.status !== 'done' && !progress?.opening?.includes(job.sourceFloor)) || [];
         if (failed.length) {
             const labels = { missing: '未输出事件块', incomplete: '事件块未输出完整', invalid_json: '事件 JSON 格式无效', invalid_or_unsaved: '事件参数无效或保存未完成' };
             const running = failed.some(job => job.status === 'running');
@@ -197,6 +204,12 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
             content = presentation.entityDetail(kind, item, core, projection, nav.floor, view);
             if (kind === 'people' && nav.floor == null) {
                 const states = (item.states || []).filter(value => !value.ended && !value.endedAt);
+                // Other people that may be this same person; the likely ones first.
+                const others = view.projection.people.filter(value => value.id !== item.id)
+                    .sort((a, b) => Number(sameShortName(b.name, item.name)) - Number(sameShortName(a.name, item.name)));
+                const likely = others.filter(value => sameShortName(value.name, item.name));
+                const rest = others.filter(value => !likely.includes(value));
+                if (others.length) content += `<details class="rp-set-details"${likely.length ? ' open' : ''}><summary>合并重复人物<small>${likely.length ? '可能重复：' + esc(likely.map(value => value.name).join('、')) : '同一个人被记成了两条时用'}</small></summary>${likely.map(value => `<div class="rp-set-row"><span class="rp-set-text"><strong>${esc(value.name)}</strong></span>${textLink('merge-into', '并入这里', `data-rp-merge-from="${esc(value.id)}"`)}</div>`).join('')}${rest.length ? `<div class="rp-set-row"><select class="text_pole rp-merge-select" data-rp-merge-select aria-label="其他人物">${rest.map(value => `<option value="${esc(value.id)}">${esc(value.name)}</option>`).join('')}</select>${textLink('merge-into', '并入这里')}</div>` : ''}</details>`;
                 content += `<details class="rp-set-details"><summary>临时状态<small>${states.length ? states.length + ' 项进行中' : '伤势、情绪等会结束的状态'}</small></summary>${states.map(value => `<div class="rp-set-row"><span class="rp-set-text"><strong>${esc(value.description)}</strong></span>${textLink('state-edit', '修改', `data-rp-state-id="${esc(value.id)}"`)}${textLink('state-end', '结束', `data-rp-state-id="${esc(value.id)}"`)}</div>`).join('')}${textLink('state-new', '添加临时状态')}</details>`;
             }
             if (nav.floor == null) {
@@ -233,6 +246,18 @@ export function createRpStateUi({ documentRef: document, getState, service, flow
                 nav.edit = editors.draft('temporary', id, id ? person.states.find(item => item.id === id) : { description: '', target: null, visibility: 'observable' }, state.rpCore.revision);
                 nav.edit.personId = person.id; nav.edit.create = !id;
             }
+        }
+        if (name === 'merge-into') {
+            if (nav.floor != null || nav.selected?.kind !== 'people') throw new Error('请选择当前人物');
+            const people = service.view(state).projection.people;
+            const fromId = element.dataset.rpMergeFrom || element.closest('.rp-set-row')?.querySelector('[data-rp-merge-select]')?.value;
+            const into = people.find(item => item.id === nav.selected.id), from = people.find(item => item.id === fromId);
+            if (!into || !from) throw new Error('人物已变化，请重新打开');
+            if (!await confirm(`把「${from.name}」并入「${into.name}」？
+${from.name}的关系、状态、约定和物品会转到${into.name}名下，“${from.name}”留作别名。可以在“变化”里看到这次合并。`)) return;
+            assertOpen();
+            await service.mergePeople(from.id, into.id, { expectedRevision: openedRevision });
+            nav.notice = `已把「${from.name}」并入「${into.name}」。`;
         }
         if (name === 'restore-item' || name === 'reopen-plan') {
             if (nav.floor != null) throw new Error('历史快照只读');

@@ -47,7 +47,13 @@ const rpEvents = [
  { track: 'claims', data: { speaker: '莉娜', subject: '北方矿坑', description: '矿坑三天前塌了，领主派人封了路', heardBy: ['旅人'] } },
  { track: 'observations', data: { speaker: '旅人', subject: '格伦', description: '格伦似乎知道矿坑坍塌的内情' } },
 ];
-if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('rp')) lines.at(-1)[2] += '\n<rpEvents>' + JSON.stringify({ version: 2, events: rpEvents }) + '</rpEvents>';
+// ?rp&dup: a 开场白 before the first user message, a clock written only as text, and 格伦 recorded twice (merge review).
+if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('dup')) {
+ lines.unshift(['莉娜', false, '雨夜，渡鸦酒馆里只剩炉火和擦杯子的莉娜。']);
+ rpEvents[0] = { action: 'clock_set', data: { description: '1023年10月14日 深夜 23:40' } };
+ rpEvents.push({ action: 'person_registered', data: { id: '格伦全名', name: '格伦·铁锤' } });
+}
+if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('rp')) lines.at(-1)[2] +='\n<rpEvents>' + JSON.stringify({ version: 2, events: rpEvents }) + '</rpEvents>';
 // Open the harness with ?sum for a longer chat whose replies carry full-format story summaries (总结 review).
 const beats = [
  ['北境地图', '深夜', '铁匠铺', '旅人、格伦', ['格伦把北境地图摊在铁砧上，用炭笔沿着通往矿坑的旧路描了一遍。', '他问旅人这张图从哪里来，旅人只说是路上捡的。'], '> “这条路三年前就没人走了。” —— [格伦]', '[渡鸦酒馆]：莉娜在清点后门钥匙，发现少了一把。', '地图上矿坑的位置被人用炭笔圈过。', '*格伦认得那道炭笔印。*'],

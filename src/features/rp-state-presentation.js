@@ -10,6 +10,23 @@ export function storyDateLabel(value) {
         time: `周${weekday}${date.precision === 'minute' ? ` · ${value.slice(11)}` : ''}` };
 }
 
+// Free-text clocks ("1889年3月14日 下午 15:20") keep the time of day apart from the date, like the slate's two cells.
+const dayPeriods = '凌晨|清晨|早晨|早上|上午|中午|正午|午后|下午|傍晚|黄昏|晚上|夜里|夜晚|深夜|午夜|半夜';
+export function splitClockText(text) {
+    const value = String(text || '').trim();
+    const numeral = '[零〇一二两三四五六七八九十\\d]';
+    // 15:20, 下午 3:20; 下午三点二十, 三点半; or only a part of the day (傍晚).
+    const clock = new RegExp(`(?:(${dayPeriods})\\s*)?(\\d{1,2})\\s*[:：]\\s*(\\d{2})`).exec(value)
+        || new RegExp(`(?:(${dayPeriods})\\s*)?(${numeral}{1,3}点(?:半|${numeral}{1,3}分?|钟)?)()`).exec(value)
+        || new RegExp(`(${dayPeriods})()()`).exec(value);
+    if (!clock) return { date: value, time: '' };
+    const time = clock[3]
+        ? (clock[1] && Number(clock[2]) <= 12 ? clock[1] + ' ' + Number(clock[2]) : clock[2].padStart(2, '0')) + ':' + clock[3]
+        : [clock[1], clock[2]].filter(Boolean).join('');
+    const date = (value.slice(0, clock.index) + ' ' + value.slice(clock.index + clock[0].length)).replace(/[\s,，、·]+$/u, '').replace(/^[\s,，、·]+/u, '').replace(/\s{2,}/g, ' ');
+    return { date, time };
+}
+
 export function planStatusLabel(plan) {
     const status = stateLabels[plan.status] || '状态未定';
     if (!['proposed', 'accepted'].includes(plan.status)) return status;
@@ -260,14 +277,15 @@ export function createRpStatePresentation({ escapeHtml: esc }) {
         const rootPlace = place ? locationTrail(view, place.id).split(' / ')[0] : '';
         const presentCount = view.scene?.present?.length || 0;
         const openPlans = view.plans.filter(isOpenPlan).length;
-        const dateValue = date ? `${date.month}·${date.day}<small>${esc(dateLabel.year)} · ${esc(dateLabel.time.split(' · ')[0])}</small>` : esc(view.clock.description || '未记录');
+        const clockText = splitClockText(view.clock.description);
+        const dateValue = date ? `${date.month}·${date.day}<small>${esc(dateLabel.year)} · ${esc(dateLabel.time.split(' · ')[0])}</small>` : esc(clockText.date || (clockText.time ? '—' : view.clock.description) || '未记录');
         let html = `<section class="rp-slate${meta.animate ? ' is-clapping' : ''}" aria-label="当前场景"><div class="rp-clap" aria-hidden="true"><i class="rp-clap-top"></i><i class="rp-clap-bottom"></i></div>
 <div class="rp-slate-head"><span class="rp-slate-title">${esc(rootPlace || '当前故事')}${date && view.clock.description ? ' · ' + esc(view.clock.description) : ''}</span>${label(historicalFloor == null ? meta.maintenance || '当前故事' : '历史快照 · 只读')}</div>
 <div class="rp-slate-grid">
 <div class="rp-cell">${label('场 · SCENE')}${place ? link('locations', place.id, `${esc(place.name)} ${chevron}`, 'rp-slate-value') : route('locations', `未记录 ${chevron}`, 'rp-slate-value is-empty')}</div>
 <div class="rp-cell">${label('镜 · TAKE')}<span class="rp-slate-value">${floor != null ? `第 ${esc(floor)} 楼` : '—'}</span></div>
 <div class="rp-cell">${label('日期 · DATE')}${route('clock', dateValue, 'rp-slate-value')}</div>
-<div class="rp-cell">${label('时刻 · TIME')}<span class="rp-slate-value is-timecode">${date?.precision === 'minute' ? `${pad(date.hour)}:${pad(date.minute)}` : '—'}</span></div>
+<div class="rp-cell">${label('时刻 · TIME')}<span class="rp-slate-value is-timecode">${date?.precision === 'minute' ? `${pad(date.hour)}:${pad(date.minute)}` : esc(clockText.time || '—')}</span></div>
 </div><div class="rp-slate-foot"><span>在场 <b>${presentCount}</b> · 人物 ${view.people.length} · 约定 ${openPlans}</span><span>${historicalFloor == null ? meta.processedFloor != null ? `已处理到 ${esc(meta.processedFloor)} 楼` : '尚未处理正文' : `第 ${esc(historicalFloor)} 楼时`}</span>${view.locations.length > 1 ? more('locations', `地点 ${view.locations.length}`) : ''}</div></section>`;
 
         if (view.people.length) html += `<section class="rp-sec rp-sec-cast">${head(presentCount ? '在场' : '人物', 'CAST', 'people', view.people.length)}<div class="rp-strip">${selection.people.map((person, index) => {

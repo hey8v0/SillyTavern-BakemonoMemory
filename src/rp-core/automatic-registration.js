@@ -1,5 +1,5 @@
 import { locateEventEvidence, normalizeEvidenceText } from './source.js';
-import { entityReferences, resolveKnownReferences } from './references.js';
+import { entityReferences, resolveKnownReferences, findPeopleByName } from './references.js';
 
 const registrations = { people: 'person_registered', locations: 'location_created', items: 'item_registered' };
 const creationCollections = { person_created: 'people', person_registered: 'people', location_created: 'locations', item_registered: 'items', item_acquired: 'items' };
@@ -8,7 +8,8 @@ const creationCollections = { person_created: 'people', person_registered: 'peop
 export function prepareAutomaticRegistration(events, source, projection, { modelOwned = false } = {}) {
     const copies = structuredClone(events), created = new Map(), before = [], after = [];
     if (copies.some(event => !event || typeof event !== 'object' || !event.data || typeof event.data !== 'object' || Array.isArray(event.data))) throw new Error('候选事件结构无效');
-    const existing = (kind, value) => (projection[kind] || []).filter(item => item.id === value || [item.name, ...(item.aliases || [])].includes(value));
+    const existing = (kind, value) => kind === 'people' ? findPeopleByName(projection.people || [], value)
+        : (projection[kind] || []).filter(item => item.id === value || [item.name, ...(item.aliases || [])].includes(value));
     for (const event of copies) {
         const kind = creationCollections[event.action];
         if (kind && event.track === 'facts') created.set(kind + ':' + event.data?.id, event);

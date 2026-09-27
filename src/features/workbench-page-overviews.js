@@ -12,6 +12,10 @@ export function createWorkbenchPageOverviews({
     defaultMissingSummaryPrompt,
     defaultStageGenerationPrompt,
     defaultEpicGenerationPrompt,
+    defaultGenericStoryGenerationPrompt = '',
+    defaultGenericStageGenerationPrompt = '',
+    defaultGenericEpicGenerationPrompt = '',
+    defaultInjectionTemplate = '',
     getInjectionMemoryParts,
     renderInjectionContent,
     toastr,
@@ -19,6 +23,7 @@ export function createWorkbenchPageOverviews({
     desktopScanPreviewRenderLimit = 120,
 }) {
     let promptPreviewType = 'stage';
+    let openPrompt = null;
 
     function getPromptPreviewType() {
         return promptPreviewType;
@@ -39,50 +44,77 @@ export function createWorkbenchPageOverviews({
         return editorValue || String(config[1] || '').trim();
     }
 
-    function renderPromptOverview(state = getState()) {
-        setPromptPreviewType(promptPreviewType);
-        const meta = {
-            story: { label: '旧聊天补课', description: '把没有摘要的旧正文分批压缩进插件记忆，不写回原楼层。' },
-            missing: { label: '缺失摘要', description: '为漏写摘要的助手楼层补回标准摘要块。' },
-            stage: { label: '阶段总结', description: '把普通摘要整理成带时间轴的阶段记忆。' },
-            epic: { label: '多次总结', description: '把多个阶段继续整理成长时间线总览。' },
-        }[promptPreviewType];
-        const prompt = getPromptPreviewValue(promptPreviewType, state);
-        const select = documentRef.querySelector('#bakemono-memory-prompts-preset-select');
-        const selectedName = select?.selectedOptions?.[0]?.textContent
-            || String(query('#bakemono-memory-prompts-preset-name').val() || '').trim()
-            || '默认提示词';
-        query('#bakemono-memory-prompts-current-name').text(selectedName);
-        query('#bakemono-memory-prompts-preview-label').text(meta.label);
-        query('#bakemono-memory-prompts-preview-description').text(meta.description);
-        query('#bakemono-memory-prompts-structure-preview').text(getPromptStructureExcerpt(prompt));
-        documentRef.querySelectorAll('[data-bakemono-prompt-preview]').forEach(button => {
-            const isActive = button.dataset.bakemonoPromptPreview === promptPreviewType;
-            button.classList.toggle('is-active', isActive);
-            button.setAttribute('aria-selected', String(isActive));
+    const promptKeys = ['story', 'missing', 'stage', 'epic'];
+    const promptDefaults = () => ({
+        story: [defaultStoryGenerationPrompt, defaultGenericStoryGenerationPrompt],
+        missing: [defaultMissingSummaryPrompt],
+        stage: [defaultStageGenerationPrompt, defaultGenericStageGenerationPrompt],
+        epic: [defaultEpicGenerationPrompt, defaultGenericEpicGenerationPrompt],
+    });
+    const isDefaultPrompt = (key, value) => promptDefaults()[key].some(text => text && String(text).trim() === String(value || '').trim());
+    // The line a person recognises a prompt by: its first line of real text, without markdown marks.
+    const firstLine = text => String(text || '').split('\n').map(line => line.replace(/^[#>*\-\s]+/, '').trim()).find(Boolean) || '';
+    // The empty first option is a placeholder, not a preset name.
+    const presetName = selector => {
+        const option = documentRef.querySelector(selector)?.selectedOptions?.[0];
+        return option?.value ? option.textContent : '';
+    };
+    function renderPresetValues() {
+        documentRef.querySelectorAll('[data-bakemono-preset-value]').forEach(el => {
+            el.textContent = presetName(el.dataset.bakemonoPresetValue);
         });
     }
 
+    function renderPromptOverview(state = getState()) {
+        let changed = 0;
+        for (const key of promptKeys) {
+            const item = documentRef.querySelector(`[data-bakemono-prompt="${key}"]`);
+            if (!item) continue;
+            const value = getPromptPreviewValue(key, state);
+            const isDefault = isDefaultPrompt(key, value);
+            if (!isDefault) changed++;
+            const open = key === openPrompt;
+            item.classList.toggle('is-open', open);
+            item.querySelector('.bk-prm-h')?.setAttribute('aria-expanded', String(open));
+            const body = item.querySelector('.bk-prm-body');
+            if (body) body.hidden = !open;
+            const first = item.querySelector('[data-bakemono-prompt-first]');
+            if (first) first.textContent = firstLine(value);
+            const mark = item.querySelector('[data-bakemono-prompt-state]');
+            if (mark) { mark.textContent = isDefault ? '默认' : '已修改'; mark.classList.toggle('is-changed', !isDefault); }
+        }
+        const name = presetName('#bakemono-memory-prompts-preset-select') || '默认提示词';
+        query('#bakemono-memory-prompts-current-name').text(changed ? `${name} · 改过 ${changed} 份` : name);
+        renderPresetValues();
+    }
+
+    // Sizes per source use the home page's source names and colours.
+    const injectionSources = [['summary', '阶段／多次总结'], ['memory', '长期记忆'], ['rpState', '剧情状态'], ['table', '表格记忆'], ['vector', '向量召回']];
     function renderInjectionOverview(state = getState()) {
-        const parts = getInjectionMemoryParts(state);
-        const stats = parts.stats;
-        const content = renderInjectionContent(state);
-        const total = (stats.epic || 0) + (stats.stage || 0) + (stats.story || 0) + (stats.table || 0) + (stats.vector || 0);
         const enabled = !!state.injection.enabled;
-        query('#bakemono-memory-injection-runtime-label').text(enabled ? '注入已开启' : '注入未开启');
-        query('#bakemono-memory-injection-runtime-title').text(`本轮共 ${total.toLocaleString()} 条记忆`);
-        query('#bakemono-memory-injection-runtime-description').text(enabled
-            ? `多次总结 ${stats.epic || 0} · 阶段总结 ${stats.stage || 0} · 普通摘要 ${stats.story || 0} · 表格 ${stats.table || 0} · 向量召回 ${stats.vector || 0}`
-            : '当前最终内容不会发送给模型；可在工作流细节中开启剧情记忆注入。');
-        query('#bakemono-memory-injection-source-total').text(`${total.toLocaleString()} 条`);
-        query('#bakemono-memory-injection-source-epic').text(stats.epic || 0);
-        query('#bakemono-memory-injection-source-summary').text((stats.stage || 0) + (stats.story || 0));
-        query('#bakemono-memory-injection-source-table').text(stats.table || 0);
-        query('#bakemono-memory-injection-source-vector').text(stats.vector || 0);
-        query('#bakemono-memory-injection-char-count').text(`约 ${content.length.toLocaleString()} 字符`);
-        const select = documentRef.querySelector('#bakemono-memory-injection-preset-select');
-        query('#bakemono-memory-injection-preset-summary').text(select?.selectedOptions?.[0]?.textContent || '当前配置');
-        query('.bakemono-memory-injection-status-hero').toggleClass('is-active', enabled);
+        const content = renderInjectionContent(state);
+        const parts = getInjectionMemoryParts(state);
+        const sizes = injectionSources.map(([key, label]) => [key, label, String(parts.sources?.[key] || '').length]).filter(([, , size]) => size);
+        query('#bakemono-memory-injection-runtime-label').text(enabled ? '开启' : '关闭');
+        query('#bakemono-memory-injection-runtime-title').text(!enabled ? '注入没开' : content.length ? `本轮注入 ${content.length.toLocaleString()} 字` : '这一轮没有可注入的内容');
+        const shown = enabled ? sizes : [];
+        query('#bakemono-memory-injection-stack').html(shown.map(([key, , size]) => `<i data-bakemono-stack-source="${key}" style="flex-grow:${size}"></i>`).join('')).prop('hidden', !shown.length);
+        query('#bakemono-memory-injection-legend').html(shown.map(([key, label, size]) => `<span data-bakemono-inj-source="${key}"><b>${size.toLocaleString()}</b>${label}</span>`).join('')).prop('hidden', !shown.length);
+        query('#bakemono-memory-injection-char-count').text(`${content.length.toLocaleString()} 字`);
+        const template = String(query('#bakemono-memory-injection-template').val() ?? state.injection.template ?? '');
+        query('#bakemono-memory-injection-template-state').text(template.trim() === String(defaultInjectionTemplate || '').trim() ? '默认' : '已修改');
+        renderPresetValues();
+    }
+
+    // Title and custom fields follow the choice on screen, before it is saved.
+    function renderGenerationOverview(state = getState()) {
+        const picked = documentRef.querySelector('input[name="bakemono-memory-api-provider"]:checked')?.value || state.automation?.apiProvider || 'tavern';
+        const custom = picked === 'custom';
+        const model = String(query('#bakemono-memory-custom-model').val() || state.automation?.customApi?.model || '').trim();
+        query('#bakemono-memory-generation-title').text(custom ? `自定义接口 · ${model || '还没填模型'}` : '用酒馆主模型');
+        const fields = documentRef.getElementById('bakemono-memory-custom-api-fields');
+        if (fields) fields.hidden = !custom;
+        renderPresetValues();
     }
 
     function renderScanOverview(state = getState()) {
@@ -158,25 +190,36 @@ export function createWorkbenchPageOverviews({
 
     function bindPromptEvents(rootSelector = '#bakemono-workbench-root') {
         const root = query(rootSelector);
-        root.off('click.bakemonoPromptPreview').on('click.bakemonoPromptPreview', '[data-bakemono-prompt-preview]', function () {
-            setPromptPreviewType(this.dataset.bakemonoPromptPreview || 'stage');
+        // One prompt open at a time.
+        root.off('click.bakemonoPromptOpen').on('click.bakemonoPromptOpen', '[data-bakemono-prompt-open]', function () {
+            const key = this.dataset.bakemonoPromptOpen;
+            openPrompt = openPrompt === key ? null : key;
+            setPromptPreviewType(key);
             renderPromptOverview();
+        });
+        root.off('click.bakemonoPromptCopy').on('click.bakemonoPromptCopy', '[data-bakemono-prompt-copy]', async function () {
+            await navigatorRef.clipboard.writeText(getPromptPreviewValue(this.dataset.bakemonoPromptCopy));
+            toastr.success('提示词已复制。');
         });
         root.off('input.bakemonoPromptPreview').on(
             'input.bakemonoPromptPreview',
             '#bakemono-memory-story-prompt, #bakemono-memory-missing-prompt, #bakemono-memory-stage-prompt, #bakemono-memory-epic-prompt',
             () => renderPromptOverview(),
         );
-        query('#bakemono-memory-copy-prompt-preview').off('click').on('click', async () => {
-            await navigatorRef.clipboard.writeText(getPromptPreviewValue(getPromptPreviewType()));
-            toastr.success('当前提示词已复制。');
+        root.off('change.bakemonoProvider input.bakemonoProvider').on('change.bakemonoProvider input.bakemonoProvider',
+            'input[name="bakemono-memory-api-provider"], #bakemono-memory-custom-model', () => renderGenerationOverview());
+        root.off('input.bakemonoTemplateState').on('input.bakemonoTemplateState', '#bakemono-memory-injection-template', () => {
+            const value = String(query('#bakemono-memory-injection-template').val() || '');
+            query('#bakemono-memory-injection-template-state').text(value.trim() === String(defaultInjectionTemplate || '').trim() ? '默认' : '已修改');
         });
+        root.off('change.bakemonoPresetValue').on('change.bakemonoPresetValue', 'select[id$="-preset-select"]', () => renderPresetValues());
     }
 
     return {
         bindPromptEvents,
         getPromptPreviewType,
         getPromptPreviewValue,
+        renderGenerationOverview,
         renderInjectionOverview,
         renderPromptOverview,
         renderScanOverview,

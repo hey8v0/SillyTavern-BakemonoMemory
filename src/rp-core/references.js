@@ -21,11 +21,34 @@ export function setReference(data, field, value) {
     else if (field.startsWith('participants.')) data.participants[Number(field.split('.')[1])] = value;
     else data[field] = value;
 }
+// A given name alone (夏尔) and the full name (夏尔·凡多姆海恩) are one person; two different given names are not.
+const nameParts = value => String(value || '').split(/[·・•\s]+/u).filter(Boolean);
+export function sameShortName(a, b) {
+    const left = nameParts(a), right = nameParts(b);
+    if (left.length === right.length) return false;
+    const [short, long] = left.length < right.length ? [left, right] : [right, left];
+    return short.length === 1 && long.length > 1 && short[0] === long[0];
+}
+export function findPeopleByName(people = [], value) {
+    const exact = people.filter(item => item.id === value || [item.name, ...(item.aliases || [])].includes(value));
+    return exact.length ? exact : people.filter(item => [item.name, ...(item.aliases || [])].some(name => sameShortName(name, value)));
+}
+// Pairs already recorded twice; the fuller name is kept.
+export function likelyDuplicatePeople(people = []) {
+    const pairs = [];
+    for (const a of people) for (const b of people) {
+        if (a.id >= b.id || !sameShortName(a.name, b.name)) continue;
+        const [keep, drop] = nameParts(a.name).length >= nameParts(b.name).length ? [a, b] : [b, a];
+        if (people.filter(other => sameShortName(other.name, drop.name) && other.id !== drop.id).length === 1) pairs.push({ keep, drop });
+    }
+    return pairs;
+}
 export function resolveKnownReferences(event, projection) {
     for (const ref of entityReferences(event)) {
         const values = projection?.[ref.collection] || [];
         if (values.some(item => item.id === ref.value)) continue;
-        const matches = values.filter(item => [item.name, item.title, ...(item.aliases || [])].includes(ref.value));
+        const matches = ref.collection === 'people' ? findPeopleByName(values, ref.value)
+            : values.filter(item => [item.name, item.title, ...(item.aliases || [])].includes(ref.value));
         if (matches.length === 1) setReference(event.data, ref.field, matches[0].id);
     }
     return event;

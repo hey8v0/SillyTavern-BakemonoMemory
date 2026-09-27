@@ -39,6 +39,7 @@ export function createWorkbenchRenderer({
     renderRpState,
     renderInjectionOverview,
     renderPromptOverview,
+    renderGenerationOverview = () => {},
     renderAutomationOverview,
     renderVectorMemoryPanel,
     renderScanOverview,
@@ -127,7 +128,6 @@ export function createWorkbenchRenderer({
             query('#bakemono-memory-injection-enabled').prop('checked', !!state.injection.enabled);
             query('#bakemono-memory-depth').val(state.injection.depth);
             query('#bakemono-memory-role').val(String(state.injection.role));
-            query('#bakemono-memory-source-content').val(getInjectionMemoryParts(state).memory || '');
             query('#bakemono-memory-injection-template').val(state.injection.template || defaultInjectionTemplate);
             query('#bakemono-memory-injection-content').val(renderInjectionContent(state));
         } else if (activeTab === 'prompts') {
@@ -163,7 +163,8 @@ export function createWorkbenchRenderer({
             query('#bakemono-memory-epic-target-count').val(state.generationTargets.epic.count ?? defaultGenerationTargets.epic.count);
             query('#bakemono-memory-epic-target-range').val(state.generationTargets.epic.range || '');
         } else if (activeTab === 'generation') {
-            query('#bakemono-memory-api-provider').val(state.automation.apiProvider || defaultAutomation.apiProvider);
+            const provider = state.automation.apiProvider || defaultAutomation.apiProvider;
+            query('input[name="bakemono-memory-api-provider"]').each(function () { this.checked = this.value === provider; });
             query('#bakemono-memory-custom-base-url').val(state.automation.customApi?.baseUrl || '');
             query('#bakemono-memory-custom-api-key').val(state.automation.customApi?.apiKey || '');
             query('#bakemono-memory-custom-model').val(state.automation.customApi?.model || '');
@@ -195,7 +196,7 @@ export function createWorkbenchRenderer({
         else if (tabName === 'prompts') renderPromptOverview(state);
         else if (tabName === 'vector') renderVectorMemoryPanel(state);
         else if (tabName === 'scan') { renderScanOverview(state); renderScanPreview(); }
-        else if (tabName === 'generation') renderCustomModelOptions(state.automation.customApi?.models || []);
+        else if (tabName === 'generation') { renderCustomModelOptions(state.automation.customApi?.models || []); renderGenerationOverview(state); }
         else if (tabName === 'appearance') renderAppearanceSettings();
         else if (tabName === 'maintenance') { renderAutoHideRecentPanel(state); renderMaintenanceOverview(state); }
         else if (tabName === 'archive') renderAutoHideRecentPanel(state);
@@ -281,7 +282,7 @@ export function createWorkbenchRenderer({
         } else if (scope === workbenchRenderScopes.PROMPTS) {
             if (activeTab === 'prompts') { syncActiveFormFields(activeTab, state); renderActivePresetControls(activeTab); renderPromptOverview(state); syncPromptHintButtons(); }
         } else if (scope === workbenchRenderScopes.GENERATION) {
-            if (activeTab === 'generation') { syncActiveFormFields(activeTab, state); renderActivePresetControls(activeTab); renderCustomModelOptions(state.automation.customApi?.models || []); }
+            if (activeTab === 'generation') { syncActiveFormFields(activeTab, state); renderActivePresetControls(activeTab); renderCustomModelOptions(state.automation.customApi?.models || []); renderGenerationOverview(state); }
             else if (activeTab === 'settings-hub') renderHubPanels(state);
         } else if (scope === workbenchRenderScopes.CONFIG) {
             if (activeTab === 'config') renderActivePresetControls(activeTab);

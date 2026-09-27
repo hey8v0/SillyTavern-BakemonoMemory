@@ -17,9 +17,10 @@ test('the sticky save bar is the only save control on settings pages', async () 
     assert.doesNotMatch(await read('src/ui/page-settings.js'), /\bsave: '/);
 });
 
-test('the memory body is read-only and has no no-op clear button', async () => {
+test('the injected text is read-only, shown once, and has no no-op clear button', async () => {
     const html = await read('settings.html');
-    assert.match(html, /id="bakemono-memory-source-content"[^>]*\breadonly\b/);
+    assert.match(html, /id="bakemono-memory-injection-content"[^>]*\breadonly\b/);
+    assert.doesNotMatch(html, /id="bakemono-memory-source-content"/);
     assert.doesNotMatch(html, /id="bakemono-memory-clear-injection"/);
 });
 
@@ -52,7 +53,8 @@ test('summary card has one generate action and disables it without material', ()
     assert.deepEqual([ready.primary.disabled, ready.primary.dataset.bakemonoAction], [false, 'generate-stage']);
     ready.render('epic');
     assert.equal(ready.primary.dataset.bakemonoAction, 'generate-epic');
-    assert.equal(ready.primary.disabled, false, 'story summaries are valid fallback material for multi summaries');
+    assert.equal(ready.primary.disabled, true, '多次总结 is built from 阶段总结, not from story summaries');
+    assert.match(ready.text['#bakemono-memory-summary-generation-title'], /还没有阶段总结/);
     ready.render('batch');
     assert.equal(ready.primary.dataset.bakemonoAction, undefined, 'under 剧情摘要 the button only unfolds the form');
     assert.equal(ready.primary.dataset.bakemonoBatchToggle, '');

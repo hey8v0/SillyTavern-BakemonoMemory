@@ -4,6 +4,7 @@ import { parsePayload } from './extraction.js';
 import { assertLedgerVersion } from './ledger.js';
 import { compileRpContext } from './context.js';
 import { RP_EVENT_GUIDE } from './prompt.js';
+import { isOpeningFloor, isFirstReplyTurn, openingFloors } from '../shared/opening.js';
 export { RP_EVENT_GUIDE } from './prompt.js';
 
 export function stripRpProtocol(value) {
@@ -81,6 +82,8 @@ export function createRpExtractionFlow({ getState, getChat, service, makeSourceI
         if (delayed(state)) return report({ status: 'delayed' });
         const floor = latestFloor();
         if (floor < (state.rpCore?.baseline.floor ?? 0)) return report({ status: 'missing' });
+        // The 开场白 has no event block; the first reply records it.
+        if (isOpeningFloor(getChat(), floor) && !/<rpEvents\b/i.test(getChat()[floor].mes || '')) return report({ status: 'opening' });
         const ticket = capture(floor, 'inline');
         const response = getChat()[floor].mes;
         const protocolHash = evidenceHash((String(response).match(/<rpEvents\b[^>]*>[\s\S]*?(?:<\/rpEvents\s*>|$)/gi) || []).join('\n'));
@@ -107,6 +110,10 @@ export function createRpExtractionFlow({ getState, getChat, service, makeSourceI
         if (!manual && delayed(state)) return false;
         const floor = sourceFloor ?? latestFloor();
         if (floor < state.rpCore.baseline.floor) { if (manual) throw new Error('没有处于记录起点之后的有效正文'); return false; }
+        if (!manual && isOpeningFloor(getChat(), floor)) return false;
+        // First reply: the 开场白 before it was never recorded, so it is read as part of this turn.
+        const opening = isFirstReplyTurn(getChat()) && !isOpeningFloor(getChat(), floor)
+            ? openingFloors(getChat()).map(index => readChatSource(getChat()[index], state)?.text || '').filter(Boolean).join('\n\n') : '';
         const initial = capture(floor, 'independent', { manual }), key = initial.source.messageId + '|' + initial.source.variantId, stamp = sourceStamp(initial.source);
         const job = state.rpCore.extractionJobs?.find(item => item.sourceKey === key && item.sourceStamp === stamp);
         if (!manual && (job || state.rpCore.batches.some(batch => batch.sourceKey === key && batch.sourceStamp === stamp && !batch.superseded))) return false;
@@ -120,26 +127,29 @@ export function createRpExtractionFlow({ getState, getChat, service, makeSourceI
             if (!ticket || ticket.state !== state || sourceStamp(ticket.source) !== stamp) throw new Error('提取开始前正文或聊天已变化');
             await runGeneration('正在记录剧情状态...', async () => {
                 assertCurrent(ticket);
-                const instruction = '\n只从本轮正文记录新事件。近期及设定资料仅供理解，不作为本轮新事实。\n';
+                const instruction = opening
+                    ? '\n开场白还没有记录：先记开场白里已经成立的事实，再记本轮正文的新事件。近期及设定资料仅供理解。\n'
+                    : '\n只从本轮正文记录新事件。近期及设定资料仅供理解，不作为本轮新事实。\n';
+                const body = opening ? `开场白：\n${opening}\n\n本轮正文：\n${ticket.source.text}` : ticket.source.text;
                 const budget = state.rpCore.settings.contextBudget || 16000;
-                const compiled = context(state, { manual: true, query: ticket.source.text, availableBudget: Math.max(0, budget - ticket.source.text.length - instruction.length) });
+                const compiled = context(state, { manual: true, query: ticket.source.text, availableBudget: Math.max(0, budget - body.length - instruction.length) });
                 if (compiled.blocked) throw new Error(compiled.warning);
                 const reference = String(await getReferenceContext(state, floor));
                 assertCurrent(ticket);
-                const recent = getChat().slice(Math.max(0, floor - 4), floor).filter(message => message && !message.is_system)
+                const recent = getChat().slice(Math.max(0, floor - 4), floor).filter((message, index) => message && !message.is_system && !(opening && isOpeningFloor(getChat(), Math.max(0, floor - 4) + index)))
                     .map(message => message.is_user ? '用户：' + stripRpProtocol(message.mes).slice(-2000) : '此前正文：' + (readChatSource(message, state)?.text || '').slice(-2000));
                 // Current body and state are mandatory; optional context cannot
                 // make an otherwise valid extraction exceed its request budget.
                 let systemPrompt = compiled.maintenance + instruction;
                 const selected = [];
-                for (const text of recent.reverse()) if (systemPrompt.length + selected.join('\n').length + text.length + 2 + ticket.source.text.length <= budget) selected.unshift(text);
+                for (const text of recent.reverse()) if (systemPrompt.length + selected.join('\n').length + text.length + 2 + body.length <= budget) selected.unshift(text);
                 if (selected.length) systemPrompt += selected.join('\n') + '\n';
-                const remaining = Math.max(0, budget - systemPrompt.length - ticket.source.text.length);
+                const remaining = Math.max(0, budget - systemPrompt.length - body.length);
                 if (reference.length <= remaining) systemPrompt += reference;
                 else if (remaining > 100) systemPrompt += '\n设定节选（已按预算截短）：\n' + reference.slice(0, remaining - 30);
-                if (systemPrompt.length + ticket.source.text.length > budget) throw new Error('状态提取上下文超出预算，请提高预算后重试');
+                if (systemPrompt.length + body.length > budget) throw new Error('状态提取上下文超出预算，请提高预算后重试');
                 if (controller.signal.aborted) throw new Error('提取已停止');
-                const result = await callGenerationModel({ prompt: ticket.source.text, systemPrompt, signal: controller.signal });
+                const result = await callGenerationModel({ prompt: body, systemPrompt, signal: controller.signal });
                 if (controller.signal.aborted) throw new Error('提取已停止');
                 const consumed = await consume(ticket, result, { manual });
                 if (['missing', 'incomplete'].includes(consumed.status)) throw new Error('剧情状态事件块缺失或截断，未标记成功，可重试');
