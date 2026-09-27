@@ -12,40 +12,24 @@ export function createMaintenanceUi({
     urlApi,
     notifySuccess,
 }) {
-    function renderAutoSummaryTransactions(container, state = getState(), options = {}) {
+    // One row per automatic save that can still be rolled back; a changed source floor is marked.
+    function renderAutoSummaryTransactions(container, state = getState()) {
         const transactions = (state.autoSummaryTransactions || [])
             .filter(transaction => transaction.status !== 'rolled_back')
             .slice(0, 8);
-        if (!transactions.length) return;
-
-        const panel = documentRef.createElement('div');
-        panel.className = 'bakemono-memory-auto-tx-list';
-        if (options.showTitle !== false) {
-            const title = documentRef.createElement('div');
-            title.className = 'bakemono-memory-auto-tx-title';
-            title.innerHTML = '<i class="fa-solid fa-shield-halved"></i><strong>自动总结回滚</strong><span>只处理自动保存并自动隐藏的总结</span>';
-            panel.append(title);
-        }
-
-        for (const transaction of transactions) {
-            const item = documentRef.createElement('div');
-            item.className = `bakemono-memory-auto-tx-item is-${transaction.status || 'active'}`;
-            item.dataset.transactionId = transaction.id;
+        container.innerHTML = transactions.map(transaction => {
             const sourceRange = formatSourceRange(transaction.sourceMessageIds || []);
             const hiddenCount = getFiniteMessageIds(transaction.hiddenMessageIds || []).length;
             const invalidIds = getFiniteMessageIds(transaction.invalidatedMessageIds || []);
-            item.innerHTML = `
-                <div class="bakemono-memory-auto-tx-main">
-                    <strong>${escapeHtml(transaction.summaryTitle || getKindLabel(transaction.kind) || '自动总结')}</strong>
-                    <span>${transaction.status === 'needs_review' ? '来源楼层已变更' : '已记录'} · ${sourceRange || '未知范围'} · 可恢复 ${hiddenCount} 楼</span>
-                    ${invalidIds.length ? `<em>变更楼层：${invalidIds.map(id => `#${id}`).join('、')}</em>` : ''}
-                </div>
-                <div class="bakemono-memory-task-actions">
-                    <button class="menu_button danger" data-bakemono-auto-tx-action="rollback"><i class="fa-solid fa-rotate-left"></i><span>回滚</span></button>
-                </div>`;
-            panel.append(item);
-        }
-        container.append(panel);
+            const changed = transaction.status === 'needs_review';
+            return `<div class="bakemono-memory-auto-tx-item bk-mnt-tx${changed ? ' is-changed' : ''}" data-transaction-id="${escapeHtml(transaction.id)}">
+                <strong>${escapeHtml(transaction.summaryTitle || getKindLabel(transaction.kind) || '自动总结')}</strong>
+                <small>${escapeHtml([sourceRange ? `第 ${sourceRange} 楼` : '', hiddenCount ? `可恢复 ${hiddenCount} 楼` : ''].filter(Boolean).join(' · ') || '范围未记录')}</small>
+                ${changed ? `<small class="bk-mnt-warn">来源楼层变了${invalidIds.length ? '：' + escapeHtml(invalidIds.map(id => `#${id}`).join('、')) : ''}</small>` : ''}
+                <button type="button" class="bk-sum-link is-alert" data-bakemono-auto-tx-action="rollback">回滚…</button>
+            </div>`;
+        }).join('') || '<p class="bk-mnt-empty">没有可回滚的自动保存。</p>';
+        return transactions.length;
     }
 
     function getRecordTimestamp(item = {}) {
@@ -62,83 +46,35 @@ export function createMaintenanceUi({
             ...(latest?.summary?.sourceMessageIds || []),
             ...(latest?.draft?.sourceMessageIds || []),
         ]));
-        const coveredCount = (latest?.coveredBlockHashes || []).length + (latest?.coveredStageHashes || []).length;
         const hiddenCount = latestAuto ? getFiniteMessageIds(latestAuto.hiddenMessageIds || []).length : 0;
-        const latestTitle = latest?.summary?.title || latest?.draft?.title || (latest ? getKindLabel(latest.kind) : '暂无可撤回记录');
-        const impact = [];
-        if (latest) {
-            impact.push(`${getKindLabel(latest.kind) || '总结'} 1 条`);
-            if (sourceIds.length) impact.push(`来源 ${sourceIds.length} 楼`);
-            if (coveredCount) impact.push(`覆盖标记 ${coveredCount} 个`);
-            if (hiddenCount) impact.push(`可恢复 ${hiddenCount} 楼`);
-        }
-        query('#bakemono-memory-maintenance-latest-title').text(latestTitle);
+        const latestTitle = latest?.summary?.title || latest?.draft?.title || (latest ? getKindLabel(latest.kind) : '');
+        query('#bakemono-memory-maintenance-latest-title').text(latest ? latestTitle || '上一次保存' : '没有可以撤回的保存');
         query('#bakemono-memory-maintenance-latest-impact').text(latest
-            ? `影响：${impact.join('、')}。撤回前仍会再次确认。`
-            : '保存阶段总结或多次总结后，这里会先列出影响范围。');
-        query('#bakemono-memory-maintenance-undo')
-            .prop('disabled', !latest)
-            .attr('title', latest ? `撤回“${latestTitle}”` : '暂无可撤回记录');
+            ? [getKindLabel(latest.kind) || '总结', sourceIds.length ? `来源 ${sourceIds.length} 楼` : '', hiddenCount ? `可恢复 ${hiddenCount} 楼` : ''].filter(Boolean).join(' · ')
+            : '');
+        query('#bakemono-memory-maintenance-undo').prop('hidden', !latest).prop('disabled', !latest)
+            .attr('title', latest ? `撤回“${latestTitle}”，撤回前会列出影响范围` : '');
         query('#bakemono-memory-maintenance-hidden-count').text(getActualHiddenMessageIds().length.toLocaleString());
         query('#bakemono-memory-maintenance-task-count').text((state.taskQueue || []).length.toLocaleString());
         query('#bakemono-memory-maintenance-snapshot-count').text((state.tableDatabase?.undoStack || []).length.toLocaleString());
         query('#bakemono-memory-maintenance-auto-count').text(`${autoTransactions.length.toLocaleString()} 条`);
 
         const autoContainer = documentRef.querySelector('#bakemono-memory-maintenance-auto-transactions');
-        if (autoContainer) {
-            autoContainer.innerHTML = '';
-            renderAutoSummaryTransactions(autoContainer, state, { showTitle: false });
-            if (!autoContainer.childElementCount) {
-                const empty = documentRef.createElement('div');
-                empty.className = 'bakemono-memory-maintenance-empty';
-                empty.innerHTML = '<i class="fa-solid fa-shield-heart"></i><span><strong>暂无待处理事务</strong><small>自动保存并隐藏楼层后，可回滚记录会出现在这里。</small></span>';
-                autoContainer.append(empty);
-            }
-        }
+        if (autoContainer) renderAutoSummaryTransactions(autoContainer, state);
 
         const recordContainer = documentRef.querySelector('#bakemono-memory-maintenance-records');
         if (!recordContainer) return;
-        recordContainer.innerHTML = '';
-        const summaryRecords = (state.history || []).map(item => ({
-            type: 'summary',
-            title: item.summary?.title || item.draft?.title || getKindLabel(item.kind) || '总结保存',
-            meta: `${getKindLabel(item.kind) || '总结'} · 已保存到长期记忆`,
-            createdAt: item.createdAt,
-            icon: 'fa-solid fa-floppy-disk',
-        }));
-        const tableRecords = (state.tableDatabase?.history || []).map(item => ({
-            type: 'table',
-            title: item.title || item.label || '表格记忆已更新',
-            meta: '表格事务 · 已保留撤回快照',
-            createdAt: item.appliedAt || item.createdAt,
-            icon: 'fa-solid fa-table',
-        }));
-        const rollbackRecords = (state.tableDatabase?.rollbackHistory || []).map(item => ({
-            type: 'rollback',
-            title: item.reason || '表格事务已回滚',
-            meta: `${(item.rollbackSnapshotIds || []).length} 个快照 · ${(item.sourceMessageIds || []).length} 个来源楼层`,
-            createdAt: item.createdAt || item.rolledBackAt,
-            icon: 'fa-solid fa-rotate-left',
-        }));
-        const records = [...summaryRecords, ...tableRecords, ...rollbackRecords]
-            .sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a))
-            .slice(0, 10);
-        if (!records.length) {
-            const empty = documentRef.createElement('div');
-            empty.className = 'bakemono-memory-maintenance-empty is-quiet';
-            empty.innerHTML = '<i class="fa-solid fa-receipt"></i><span><strong>还没有操作记录</strong><small>保存总结、应用表格或回滚事务后会留下足迹。</small></span>';
-            recordContainer.append(empty);
-            return;
-        }
-        const fragment = documentRef.createDocumentFragment();
-        records.forEach(record => {
-            const row = documentRef.createElement('article');
-            row.className = `bakemono-memory-maintenance-record is-${record.type}`;
-            const time = record.createdAt ? new Date(record.createdAt).toLocaleString() : '时间未记录';
-            row.innerHTML = `<span class="bakemono-memory-maintenance-record-icon"><i class="${record.icon}"></i></span><span class="bakemono-memory-maintenance-record-copy"><strong>${escapeHtml(record.title)}</strong><small>${escapeHtml(record.meta)}</small></span><time>${escapeHtml(time)}</time>`;
-            fragment.append(row);
-        });
-        recordContainer.append(fragment);
+        // The dot's colour says what kind of record it is: saved summary, table change or a rollback.
+        const records = [
+            ...(state.history || []).map(item => ({ type: 'summary', createdAt: item.createdAt,
+                title: item.summary?.title || item.draft?.title || getKindLabel(item.kind) || '总结保存', meta: `${getKindLabel(item.kind) || '总结'} · 已保存` })),
+            ...(state.tableDatabase?.history || []).map(item => ({ type: 'table', createdAt: item.appliedAt || item.createdAt,
+                title: item.title || item.label || '表格已更新', meta: '表格 · 可撤回' })),
+            ...(state.tableDatabase?.rollbackHistory || []).map(item => ({ type: 'rollback', createdAt: item.createdAt || item.rolledBackAt,
+                title: item.reason || '已回滚', meta: `${(item.rollbackSnapshotIds || []).length} 个快照 · ${(item.sourceMessageIds || []).length} 个来源楼层` })),
+        ].sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a)).slice(0, 10);
+        recordContainer.innerHTML = records.map(record => `<li class="is-${record.type}"><time>${escapeHtml(record.createdAt ? new Date(record.createdAt).toLocaleString() : '时间未记录')}</time><strong>${escapeHtml(record.title)}</strong><small>${escapeHtml(record.meta)}</small></li>`).join('')
+            || '<li class="is-empty"><small>还没有记录。保存总结、应用表格或回滚后会出现在这里。</small></li>';
     }
 
     function exportTransactions(state = getState()) {

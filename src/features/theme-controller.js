@@ -161,7 +161,27 @@ export function createThemeController({
             const active = this.dataset.bakemonoThemeMode === choice;
             this.classList.toggle('is-active', active);
             this.setAttribute('aria-pressed', String(active));
+            this.setAttribute('aria-checked', String(active));
         });
+        query('#bakemono-memory-appearance-title').text({ tavern: '跟随酒馆', night: '场记板 · 夜', day: '白板 · 日', custom: `自定义 · ${theme.name}` }[choice] || '跟随酒馆');
+        // Three chips per theme: its paper, text and accent. 跟随酒馆 reads the tavern's own colours.
+        const presetColors = id => {
+            const preset = ui.themePresets.find(item => item.id === id);
+            return preset ? [preset.tokens.paper, preset.tokens.ink, preset.tokens.accent] : [];
+        };
+        const chips = {
+            tavern: ['var(--SmartThemeBlurTintColor)', 'var(--SmartThemeBodyColor)', 'var(--SmartThemeQuoteColor)'],
+            night: presetColors(quickThemeIds.night),
+            day: presetColors(quickThemeIds.day),
+            // Until 自定义 is picked, show the user's own saved theme rather than the built-in one in use.
+            custom: choice === 'custom' ? [theme.tokens.paper, theme.tokens.ink, theme.tokens.accent]
+                : presetColors(ui.themePresets.find(item => !builtInCustomThemePresetIds.has(item.id))?.id || ui.selectedThemePresetId),
+        };
+        query('[data-bakemono-theme-chips]').each(function () {
+            const colors = chips[this.dataset.bakemonoThemeChips] || [];
+            [...this.children].forEach((chip, index) => { chip.style.background = colors[index] || 'transparent'; });
+        });
+        query('[data-bakemono-preset-value="#bakemono-memory-theme-preset-select"]').text(selectedPreset?.name || '');
         query('#bakemono-memory-custom-theme-editor').prop('hidden', choice !== 'custom');
         query('#bakemono-memory-theme-name').val(theme.name);
         query('#bakemono-memory-theme-appearance').val(theme.appearance);

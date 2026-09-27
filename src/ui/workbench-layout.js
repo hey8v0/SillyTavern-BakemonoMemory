@@ -1,5 +1,4 @@
 const sectionOwnership = Object.freeze([
-    ['config', 'bakemono-memory-config-settings-slot'],
     ['batch', 'bakemono-memory-batch-summary-slot'],
 ]);
 
@@ -25,8 +24,6 @@ export function organizeWorkbenchOwnedSections(summaryGenerationMode = 'stage') 
         const slot = document.getElementById(slotId);
         if (!section || !slot) continue;
         slot.append(section);
-        section.classList.toggle('bakemono-memory-owned-primary', ['config', 'archive'].includes(sectionName));
-        if (['config', 'archive'].includes(sectionName)) section.open = true;
         if (sectionName === 'batch') section.hidden = summaryGenerationMode !== 'batch';
     }
 }

@@ -1743,10 +1743,13 @@ const workbenchPageOverviews = createWorkbenchPageOverviews({
     defaultInjectionTemplate,
     getInjectionMemoryParts,
     renderInjectionContent,
+    getActiveGlobalConfig,
+    summarySourceChoice,
     toastr,
 });
 const {
     bindPromptEvents,
+    renderConfigOverview,
     renderGenerationOverview,
     renderInjectionOverview,
     renderPromptOverview,
@@ -2185,6 +2188,7 @@ workbenchRenderer = createWorkbenchRenderer({
     renderInjectionOverview,
     renderPromptOverview,
     renderGenerationOverview,
+    renderConfigOverview,
     renderAutomationOverview,
     renderVectorMemoryPanel,
     renderScanOverview,

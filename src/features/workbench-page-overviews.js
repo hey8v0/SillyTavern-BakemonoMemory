@@ -18,6 +18,8 @@ export function createWorkbenchPageOverviews({
     defaultInjectionTemplate = '',
     getInjectionMemoryParts,
     renderInjectionContent,
+    getActiveGlobalConfig = () => null,
+    summarySourceChoice = () => '',
     toastr,
     mobileScanPreviewRenderLimit = 60,
     desktopScanPreviewRenderLimit = 120,
@@ -104,6 +106,40 @@ export function createWorkbenchPageOverviews({
         const template = String(query('#bakemono-memory-injection-template').val() ?? state.injection.template ?? '');
         query('#bakemono-memory-injection-template-state').text(template.trim() === String(defaultInjectionTemplate || '').trim() ? '默认' : '已修改');
         renderPresetValues();
+    }
+
+    // 整套配置: a call sheet of what the config holds now; each line opens its page.
+    const escapeText = value => String(value ?? '').replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]);
+    function configSheet(state) {
+        const auto = state.automation || {};
+        const tags = parseList(state.scanRules?.includeTags || defaultScanRules.includeTags);
+        const promptChanges = promptKeys.filter(key => !isDefaultPrompt(key, state.generationPrompts?.[key] || promptDefaults()[key][0])).length;
+        const roles = ['系统', '用户', '助手'];
+        const injection = state.injection || {};
+        const source = { existing: '回复里本来就有', inline: '随正文写', independent: '回复后单独写', manual: '只手动' }[summarySourceChoice(state)] || '旧版组合设置';
+        return [
+            ['settings', '摘要方式', `<b class="is-event">${escapeText(source)}</b>`],
+            ['scan', '扫描', `${state.scanRules?.mode === 'full' ? '全文管线' : '标签块'} · ${escapeText(tags.slice(0, 2).join('、') || '未设置')}${tags.length > 2 ? ` 等 ${tags.length} 个` : ''}`],
+            ['automation', '自动总结', !auto.enabled ? '没开'
+                : auto.triggerType === 'chars' ? `每 <b class="is-wall">${Number(auto.charInterval || 0).toLocaleString()}</b> 字整理一章` : `每 <b class="is-wall">${Number(auto.floorInterval || 0)}</b> 条摘要整理一章`],
+            ['generation', '生成模型', auto.apiProvider === 'custom' ? `自定义接口 · ${escapeText(auto.customApi?.model || '还没填模型')}` : '酒馆主模型'],
+            ['prompts', '提示词', promptChanges ? `改过 <b class="is-event">${promptChanges}</b> 份` : '都是默认'],
+            ['injection', '注入', injection.enabled === false ? '没开'
+                : `深度 ${Number(injection.depth ?? 0)} · ${roles[Number(injection.role)] || '系统'} · 模板${String(injection.template || '').trim() === String(defaultInjectionTemplate || '').trim() ? '默认' : '已修改'}`],
+        ];
+    }
+    function renderConfigOverview(state = getState()) {
+        const select = documentRef.querySelector('#bakemono-memory-preset-select');
+        const activeId = getActiveGlobalConfig()?.id || '';
+        const options = [...(select?.options || [])];
+        const active = options.find(option => option.value === activeId) || select?.selectedOptions?.[0];
+        query('#bakemono-memory-config-page-title').text(getActiveGlobalConfig()?.name || active?.textContent || '默认工作流');
+        query('#bakemono-memory-config-sheet').html(configSheet(state).map(([nav, key, value]) =>
+            `<button type="button" class="bk-cfg-row" data-bakemono-nav="${nav}"><span class="bk-cfg-key">${key}</span><span class="bk-cfg-val">${value}</span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></button>`).join(''));
+        query('#bakemono-memory-config-list').html(options.map(option => {
+            const checked = option.value === select.value;
+            return `<button type="button" class="bk-cfg-pick" role="radio" aria-checked="${checked}" data-bakemono-config-pick="${escapeText(option.value)}"><span class="bk-auto-radio" aria-hidden="true"></span><span class="bk-cfg-name">${escapeText(option.textContent)}</span>${option.value === activeId ? '<span class="bk-cfg-mark">在用</span>' : ''}</button>`;
+        }).join(''));
     }
 
     // Title and custom fields follow the choice on screen, before it is saved.
@@ -197,8 +233,8 @@ export function createWorkbenchPageOverviews({
             setPromptPreviewType(key);
             renderPromptOverview();
         });
-        root.off('click.bakemonoPromptCopy').on('click.bakemonoPromptCopy', '[data-bakemono-prompt-copy]', async function () {
-            await navigatorRef.clipboard.writeText(getPromptPreviewValue(this.dataset.bakemonoPromptCopy));
+        root.off('click.bakemonoGenPromptCopy').on('click.bakemonoGenPromptCopy', '[data-bakemono-gen-prompt-copy]', async function () {
+            await navigatorRef.clipboard.writeText(getPromptPreviewValue(this.dataset.bakemonoGenPromptCopy));
             toastr.success('提示词已复制。');
         });
         root.off('input.bakemonoPromptPreview').on(
@@ -212,6 +248,14 @@ export function createWorkbenchPageOverviews({
             const value = String(query('#bakemono-memory-injection-template').val() || '');
             query('#bakemono-memory-injection-template-state').text(value.trim() === String(defaultInjectionTemplate || '').trim() ? '默认' : '已修改');
         });
+        // Picking a saved config goes through the select's own handler, which asks before replacing settings.
+        root.off('click.bakemonoConfigPick').on('click.bakemonoConfigPick', '[data-bakemono-config-pick]', function () {
+            const select = documentRef.querySelector('#bakemono-memory-preset-select');
+            if (!select || select.value === this.dataset.bakemonoConfigPick) return;
+            select.value = this.dataset.bakemonoConfigPick;
+            query(select).trigger('change');
+            renderConfigOverview();
+        });
         root.off('change.bakemonoPresetValue').on('change.bakemonoPresetValue', 'select[id$="-preset-select"]', () => renderPresetValues());
     }
 
@@ -219,6 +263,7 @@ export function createWorkbenchPageOverviews({
         bindPromptEvents,
         getPromptPreviewType,
         getPromptPreviewValue,
+        renderConfigOverview,
         renderGenerationOverview,
         renderInjectionOverview,
         renderPromptOverview,

@@ -40,6 +40,7 @@ export function createWorkbenchRenderer({
     renderInjectionOverview,
     renderPromptOverview,
     renderGenerationOverview = () => {},
+    renderConfigOverview = () => {},
     renderAutomationOverview,
     renderVectorMemoryPanel,
     renderScanOverview,
@@ -197,6 +198,7 @@ export function createWorkbenchRenderer({
         else if (tabName === 'vector') renderVectorMemoryPanel(state);
         else if (tabName === 'scan') { renderScanOverview(state); renderScanPreview(); }
         else if (tabName === 'generation') { renderCustomModelOptions(state.automation.customApi?.models || []); renderGenerationOverview(state); }
+        else if (tabName === 'config') renderConfigOverview(state);
         else if (tabName === 'appearance') renderAppearanceSettings();
         else if (tabName === 'maintenance') { renderAutoHideRecentPanel(state); renderMaintenanceOverview(state); }
         else if (tabName === 'archive') renderAutoHideRecentPanel(state);
@@ -285,7 +287,7 @@ export function createWorkbenchRenderer({
             if (activeTab === 'generation') { syncActiveFormFields(activeTab, state); renderActivePresetControls(activeTab); renderCustomModelOptions(state.automation.customApi?.models || []); renderGenerationOverview(state); }
             else if (activeTab === 'settings-hub') renderHubPanels(state);
         } else if (scope === workbenchRenderScopes.CONFIG) {
-            if (activeTab === 'config') renderActivePresetControls(activeTab);
+            if (activeTab === 'config') { renderActivePresetControls(activeTab); renderConfigOverview(state); }
             else if (activeTab === 'settings-hub' || activeTab === 'data-hub') renderHubPanels(state);
         } else if (scope === workbenchRenderScopes.SETTINGS) {
             if (activeTab === 'settings') { syncActiveFormFields(activeTab, state); renderWorkflowGuide(state); }

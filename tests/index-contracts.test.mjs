@@ -154,12 +154,14 @@ test('settings center owns global preferences while feature settings stay with t
     // 生成模型 is its own page now, not the 生成 API block moved in from 自动总结.
     assert.doesNotMatch(settingsSource, /data-bakemono-owned-section="generation"/);
     assert.match(settingsSource, /data-bakemono-panel="generation"[\s\S]*?name="bakemono-memory-api-provider" id="bakemono-memory-api-provider-custom"/);
-    assert.match(settingsSource, /data-bakemono-owned-section="config"/);
+    // 整套配置 is its own page now, not a block moved in from 摘要方式.
+    assert.doesNotMatch(settingsSource, /data-bakemono-owned-section="config"/);
+    assert.match(settingsSource, /data-bakemono-panel="config"[\s\S]*?id="bakemono-memory-preset-select"/);
     assert.match(source, /organizeWorkbenchOwnedSections\(getSummaryGenerationMode\(\)\)/);
     assert.match(workbenchLayoutSource, /export function organizeWorkbenchOwnedSections\(/);
     assert.match(workbenchLayoutSource, /\['batch', 'bakemono-memory-batch-summary-slot'\]/);
     assert.doesNotMatch(workbenchLayoutSource, /bakemono-memory-generation-settings-slot/);
-    assert.match(workbenchLayoutSource, /\['config', 'bakemono-memory-config-settings-slot'\]/);
+    assert.doesNotMatch(workbenchLayoutSource, /bakemono-memory-config-settings-slot/);
     assert.doesNotMatch(settingsSource, /id="bakemono-memory-undo"|id="bakemono-memory-hide"|id="bakemono-memory-restore"/);
     assert.doesNotMatch(settingsSource, />专家设置</);
 });
@@ -343,7 +345,7 @@ test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
 
 test('expanded disclosures expose anchored help and important operations expose live feedback', () => {
     // The 表格, 向量记忆, 自动记忆 and 生成提示词 pages show their explanations as plain notes in their settings lists instead of help buttons.
-    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 3);
+    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 2);
     assert.match(settingsSource, /class="bakemono-memory-help-content"/);
     assert.match(source, /import \{ createHelpPopover \} from '\.\/src\/ui\/help-popover\.js';/);
     assert.match(source, /const helpPopover = createHelpPopover\(\)/);
@@ -849,7 +851,8 @@ test('custom themes stay token-only, global, and importable as JSON', () => {
     assert.match(settingsSource, /id="bakemono-memory-theme-preset-select"/);
     assert.match(settingsSource, /id="bakemono-memory-theme-save-as"/);
     assert.match(settingsSource, /id="bakemono-memory-theme-download-library"/);
-    assert.equal((settingsSource.match(/data-bakemono-theme-section-panel=/g) || []).length, 3);
+    // The custom editor shows palette and texture together; the JSON sits in the settings list.
+    assert.match(settingsSource, /id="bakemono-memory-custom-theme-editor"[\s\S]*?data-bakemono-theme-color="paper"[\s\S]*?data-bakemono-theme-effect="radius"/);
     assert.match(themeSchemaSource, /const CUSTOM_THEME_SCHEMA = 'bakemono-memory-theme\/v1'/);
     assert.match(themeSchemaSource, /const CUSTOM_THEME_LIBRARY_SCHEMA = 'bakemono-memory-theme-library\/v1'/);
     assert.match(themeSchemaSource, /function sanitizeCustomTheme\(/);
@@ -865,7 +868,7 @@ test('custom themes stay token-only, global, and importable as JSON', () => {
     assert.match(globalSettingsServiceSource, /settings\.ui\.themePresets = Array\.isArray\(settings\.ui\.themePresets\)[\s\S]*?settings\.ui\.themePresets\.map/);
     assert.match(styleSource, /\.bakemono-workbench-root\.bakemono-custom-theme/);
     assert.match(styleSource, /v1\.2\.5 compact theme library/);
-    assert.match(styleSource, /\.bakemono-memory-theme-section-panel\[hidden\]\s*\{[^}]*display:\s*none !important;/s);
+    assert.match(styleSource, /\.bk-look-editor\[hidden\]\s*\{[^}]*display:\s*none;/s);
 });
 
 test('active global config follows existing chats without removing the tavern model path', () => {
@@ -965,7 +968,7 @@ test('frequent prompt and floor-archive tools live directly in the settings cent
     assert.match(settingsSource, /id="bakemono-memory-archive-reel"/);
     assert.match(workbenchLayoutSource, /archive: \{ target: 'settings-hub', label: '返回设置中心' \}/);
     assert.match(workbenchLayoutSource, /prompts: \{ target: 'settings-hub', label: '返回设置中心' \}/);
-    assert.match(workbenchLayoutSource, /\['config', 'archive'\]\.includes\(sectionName\)/);
+    assert.match(workbenchLayoutSource, /\['batch', 'bakemono-memory-batch-summary-slot'\]/);
     assert.match(settingsSource, /data-bakemono-nav="maintenance"[^>]*><span class="bk-hub-glyph">/);
     const settingsHub = settingsSource.slice(settingsSource.indexOf('data-bakemono-panel="settings-hub"'), settingsSource.indexOf('data-bakemono-panel="settings"'));
     assert.doesNotMatch(settingsHub, /<span>0\d<\/span>/, 'settings rows carry no decorative numbers');
