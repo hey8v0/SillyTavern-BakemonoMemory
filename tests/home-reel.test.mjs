@@ -24,3 +24,10 @@ test('latest floors are listed one by one; user messages are plain frames', () =
     assert.deepEqual(reel.ticks.map(tick => tick.from), [5]);
     assert.deepEqual(buildFloorReel(index({}), 0), { lastFloor: -1, runs: [], ticks: [], recent: [], counts: { covered: 0, saved: 0, missing: 0, draft: 0 } });
 });
+
+test('each home setup row opens the page that holds that setting', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
+    const rows = Object.fromEntries([...html.matchAll(/class="bk-home-setting" data-bakemono-nav="([^"]+)"><span class="bk-home-key">([^<]+)</g)].map(([, nav, key]) => [key, nav]));
+    assert.deepEqual(rows, { 摘要方式: 'settings', 扫描识别: 'scan', 生成模型: 'generation', 后台整理: 'automation', 剧情注入: 'injection', 向量召回: 'vector' });
+});
