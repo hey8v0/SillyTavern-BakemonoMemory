@@ -2310,7 +2310,13 @@ pageSettings = createPageSettings({
         const revision = state.activeConfigSignature;
         const [global, chatSave] = await Promise.allSettled([confirmGlobalConfiguration(config), saveChatConditional()]);
         if (ensureState() !== state || state.activeConfigSignature !== revision) throw new Error('保存期间聊天或配置已变化，请重新核对。');
-        return global.status === 'fulfilled' && global.value?.status === 'confirmed' && chatSave.status === 'fulfilled';
+        const globalConfirmed = global.status === 'fulfilled' && global.value?.status === 'confirmed';
+        if (globalConfirmed && chatSave.status === 'fulfilled') return true;
+        // Say which half failed; the settings already apply in this session either way.
+        throw new Error(!globalConfirmed
+            ? global.value?.status === 'superseded' ? '保存时设置又变了，请再点一次保存。'
+                : '设置已经生效，但酒馆没能确认写进设置文件（可能写得比较慢）。刷新网页前请再点一次保存。'
+            : '设置已写进酒馆，但这个聊天没能保存，请检查连接后再点一次保存。');
     },
 });
 

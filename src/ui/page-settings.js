@@ -67,6 +67,8 @@ export function createPageSettings({ documentRef, getState, getActiveTab, savePa
         bar.hidden = !pages[tab];
         if (!pages[tab]) return;
         const draft = entry(state, tab);
+        // The bar appears only while there is something to save, a save running, or its result to read.
+        bar.hidden = !draft.edits.size && !saving && !draft.status;
         if (draft.configRevision !== state.activeConfigSignature) {
             draft.base = snapshot(tab);
             draft.configRevision = state.activeConfigSignature;
@@ -122,7 +124,10 @@ export function createPageSettings({ documentRef, getState, getActiveTab, savePa
             if (confirmed !== true) throw Error('保存尚未确认，请重试保存设置。');
             draft.base = submitted;
             draft.configRevision = state.activeConfigSignature;
-            if (revision === draft.revision) { draft.edits.clear(); draft.status = '已核验保存'; }
+            if (revision === draft.revision) {
+                draft.edits.clear(); draft.status = '已保存';
+                setTimeout(() => { if (draft.status === '已保存') { draft.status = ''; render(); } }, 2500);
+            }
             else for (const [id, edit] of draft.edits) if (edit === submitted.get(id)) draft.edits.delete(id);
         } catch (error) {
             draft.status = '保存未确认 · 请重试';

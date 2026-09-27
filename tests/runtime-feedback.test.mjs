@@ -144,7 +144,7 @@ test('page save cannot report success on unconfirmed global save or failed chat 
         [async () => ({ status: 'confirmed' }), async () => { throw Error('offline'); }],
     ]) {
         const f = saveAdapterFixture(globalSave, chatSave);
-        assert.equal(await f.save('automation', f.state), false);
+        await assert.rejects(f.save('automation', f.state), /没能确认写进设置文件|聊天没能保存/);
         assert.deepEqual(f.calls, ['readAutomationFieldsFromUi', 'sync']);
     }
 });

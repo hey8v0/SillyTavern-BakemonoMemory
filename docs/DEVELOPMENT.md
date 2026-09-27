@@ -4,7 +4,7 @@
 
 ## 1. 接手约定
 
-- 当前版本 **1.18.0**，分支 `main`，远端 `hey8v0/SillyTavern-BakemonoMemory`。先看 `git status` / `git log`，不要从旧对话推断现状。
+- 当前版本 **1.18.1**，分支 `main`，远端 `hey8v0/SillyTavern-BakemonoMemory`。先看 `git status` / `git log`，不要从旧对话推断现状。
 - 源码就在本仓库。任务工作区、酒馆安装目录都不是源码；不要默认同步本机酒馆、调用模型。
 - 不覆盖用户未提交的修改，不强推。提交与推送以当次授权为准。
 - **用户的测试方式**：用户在手机上的酒馆里更新插件来实测，所以每完成一批改动，经用户同意后发布一个小版本并推送（见第 8 节）。一次一批，便于定位问题。
@@ -87,6 +87,7 @@
 - **向量记忆**（v1.17.0）：面板是 `bk-sum bk-vec`，开关和设置行复用表格页的 `bk-tbl-switch` / `bk-tbl-set`（设置组 `<details name="bk-vec-set">` 一次只开一个，`vector-actions-controller.bind` 里补了不支持 `name` 的浏览器）。召回规则在 `src/vector/recall-plan.js`：一楼一组，`maxSummaryRecall` 和 `fullRecallCount` 分开计数，达到 `rerankThreshold` 且正文名额没满才带整段正文，否则带摘要；不再截断，只有 `recallSafetyChars`（默认 12000）一条放不下就整条不带（正文先退回摘要）。索引固定一楼一条（`indexMode`/`injectMode`/切片参数不再生效，保存时写成 message/tiered），楼层摘要和已存总结整条保存，只有嵌入输入按 `summaryMaxChars` 截取。“上次召回”由 `renderVectorRecall` 用 `lastRerankCandidates`（每组的去留和 `decisionReason`）、`lastHits`、`lastQueries`、`lastEmbeddingCandidates` 画出，`lastRecallAt` / `lastRecallQuery` 是运行期字段。
 - **自动记忆**（v1.18.0）：`turn-summary` 面板里自动记忆的部分是 `.bakemono-turn-panel-card.bk-sum.bk-auto`（表格页时隐藏；旧的全局字号规则用 `:not(.bk-tbl-page *, .bk-auto *)` 排除）。“摘要 / 表格”两行由 `turn-summary-ui.js` 画出，选项写进两个隐藏的 select：`#bakemono-memory-turn-summary-source`（existing/inline/independent/manual，legacy 只显示）和 `#bakemono-memory-turn-table-mode`（inline/after/manual），所以改动和其他设置一样走底部保存栏。`readTurnSummaryFieldsFromUi` 在来源变化时调用 `applySummarySourceChoice` 并套用 `workflowForSummarySource` 的默认搭配，再用 `applyTableModeChoice`（`turn-trigger-policy.js`）换算成 `inlineGeneration.tableEnabled`、`tableDatabase.enabled`、`turnSummary.auto` / `processingMode`，不会产生旧版“只填表”组合；摘要“只手动”时表格不能选“回复后单独写”。原来的 `table-enabled`、`inline-table-enabled`、`turn-processing-mode` 输入框已删除，读取时缺失就保留原值。顶部和“最近几轮”读楼层索引（`getCurrentFloorMemoryIndex`）。
 - **向量关键词**（v1.18.0）：模型改写多要一行 `KEYWORDS:`，`parseVectorQueryRewriteLines` 解析；`prepareVectorQueries` 只留最近对话里原样出现、且不在用户词表里的词（最多 6 个），存在运行期字段 `lastInferredKeywords`，召回时和用户词表合并参与关键词加分与候选。
+- **保存栏**（v1.18.1）：`#bakemono-memory-page-savebar` 只在有未保存修改、正在保存或刚有结果时显示；保存成功显示“已保存”，2.5 秒后收起；失败时留着，好再点一次。保存核对（`global-config-save.js`）在约 10 秒内回读 5 次（0 / 0.6 / 1.6 / 3 / 5 秒，总超时 15 秒）；`savePage` 失败时抛出具体原因（设置文件没确认 / 聊天没保存 / 保存时设置又变了），由保存栏的提示显示。
 - **滚动**：把某一项滚进视野时用 `src/ui/scroll-into-main.js` 的 `scrollIntoMain`，只滚内容区 `.bakemono-workbench-main`；不要用 `Element.scrollIntoView()`，它会连带滚动被裁剪的外层，手机上曾把整个剪辑台（连同顶栏和关闭按钮）推出屏幕。切换页面时 `resetWorkbenchFrame` 会把外层滚动归零。
 - **侧栏**（v1.15.1）：常用是 剪辑台 / 总结 / 剧情状态 / 表格 / 向量记忆 / 待确认；记忆库移到“更多”（用户不用它，它和总结页重复较多）。表格和向量记忆仍可从“自动与数据”进入。
 - **来源检查与排除标签**（v1.15.1）：总结的来源检查除了用生成时记录的排除标签，还会用当前的排除标签（扫描规则 + 向量设置）再算一次，并去掉没有结束标签的排除标签（如 `<img …>`，`stripConfiguredTags(text, tags, { unpaired: true })`）；任一种算法与记录一致就算没变。这样后来往旧楼层插入的图片等内容，只要标签在排除列表里，就不会让总结变成“需重建”。
@@ -163,7 +164,7 @@ node scripts/ui-harness/server.mjs
 
 ## 9. 后续工作
 
-- 手机实测：v1.8.8 – v1.18.0 的改动都只在模拟页面验证过，需要用户在真实酒馆（尤其手机、iOS Safari）确认；宿主保存、后台冻结、重 roll、流式协议隐藏同样需要实机。
+- 手机实测：v1.8.8 – v1.18.1 的改动都只在模拟页面验证过，需要用户在真实酒馆（尤其手机、iOS Safari）确认；宿主保存、后台冻结、重 roll、流式协议隐藏同样需要实机。
 - 新样式推广到其他页面（见第 5 节“新样式”）。已完成：剧情状态（v1.10.0）、首页（v1.11.0）、顶栏与侧栏（v1.12.0：电脑上 264px 细线侧栏，手机 ≤900px 为左侧抽屉 + 遮罩 `[data-bakemono-menu-close]`，布局尺寸与旧版一致，顶栏由 82px 收到 70px）、总结页（v1.13.0）、待确认（v1.14.0）、摘要树（v1.15.0）、表格（v1.16.0）、向量记忆（v1.17.0）、自动记忆（v1.18.0）。其余页面仍是旧样式，下一个建议改记忆库（和总结页重复较多，可以考虑合并）。用户给的每页参考：首页 Magic Bento + 编辑式仪表盘；总结 时间线 + 卡片堆叠；摘要树 嵌套时间线；记忆库 相册 + 动画列表；待确认 审阅队列；提示词检查器 文档阅读器；设置中心 系统设置列表；电脑导航 细线侧栏；手机导航 抽屉 + 分段标签。React 组件库（React Bits、Aceternity）不能直接用，只借效果、用 CSS 和原生 JS 实现。
 - RP P1：历史范围重建、精细依赖纠错、丰富人物/历法、大账本增量缓存（RP 目前仍完整重放，大档有主线程耗时风险）。
 - 固定模型输出的测试不证明真实模型语义准确率。

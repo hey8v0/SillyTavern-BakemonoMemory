@@ -21,7 +21,7 @@ assert.equal(model.value, 'changed');
 const save = ui.save(); assert.deepEqual(saves, ['vector']);
 assert.match(document.getElementById('bakemono-memory-page-save-status').textContent, /正在保存/);
 done(true); await save;
-assert.match(document.getElementById('bakemono-memory-page-save-status').textContent, /已核验保存/);
+assert.match(document.getElementById('bakemono-memory-page-save-status').textContent, /已保存/);
 model.value = 'private-draft'; model.dispatchEvent(new window.Event('input', { bubbles: true }));
 state = {}; model.value = 'other-chat'; ui.render(); assert.equal(model.value, 'other-chat');
 model.value = 'retry-me'; model.dispatchEvent(new window.Event('input', { bubbles: true }));
@@ -53,7 +53,7 @@ assert.equal(document.getElementById('bakemono-memory-page-save').disabled, true
 done(true); await oldChatSave;
 assert.equal(document.getElementById('bakemono-memory-page-save').disabled, false);
 assert.equal(model.value, 'third-chat');
-assert.doesNotMatch(document.getElementById('bakemono-memory-page-save-status').textContent, /已核验保存/);
+assert.doesNotMatch(document.getElementById('bakemono-memory-page-save-status').textContent, /已保存/);
 const enabled = document.getElementById('bakemono-memory-vector-enabled');
 enabled.checked = true; enabled.dispatchEvent(new window.Event('change', { bubbles: true }));
 assert.doesNotMatch(document.getElementById('bakemono-memory-page-save-status').textContent, /切页暂存/);

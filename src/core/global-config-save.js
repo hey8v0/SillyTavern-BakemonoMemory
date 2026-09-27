@@ -4,7 +4,8 @@ const stable = value => JSON.stringify(value, (_key, item) => item && typeof ite
 // The host can resolve a save promise without having written settings. Read
 // back only to compare the requested revision; never log the settings payload.
 export function createGlobalConfigSaveVerifier({ getCurrentConfig, requestSave, readSavedConfig,
-    retryDelays = [0, 600, 1600], timeoutMs = 8000 }) {
+    // A phone or a large settings file can take several seconds to write; keep reading back for about ten.
+    retryDelays = [0, 600, 1600, 3000, 5000], timeoutMs = 15000 }) {
     let queue = Promise.resolve();
     return function confirm(expected) {
         const key = stable(expected);

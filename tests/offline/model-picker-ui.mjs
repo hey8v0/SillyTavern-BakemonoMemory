@@ -66,7 +66,7 @@ assert.equal(state.automation.customApi.model, 'unchanged');
 assert.match(document.getElementById('bakemono-memory-page-save-status').textContent, /未保存/);
 await page.save();
 assert.equal(saveCalls, 1); assert.equal(state.automation.customApi.model, 'new-choice');
-assert.match(document.getElementById('bakemono-memory-page-save-status').textContent, /已核验保存/);
+assert.match(document.getElementById('bakemono-memory-page-save-status').textContent, /已保存/);
 const rules = new Map();
 walk(parse(await readFile(new URL('../../style.css', import.meta.url), 'utf8')), node => {
     if (node.type !== 'Rule') return;

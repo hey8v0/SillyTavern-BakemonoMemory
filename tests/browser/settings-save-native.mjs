@@ -74,7 +74,7 @@ try {
         assert.deepEqual(invalidDefaults, [], 'production vector defaults must pass native browser validity');
         await page.locator('#bakemono-memory-page-save').click();
         assert.deepEqual(await page.evaluate(() => test.saves), ['vector']);
-        assert.match(await page.locator('#bakemono-memory-page-save-status').textContent(), /已核验保存/);
+        assert.match(await page.locator('#bakemono-memory-page-save-status').textContent(), /已保存/);
 
         // An invalid hidden field must be named, expanded, focused and retained without a save attempt.
         await page.evaluate(async () => { test.edit('chunk-size', '239'); test.edit('model', 'keep-draft'); test.collapse(); await test.ui.save(); });
