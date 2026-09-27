@@ -22,6 +22,8 @@ export const vectorRuntimeFieldNames = Object.freeze([
     'lastEmbeddingCandidates',
     'lastRerankCandidates',
     'lastRecallSkippedReason',
+    'lastRecallAt',
+    'lastRecallQuery',
     'lastIndexAt',
     'lastIndexError',
     'lastIndexedSignature',

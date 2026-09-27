@@ -24,43 +24,35 @@ test('automatic generation uses committed settings and writes actual retrieved c
     auto.dispose();
 });
 
-test('service preserves real chunk choices after metadata serialization and reload', async () => {
-    const f = fixture([{ body: 1, text: '前半旧事。'.repeat(55) + '后半戒指。'.repeat(55) }],
-        { injectMode: 'chunk', indexMode: 'chunk', chunkSize: 240, overlap: 0, maxPerMessage: 2, fullRecallCount: 0 },
+test('an old chunk setting still indexes one record per floor', async () => {
+    const f = fixture([{ body: 1, summary: .5, text: '前半旧事。'.repeat(55) + '后半戒指。'.repeat(55) }],
+        { injectMode: 'chunk', indexMode: 'chunk', chunkSize: 240, overlap: 0, maxPerMessage: 2 },
         { createLocalEmbedding: () => [1, 0] });
     await f.run();
-    assert.equal(f.state.vectorMemory.lastHits.length, 2);
-    assert.ok(f.state.vectorMemory.lastHits.every(h => h.recallTier === 'chunk'));
-    slimVectorMemoryForSave(f.state.vectorMemory);
-    const reloaded = JSON.parse(JSON.stringify(f.state));
-    const service = createVectorMemoryService({ ...f.dependencies, getState: () => reloaded });
-    const rendered = service.renderVectorMemorySection();
-    assert.match(rendered, /正文片段/); assert.equal(reloaded.vectorMemory.lastHits.length, 2);
-    assert.ok(reloaded.vectorMemory.lastHits.every(h => h.recallTier === 'chunk'));
+    assert.deepEqual(f.state.vectorMemory.records.map(r => r.kind).sort(), ['message', 'summary']);
+    assert.equal(f.state.vectorMemory.lastHits.length, 1);
+    assert.equal(f.state.vectorMemory.lastHits[0].text, '前半旧事。'.repeat(55) + '后半戒指。'.repeat(55));
 });
 
-test('saved summaries in message/chunk modes never expand into unrelated bodies', () => {
+test('saved summaries never expand into unrelated bodies', () => {
     const records = [{ id: 'saved', memoryHash: 'm1', messageId: 1, kind: 'summary', text: '跨楼阶段总结', score: .9 }];
-    for (const injectMode of ['message', 'chunk']) {
-        const config = { injectMode };
-        const groups = groupRecallCandidates(records, records, new Map([[1, '不该插入的正文']]), 20, config);
-        const result = selectRecallPlan(groups, config);
-        assert.equal(result.hits[0].recallTier, 'summary'); assert.doesNotMatch(result.text, /不该插入/);
-    }
+    const groups = groupRecallCandidates(records, records, new Map([[1, '不该插入的正文']]), 20);
+    const result = selectRecallPlan(groups, {});
+    assert.equal(result.hits[0].recallTier, 'summary'); assert.doesNotMatch(result.text, /不该插入/);
+    assert.equal(result.decisions[0].decisionReason, '已存的总结');
 });
 
-test('whole-floor indexes with clipped stored text still locate a queried detail at the end after reload', async () => {
-    const f = fixture([{ body: 1, text: '开场场景。'.repeat(400) + '戒指藏在书柜之后。' + '后续叙述。'.repeat(50) }],
-        { injectMode: 'message', perMessageMaxChars: 260 }, { createLocalEmbedding: () => [1, 0] });
+test('a whole floor is injected in full, also after the stored text was clipped and reloaded', async () => {
+    const body = '开场场景。'.repeat(400) + '戒指藏在书柜之后。' + '后续叙述。'.repeat(50);
+    const f = fixture([{ body: 1, text: body }], {}, { createLocalEmbedding: () => [1, 0] });
     await f.service.buildVectorMemoryIndex(); slimVectorMemoryForSave(f.state.vectorMemory);
     assert.doesNotMatch(f.state.vectorMemory.records[0].text, /戒指藏在/);
     await f.service.retrieveVectorMemoryHits('戒指藏在哪里');
-    const expected = f.state.vectorMemory.lastHits[0];
-    assert.match(expected.text, /戒指藏在书柜/); assert.ok(expected.sourceTextStart > 1000);
+    assert.equal(f.state.vectorMemory.lastHits[0].text, body);
     const reloaded = JSON.parse(JSON.stringify(f.state));
     const service = createVectorMemoryService({ ...f.dependencies, getState: () => reloaded });
-    assert.match(service.renderVectorMemorySection(), /戒指藏在书柜/);
-    assert.equal(reloaded.vectorMemory.lastHits[0].sourceTextStart, expected.sourceTextStart);
+    const rendered = service.renderVectorMemorySection();
+    assert.ok(rendered.includes(body)); assert.doesNotMatch(rendered, /已截断/);
 });
 
 test('a late recall success or failure cannot replace a newer successful query', async () => {
@@ -99,32 +91,33 @@ test('changing recall-only settings or cancelling invalidates a pending query', 
     }
 });
 
-test('message mode ignores tiered full quota while chunk mode obeys per-floor cap', async () => {
-    const f = fixture([{ body: 1, summary: .5 }], { injectMode: 'message', fullRecallCount: 0, rerankThreshold: 1 });
-    assert.equal((await f.run())[0]?.recallTier, 'full');
-    const candidates = Array.from({ length: 3 }, (_, i) => ({ id: `c${i}`, kind: 'chunk', messageId: 1,
-        text: `片段${i}具体内容。`, score: .9 - i * .1 }));
-    const config = { injectMode: 'chunk', maxPerMessage: 2, fullRecallCount: 0, maxInjectChars: 3000 };
-    const groups = groupRecallCandidates(candidates, candidates, new Map([[1, '原楼正文']]), 20, config);
-    const result = selectRecallPlan(groups, config);
-    assert.equal(result.hits.length, 2);
-    assert.ok(result.hits.every(h => h.recallTier === 'chunk'));
-    assert.match(result.text, /片段0/); assert.match(result.text, /片段1/); assert.doesNotMatch(result.text, /片段2具体/);
+test('summaries and full texts are counted separately', () => {
+    const candidates = Array.from({ length: 7 }, (_, i) => [
+        { id: `s${i}`, kind: 'summary', messageId: i, text: `第${i}楼摘要。`, score: .9 - i * .01 },
+        { id: `m${i}`, kind: 'message', messageId: i, text: `第${i}楼正文。`, score: .9 - i * .01 },
+    ]).flat();
+    const bodies = new Map(Array.from({ length: 7 }, (_, i) => [i, `第${i}楼正文。`]));
+    const groups = groupRecallCandidates(candidates, candidates, bodies, 20);
+    const result = selectRecallPlan(groups, { maxSummaryRecall: 3, fullRecallCount: 2, rerankThreshold: .5 });
+    assert.equal(result.hits.filter(h => h.recallTier === 'full').length, 2);
+    assert.equal(result.hits.filter(h => h.recallTier === 'summary').length, 3);
+    assert.deepEqual(result.decisions.filter(d => d.recallTier === 'dropped').map(d => d.decisionReason), ['摘要已满 3 条', '摘要已满 3 条']);
+    assert.match(result.decisions[2].decisionReason, /正文已满 2 条/);
 });
 
-test('long text keeps the matched tail with exact cleaned-source offsets under both budgets', () => {
-    const body = '开场背景。'.repeat(300) + '关键证据：戒指藏在书柜后。' + '后续场景。'.repeat(200);
-    const match = '关键证据：戒指藏在书柜后。';
-    const candidates = [{ id: 'tail', messageId: 1, kind: 'chunk', text: match, score: .95 }];
-    const groups = groupRecallCandidates(candidates, candidates, new Map([[1, body]]), 20);
-    for (const budget of [3000, 280]) {
-        const result = selectRecallPlan(groups, { perMessageMaxChars: 350, maxInjectChars: budget });
-        const hit = result.hits[0];
-        assert.match(hit.text, /戒指藏在书柜后/);
-        assert.ok(hit.sourceTextStart > 0); assert.ok(hit.sourceTextEnd <= body.length);
-        assert.equal(body.slice(hit.sourceTextStart, hit.sourceTextEnd), hit.text.replace(/^…|…$/g, ''));
-        assert.ok(result.text.length <= budget);
-    }
+test('nothing is cut: over the safety cap a full text falls back to its summary, a summary is left out whole', () => {
+    const records = [
+        { id: 'a-body', kind: 'message', messageId: 1, text: '长正文', score: .95 },
+        { id: 'a-sum', kind: 'summary', messageId: 1, text: '第一楼的摘要。', score: .9 },
+        { id: 'b-sum', kind: 'summary', messageId: 2, text: '很长的摘要。'.repeat(300), score: .8 },
+        { id: 'c-sum', kind: 'summary', messageId: 3, text: '第三楼的摘要。', score: .7 },
+    ];
+    const groups = groupRecallCandidates(records, records, new Map([[1, '正文细节。'.repeat(700)]]), 20);
+    const result = selectRecallPlan(groups, { recallSafetyChars: 1000 });
+    assert.deepEqual(result.hits.map(h => [h.messageId, h.recallTier, h.text]), [[1, 'summary', '第一楼的摘要。'], [3, 'summary', '第三楼的摘要。']]);
+    assert.match(result.decisions.find(d => d.messageId === 2).decisionReason, /放不下：超过保险上限 1000 字/);
+    assert.ok(result.text.length <= 1000);
+    assert.ok(result.hits.every(h => !h.truncated));
 });
 
 const noop = () => {};
@@ -185,7 +178,7 @@ test('twenty candidates across twelve floors can retain five instead of dropping
     const hits = await f.run();
     assert.equal(f.state.vectorMemory.lastEmbeddingCandidates.length, 20);
     assert.equal(f.state.vectorMemory.lastRerankCandidates.length, 12);
-    assert.equal(hits.length, 5); assert.equal(hits.filter(h => h.recallTier === 'full').length, 2);
+    assert.equal(hits.length, 6); assert.equal(hits.filter(h => h.recallTier === 'full').length, 2);
 });
 
 test('zero full allowance retains summaries but never fabricates a summary for a body-only floor', async () => {
@@ -218,14 +211,16 @@ test('configured summary tags exclude unrelated tags and nested RP protocol', as
     assert.ok(f.state.vectorMemory.records.every(item => !item.text.includes('RP_ONLY')));
 });
 
-test('inline summaries embed exactly the bounded indexed text, not the entire long tag block', async () => {
+test('inline summaries are stored whole; only the embedding input is bounded', async () => {
     const inputs = [];
     const f = fixture([], { summaryMaxChars: 520 }, { createLocalEmbedding: value => { inputs.push(value); return [1, 0]; } });
     f.chat.push({ mes: '<bakemono>' + '很长的剧情摘要。'.repeat(1000) + '</bakemono>' });
     await f.service.buildVectorMemoryIndex();
     const record = f.state.vectorMemory.records.find(r => r.kind === 'summary');
-    assert.ok(record); assert.equal(inputs[0], record.text);
+    assert.ok(record); assert.ok(record.text.length > 7000);
     assert.ok(inputs[0].length <= 523); // The configured excerpt plus an ellipsis.
+    slimVectorMemoryForSave(f.state.vectorMemory);
+    assert.equal(f.state.vectorMemory.records.find(r => r.kind === 'summary').text, record.text);
 });
 
 test('body and summary winner uses hybrid score first, not a lower hybrid score with higher cosine', async () => {
@@ -234,14 +229,14 @@ test('body and summary winner uses hybrid score first, not a lower hybrid score 
     assert.equal(f.state.vectorMemory.lastRerankCandidates[0].rerankScore, .95);
 });
 
-test('actual injection, stored hit count and preview agree under a small total budget', async () => {
-    const f = fixture(Array.from({ length: 5 }, (_, i) => ({ body: .9, summary: .7, text: `第${i}楼细节。`.repeat(300) })), { maxInjectChars: 300 });
+test('actual injection, stored hit count and preview agree under a small safety cap', async () => {
+    const f = fixture(Array.from({ length: 5 }, (_, i) => ({ body: .9, summary: .7, text: `第${i}楼细节。`.repeat(300) })), { recallSafetyChars: 1000 });
     await f.run();
     const rendered = f.service.renderVectorMemorySection();
-    assert.ok(rendered.length <= 300, rendered.length);
+    assert.ok(rendered.length <= 1000, rendered.length);
     assert.equal((rendered.match(/- 来源：/g) || []).length, f.state.vectorMemory.lastHits.length);
     for (const h of f.state.vectorMemory.lastHits) assert.ok(rendered.includes(h.text));
-    assert.ok(f.state.vectorMemory.lastRerankCandidates.some(x => /预算|上限/.test(x.decisionReason || '')));
+    assert.ok(f.state.vectorMemory.lastHits.every(h => h.recallTier === 'summary'));
     assert.equal(f.service.renderVectorMemorySection(), rendered);
 });
 
@@ -298,12 +293,14 @@ test('duplicate body candidates do not spend a full slot or final slot', async (
     assert.ok(f.state.vectorMemory.lastRerankCandidates.some(x => /相同内容/.test(x.decisionReason)));
 });
 
-test('budget preview identifies truncated full text without splitting an emoji surrogate', async () => {
-    const f = fixture([{ body: .9, text: '关键细节😀'.repeat(300) }], { perMessageMaxChars: 200, maxInjectChars: 1000 });
+test('a full text is injected whole and never split, however long', async () => {
+    const body = '关键细节😀'.repeat(300);
+    const f = fixture([{ body: .9, text: body }], { perMessageMaxChars: 200, maxInjectChars: 1000 });
     const hits = await f.run();
-    assert.equal(hits[0].recallTier, 'full'); assert.equal(hits[0].truncated, true);
-    assert.ok(hits[0].text.length <= 200); assert.ok(hits[0].text.isWellFormed());
-    assert.match(f.service.renderVectorMemorySection(), /已截断/);
+    assert.equal(hits[0].recallTier, 'full'); assert.equal(hits[0].truncated, false);
+    assert.equal(hits[0].text, body);
+    assert.doesNotMatch(f.service.renderVectorMemorySection(), /已截断/);
+    assert.ok(f.state.vectorMemory.lastRecallAt); assert.equal(f.state.vectorMemory.lastRecallQuery, 'QUERY');
 });
 
 export { fixture };

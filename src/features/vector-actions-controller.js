@@ -30,6 +30,8 @@ export function createVectorActionsController({
     confirmGlobalConfiguration = async () => ({ status: 'unconfirmed' }),
     cancelVectorRecall = () => {},
     clearVectorRecall = () => {},
+    toggleVectorView = () => {},
+    renderVectorSettingsSummary = () => {},
 } = {}) {
     const modelRequests = { embedding: 0, query: 0 };
     let saveRequest = 0;
@@ -184,7 +186,27 @@ export function createVectorActionsController({
         return saveVectorConfiguration(state, state.vectorMemory.enabled ? '向量记忆已开启' : '向量记忆已关闭');
     }
 
+    // Settings groups open one at a time (older browsers ignore <details name>).
+    function closeOtherGroups(event) {
+        const opened = event.target;
+        if (opened?.tagName !== 'DETAILS' || !opened.open || opened.getAttribute('name') !== 'bk-vec-set') return;
+        opened.parentElement?.querySelectorAll('details[name="bk-vec-set"][open]').forEach(other => { if (other !== opened) other.open = false; });
+    }
+
     function bind() {
+        const root = query('#bakemono-workbench-root');
+        root.off?.('click.bakemonoVectorView').on?.('click.bakemonoVectorView', '[data-bk-vec-hit], [data-bk-vec-toggle]', function (event) {
+            event.preventDefault();
+            if (this.dataset.bkVecHit != null) toggleVectorView('hit', Number(this.dataset.bkVecHit));
+            else toggleVectorView(this.dataset.bkVecToggle);
+        });
+        root.off?.('input.bakemonoVectorForm change.bakemonoVectorForm')
+            .on?.('input.bakemonoVectorForm change.bakemonoVectorForm', '[data-bakemono-panel="vector"] select, [data-bakemono-panel="vector"] input', () => renderVectorSettingsSummary());
+        const element = root[0];
+        if (element && !element.bakemonoVectorGroups) {
+            element.bakemonoVectorGroups = true;
+            element.addEventListener('toggle', closeOtherGroups, true);
+        }
         query('#bakemono-memory-vector-enabled')
             .off('change.bakemonoVectorEnabled')
             .on('change.bakemonoVectorEnabled', async () => {

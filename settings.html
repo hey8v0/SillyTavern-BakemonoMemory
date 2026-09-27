@@ -1303,312 +1303,147 @@
         </details>
       </section>
 
-      <section class="bakemono-workbench-panel" data-bakemono-panel="vector">
-        <article class="bakemono-memory-vector-status-hero">
-          <div class="bakemono-memory-vector-runtime-line">
-            <span class="bakemono-memory-vector-runtime-dot"></span>
-            <small id="bakemono-memory-vector-runtime-label">尚未建立索引</small>
-            <span id="bakemono-memory-vector-runtime-badge">关闭</span>
+      <section class="bakemono-workbench-panel bk-sum bk-vec" data-bakemono-panel="vector">
+        <section class="bk-vec-status">
+          <div class="bk-sum-kicker"><span>向量记忆</span><span id="bakemono-memory-vector-runtime-badge">召回关闭</span></div>
+          <h3 id="bakemono-memory-vector-runtime-title">还没有建索引</h3>
+          <div id="bakemono-memory-vector-runtime-description" class="bk-sum-meta bk-vec-facts"></div>
+          <p id="bakemono-memory-vector-runtime-note" class="bk-vec-note" hidden></p>
+          <div class="bk-vec-meter" aria-hidden="true"><span id="bakemono-memory-vector-meter-bar"></span></div>
+          <div class="bk-sum-actions">
+            <button class="menu_button bk-vec-index" type="button" data-bakemono-action="vector-index"><span id="bakemono-memory-vector-index-label">建立索引</span></button>
+            <button class="bk-sum-link" type="button" data-bakemono-action="vector-pause" hidden>暂停</button>
           </div>
-          <strong id="bakemono-memory-vector-runtime-title">0 楼已索引</strong>
-          <p id="bakemono-memory-vector-runtime-description">建立索引后，剪辑台才能从长聊天里找回相关旧剧情。</p>
-          <div class="bakemono-memory-vector-meter" aria-hidden="true"><span id="bakemono-memory-vector-meter-bar"></span></div>
-          <button class="menu_button" data-bakemono-action="vector-pause" title="停止当前索引请求；再次刷新会复用已完成片段">暂停索引</button>
-          <button class="menu_button bakemono-memory-vector-index-primary" data-bakemono-action="vector-index">
-            <i class="fa-solid fa-layer-group"></i><span>建立 / 刷新索引</span>
-          </button>
-        </article>
+          <label class="bk-tbl-switch">
+            <span class="bk-tbl-switch-copy">召回时带上旧剧情<small id="bakemono-memory-vector-enabled-note">只建索引，不放进上下文</small></span>
+            <input type="checkbox" id="bakemono-memory-vector-enabled" role="switch" title="此开关立即保存">
+            <span class="bk-tbl-toggle" aria-hidden="true"></span>
+          </label>
+        </section>
 
-        <div class="bakemono-memory-vector-query-shell" role="search" aria-label="测试向量召回">
-          <i class="fa-solid fa-magnifying-glass"></i>
-          <textarea id="bakemono-memory-vector-test-query" class="text_pole" rows="1" spellcheck="false" aria-label="测试查询" placeholder="输入想找回的旧剧情；留空则使用最近对话"></textarea>
-          <button type="button" data-bakemono-action="vector-test"><span>测试召回</span></button>
-        </div>
-
-        <div class="bakemono-memory-section-head bakemono-memory-vector-result-head">
-          <div><span class="bakemono-memory-next-kicker">召回预览</span><h3>最相关的记忆</h3></div>
-          <span id="bakemono-memory-vector-result-count">0 条</span>
-        </div>
-        <div id="bakemono-memory-vector-result-list" class="bakemono-memory-vector-result-list"></div>
-
-        <details class="bakemono-memory-vector-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-sliders"></i> 向量配置</span><small id="bakemono-memory-vector-config-summary">本地向量 · 召回 0 条</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看向量配置说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">先把当前剧情改写成多条检索句，再用向量相似度初筛、重排分档；高相关内容发全文，较相关内容发摘要，避免召回过多撑爆上下文。</span></button></summary>
-          <div class="bakemono-memory-vector-disclosure-body">
-          <div class="bakemono-memory-inline-actions">
-            <button class="menu_button danger_button" data-bakemono-action="vector-clear">
-              <i class="fa-solid fa-trash"></i>
-              <span>清空索引</span>
-            </button>
+        <section class="bk-vec-try" role="search" aria-label="试一试召回">
+          <div class="bk-vec-ask">
+            <textarea id="bakemono-memory-vector-test-query" rows="1" spellcheck="false" aria-label="想找回的旧剧情" placeholder="想找回哪段旧剧情？留空就用最近几轮对话"></textarea>
+            <button class="menu_button bk-sum-primary" type="button" data-bakemono-action="vector-test">找找看</button>
           </div>
-          <div id="bakemono-memory-vector-stats" class="bakemono-memory-prompt-hint">索引 0 个片段 / 召回 0 个</div>
-          <div class="bakemono-memory-preset-controls">
-            <label class="bakemono-memory-field">
-              <span>向量配置预设</span>
-              <select id="bakemono-memory-vector-preset-select" class="text_pole"></select>
-            </label>
-            <input id="bakemono-memory-vector-preset-name" class="text_pole bakemono-memory-preset-name" type="text" placeholder="我的 embedding 配置">
-            <button class="menu_button" id="bakemono-memory-save-vector-preset">
-              <i class="fa-solid fa-floppy-disk"></i>
-              <span>另存为预设</span>
-            </button>
-            <button class="menu_button danger_button" id="bakemono-memory-delete-vector-preset">
-              <i class="fa-solid fa-trash"></i>
-              <span>删除</span>
-            </button>
-          </div>
-          </div>
-        </details>
+        </section>
 
-        <div class="bakemono-memory-editor-grid">
-          <details class="bakemono-memory-vector-disclosure bakemono-memory-console-disclosure">
-            <summary><span><i class="fa-solid fa-toggle-on"></i> 检索与索引</span><small>开关、粒度与注入方式</small></summary>
-            <div class="bakemono-memory-vector-disclosure-body">
-            <label class="checkbox_label bakemono-memory-switch">
-              <input type="checkbox" id="bakemono-memory-vector-enabled" title="此开关立即保存；接口及召回参数请点保存设置">
-              <span>启用向量原文召回注入</span>
-            </label>
-            <label class="checkbox_label bakemono-memory-switch">
-              <input type="checkbox" id="bakemono-memory-vector-auto-index" checked>
-              <span>启用后自动建立/刷新索引</span>
-            </label>
-            <label class="checkbox_label bakemono-memory-switch">
-              <input type="checkbox" id="bakemono-memory-vector-include-hidden" checked>
-              <span>建索引时包含隐藏楼层</span>
-            </label>
-            <label class="checkbox_label bakemono-memory-switch">
-              <input type="checkbox" id="bakemono-memory-vector-include-user">
-              <span>建索引时包含用户楼层</span>
-            </label>
-            <label class="bakemono-memory-field">
-              <span>查询改写</span>
-              <select id="bakemono-memory-vector-query-mode" class="text_pole">
-                <option value="model-required">模型改写：失败则本轮不召回</option>
-                <option value="local">本地改写：最近对话 + 关键词</option>
-                <option value="off">关闭改写：只用最近对话</option>
-              </select>
-            </label>
-            <label class="bakemono-memory-field">
-              <span>改写模型</span>
-              <select id="bakemono-memory-vector-query-provider" class="text_pole">
-                <option value="tavern">酒馆当前模型</option>
-                <option value="custom">自定义改写接口</option>
-              </select>
-            </label>
-            <label class="bakemono-memory-field">
-              <span>重排方式</span>
-              <select id="bakemono-memory-vector-rerank-mode" class="text_pole">
-                <option value="hybrid">混合召回：向量 + BM25 + 关键词</option>
-              </select>
-            </label>
-            <label class="bakemono-memory-field">
-              <span>索引粒度</span>
-              <select id="bakemono-memory-vector-index-mode" class="text_pole">
-                <option value="hybrid">混合：短楼整楼，长楼切片评分</option>
-                <option value="message">按楼层：每楼一条索引</option>
-                <option value="chunk">按片段：传统切片索引</option>
-              </select>
-            </label>
-            <label class="bakemono-memory-field">
-              <span>注入方式</span>
-              <select id="bakemono-memory-vector-inject-mode" class="text_pole">
-                <option value="tiered">分档召回：高分全文，低分摘要</option>
-                <option value="message">按楼层召回</option>
-                <option value="chunk">按命中片段召回</option>
-              </select>
-            </label>
-            <label class="bakemono-memory-field">
-              <span>最多索引最近楼数</span>
-              <input id="bakemono-memory-vector-max-indexed-messages" class="text_pole" type="number" min="0" step="1">
-            </label>
-            <label class="bakemono-memory-field">
-              <span>索引保存文本上限</span>
-              <input id="bakemono-memory-vector-max-stored-text-chars" class="text_pole" type="number" min="240" step="1">
-            </label>
+        <section id="bakemono-memory-vector-recall" class="bk-vec-last" aria-live="polite"></section>
+
+        <section class="bk-tbl-settings bk-vec-settings" aria-label="向量设置">
+          <span class="bk-tbl-settings-label">向量设置</span>
+
+          <details class="bk-tbl-set" name="bk-vec-set">
+            <summary><span class="bk-tbl-set-copy">带回多少<small>摘要几条、正文几条，都不截断</small></span><span class="bk-vec-set-val" id="bakemono-memory-vector-set-amount"></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+            <div class="bk-tbl-set-body">
+              <label class="bk-vec-row"><span>最多带几条摘要</span><input id="bakemono-memory-vector-max-summary-recall" type="number" min="0" max="30" step="1"></label>
+              <label class="bk-vec-row"><span>最多带几条正文<small>够像的楼才带正文，其余带摘要</small></span><input id="bakemono-memory-vector-full-recall-count" type="number" min="0" max="10" step="1"></label>
+              <p class="bk-tbl-set-note">一楼一条：够像就带这一楼的正文，否则带它的摘要。带上的内容整条放进去，不会截断。</p>
             </div>
           </details>
 
-          <details class="bakemono-memory-vector-disclosure bakemono-memory-console-disclosure">
-            <summary><span><i class="fa-solid fa-sliders"></i> 召回参数</span><small>候选、阈值与注入预算</small></summary>
-            <div class="bakemono-memory-vector-disclosure-body">
-            <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
-              <label class="bakemono-memory-field">
-                <span>片段长度</span>
-                <input id="bakemono-memory-vector-chunk-size" class="text_pole" type="number" min="240" step="1">
+          <details class="bk-tbl-set" name="bk-vec-set">
+            <summary><span class="bk-tbl-set-copy">怎么找<small>先把最近的对话改写成问题，重点关键词会加分</small></span><span class="bk-vec-set-val" id="bakemono-memory-vector-set-query"></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+            <div class="bk-tbl-set-body">
+              <label class="bk-vec-row"><span>改写问题</span>
+                <select id="bakemono-memory-vector-query-mode">
+                  <option value="model-required">模型改写：多一次请求，失败则这一轮不召回</option>
+                  <option value="local">本地改写：最近对话 + 关键词</option>
+                  <option value="off">不改写：只用最近对话</option>
+                </select>
               </label>
-              <label class="bakemono-memory-field">
-                <span>重叠字数</span>
-                <input id="bakemono-memory-vector-overlap" class="text_pole" type="number" min="0" step="1">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>长楼切片阈值</span>
-                <input id="bakemono-memory-vector-long-message-threshold" class="text_pole" type="number" min="240" step="1">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>重排候选数</span>
-                <input id="bakemono-memory-vector-top-k" class="text_pole" type="number" min="1" step="1">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>最多召回条数</span>
-                <input id="bakemono-memory-vector-max-recall-messages" class="text_pole" type="number" min="1" step="1">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>其中最多全文条数（分档模式）</span>
-                <input id="bakemono-memory-vector-full-recall-count" class="text_pole" type="number" min="0" step="1">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>每楼层最多片段（片段模式）</span>
-                <input id="bakemono-memory-vector-max-per-message" class="text_pole" type="number" min="1" step="1">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>正文单条注入上限</span>
-                <input id="bakemono-memory-vector-per-message-max-chars" class="text_pole" type="number" min="200" step="1">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>向量相似阈值</span>
-                <input id="bakemono-memory-vector-min-score" class="text_pole" type="number" min="0" step="0.01">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>重排全文阈值</span>
-                <input id="bakemono-memory-vector-rerank-threshold" class="text_pole" type="number" min="0" step="0.01">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>关键词加权</span>
-                <input id="bakemono-memory-vector-keyword-boost" class="text_pole" type="number" min="0" step="0.01">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>注入上限字数</span>
-                <input id="bakemono-memory-vector-max-chars" class="text_pole" type="number" min="200" step="1">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>摘要档字数</span>
-                <input id="bakemono-memory-vector-summary-max-chars" class="text_pole" type="number" min="120" step="1">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>起召 AI 楼数</span>
-                <input id="bakemono-memory-vector-start-after-ai" class="text_pole" type="number" min="0" step="1">
-              </label>
-              <label class="bakemono-memory-field">
-                <span>可见最近窗口楼数</span>
-                <input id="bakemono-memory-vector-context-window" class="text_pole" type="number" min="0" step="1">
-              </label>
-            </div>
-            <label class="checkbox_label bakemono-memory-switch">
-              <input type="checkbox" id="bakemono-memory-vector-skip-context" checked>
-              <span>已索引内容都在可见最近窗口内时跳过召回</span>
-            </label>
-            </div>
-          </details>
-        </div>
-
-        <details class="bakemono-memory-vector-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-key"></i> 查询改写与关键词</span><small>提示词、标签与本次预览</small></summary>
-          <div class="bakemono-memory-vector-disclosure-body">
-          <label class="bakemono-memory-editor">
-            <span>查询改写提示词</span>
-            <textarea id="bakemono-memory-vector-query-prompt" class="text_pole textarea_compact" rows="4" spellcheck="false"></textarea>
-          </label>
-          <label class="bakemono-memory-editor">
-            <span>重点关键词（逗号或换行分隔；会独立进入候选并按下方权重加分）</span>
-            <textarea id="bakemono-memory-vector-keywords" class="text_pole textarea_compact" rows="4" spellcheck="false" placeholder="例如：戒指, 地下室, Seraphina"></textarea>
-          </label>
-            <label class="bakemono-memory-editor">
-              <span>排除标签（建索引前剔除这些标签块，避免召回文生图 tag / thinking）</span>
-              <textarea id="bakemono-memory-vector-exclude-tags" class="text_pole textarea_compact" rows="3" spellcheck="false" placeholder="thinking, think, reasoning, tag"></textarea>
-            </label>
-            <label class="bakemono-memory-editor">
-              <span>摘要标签（单独抽取为摘要索引，不受上方排除标签影响）</span>
-              <textarea id="bakemono-memory-vector-summary-tags" class="text_pole textarea_compact" rows="2" spellcheck="false" placeholder="bakemono, summaryDraft"></textarea>
-            </label>
-          <label class="bakemono-memory-editor">
-            <span>本次查询预览</span>
-            <textarea id="bakemono-memory-vector-query-preview" class="text_pole textarea_compact" rows="4" spellcheck="false" readonly></textarea>
-          </label>
-          </div>
-        </details>
-
-        <details class="bakemono-memory-vector-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-network-wired"></i> 嵌入向量接口</span><small>默认使用本地哈希向量</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看嵌入向量接口说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">默认使用本地哈希向量，不消耗接口额度；选择自定义嵌入向量后会请求兼容的向量接口，失败会自动回退本地向量。</span></button></summary>
-          <div class="bakemono-memory-vector-disclosure-body">
-          <label class="bakemono-memory-field">
-              <span>嵌入向量来源</span>
-            <select id="bakemono-memory-vector-provider" class="text_pole">
-              <option value="local">本地哈希向量（默认）</option>
-              <option value="custom-openai">自定义 OpenAI 兼容嵌入</option>
-            </select>
-          </label>
-          <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
-            <label class="bakemono-memory-field">
-              <span>接口地址</span>
-              <input id="bakemono-memory-vector-base-url" class="text_pole" type="text" placeholder="https://api.openai.com/v1">
-            </label>
-            <div class="bakemono-memory-field">
-              <label for="bakemono-memory-vector-model">模型</label>
-              <div class="bakemono-memory-model-picker">
-                <input id="bakemono-memory-vector-model" class="text_pole" type="text" autocomplete="off" placeholder="text-embedding-3-small">
-                <span class="bakemono-memory-model-select is-empty">
-                  <select data-model-input="bakemono-memory-vector-model" aria-label="选择嵌入模型" title="请先拉取模型" disabled><option value="">请先拉取模型</option></select>
-                  <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
-                </span>
+              <div class="bk-vec-group" data-bk-vec-when="query-model">
+                <label class="bk-vec-row"><span>用哪个模型改写</span>
+                  <select id="bakemono-memory-vector-query-provider">
+                    <option value="tavern">酒馆当前模型</option>
+                    <option value="custom">自定义改写接口</option>
+                  </select>
+                </label>
+                <div class="bk-vec-group" data-bk-vec-when="query-custom">
+                  <label class="bk-sum-field"><span>改写接口地址</span><input id="bakemono-memory-vector-query-base-url" type="text" placeholder="留空就用嵌入接口的地址"></label>
+                  <div class="bk-sum-field">
+                    <label for="bakemono-memory-vector-query-model">改写模型</label>
+                    <div class="bakemono-memory-model-picker">
+                      <input id="bakemono-memory-vector-query-model" type="text" autocomplete="off" placeholder="例如 gpt-4o-mini">
+                      <span class="bakemono-memory-model-select is-empty">
+                        <select data-model-input="bakemono-memory-vector-query-model" aria-label="选择改写模型" title="请先拉取模型" disabled><option value="">请先拉取模型</option></select>
+                        <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                      </span>
+                    </div>
+                  </div>
+                  <label class="bk-sum-field"><span>改写密钥</span><input id="bakemono-memory-vector-query-api-key" type="password" autocomplete="off" placeholder="留空就用嵌入接口的密钥"></label>
+                  <div class="bk-tbl-set-actions"><button type="button" class="bk-sum-link" data-bakemono-action="vector-fetch-query-models">拉取改写模型</button></div>
+                </div>
+                <label class="bk-sum-field"><span>改写提示词</span><textarea id="bakemono-memory-vector-query-prompt" rows="4" spellcheck="false"></textarea></label>
               </div>
-            </div>
-            <label class="bakemono-memory-field">
-              <span>接口密钥</span>
-              <input id="bakemono-memory-vector-api-key" class="text_pole" type="password" autocomplete="off">
-            </label>
-          </div>
-          <div class="bakemono-memory-inline-actions">
-            <button type="button" class="menu_button" data-bakemono-action="vector-fetch-models">
-              <i class="fa-solid fa-cloud-arrow-down"></i>
-              <span>拉取模型</span>
-            </button>
-            <button type="button" class="menu_button" data-bakemono-action="vector-test-embedding" title="发送一条固定短文本验证向量能力，可能产生极少量 API 用量；不会发送聊天正文">
-              <i class="fa-solid fa-plug"></i>
-              <span>测试嵌入接口</span>
-            </button>
-          </div>
-          </div>
-        </details>
-
-        <details class="bakemono-memory-vector-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-pen-nib"></i> 查询改写接口</span><small>聊天模型与独立密钥</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看查询改写接口说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">查询改写需要聊天模型，不是嵌入向量模型。接口地址和密钥留空时，会复用上面的嵌入向量接口地址和密钥；模型请填写可对话的小模型。</span></button></summary>
-          <div class="bakemono-memory-vector-disclosure-body">
-          <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
-            <label class="bakemono-memory-field">
-              <span>改写接口地址</span>
-              <input id="bakemono-memory-vector-query-base-url" class="text_pole" type="text" placeholder="留空复用嵌入向量接口地址">
-            </label>
-            <div class="bakemono-memory-field">
-              <label for="bakemono-memory-vector-query-model">改写模型</label>
-              <div class="bakemono-memory-model-picker">
-                <input id="bakemono-memory-vector-query-model" class="text_pole" type="text" autocomplete="off" placeholder="例如 gpt-4o-mini / gemini-flash">
-                <span class="bakemono-memory-model-select is-empty">
-                  <select data-model-input="bakemono-memory-vector-query-model" aria-label="选择改写模型" title="请先拉取模型" disabled><option value="">请先拉取模型</option></select>
-                  <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
-                </span>
-              </div>
-            </div>
-            <label class="bakemono-memory-field">
-              <span>改写密钥</span>
-              <input id="bakemono-memory-vector-query-api-key" class="text_pole" type="password" autocomplete="off" placeholder="留空复用嵌入向量密钥">
-            </label>
-          </div>
-          <div class="bakemono-memory-inline-actions">
-            <button type="button" class="menu_button" data-bakemono-action="vector-fetch-query-models">
-              <i class="fa-solid fa-cloud-arrow-down"></i>
-              <span>拉取改写模型</span>
-            </button>
-          </div>
-          </div>
-        </details>
-
-        <div class="bakemono-memory-editor-grid">
-          <details class="bakemono-memory-vector-disclosure bakemono-memory-console-disclosure bakemono-memory-vector-recall-card">
-            <summary><span><i class="fa-solid fa-route"></i> 上次召回详情</span><small>查询改写、检索、分档与注入</small></summary>
-            <div class="bakemono-memory-vector-disclosure-body">
-            <div id="bakemono-memory-vector-recall-details" class="bakemono-memory-vector-recall-details"></div>
+              <label class="bk-sum-field"><span>重点关键词（逗号或换行分隔，命中会加分）</span><textarea id="bakemono-memory-vector-keywords" rows="2" spellcheck="false" placeholder="例如：戒指, 地下室"></textarea></label>
             </div>
           </details>
-        </div>
+
+          <details class="bk-tbl-set" name="bk-vec-set">
+            <summary><span class="bk-tbl-set-copy">哪些楼层进索引<small>摘要标签、去掉的标签、隐藏楼层</small></span><span class="bk-vec-set-val" id="bakemono-memory-vector-set-index"></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+            <div class="bk-tbl-set-body">
+              <label class="bk-tbl-switch"><span class="bk-tbl-switch-copy">有新楼层时自动更新索引</span><input type="checkbox" id="bakemono-memory-vector-auto-index" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
+              <label class="bk-tbl-switch"><span class="bk-tbl-switch-copy">包含隐藏的楼层</span><input type="checkbox" id="bakemono-memory-vector-include-hidden" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
+              <label class="bk-tbl-switch"><span class="bk-tbl-switch-copy">包含自己发的楼层</span><input type="checkbox" id="bakemono-memory-vector-include-user" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
+              <label class="bk-sum-field"><span>摘要写在哪个标签里</span><textarea id="bakemono-memory-vector-summary-tags" rows="1" spellcheck="false" placeholder="bakemono, summaryDraft"></textarea></label>
+              <p class="bk-tbl-set-note">标签里的内容当作这一楼的摘要，单独建一条索引；正文里会去掉它。随正文写的摘要默认就在 bakemono 或 summaryDraft 里。</p>
+              <label class="bk-sum-field"><span>建索引前去掉的标签（图片、思考等）</span><textarea id="bakemono-memory-vector-exclude-tags" rows="2" spellcheck="false" placeholder="thinking, think, reasoning, image"></textarea></label>
+              <label class="bk-vec-row"><span>只索引最近几楼<small>0 表示全部</small></span><input id="bakemono-memory-vector-max-indexed-messages" type="number" min="0" step="1"></label>
+            </div>
+          </details>
+
+          <details class="bk-tbl-set" name="bk-vec-set">
+            <summary><span class="bk-tbl-set-copy">向量从哪来<small>本地计算，或者用你自己的嵌入接口</small></span><span class="bk-vec-set-val" id="bakemono-memory-vector-set-embed"></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+            <div class="bk-tbl-set-body">
+              <label class="bk-vec-row"><span>来源</span>
+                <select id="bakemono-memory-vector-provider">
+                  <option value="local">本地哈希向量（不花钱）</option>
+                  <option value="custom-openai">自定义 OpenAI 兼容嵌入</option>
+                </select>
+              </label>
+              <div class="bk-vec-group" data-bk-vec-when="embed-custom">
+                <label class="bk-sum-field"><span>接口地址</span><input id="bakemono-memory-vector-base-url" type="text" placeholder="https://api.openai.com/v1"></label>
+                <div class="bk-sum-field">
+                  <label for="bakemono-memory-vector-model">嵌入模型</label>
+                  <div class="bakemono-memory-model-picker">
+                    <input id="bakemono-memory-vector-model" type="text" autocomplete="off" placeholder="text-embedding-3-small">
+                    <span class="bakemono-memory-model-select is-empty">
+                      <select data-model-input="bakemono-memory-vector-model" aria-label="选择嵌入模型" title="请先拉取模型" disabled><option value="">请先拉取模型</option></select>
+                      <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                    </span>
+                  </div>
+                </div>
+                <label class="bk-sum-field"><span>接口密钥</span><input id="bakemono-memory-vector-api-key" type="password" autocomplete="off"></label>
+                <div class="bk-tbl-set-actions">
+                  <button type="button" class="bk-sum-link" data-bakemono-action="vector-fetch-models">拉取模型</button>
+                  <button type="button" class="bk-sum-link" data-bakemono-action="vector-test-embedding" title="发送一条固定短文本，不会发送聊天正文">测试接口</button>
+                </div>
+              </div>
+              <p class="bk-tbl-set-note">换来源后要重建索引。</p>
+            </div>
+          </details>
+
+          <details class="bk-tbl-set" name="bk-vec-set">
+            <summary><span class="bk-tbl-set-copy">更多<small>多像才算、从第几楼开始、保险上限、预设、清空索引</small></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+            <div class="bk-tbl-set-body">
+              <label class="bk-vec-row"><span>至少多像才算<small>0–1，越高越严</small></span><input id="bakemono-memory-vector-min-score" type="number" min="0" max="1" step="0.01"></label>
+              <label class="bk-vec-row"><span>多像才带正文<small>0–1，低于它只带摘要</small></span><input id="bakemono-memory-vector-rerank-threshold" type="number" min="0" step="0.01"></label>
+              <label class="bk-vec-row"><span>关键词加分</span><input id="bakemono-memory-vector-keyword-boost" type="number" min="0" step="0.01"></label>
+              <label class="bk-vec-row"><span>AI 回复满几楼才开始召回<small>0 表示一开始就召回</small></span><input id="bakemono-memory-vector-start-after-ai" type="number" min="0" step="1"></label>
+              <label class="bk-vec-row"><span>最近几楼不用召回<small>它们本来就在上下文里</small></span><input id="bakemono-memory-vector-context-window" type="number" min="0" step="1"></label>
+              <label class="bk-tbl-switch"><span class="bk-tbl-switch-copy">能找的都在最近几楼里时，这一轮不召回</span><input type="checkbox" id="bakemono-memory-vector-skip-context" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
+              <label class="bk-vec-row"><span>保险上限（字）<small>一条放不下就整条不带，不截断</small></span><input id="bakemono-memory-vector-safety-chars" type="number" min="1000" step="500"></label>
+              <label class="bk-sum-field"><span>向量设置预设</span><select id="bakemono-memory-vector-preset-select"></select></label>
+              <label class="bk-sum-field"><span>预设名称</span><input id="bakemono-memory-vector-preset-name" class="bakemono-memory-preset-name" type="text" placeholder="我的向量设置"></label>
+              <div class="bk-tbl-set-actions">
+                <button type="button" class="bk-sum-link" id="bakemono-memory-save-vector-preset">另存为预设</button>
+                <button type="button" class="bk-sum-link is-alert" id="bakemono-memory-delete-vector-preset">删除预设…</button>
+              </div>
+              <div class="bk-tbl-set-actions"><button type="button" class="bk-sum-link is-alert" data-bakemono-action="vector-clear">清空索引…</button></div>
+            </div>
+          </details>
+        </section>
       </section>
 
       <section class="bakemono-workbench-panel" data-bakemono-panel="injection">
@@ -1905,7 +1740,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.16.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.17.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

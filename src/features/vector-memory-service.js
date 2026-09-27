@@ -1,7 +1,7 @@
 import { createEmbeddingCache, getEmbeddingCacheKey } from '../vector/embedding-cache.js';
 import { runApiRequest } from '../shared/request-policy.js';
 import { createBm25Index } from '../vector/bm25-index.js';
-import { groupRecallCandidates, selectRecallPlan } from '../vector/recall-plan.js';
+import { groupRecallCandidates, recallLimits, selectRecallPlan } from '../vector/recall-plan.js';
 import { vectorRuntimeFieldNames } from '../core/config-sync.js';
 import { isMemoryCurrent, activeStoryCoverage, summaryItems, storyTimeContext } from '../memory/story-state.js';
 import { isRpVectorRecord, removeRpVectorCache } from '../vector/source-policy.js';
@@ -439,7 +439,7 @@ export function createVectorMemoryService({
     function getVectorSourceSignature(state = ensureState()) {
         return [
             getEmbeddingSpaceKey(state),
-            JSON.stringify(['index-v4', ...['indexMode', 'chunkSize', 'overlap', 'longMessageThreshold', 'summaryMaxChars'].map(key => state.vectorMemory[key] ?? defaultVectorMemory[key])]),
+            JSON.stringify(['index-v5', state.vectorMemory.summaryMaxChars ?? defaultVectorMemory.summaryMaxChars]),
             ...getVectorSourceMessages(state)
                 .map(({ message, messageId, cleanedText, summaryText }) => `${messageId}:${getMessageVariantKey(message)}:${getHash(cleanedText || '')}:${getHash(summaryText || '')}`),
             ...getVectorSavedSummarySources(state)
@@ -486,8 +486,7 @@ export function createVectorMemoryService({
                 ? Number(summary.sourceEnd)
                 : getSourceEnd(sourceMessageIds);
             const title = summary.title || getBlockTitle(raw, getKindLabel(type));
-            const plain = getBlockPlainText(raw) || normalizeLineEndings(stripHtml(raw)).trim();
-            const text = getClippedVectorText(plain, summaryMax);
+            const text = getBlockPlainText(raw) || normalizeLineEndings(stripHtml(raw)).trim();
             if (!text) {
                 return;
             }
@@ -501,6 +500,7 @@ export function createVectorMemoryService({
                 sourceMessageIds,
                 title: `${getKindLabel(type)}：${title}`,
                 text,
+                embedText: getClippedVectorText(text, summaryMax),
                 preview: toPlainPreview(text, 180),
                 createdAt: summary.createdAt || '',
             });
@@ -687,8 +687,7 @@ export function createVectorMemoryService({
 
     function indexConfigurationKey(state) {
         return JSON.stringify([getEmbeddingSpaceKey(state), state.scanRules?.excludeTags,
-            ...['enabled', 'indexMode', 'chunkSize', 'overlap', 'longMessageThreshold', 'summaryMaxChars',
-                'maxIndexedMessages', 'includeHidden', 'includeUser', 'excludeTags', 'summaryTags']
+            ...['enabled', 'summaryMaxChars', 'maxIndexedMessages', 'includeHidden', 'includeUser', 'excludeTags', 'summaryTags']
                 .map(key => state.vectorMemory[key] ?? defaultVectorMemory[key])]);
     }
 
@@ -721,11 +720,7 @@ export function createVectorMemoryService({
             }
             return { embedding, embeddingKey: key, embeddingFormat: 'native-v1' };
         };
-        const indexMode = String(state.vectorMemory.indexMode || defaultVectorMemory.indexMode);
-        const chunkSize = Math.max(240, Number(state.vectorMemory.chunkSize || defaultVectorMemory.chunkSize));
-        const overlap = Math.max(0, Number(state.vectorMemory.overlap ?? defaultVectorMemory.overlap));
-        const longMessageThreshold = Math.max(240, Number(state.vectorMemory.longMessageThreshold || defaultVectorMemory.longMessageThreshold));
-    
+
         for (const { message, messageId, cleanedText, summaryText } of getVectorSourceMessages(state)) {
             const fullText = String(cleanedText || '').trim();
             const summaryContent = String(summaryText || '').trim();
@@ -734,9 +729,9 @@ export function createVectorMemoryService({
             }
             const role = message.is_user ? 'user' : message.is_system ? 'hidden' : 'assistant';
             const variantKey = getMessageVariantKey(message);
-            const shouldChunk = indexMode === 'chunk' || (indexMode === 'hybrid' && fullText.length > longMessageThreshold);
             if (summaryContent) {
-                const summaryText = getClippedVectorText(summaryContent, Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars)));
+                // The whole summary is what gets injected; only the embedding input is bounded.
+                const embedText = getClippedVectorText(summaryContent, Math.max(120, Number(state.vectorMemory.summaryMaxChars || defaultVectorMemory.summaryMaxChars)));
                 records.push({
                     id: `vec-${getHash(`${messageId}|${variantKey}|summary|${summaryContent}`)}`,
                     kind: 'summary',
@@ -745,55 +740,27 @@ export function createVectorMemoryService({
                     role,
                     isHidden: !!message.is_system,
                     title: `${message.is_user ? '用户摘要' : message.is_system ? '隐藏摘要' : '助手摘要'} #${messageId}`,
-                    text: summaryText,
-                    summary: summaryText,
+                    text: summaryContent,
+                    summary: summaryContent,
                     preview: toPlainPreview(summaryContent, 180),
-                    ...await embeddingForRecord(summaryText),
+                    ...await embeddingForRecord(embedText),
                     createdAt: new Date().toISOString(),
                 });
             }
-            if (!fullText) {
-                continue;
-            }
-            if (!shouldChunk) {
-                records.push({
-                    id: `vec-${getHash(`${messageId}|${variantKey}|message|${fullText}`)}`,
-                    kind: 'message',
-                    messageId,
-                    chunkIndex: 0,
-                    role,
-                    isHidden: !!message.is_system,
-                    title: `${message.is_user ? '用户' : message.is_system ? '隐藏楼层' : '助手'} #${messageId}`,
-                    text: fullText,
-                    summary: '',
-                    preview: toPlainPreview(fullText, 180),
-                    ...await embeddingForRecord(fullText),
-                    createdAt: new Date().toISOString(),
-                });
-                continue;
-            }
-            for (const [chunkIndex, chunk] of splitTextIntoChunks(fullText, chunkSize, overlap).entries()) {
-                const text = chunk.text.trim();
-                if (!text) {
-                    continue;
-                }
-                records.push({
-                    id: `vec-${getHash(`${messageId}|${variantKey}|${chunkIndex}|${text}`)}`,
-                    kind: 'chunk',
-                    chunkStart: chunk.start,
-                    chunkEnd: chunk.end,
-                    messageId,
-                    chunkIndex,
-                    role,
-                    isHidden: !!message.is_system,
-                    title: `${message.is_user ? '用户' : message.is_system ? '隐藏楼层' : '助手'} #${messageId}.${chunkIndex + 1}`,
-                    text,
-                    summary: '',
-                    preview: toPlainPreview(text, 180),
-                    ...await embeddingForRecord(text),
-                    createdAt: new Date().toISOString(),
-                });
-            }
+            if (fullText) records.push({
+                id: `vec-${getHash(`${messageId}|${variantKey}|message|${fullText}`)}`,
+                kind: 'message',
+                messageId,
+                chunkIndex: 0,
+                role,
+                isHidden: !!message.is_system,
+                title: `${message.is_user ? '用户' : message.is_system ? '隐藏楼层' : '助手'} #${messageId}`,
+                text: fullText,
+                summary: '',
+                preview: toPlainPreview(fullText, 180),
+                ...await embeddingForRecord(fullText),
+                createdAt: new Date().toISOString(),
+            });
         }
     
         for (const source of getVectorSavedSummarySources(state)) {
@@ -814,7 +781,7 @@ export function createVectorMemoryService({
                 text: source.text,
                 summary: source.text,
                 preview: source.preview,
-                ...await embeddingForRecord(source.text),
+                ...await embeddingForRecord(source.embedText),
                 createdAt: source.createdAt || new Date().toISOString(),
             });
         }
@@ -824,6 +791,7 @@ export function createVectorMemoryService({
         }
         if (signature !== getVectorSourceSignature(state)) throw new VectorSourceChanged('正文或索引参数已变化');
         state.vectorMemory.records = records;
+        if (indexRun?.state === state) indexRun.finished = true;
         state.vectorMemory.embeddingCache = {};
         state.vectorMemory.lastIndexAt = new Date().toISOString();
         state.vectorMemory.lastIndexedSignature = signature;
@@ -922,7 +890,9 @@ export function createVectorMemoryService({
         }
         const keywords = parseList(state.vectorMemory.keywordTriggers);
         const embeddingThreshold = Math.max(0, Number(state.vectorMemory.embeddingThreshold ?? state.vectorMemory.minScore ?? defaultVectorMemory.embeddingThreshold));
-        const rerankCandidateCount = Math.max(1, Number(state.vectorMemory.rerankCandidateCount || state.vectorMemory.topK || defaultVectorMemory.rerankCandidateCount));
+        const limits = recallLimits({ ...defaultVectorMemory, ...state.vectorMemory });
+        const rerankCandidateCount = Math.max(1, Number(state.vectorMemory.rerankCandidateCount || state.vectorMemory.topK || defaultVectorMemory.rerankCandidateCount),
+            (limits.maxSummary + limits.maxFull) * 3);
         const scored = recallRecords.map(record => {
             const similarities = queryEmbeddings.map(embedding => cosineSimilarity(embedding, record.embedding || []));
             const similarity = similarities.length ? Math.max(...similarities) : 0;
@@ -975,9 +945,13 @@ export function createVectorMemoryService({
         const plan = { groups, signature, lastHits: null };
         recallPlans.set(state, plan);
         applyRecallPlan(state, plan);
-        state.vectorMemory.lastRecallSkippedReason = state.vectorMemory.lastHits.length ? '' : '没有内容通过当前召回规则或字数预算。';
+        state.vectorMemory.lastRecallSkippedReason = state.vectorMemory.lastHits.length ? '' : '没有找到够像的内容。';
         return state.vectorMemory.lastHits;
         } finally {
+            if (isCurrent()) {
+                state.vectorMemory.lastRecallAt = new Date().toISOString();
+                state.vectorMemory.lastRecallQuery = String(explicitQuery || '').trim();
+            }
             options.signal?.removeEventListener('abort', abort);
             if (recallController === controller) recallController = null;
         }
@@ -1071,6 +1045,7 @@ export function createVectorMemoryService({
         fetchCustomEmbedding,
         buildVectorMemoryIndex,
         pauseVectorIndex,
+        isVectorIndexing: () => !!indexRun && !indexRun.finished && indexRun.state === ensureState(),
         retrieveVectorMemoryHits,
         renderVectorMemorySection,
     };

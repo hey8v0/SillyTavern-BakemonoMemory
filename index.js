@@ -1307,15 +1307,13 @@ const vectorWorkbenchUi = createVectorWorkbenchUi({
     getVectorQueryText,
     escapeHtml,
     formatSourceRange,
+    getVectorSourceMessages: (...args) => vectorMemoryService.getVectorSourceMessages(...args),
+    isVectorIndexing: () => vectorMemoryService.isVectorIndexing(),
 });
 const {
-    renderVectorHitList,
     renderVectorMemoryPanel,
     renderVectorModelOptions,
     renderVectorQueryModelOptions,
-    renderVectorRecallDetails,
-    renderVectorRecordList,
-    renderVectorResultList,
 } = vectorWorkbenchUi;
 
 const vectorActionsController = createVectorActionsController({
@@ -1348,6 +1346,8 @@ const vectorActionsController = createVectorActionsController({
     saveChatConditional,
     confirmDanger,
     fetchImpl: globalThis.fetch.bind(globalThis),
+    toggleVectorView: (...args) => vectorWorkbenchUi.toggleVectorView(...args),
+    renderVectorSettingsSummary: () => vectorWorkbenchUi.renderVectorSettingsSummary(),
 });
 const {
     applyVectorMemorySettings,

@@ -83,11 +83,11 @@ test('unchanged foreground resume preserves current index and hits without sched
     assert.deepEqual(calls, []);
 });
 
-test('chunk configuration changes invalidate the index and schedule a refresh', () => {
+test('index configuration changes invalidate the index and schedule a refresh', () => {
     const { state, calls, service } = vectorIndex();
     const previous = service.getVectorSourceSignature(state);
     state.vectorMemory.lastIndexedSignature = previous;
-    state.vectorMemory.chunkSize = 800;
+    state.vectorMemory.summaryMaxChars = 800;
     assert.notEqual(service.getVectorSourceSignature(state), previous);
     service.markVectorIndexDirty('配置变更', state);
     assert.equal(state.vectorMemory.dirty, true);

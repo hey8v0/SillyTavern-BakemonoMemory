@@ -16,14 +16,14 @@ test('vector panel reports tagged and saved summaries separately and removes leg
     const state = { vectorMemory: { records, lastHits: [stale], lastEmbeddingCandidates: [stale], lastRerankCandidates: [stale] } };
     const texts = new Map();
     const query = selector => {
-        const el = { text: value => { texts.set(selector, value); return el; }, val: () => el, css: () => el, toggleClass: () => el };
+        const el = { text: value => { texts.set(selector, value); return el; }, val: () => el, css: () => el, toggleClass: () => el, prop: () => el, html: value => { texts.set(selector, value); return el; } };
         return el;
     };
     const ui = createVectorWorkbenchUi({ query, document: { querySelector: () => null }, getState: () => state,
         defaultVectorMemory: {}, unique: xs => [...new Set(xs)], getVectorQueryText: () => '', canKeepVectorForm: () => true });
     ui.renderVectorMemoryPanel();
-    assert.match(texts.get('#bakemono-memory-vector-runtime-description'), /2 条标签摘要/);
-    assert.match(texts.get('#bakemono-memory-vector-runtime-description'), /1 条已存摘要/);
+    assert.match(texts.get('#bakemono-memory-vector-runtime-description'), /<b>2<\/b> 条楼层摘要/);
+    assert.match(texts.get('#bakemono-memory-vector-runtime-description'), /<b>1<\/b> 条已存总结/);
     assert.equal(state.vectorMemory.records.length, 4);
     assert.equal(state.vectorMemory.lastHits.length, 0);
     assert.equal(state.vectorMemory.lastEmbeddingCandidates.length, 0);

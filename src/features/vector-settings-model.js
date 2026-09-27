@@ -13,7 +13,8 @@ export function createVectorSettingsModel({
         'max-indexed-messages': ['maxIndexedMessages'], 'max-stored-text-chars': ['maxStoredTextChars'],
         'chunk-size': ['chunkSize'], overlap: ['overlap'], 'long-message-threshold': ['longMessageThreshold'],
         'top-k': ['topK', 'rerankCandidateCount'], 'max-recall-messages': ['maxRecallMessages', 'finalRecallCount'],
-        'full-recall-count': ['fullRecallCount'], 'max-per-message': ['maxPerMessage'],
+        'full-recall-count': ['fullRecallCount'], 'max-summary-recall': ['maxSummaryRecall'], 'safety-chars': ['recallSafetyChars'],
+        'max-per-message': ['maxPerMessage'],
         'per-message-max-chars': ['perMessageMaxChars'], 'min-score': ['minScore', 'embeddingThreshold'],
         'rerank-threshold': ['rerankThreshold'], 'keyword-boost': ['keywordBoost'], 'max-chars': ['maxInjectChars'],
         'summary-max-chars': ['summaryMaxChars'], keywords: ['keywordTriggers'], 'exclude-tags': ['excludeTags'],
@@ -24,7 +25,7 @@ export function createVectorSettingsModel({
     const numeric = new Set(['max-indexed-messages', 'max-stored-text-chars', 'chunk-size', 'overlap',
         'long-message-threshold', 'top-k', 'max-recall-messages', 'full-recall-count', 'max-per-message',
         'per-message-max-chars', 'min-score', 'rerank-threshold', 'keyword-boost', 'max-chars',
-        'summary-max-chars', 'start-after-ai', 'context-window']);
+        'summary-max-chars', 'start-after-ai', 'context-window', 'max-summary-recall', 'safety-chars']);
     function markVectorFormRendered(state = ensureState()) {
         formState = state;
         formRevision = String(state.activeConfigSignature || '');
@@ -75,6 +76,8 @@ export function createVectorSettingsModel({
             maxRecallMessages: Math.max(1, Number(query('#bakemono-memory-vector-max-recall-messages').val() ?? defaultVectorMemory.finalRecallCount)),
             finalRecallCount: Math.max(1, Number(query('#bakemono-memory-vector-max-recall-messages').val() ?? defaultVectorMemory.finalRecallCount)),
             fullRecallCount: Math.max(0, Number(query('#bakemono-memory-vector-full-recall-count').val() ?? defaultVectorMemory.fullRecallCount)),
+            maxSummaryRecall: Math.max(0, Number(query('#bakemono-memory-vector-max-summary-recall').val() ?? defaultVectorMemory.maxSummaryRecall)),
+            recallSafetyChars: Math.max(1000, Number(query('#bakemono-memory-vector-safety-chars').val() ?? defaultVectorMemory.recallSafetyChars)),
             maxPerMessage: Math.max(1, Number(query('#bakemono-memory-vector-max-per-message').val() ?? defaultVectorMemory.maxPerMessage)),
             perMessageMaxChars: Math.max(200, Number(query('#bakemono-memory-vector-per-message-max-chars').val() ?? defaultVectorMemory.perMessageMaxChars)),
             minScore: Math.max(0, Number(query('#bakemono-memory-vector-min-score').val() ?? defaultVectorMemory.embeddingThreshold)),
@@ -127,6 +130,12 @@ export function createVectorSettingsModel({
                 const element = query('#bakemono-memory-vector-' + prefix + suffix);
                 if (!element.length || element.val() == null) next[path][key] = state.vectorMemory?.[path]?.[key] ?? defaultVectorMemory[path]?.[key] ?? '';
             }
+        }
+        // One record per floor; the total is the two counts together.
+        next.indexMode = 'message';
+        next.injectMode = 'tiered';
+        if (Number.isFinite(Number(next.maxSummaryRecall)) && Number.isFinite(Number(next.fullRecallCount))) {
+            next.finalRecallCount = next.maxRecallMessages = Math.max(1, Number(next.maxSummaryRecall) + Number(next.fullRecallCount));
         }
         if (!commit) return { ...state, vectorMemory: next };
         state.vectorMemory = next;

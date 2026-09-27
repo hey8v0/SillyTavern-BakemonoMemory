@@ -641,6 +641,7 @@ export function createDefaultConfiguration({
         topK: 20,
         rerankCandidateCount: 20,
         finalRecallCount: 5,
+        maxSummaryRecall: 4,
         fullRecallCount: 2,
         maxRecallMessages: 5,
         maxPerMessage: 1,
@@ -650,6 +651,7 @@ export function createDefaultConfiguration({
         rerankThreshold: 0.45,
         keywordBoost: 0.18,
         maxInjectChars: 2600,
+        recallSafetyChars: 12000,
         summaryMaxChars: 520,
         keywordTriggers: '',
         excludeTags: 'thinking, think, reasoning',
@@ -689,6 +691,8 @@ export function createDefaultConfiguration({
         lastEmbeddingCandidates: [],
         lastRerankCandidates: [],
         lastRecallSkippedReason: '',
+        lastRecallAt: null,
+        lastRecallQuery: '',
         lastIndexAt: null,
     };
     

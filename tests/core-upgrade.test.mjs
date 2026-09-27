@@ -193,7 +193,7 @@ test('pause or chat switch during source settling prevents a retry from writing'
             waitForSourceSettle: async () => {
                 if (mode === 'pause') service.pauseVectorIndex();
                 else if (mode === 'chat') current = structuredClone(f.state);
-                else f.state.vectorMemory.chunkSize = 450;
+                else f.state.vectorMemory.excludeTags = 'image';
             },
         });
         if (mode === 'pause') assert.equal(await service.buildVectorMemoryIndex(), false);

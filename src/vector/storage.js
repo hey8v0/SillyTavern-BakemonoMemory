@@ -74,7 +74,8 @@ export function slimVectorMemoryForSave(vectorMemory = null, defaults = fallback
     vectorMemory.records = Array.isArray(vectorMemory.records)
         ? vectorMemory.records.map(record => ({
             ...record,
-            text: getClippedVectorText(record.text, textLimit),
+            // Summaries are injected from the stored text, so they are kept whole; bodies are re-read from the chat.
+            text: record.kind === 'summary' ? record.text : getClippedVectorText(record.text, textLimit),
             matchedText: getClippedVectorText(record.matchedText, Math.min(textLimit, 480)),
             embedding: record.embeddingFormat === 'native-v1' ? record.embedding : compactEmbedding(record.embedding, dimensions),
         }))

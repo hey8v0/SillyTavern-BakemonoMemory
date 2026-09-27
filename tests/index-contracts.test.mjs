@@ -287,8 +287,9 @@ test('vector recall uses independent semantic and lexical candidates with explai
     assert.match(vectorMemoryServiceSource, /keywordBoost:\s*state\.vectorMemory\.keywordBoost/);
     assert.match(vectorMemoryServiceSource, /lexicalScore:\s*Number/);
     assert.match(vectorMemoryServiceSource, /matchedTerms:\s*Array\.isArray/);
-    assert.match(settingsSource, /混合召回：向量 \+ BM25 \+ 关键词/);
-    assert.match(vectorWorkbenchUiSource, /title:\s*`混合初筛/);
+    // The last-recall list explains each row (similarity, lexical score, keywords, matched phrases) and keeps the raw pool.
+    assert.match(vectorWorkbenchUiSource, /词项 \$\{item\.lexicalScore\}/);
+    assert.match(vectorWorkbenchUiSource, /看初筛的 \$\{pool\.length\} 条候选/);
     assert.match(hybridRetrievalSource, /export function selectHybridCandidates\(/);
     assert.match(hybridRetrievalSource, /vectorRanked/);
     assert.match(hybridRetrievalSource, /lexicalRanked/);
@@ -337,8 +338,8 @@ test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
 });
 
 test('expanded disclosures expose anchored help and important operations expose live feedback', () => {
-    // The 表格 page shows its two explanations as plain notes in its settings list instead of help buttons.
-    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 10);
+    // The 表格 and 向量记忆 pages show their explanations as plain notes in their settings lists instead of help buttons.
+    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 7);
     assert.match(settingsSource, /class="bakemono-memory-help-content"/);
     assert.match(source, /import \{ createHelpPopover \} from '\.\/src\/ui\/help-popover\.js';/);
     assert.match(source, /const helpPopover = createHelpPopover\(\)/);

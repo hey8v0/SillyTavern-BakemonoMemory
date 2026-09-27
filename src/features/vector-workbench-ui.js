@@ -1,5 +1,24 @@
 import { removeRpVectorCache } from '../vector/source-policy.js';
+import { recallLimits } from '../vector/recall-plan.js';
 import { renderModelPicker } from '../ui/model-picker.js';
+
+const relativeTime = (value, now = Date.now()) => {
+    const time = Date.parse(value || '');
+    if (!Number.isFinite(time)) return '';
+    const minutes = Math.round((now - time) / 60000);
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return `${minutes} 分钟前`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours} 小时前`;
+    return new Date(time).toLocaleDateString();
+};
+// Tag blocks (<bakemono>, <details>…) are kept in what is injected; the list shows their text only.
+const plainText = value => String(value || '').replace(/<\/?[a-zA-Z][^>]*>/g, '').replace(/\n{3,}/g, '\n\n').trim();
+const percent = value => {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return 0;
+    return Math.max(0, Math.min(100, Math.round(number <= 1 ? number * 100 : number)));
+};
 
 export function createVectorWorkbenchUi({
     query,
@@ -7,311 +26,197 @@ export function createVectorWorkbenchUi({
     getState: ensureState,
     defaultVectorMemory,
     unique,
-    getVectorQueryText,
-    escapeHtml,
-    formatSourceRange,
+    escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]),
+    formatSourceRange = ids => ids.length ? `第 ${ids[0]} 楼` : '',
     markVectorFormRendered,
     canKeepVectorForm,
+    getVectorSourceMessages = () => [],
+    isVectorIndexing = () => false,
 } = {}) {
+    // What the reader has opened in the last-recall list; cleared when a new recall arrives.
+    const view = { recallAt: null, open: new Set(), queries: false, pool: false };
+
     function renderVectorMemoryPanel(state = ensureState()) {
         if (!canKeepVectorForm?.(state)) renderVectorConfigurationFields(state);
         renderVectorRuntime(state);
     }
 
     function renderVectorConfigurationFields(state) {
-        query('#bakemono-memory-vector-enabled').prop('checked', !!state.vectorMemory.enabled);
-        query('#bakemono-memory-vector-auto-index').prop('checked', state.vectorMemory.autoIndex !== false);
-        query('#bakemono-memory-vector-include-hidden').prop('checked', state.vectorMemory.includeHidden !== false);
-        query('#bakemono-memory-vector-include-user').prop('checked', state.vectorMemory.includeUser === true);
-        query('#bakemono-memory-vector-index-mode').val(state.vectorMemory.indexMode || defaultVectorMemory.indexMode);
-        query('#bakemono-memory-vector-inject-mode').val(state.vectorMemory.injectMode || defaultVectorMemory.injectMode);
-        query('#bakemono-memory-vector-max-indexed-messages').val(state.vectorMemory.maxIndexedMessages ?? defaultVectorMemory.maxIndexedMessages);
-        query('#bakemono-memory-vector-max-stored-text-chars').val(state.vectorMemory.maxStoredTextChars ?? defaultVectorMemory.maxStoredTextChars);
-        query('#bakemono-memory-vector-chunk-size').val(state.vectorMemory.chunkSize ?? defaultVectorMemory.chunkSize);
-        query('#bakemono-memory-vector-overlap').val(state.vectorMemory.overlap ?? defaultVectorMemory.overlap);
-        query('#bakemono-memory-vector-long-message-threshold').val(state.vectorMemory.longMessageThreshold ?? defaultVectorMemory.longMessageThreshold);
-        query('#bakemono-memory-vector-top-k').val(state.vectorMemory.rerankCandidateCount ?? state.vectorMemory.topK ?? defaultVectorMemory.rerankCandidateCount);
-        query('#bakemono-memory-vector-max-recall-messages').val(state.vectorMemory.finalRecallCount ?? state.vectorMemory.maxRecallMessages ?? defaultVectorMemory.finalRecallCount);
-        query('#bakemono-memory-vector-full-recall-count').val(state.vectorMemory.fullRecallCount ?? defaultVectorMemory.fullRecallCount);
-        query('#bakemono-memory-vector-max-per-message').val(state.vectorMemory.maxPerMessage ?? defaultVectorMemory.maxPerMessage);
-        query('#bakemono-memory-vector-per-message-max-chars').val(state.vectorMemory.perMessageMaxChars ?? defaultVectorMemory.perMessageMaxChars);
-        query('#bakemono-memory-vector-min-score').val(state.vectorMemory.embeddingThreshold ?? state.vectorMemory.minScore ?? defaultVectorMemory.embeddingThreshold);
-        query('#bakemono-memory-vector-rerank-threshold').val(state.vectorMemory.rerankThreshold ?? defaultVectorMemory.rerankThreshold);
-        query('#bakemono-memory-vector-keyword-boost').val(state.vectorMemory.keywordBoost ?? defaultVectorMemory.keywordBoost);
-        query('#bakemono-memory-vector-max-chars').val(state.vectorMemory.maxInjectChars ?? defaultVectorMemory.maxInjectChars);
-        query('#bakemono-memory-vector-summary-max-chars').val(state.vectorMemory.summaryMaxChars ?? defaultVectorMemory.summaryMaxChars);
-        query('#bakemono-memory-vector-start-after-ai').val(state.vectorMemory.startAfterAiMessages ?? defaultVectorMemory.startAfterAiMessages);
-        query('#bakemono-memory-vector-skip-context').prop('checked', state.vectorMemory.skipIfAllInContext !== false);
-        query('#bakemono-memory-vector-context-window').val(state.vectorMemory.contextWindowMessages ?? defaultVectorMemory.contextWindowMessages);
-        query('#bakemono-memory-vector-keywords').val(state.vectorMemory.keywordTriggers || '');
-        query('#bakemono-memory-vector-exclude-tags').val(state.vectorMemory.excludeTags ?? defaultVectorMemory.excludeTags);
-        query('#bakemono-memory-vector-summary-tags').val(state.vectorMemory.summaryTags ?? defaultVectorMemory.summaryTags);
-        query('#bakemono-memory-vector-query-mode').val(state.vectorMemory.queryMode || defaultVectorMemory.queryMode);
-        query('#bakemono-memory-vector-query-provider').val(state.vectorMemory.queryRewriteProvider || defaultVectorMemory.queryRewriteProvider);
-        query('#bakemono-memory-vector-query-prompt').val(state.vectorMemory.queryRewritePrompt ?? defaultVectorMemory.queryRewritePrompt);
-        query('#bakemono-memory-vector-query-base-url').val(state.vectorMemory.queryCustomApi?.baseUrl || '');
-        query('#bakemono-memory-vector-query-api-key').val(state.vectorMemory.queryCustomApi?.apiKey || '');
-        query('#bakemono-memory-vector-query-model').val(state.vectorMemory.queryCustomApi?.model || '');
-        renderVectorQueryModelOptions(state.vectorMemory.queryCustomApi?.models || []);
-        query('#bakemono-memory-vector-rerank-mode').val(state.vectorMemory.rerankMode || defaultVectorMemory.rerankMode);
-        query('#bakemono-memory-vector-provider').val(state.vectorMemory.embeddingProvider || defaultVectorMemory.embeddingProvider);
-        query('#bakemono-memory-vector-base-url').val(state.vectorMemory.customApi?.baseUrl || '');
-        query('#bakemono-memory-vector-api-key').val(state.vectorMemory.customApi?.apiKey || '');
-        query('#bakemono-memory-vector-model').val(state.vectorMemory.customApi?.model || '');
-        renderVectorModelOptions(state.vectorMemory.customApi?.models || []);
+        const config = state.vectorMemory;
+        const fallback = key => config[key] ?? defaultVectorMemory[key];
+        query('#bakemono-memory-vector-enabled').prop('checked', !!config.enabled);
+        query('#bakemono-memory-vector-auto-index').prop('checked', config.autoIndex !== false);
+        query('#bakemono-memory-vector-include-hidden').prop('checked', config.includeHidden !== false);
+        query('#bakemono-memory-vector-include-user').prop('checked', config.includeUser === true);
+        query('#bakemono-memory-vector-max-summary-recall').val(fallback('maxSummaryRecall'));
+        query('#bakemono-memory-vector-full-recall-count').val(fallback('fullRecallCount'));
+        query('#bakemono-memory-vector-max-indexed-messages').val(fallback('maxIndexedMessages'));
+        query('#bakemono-memory-vector-min-score').val(config.embeddingThreshold ?? config.minScore ?? defaultVectorMemory.embeddingThreshold);
+        query('#bakemono-memory-vector-rerank-threshold').val(fallback('rerankThreshold'));
+        query('#bakemono-memory-vector-keyword-boost').val(fallback('keywordBoost'));
+        query('#bakemono-memory-vector-safety-chars').val(fallback('recallSafetyChars'));
+        query('#bakemono-memory-vector-start-after-ai').val(fallback('startAfterAiMessages'));
+        query('#bakemono-memory-vector-skip-context').prop('checked', config.skipIfAllInContext !== false);
+        query('#bakemono-memory-vector-context-window').val(fallback('contextWindowMessages'));
+        query('#bakemono-memory-vector-keywords').val(config.keywordTriggers || '');
+        query('#bakemono-memory-vector-exclude-tags').val(fallback('excludeTags'));
+        query('#bakemono-memory-vector-summary-tags').val(fallback('summaryTags'));
+        query('#bakemono-memory-vector-query-mode').val(config.queryMode || defaultVectorMemory.queryMode);
+        query('#bakemono-memory-vector-query-provider').val(config.queryRewriteProvider || defaultVectorMemory.queryRewriteProvider);
+        query('#bakemono-memory-vector-query-prompt').val(fallback('queryRewritePrompt'));
+        query('#bakemono-memory-vector-query-base-url').val(config.queryCustomApi?.baseUrl || '');
+        query('#bakemono-memory-vector-query-api-key').val(config.queryCustomApi?.apiKey || '');
+        query('#bakemono-memory-vector-query-model').val(config.queryCustomApi?.model || '');
+        renderVectorQueryModelOptions(config.queryCustomApi?.models || []);
+        query('#bakemono-memory-vector-provider').val(config.embeddingProvider || defaultVectorMemory.embeddingProvider);
+        query('#bakemono-memory-vector-base-url').val(config.customApi?.baseUrl || '');
+        query('#bakemono-memory-vector-api-key').val(config.customApi?.apiKey || '');
+        query('#bakemono-memory-vector-model').val(config.customApi?.model || '');
+        renderVectorModelOptions(config.customApi?.models || []);
         markVectorFormRendered?.(state);
+    }
+
+    // The one-line values beside each settings row and the fields that only apply to some choices
+    // follow the form as typed, so they are read from the inputs rather than from saved state.
+    function renderVectorSettingsSummary() {
+        const val = selector => query(selector).val?.();
+        const checked = selector => !!query(selector).prop?.('checked');
+        const queryMode = String(val('#bakemono-memory-vector-query-mode') || 'model-required');
+        const queryProvider = String(val('#bakemono-memory-vector-query-provider') || 'tavern');
+        const embedCustom = val('#bakemono-memory-vector-provider') === 'custom-openai';
+        query('#bakemono-memory-vector-set-amount').text(`摘要 ${val('#bakemono-memory-vector-max-summary-recall') ?? ''} · 正文 ${val('#bakemono-memory-vector-full-recall-count') ?? ''}`);
+        query('#bakemono-memory-vector-set-query').text(queryMode === 'local' ? '本地改写' : queryMode === 'off' ? '不改写' : '模型改写');
+        query('#bakemono-memory-vector-set-index').text(checked('#bakemono-memory-vector-auto-index') ? '自动更新' : '手动更新');
+        query('#bakemono-memory-vector-set-embed').text(embedCustom ? '自定义接口' : '本地哈希向量');
+        query('[data-bk-vec-when="query-model"]').prop('hidden', queryMode !== 'model-required');
+        query('[data-bk-vec-when="query-custom"]').prop('hidden', queryMode !== 'model-required' || queryProvider !== 'custom');
+        query('[data-bk-vec-when="embed-custom"]').prop('hidden', !embedCustom);
+    }
+
+    function describeIndex(state) {
+        const config = state.vectorMemory;
+        const records = config.records || [];
+        const indexedFloors = new Set(records.filter(r => !r.isSavedSummary).map(r => String(r.messageId)));
+        let eligible = indexedFloors.size;
+        try { eligible = Math.max(eligible, getVectorSourceMessages(state).length); } catch {}
+        const summaries = records.filter(r => r.kind === 'summary' && !r.isSavedSummary).length;
+        const saved = records.filter(r => r.isSavedSummary).length;
+        const running = isVectorIndexing();
+        const waiting = Math.max(0, eligible - indexedFloors.size);
+        const title = config.lastIndexError ? '自动索引已暂停'
+            : !records.length ? (running ? '正在建索引…' : '还没有建索引')
+            : running ? `正在更新索引：${indexedFloors.size} / ${eligible} 楼`
+            : waiting ? `${indexedFloors.size} / ${eligible} 楼已建索引，还有 ${waiting} 楼等待`
+            : config.dirty ? `${eligible} 楼已建索引，有改动等待更新`
+            : `${eligible} 楼都已建索引`;
+        const facts = [
+            `<span><b>${indexedFloors.size}</b> 楼正文</span>`,
+            `<span><b>${summaries}</b> 条楼层摘要</span>`,
+            saved ? `<span><b>${saved}</b> 条已存总结</span>` : '',
+            `<span>${config.embeddingProvider === 'custom-openai' ? '自定义嵌入接口' : '本地哈希向量'}</span>`,
+            config.lastIndexAt ? `<span>${escapeHtml(relativeTime(config.lastIndexAt))}更新</span>` : '',
+        ].filter(Boolean).join('');
+        const note = config.lastIndexError || (config.dirty && records.length && config.dirtyReason ? `等待更新：${config.dirtyReason}` : '');
+        return { records, indexedFloors, eligible, running, waiting, title, facts, note,
+            ready: records.length > 0 && !config.dirty && !config.lastIndexError && !waiting };
     }
 
     function renderVectorRuntime(state) {
         removeRpVectorCache(state.vectorMemory);
-        const messageRecordCount = unique((state.vectorMemory.records || []).map(record => String(record.messageId))).length;
-        const bodyRecordCount = (state.vectorMemory.records || []).filter(record => record.kind !== 'summary').length;
-        const summaryRecordCount = (state.vectorMemory.records || []).filter(record => record.kind === 'summary').length;
-        const savedSummaryCount = (state.vectorMemory.records || []).filter(record => record.kind === 'summary' && record.isSavedSummary).length;
-        const tagSummaryCount = summaryRecordCount - savedSummaryCount;
-        const maxIndexed = Number(state.vectorMemory.maxIndexedMessages || 0);
-        const fullHitCount = (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier === 'full').length;
-        const summaryHitCount = (state.vectorMemory.lastHits || []).filter(hit => !['full', 'chunk'].includes(hit.recallTier)).length;
-        const chunkHitCount = (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier === 'chunk').length;
-        const hitCount = fullHitCount + summaryHitCount + chunkHitCount;
-        const indexReady = messageRecordCount > 0 && !state.vectorMemory.dirty && !state.vectorMemory.lastIndexError;
-        const indexTime = state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '';
-        const providerLabel = state.vectorMemory.embeddingProvider === 'custom-openai' ? '自定义向量' : '本地向量';
-        const runtimeLabel = state.vectorMemory.lastIndexError ? '自动索引已暂停' : !messageRecordCount
-            ? '尚未建立索引'
-            : state.vectorMemory.dirty
-                ? '索引等待刷新'
-                : '索引健康';
-        const runtimeDescription = state.vectorMemory.lastIndexError || (!messageRecordCount
-            ? '建立索引后，剪辑台才能从长聊天里找回相关旧剧情。'
-            : `${bodyRecordCount} 个正文片段 · ${tagSummaryCount} 条标签摘要 · ${savedSummaryCount} 条已存摘要${indexTime ? ` · 最近刷新于 ${indexTime}` : ''}${state.vectorMemory.lastRecallSkippedReason ? ` · 上次跳过：${state.vectorMemory.lastRecallSkippedReason}` : ''}`);
-        query('#bakemono-memory-vector-runtime-label').text(runtimeLabel);
-        query('#bakemono-memory-vector-runtime-badge').text(state.vectorMemory.enabled ? '召回开启' : '召回关闭');
-        query('#bakemono-memory-vector-runtime-title').text(`${messageRecordCount} 楼已索引`);
-        query('#bakemono-memory-vector-runtime-description').text(runtimeDescription);
-        query('#bakemono-memory-vector-meter-bar').css('width', `${!messageRecordCount ? 0 : indexReady ? 100 : 68}%`);
-        query('.bakemono-memory-vector-status-hero')
-            .toggleClass('is-healthy', indexReady)
-            .toggleClass('is-dirty', messageRecordCount > 0 && !indexReady);
-        query('#bakemono-memory-vector-result-count').text(`${hitCount} 条`);
-        query('#bakemono-memory-vector-config-summary').text(`${providerLabel} · 候选 ${state.vectorMemory.rerankCandidateCount ?? state.vectorMemory.topK ?? defaultVectorMemory.rerankCandidateCount} · 最终 ${state.vectorMemory.finalRecallCount ?? state.vectorMemory.maxRecallMessages ?? defaultVectorMemory.finalRecallCount}`);
-        query('#bakemono-memory-vector-stats').text(`索引 ${messageRecordCount} 楼 / 正文 ${bodyRecordCount} 条 / 摘要 ${summaryRecordCount} 条 / 召回全文 ${fullHitCount} 条 / 召回摘要 ${summaryHitCount} 条 / 召回片段 ${chunkHitCount} 条 / 预计 ${state.vectorMemory.estimatedChars || 0} 字 / 裁剪 ${state.vectorMemory.trimmedHitCount || 0} 个 / ${maxIndexed > 0 ? `最多索引最近 ${maxIndexed} 楼 / ` : ''}${state.vectorMemory.lastRecallSkippedReason ? `跳过：${state.vectorMemory.lastRecallSkippedReason}` : state.vectorMemory.dirty ? `待刷新：${state.vectorMemory.dirtyReason || '有变更'}` : state.vectorMemory.lastIndexAt ? new Date(state.vectorMemory.lastIndexAt).toLocaleString() : '尚未建索引'}`);
-        query('#bakemono-memory-vector-query-preview').val((state.vectorMemory.lastQueries || []).join('\n') || state.vectorMemory.lastQuery || getVectorQueryText(state));
-        renderVectorResultList(state);
-        renderVectorRecallDetails(state);
-        renderVectorHitList();
-        renderVectorRecordList();
+        const config = state.vectorMemory;
+        const index = describeIndex(state);
+        query('#bakemono-memory-vector-runtime-badge').text(config.enabled ? '召回开启' : '召回关闭');
+        query('#bakemono-memory-vector-runtime-title').text(index.title);
+        query('#bakemono-memory-vector-runtime-description').html(index.facts);
+        query('#bakemono-memory-vector-runtime-note').text(index.note).prop('hidden', !index.note);
+        const width = !index.eligible ? 0 : Math.round(index.indexedFloors.size / index.eligible * 100);
+        query('#bakemono-memory-vector-meter-bar').css('width', `${index.records.length ? width : 0}%`);
+        query('.bk-vec-meter').toggleClass('is-running', index.running);
+        query('#bakemono-memory-vector-index-label').text(index.running ? '正在更新…'
+            : index.ready ? '重建索引' : index.waiting && index.records.length ? `更新索引（${index.waiting} 楼）` : index.records.length ? '更新索引' : '建立索引');
+        query('.bk-vec-index').toggleClass('is-quiet', index.ready);
+        query('[data-bakemono-action="vector-pause"]').prop('hidden', !index.running);
+        query('#bakemono-memory-vector-enabled-note').text(config.enabled ? '每次回复前找回最相关的几段，放进上下文' : '只建索引，不放进上下文');
+        renderVectorSettingsSummary();
+        renderVectorRecall(state);
     }
-    
-    function renderVectorRecallDetails(state = ensureState()) {
-        const container = document.querySelector('#bakemono-memory-vector-recall-details');
-        if (!container) {
-            return;
-        }
-        container.innerHTML = '';
-        const queries = state.vectorMemory.lastQueries || [];
-        const hits = state.vectorMemory.lastHits || [];
-        const intent = String(state.vectorMemory.lastRewriteIntent || '').trim();
-        const embeddingCandidates = state.vectorMemory.lastEmbeddingCandidates || [];
-        const rerankCandidates = state.vectorMemory.lastRerankCandidates || [];
-        const renderRecallItems = (items = [], emptyText = '暂无内容。', showInjectedText = false) => {
-            if (!items.length) {
-                return `<div class="bakemono-memory-empty">${escapeHtml(emptyText)}</div>`;
-            }
-            return items.map(item => {
-                const tier = item.recallTier === 'chunk' ? '正文片段' : item.recallTier === 'full'
-                    ? '全文'
-                    : item.recallTier === 'summary'
-                        ? '摘要'
-                        : item.recallTier === 'dropped'
-                            ? '未入档'
-                            : item.kind === 'summary'
-                                ? '摘要'
-                                : '候选';
-                const meta = [
-                    tier,
-                    item.truncated ? '已截断' : '',
-                    `重排 ${item.rerankScore ?? item.score ?? 0}`,
-                    `相似 ${item.similarity ?? 0}`,
-                    item.lexicalScore ? `词项 ${item.lexicalScore}` : '',
-                    item.keywordHits ? `关键词 ${item.keywordHits}` : '',
-                    item.matchedChunks > 1 ? `命中片段 ${item.matchedChunks}` : '',
-                ].filter(Boolean).join(' · ');
-                const phrases = Array.isArray(item.matchedPhrases) ? item.matchedPhrases : [];
-                const matchedTerms = phrases.length
-                    ? `<small>匹配短语：${escapeHtml(phrases.join('、'))}</small>`
-                    : '';
-                const lexicalDetails = item.matchedTerms?.length
-                    ? `<details><summary>检索字片段</summary><small>${escapeHtml(item.matchedTerms.join('、'))}</small></details>` : '';
-                return `
-                    <article class="bakemono-memory-vector-detail-item">
-                      <div class="bakemono-memory-vector-detail-head">
-                        <strong>${escapeHtml(item.title || `楼层 ${item.messageId}`)}</strong>
-                        <span>${escapeHtml(meta)}</span>
-                      </div>
-                      ${matchedTerms}
-                    ${item.decisionReason ? `<small>${escapeHtml(item.decisionReason)}</small>` : ''}
-                      ${Number.isSafeInteger(item.sourceTextStart) && Number.isSafeInteger(item.sourceTextEnd) ? `<small>清洗后正文位置：${item.sourceTextStart + 1}–${item.sourceTextEnd}</small>` : ''}
-                      <div class="bakemono-memory-vector-detail-text">${escapeHtml(showInjectedText ? item.text || '' : item.preview || item.text || '')}</div>
-                      ${lexicalDetails}
-                    </article>
-                `;
-            }).join('');
-        };
-        const steps = [
-            {
-                title: `查询重写 · ${queries.length || 0} 条线索`,
-                body: [
-                    intent
-                        ? `<div class="bakemono-memory-vector-intent-card"><strong>检索意图</strong><span>${escapeHtml(intent)}</span></div>`
-                        : '',
-                    queries.length
-                        ? queries.map((query, index) => `<div class="bakemono-memory-vector-query-row"><strong>线索 ${String(index + 1).padStart(2, '0')}</strong><span>${escapeHtml(query)}</span></div>`).join('')
-                        : '<div class="bakemono-memory-empty">暂无查询重写结果。成功召回后会在这里显示多条检索 query。</div>',
-                ].filter(Boolean).join(''),
-            },
-            {
-                title: `混合初筛 · ${embeddingCandidates.length || 0} 候选`,
-                body: renderRecallItems(embeddingCandidates, state.vectorMemory.lastRecallSkippedReason || '暂无候选。'),
-            },
-            {
-                title: `Rerank 分档 · ${rerankCandidates.length || 0} 条`,
-                body: renderRecallItems(rerankCandidates, embeddingCandidates.length ? '候选没有进入可注入档位。' : '暂无重排结果。'),
-            },
-            {
-                title: `最终注入 · ${hits.length || 0} 条`,
-                body: renderRecallItems(hits, state.vectorMemory.lastRecallSkippedReason || '暂无最终注入。', true),
-            },
-        ];
-        const fragment = document.createDocumentFragment();
-        steps.forEach((step, index) => {
-            const details = document.createElement('details');
-            details.className = 'bakemono-memory-vector-step';
-            if (index === 0 && queries.length) {
-                details.open = true;
-            }
-            details.innerHTML = `<summary><span>${index + 1} · ${escapeHtml(step.title)}</span><i class="fa-solid fa-chevron-down"></i></summary><div class="bakemono-memory-vector-step-body">${step.body}</div>`;
-            fragment.append(details);
-        });
-        container.append(fragment);
+
+    function floorLabel(item) {
+        const ids = Array.isArray(item.sourceMessageIds) && item.sourceMessageIds.length ? item.sourceMessageIds : [item.messageId];
+        return item.isSavedSummary ? formatSourceRange(ids) : `第 ${item.messageId} 楼`;
     }
-    
-    function renderVectorHitList(state = ensureState()) {
-        const container = document.querySelector('#bakemono-memory-vector-hit-list');
-        if (!container) {
-            return;
-        }
-        container.innerHTML = '';
-        const hits = state.vectorMemory.lastHits || [];
-        if (!hits.length) {
-            const empty = document.createElement('div');
-            empty.className = 'bakemono-memory-empty';
-            empty.textContent = '暂无召回。启用后先建立索引，或点击“测试召回”。';
-            container.append(empty);
-            return;
-        }
-        const fragment = document.createDocumentFragment();
-        hits.forEach(hit => {
-            const item = document.createElement('section');
-            item.className = 'bakemono-memory-vector-hit';
-            const tierLabel = hit.recallTier === 'full' ? '全文' : hit.recallTier === 'chunk' ? '正文片段' : '摘要';
-            const matchedTerms = Array.isArray(hit.matchedPhrases) && hit.matchedPhrases.length
-                ? ` · 匹配 ${hit.matchedPhrases.slice(0, 4).join('、')}`
-                : '';
-            item.innerHTML = `
-                <div class="bakemono-memory-vector-hit-head">
-                    <strong>${escapeHtml(hit.title || `楼层 ${hit.messageId}`)}</strong>
-                    <span>${tierLabel} · 重排 ${escapeHtml(hit.rerankScore ?? hit.score ?? 0)} · 相似度 ${escapeHtml(hit.similarity ?? 0)}${hit.lexicalScore ? ` · 词项 ${escapeHtml(hit.lexicalScore)}` : ''}${hit.keywordHits ? ` · 关键词 ${escapeHtml(hit.keywordHits)}` : ''}${hit.matchedChunks > 1 ? ` · 命中片段 ${escapeHtml(hit.matchedChunks)}` : ''}${escapeHtml(matchedTerms)}</span>
-                </div>
-                <div class="bakemono-memory-vector-snippet">${escapeHtml(hit.preview || hit.text || '')}</div>
-            `;
-            fragment.append(item);
-        });
-        container.append(fragment);
+
+    function hitMarkup(item, index, fullText) {
+        const kept = item.recallTier === 'full' || item.recallTier === 'summary';
+        const tier = item.recallTier === 'full' ? '正文' : item.isSavedSummary ? '总结' : item.kind === 'summary' || item.recallTier === 'summary' ? '摘要' : '正文';
+        const open = view.open.has(index);
+        // A kept row shows what is injected; a left-out row shows the passage that matched. CSS clamps it when closed.
+        const text = plainText(kept ? fullText || item.preview : item.text || item.preview);
+        const why = [
+            `相似度 ${item.similarity ?? 0}`,
+            item.lexicalScore ? `词项 ${item.lexicalScore}` : '',
+            item.keywordHits ? `关键词 ${item.keywordHits}` : '',
+            item.matchedPhrases?.length ? `匹配：${item.matchedPhrases.slice(0, 6).join('、')}` : '',
+            kept && item.decisionReason ? item.decisionReason : '',
+        ].filter(Boolean).join(' · ');
+        return `<div class="bk-vec-hit${kept ? '' : ' is-cut'}${open ? ' is-open' : ''}">
+            <span class="bk-vec-score">${percent(item.rerankScore ?? item.score)}<span class="bk-vec-bar"><i style="width:${percent(item.rerankScore ?? item.score)}%"></i></span></span>
+            <button type="button" class="bk-vec-hit-main" data-bk-vec-hit="${index}" aria-expanded="${open}">
+              <span class="bk-vec-line1">${kept ? `<span class="bk-vec-tier">${tier}</span>` : ''}<span>${escapeHtml(floorLabel(item))}</span>${kept
+                ? '<span class="bk-vec-in">会注入</span>' : `<span class="bk-vec-out">不带：${escapeHtml(item.decisionReason || '没有选上')}</span>`}</span>
+              ${item.isSavedSummary && item.title ? `<strong>${escapeHtml(item.title)}</strong>` : ''}
+              <span class="bk-vec-text">${escapeHtml(text)}</span>
+              ${open ? `<small class="bk-vec-why">${escapeHtml(why)}</small>` : ''}
+            </button>
+          </div>`;
     }
-    
-    function renderVectorRecordList(state = ensureState()) {
-        const container = document.querySelector('#bakemono-memory-vector-record-list');
-        if (!container) {
+
+    function renderVectorRecall(state = ensureState()) {
+        const container = document.querySelector('#bakemono-memory-vector-recall');
+        if (!container) return;
+        const config = state.vectorMemory;
+        if (view.recallAt !== (config.lastRecallAt || null)) {
+            view.recallAt = config.lastRecallAt || null;
+            view.open.clear(); view.queries = false; view.pool = false;
+        }
+        const hits = config.lastHits || [];
+        const decisions = config.lastRerankCandidates || [];
+        const pool = config.lastEmbeddingCandidates || [];
+        const queries = config.lastQueries || [];
+        const skipped = String(config.lastRecallSkippedReason || '').trim();
+        const when = [relativeTime(config.lastRecallAt), config.lastRecallAt ? (config.lastRecallQuery ? '手动试的' : '回复前自动') : ''].filter(Boolean).join(' · ');
+        if (!decisions.length && !hits.length) {
+            container.innerHTML = `<div class="bk-vec-last-h"><h4>${skipped ? '上次没有召回' : '还没有召回过'}</h4>${when ? `<span class="bk-sum-meta">${escapeHtml(when)}</span>` : ''}</div>
+              <p class="bk-vec-empty">${escapeHtml(skipped || '建好索引并打开召回后，每次回复前会自动找一次；也可以在上面试一试。')}</p>`;
             return;
         }
-        container.innerHTML = '';
-        const records = (state.vectorMemory.records || [])
-            .slice()
-            .sort((a, b) => {
-                const priority = record => record.isSavedSummary ? 0 : record.kind === 'summary' ? 1 : record.kind === 'message' ? 2 : 3;
-                return priority(a) - priority(b)
-                    || Number(a.messageId) - Number(b.messageId)
-                    || Number(a.chunkIndex || 0) - Number(b.chunkIndex || 0);
-            })
-            .slice(0, 16);
-        if (!records.length) {
-            const empty = document.createElement('div');
-            empty.className = 'bakemono-memory-empty';
-            empty.textContent = '暂无索引片段。';
-            container.append(empty);
-            return;
-        }
-        const fragment = document.createDocumentFragment();
-        records.forEach(record => {
-            const item = document.createElement('div');
-            item.className = 'bakemono-memory-debug-item';
-            const typeLabel = record.isSavedSummary
-                ? '保存摘要索引'
-                : record.kind === 'summary'
-                    ? '摘要索引'
-                    : record.kind === 'message'
-                        ? '楼层索引'
-                        : '片段索引';
-            item.innerHTML = `
-                <div class="bakemono-memory-debug-meta">${escapeHtml(record.title)} · ${typeLabel} · ${record.isHidden ? '隐藏' : '可见'}</div>
-                <div class="bakemono-memory-debug-text">${escapeHtml(record.preview || record.text || '')}</div>
-            `;
-            fragment.append(item);
-        });
-        container.append(fragment);
+        const limits = recallLimits({ ...defaultVectorMemory, ...config });
+        const fullCount = hits.filter(hit => hit.recallTier === 'full').length;
+        const kept = decisions.filter(item => item.recallTier === 'full' || item.recallTier === 'summary');
+        const cut = decisions.filter(item => !(item.recallTier === 'full' || item.recallTier === 'summary'));
+        const fullTextOf = item => hits.find(hit => (hit.sourceGroup && hit.sourceGroup === item.sourceGroup) || hit.id === item.id)?.text || item.text || '';
+        const ordered = [...kept, ...cut];
+        const intent = String(config.lastRewriteIntent || '').trim();
+        const searched = intent || queries[0] || '';
+        container.innerHTML = `<div class="bk-vec-last-h"><h4>上次召回 · 找到 ${ordered.length} 条，带上 ${hits.length} 条</h4>${when ? `<span class="bk-sum-meta">${escapeHtml(when)}</span>` : ''}</div>
+          <div class="bk-sum-meta bk-vec-counts"><span>摘要 <b>${hits.length - fullCount}</b> / ${limits.maxSummary}</span><span>正文 <b>${fullCount}</b> / ${limits.maxFull}</span><span><b>${Number(config.estimatedChars || 0).toLocaleString()}</b> 字</span></div>
+          ${searched ? `<button type="button" class="bk-vec-searched" data-bk-vec-toggle="queries" aria-expanded="${view.queries}"><span class="bk-vec-searched-k">拿去搜的是</span><span class="bk-vec-searched-v">${escapeHtml(searched)}</span><span class="bk-vec-chev" aria-hidden="true">›</span></button>
+            ${view.queries ? `<ol class="bk-vec-queries">${queries.map(text => `<li>${escapeHtml(text)}</li>`).join('')}</ol>` : ''}` : ''}
+          <div class="bk-vec-hits">${ordered.map((item, index) => `${index === kept.length && cut.length ? '<div class="bk-vec-cut-line">这次不带</div>' : ''}${hitMarkup(item, index, fullTextOf(item))}`).join('')}</div>
+          ${pool.length ? `<button type="button" class="bk-sum-link bk-vec-pool-toggle" data-bk-vec-toggle="pool" aria-expanded="${view.pool}">${view.pool ? '收起初筛候选' : `看初筛的 ${pool.length} 条候选 ›`}</button>
+            ${view.pool ? `<ol class="bk-vec-pool">${pool.map(item => `<li><span class="bk-vec-pool-score">${percent(item.rerankScore ?? item.score)}</span><span>${item.kind === 'summary' ? (item.isSavedSummary ? '总结' : '摘要') : '正文'} · ${escapeHtml(floorLabel(item))}</span><span class="bk-vec-pool-text">${escapeHtml(plainText(item.preview || item.text))}</span></li>`).join('')}</ol>` : ''}` : ''}`;
     }
-    
-    function renderVectorResultList(state = ensureState()) {
-        const container = document.querySelector('#bakemono-memory-vector-result-list');
-        if (!container) {
-            return;
-        }
-        container.innerHTML = '';
-        const hits = state.vectorMemory.lastHits || [];
-        if (!hits.length) {
-            const empty = document.createElement('div');
-            empty.className = 'bakemono-memory-vector-result-empty';
-            empty.innerHTML = '<i class="fa-solid fa-bullseye"></i><div><strong>还没有召回结果</strong><span>建立索引后输入一段剧情线索，测试最相关的旧记忆。</span></div>';
-            container.append(empty);
-            return;
-        }
-        const fragment = document.createDocumentFragment();
-        hits.forEach(hit => {
-            const scoreValue = Number(hit.rerankScore ?? hit.score ?? hit.similarity ?? 0);
-            const normalizedScore = Number.isFinite(scoreValue) ? scoreValue : 0;
-            const score = Math.max(0, Math.min(100, Math.round(normalizedScore <= 1 ? normalizedScore * 100 : normalizedScore)));
-            const item = document.createElement('article');
-            item.className = 'bakemono-memory-vector-result-item';
-            const tier = hit.recallTier === 'full' ? '全文' : hit.recallTier === 'chunk' ? '正文片段' : '摘要';
-            const sourceRange = formatSourceRange(hit.sourceMessageIds || [hit.messageId]);
-            item.innerHTML = `
-                <span class="bakemono-memory-vector-result-score">${score}%</span>
-                <div>
-                  <strong>${escapeHtml(hit.title || `楼层 ${hit.messageId}`)}</strong>
-                  <p>${escapeHtml(hit.preview || hit.text || '暂无预览内容')}</p>
-                  <small>${escapeHtml([tier, sourceRange].filter(Boolean).join(' · '))}</small>
-                </div>
-            `;
-            fragment.append(item);
-        });
-        container.append(fragment);
+
+    function toggleVectorView(kind, index) {
+        if (kind === 'hit') view.open.has(index) ? view.open.delete(index) : view.open.add(index);
+        else if (kind === 'queries' || kind === 'pool') view[kind] = !view[kind];
+        renderVectorRecall();
     }
-    
+
     function renderVectorModelOptions(models = [], options) {
         renderModelPicker(document, 'bakemono-memory-vector-model', models, options);
     }
-    
+
     function renderVectorQueryModelOptions(models = [], options) {
         renderModelPicker(document, 'bakemono-memory-vector-query-model', models, options);
     }
@@ -319,10 +224,9 @@ export function createVectorWorkbenchUi({
     return {
         renderVectorConfigurationFields,
         renderVectorMemoryPanel,
-        renderVectorRecallDetails,
-        renderVectorHitList,
-        renderVectorRecordList,
-        renderVectorResultList,
+        renderVectorRecall,
+        renderVectorSettingsSummary,
+        toggleVectorView,
         renderVectorModelOptions,
         renderVectorQueryModelOptions,
     };
