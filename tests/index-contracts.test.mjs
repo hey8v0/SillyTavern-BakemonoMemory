@@ -144,14 +144,15 @@ test('settings center owns global preferences while feature settings stay with t
     assert.match(settingsSource, /data-bakemono-nav="config"[^>]*>[\s\S]*?<strong>整套配置<\/strong>/);
     assert.match(settingsSource, /data-bakemono-panel="generation"/);
     assert.match(settingsSource, /data-bakemono-panel="config"/);
-    assert.match(settingsSource, /data-bakemono-owned-section="database"/);
+    // The saved-memory counts are a row of numbers on 自动与数据 itself, no longer a moved section.
+    assert.doesNotMatch(settingsSource, /data-bakemono-owned-section="database"/);
+    assert.match(settingsSource, /class="bk-hub-numbers"[\s\S]*?id="bakemono-memory-count-story"/);
     assert.match(settingsSource, /data-bakemono-owned-section="batch"/);
     assert.match(settingsSource, /data-bakemono-owned-section="archive"/);
     assert.match(settingsSource, /data-bakemono-owned-section="generation"/);
     assert.match(settingsSource, /data-bakemono-owned-section="config"/);
     assert.match(source, /organizeWorkbenchOwnedSections\(getSummaryGenerationMode\(\)\)/);
     assert.match(workbenchLayoutSource, /export function organizeWorkbenchOwnedSections\(/);
-    assert.match(workbenchLayoutSource, /\['database', 'bakemono-memory-data-status-slot'\]/);
     assert.match(workbenchLayoutSource, /\['batch', 'bakemono-memory-batch-summary-slot'\]/);
     assert.match(workbenchLayoutSource, /\['archive', 'bakemono-memory-floor-archive-slot'\]/);
     assert.match(workbenchLayoutSource, /\['generation', 'bakemono-memory-generation-settings-slot'\]/);
@@ -962,7 +963,7 @@ test('frequent prompt and floor-archive tools live directly in the settings cent
     assert.match(workbenchLayoutSource, /archive: \{ target: 'settings-hub', label: '返回设置中心' \}/);
     assert.match(workbenchLayoutSource, /prompts: \{ target: 'settings-hub', label: '返回设置中心' \}/);
     assert.match(workbenchLayoutSource, /\['config', 'generation', 'archive'\]\.includes\(sectionName\)/);
-    assert.match(settingsSource, /data-bakemono-nav="maintenance">\s*<i class="fa-solid fa-shield-halved"><\/i>/);
+    assert.match(settingsSource, /data-bakemono-nav="maintenance"[^>]*><span class="bk-hub-glyph">/);
     const settingsHub = settingsSource.slice(settingsSource.indexOf('data-bakemono-panel="settings-hub"'), settingsSource.indexOf('data-bakemono-panel="settings"'));
     assert.doesNotMatch(settingsHub, /<span>0\d<\/span>/, 'settings rows carry no decorative numbers');
     const generationPanel = settingsSource.slice(settingsSource.indexOf('data-bakemono-panel="generation"'), settingsSource.indexOf('data-bakemono-panel="config"'));

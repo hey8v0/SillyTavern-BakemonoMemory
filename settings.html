@@ -187,86 +187,77 @@
         </div>
       </section>
 
-      <section class="bakemono-workbench-panel bakemono-memory-hub-panel" data-bakemono-panel="data-hub">
-        <article class="bakemono-memory-hub-ticket">
-          <span class="bakemono-memory-hub-ticket-copy"><small>当前状态</small><strong id="bakemono-memory-data-hub-title">等待读取状态</strong></span>
-          <em id="bakemono-memory-data-hub-enabled">0 项开启</em>
-        </article>
-
-        <div id="bakemono-memory-data-status-slot" class="bakemono-memory-owned-section-slot"></div>
-
-        <section class="bakemono-memory-hub-group">
-          <div class="bakemono-memory-hub-group-title"><span>自动化</span><i></i></div>
-          <div class="bakemono-memory-hub-list">
-            <button type="button" class="menu_button bakemono-memory-hub-link" data-bakemono-nav="turn-summary">
-              <span class="bakemono-memory-hub-icon"><i class="fa-solid fa-clipboard-list"></i></span>
-              <span class="bakemono-memory-hub-copy"><strong>自动记忆</strong><small>正文结束后处理</small></span>
-              <em id="bakemono-memory-data-hub-turn-state">未开启</em>
-              <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-            </button>
-            <button type="button" class="menu_button bakemono-memory-hub-link" data-bakemono-nav="automation">
-              <span class="bakemono-memory-hub-icon"><i class="fa-solid fa-clock"></i></span>
-              <span class="bakemono-memory-hub-copy"><strong>自动总结</strong><small id="bakemono-memory-data-hub-auto-copy">后台整理规则</small></span>
-              <em id="bakemono-memory-data-hub-auto-state">未开启</em>
-              <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-            </button>
-          </div>
+      <section class="bakemono-workbench-panel bk-sum bk-hub" data-bakemono-panel="data-hub">
+        <section class="bk-hub-status" aria-live="polite">
+          <div class="bk-sum-kicker"><span>自动与数据</span><span id="bakemono-memory-data-hub-enabled">0 项开着</span></div>
+          <h3 id="bakemono-memory-data-hub-title">等待读取状态</h3>
         </section>
-
-        <section class="bakemono-memory-hub-group">
-          <div class="bakemono-memory-hub-group-title"><span>记忆结构</span><i></i></div>
-          <div class="bakemono-memory-hub-list">
-            <button type="button" class="menu_button bakemono-memory-hub-link" data-bakemono-nav="tables">
-              <span class="bakemono-memory-hub-icon"><i class="fa-solid fa-table"></i></span>
-              <span class="bakemono-memory-hub-copy"><strong>表格</strong><small>表格内容与填表设置</small></span>
-              <em id="bakemono-memory-data-hub-table-count" class="bakemono-memory-hub-count">0</em>
-              <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-            </button>
-            <button type="button" class="menu_button bakemono-memory-hub-link" data-bakemono-nav="vector">
-              <span class="bakemono-memory-hub-icon"><i class="fa-solid fa-magnifying-glass-chart"></i></span>
-              <span class="bakemono-memory-hub-copy"><strong>向量记忆</strong><small id="bakemono-memory-data-hub-vector-copy">尚未建立索引</small></span>
-              <em id="bakemono-memory-data-hub-vector-count" class="bakemono-memory-hub-count">0</em>
-              <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-            </button>
-          </div>
-        </section>
+        <div class="bk-hub-frames">
+          <button type="button" class="bk-hub-frame" data-bakemono-nav="turn-summary" data-hub-frame="turn">
+            <span class="bk-hub-no">01</span><strong>自动记忆</strong>
+            <span class="bk-hub-line" id="bakemono-memory-data-hub-turn-line"></span>
+            <span class="bk-hub-line is-quiet" id="bakemono-memory-data-hub-turn-copy"></span>
+            <span class="bk-hub-mini"><i id="bakemono-memory-data-hub-turn-bar"></i></span>
+            <span class="bk-hub-state" id="bakemono-memory-data-hub-turn-state">未开启</span>
+          </button>
+          <button type="button" class="bk-hub-frame" data-bakemono-nav="automation" data-hub-frame="auto">
+            <span class="bk-hub-no">02</span><strong>自动总结</strong>
+            <span class="bk-hub-line" id="bakemono-memory-data-hub-auto-line"></span>
+            <span class="bk-hub-line is-quiet" id="bakemono-memory-data-hub-auto-copy">后台整理规则</span>
+            <span class="bk-hub-mini"><i id="bakemono-memory-data-hub-auto-bar"></i></span>
+            <span class="bk-hub-state" id="bakemono-memory-data-hub-auto-state">未开启</span>
+          </button>
+          <button type="button" class="bk-hub-frame" data-bakemono-nav="tables" data-hub-frame="table">
+            <span class="bk-hub-no">03</span><strong>表格</strong>
+            <span class="bk-hub-line" id="bakemono-memory-data-hub-table-line"></span>
+            <span class="bk-hub-line is-quiet" id="bakemono-memory-data-hub-table-copy"></span>
+            <span class="bk-hub-mini"><i id="bakemono-memory-data-hub-table-bar"></i></span>
+            <span class="bk-hub-state" id="bakemono-memory-data-hub-table-state"></span>
+          </button>
+          <button type="button" class="bk-hub-frame" data-bakemono-nav="vector" data-hub-frame="vector">
+            <span class="bk-hub-no">04</span><strong>向量记忆</strong>
+            <span class="bk-hub-line" id="bakemono-memory-data-hub-vector-line"></span>
+            <span class="bk-hub-line is-quiet" id="bakemono-memory-data-hub-vector-copy">尚未建立索引</span>
+            <span class="bk-hub-mini"><i id="bakemono-memory-data-hub-vector-bar"></i></span>
+            <span class="bk-hub-state" id="bakemono-memory-data-hub-vector-state"></span>
+          </button>
+        </div>
+        <span class="bk-auto-label">记忆数据库</span>
+        <div class="bk-hub-numbers">
+          <div class="bk-hub-num is-event"><b id="bakemono-memory-count-story">0</b><span>剧情摘要</span></div>
+          <div class="bk-hub-num is-event"><b id="bakemono-memory-count-stage">0</b><span>阶段总结</span></div>
+          <div class="bk-hub-num"><b id="bakemono-memory-count-epic">0</b><span>多次总结</span></div>
+          <div class="bk-hub-num is-people"><b id="bakemono-memory-data-hub-table-count">0</b><span>表格行</span></div>
+          <div class="bk-hub-num is-wall"><b id="bakemono-memory-data-hub-vector-count">0</b><span>向量索引</span></div>
+          <div class="bk-hub-num is-voice"><b id="bakemono-memory-data-hub-draft-count">0</b><span>待确认</span></div>
+        </div>
       </section>
-
-      <section class="bakemono-workbench-panel bakemono-memory-hub-panel" data-bakemono-panel="settings-hub">
-        <div class="bakemono-memory-hub-group-title bakemono-memory-settings-divider"><span>日常使用</span><i></i></div>
-        <div class="bakemono-memory-settings-ledger">
-          <button type="button" class="menu_button" data-bakemono-nav="settings">
-            <i class="fa-solid fa-sliders"></i><strong>摘要方式</strong><em id="bakemono-memory-settings-hub-workflow">自定义</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-          </button>
-          <button type="button" class="menu_button" data-bakemono-nav="scan">
-            <i class="fa-solid fa-filter"></i><strong>扫描与识别</strong><em id="bakemono-memory-settings-hub-scan">标签块</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-          </button>
-          <button type="button" class="menu_button" data-bakemono-nav="injection">
-            <i class="fa-solid fa-plug-circle-bolt"></i><strong>注入内容</strong><em id="bakemono-memory-settings-hub-injection">等待</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-          </button>
-          <button type="button" class="menu_button" data-bakemono-nav="generation">
-            <i class="fa-solid fa-wand-magic-sparkles"></i><strong>默认生成模型</strong><em id="bakemono-memory-settings-hub-generation">酒馆主模型</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-          </button>
-          <button type="button" class="menu_button" data-bakemono-nav="prompts">
-            <i class="fa-solid fa-pen-nib"></i><strong>生成提示词</strong><em>四类模板</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-          </button>
-          <button type="button" class="menu_button" data-bakemono-nav="archive">
-            <i class="fa-solid fa-box-archive"></i><strong>楼层收纳</strong><em>自动与手动</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-          </button>
-          <button type="button" class="menu_button" data-bakemono-nav="appearance">
-            <i class="fa-solid fa-palette"></i><strong>外观与主题</strong><em id="bakemono-memory-settings-hub-theme">跟随酒馆</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-          </button>
-          <button type="button" class="menu_button" data-bakemono-nav="config">
-            <i class="fa-solid fa-file-code"></i><strong>整套配置</strong><em id="bakemono-memory-settings-hub-config">导入导出</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-          </button>
-        </div>
-
-        <div class="bakemono-memory-hub-group-title bakemono-memory-safety-divider"><span>安全维护</span><i></i></div>
-        <div class="bakemono-memory-settings-ledger bakemono-memory-safety-ledger">
-          <button type="button" class="menu_button" data-bakemono-nav="maintenance">
-            <i class="fa-solid fa-shield-halved"></i><strong>撤回与事务</strong><em>按需使用</em><i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-          </button>
-        </div>
+      <section class="bakemono-workbench-panel bk-sum bk-hub" data-bakemono-panel="settings-hub">
+        <label class="bk-hub-find"><input id="bakemono-memory-settings-find" type="search" autocomplete="off" placeholder="找设置：标签、模型、隐藏……" aria-label="找设置"><span id="bakemono-memory-settings-find-count"></span></label>
+        <section class="bk-hub-group" data-hub-group>
+          <span class="bk-auto-label">记忆从哪来</span>
+          <button type="button" class="bk-hub-row is-event" data-bakemono-nav="settings" data-hub-keys="摘要方式 回复自带 随正文 单独写 手动 来源"><span class="bk-hub-glyph">摘</span><span class="bk-hub-copy"><strong>摘要方式</strong><small>回复自带、随正文写、单独写或手动</small></span><span class="bk-hub-val" id="bakemono-memory-settings-hub-workflow">自定义</span><span class="bk-hub-chev" aria-hidden="true">›</span></button>
+          <button type="button" class="bk-hub-row is-event" data-bakemono-nav="scan" data-hub-keys="扫描与识别 标签 读取 排除 image"><span class="bk-hub-glyph">扫</span><span class="bk-hub-copy"><strong>扫描与识别</strong><small>从哪些标签读摘要，去掉哪些标签</small></span><span class="bk-hub-val" id="bakemono-memory-settings-hub-scan">标签块</span><span class="bk-hub-chev" aria-hidden="true">›</span></button>
+          <button type="button" class="bk-hub-row is-people" data-bakemono-nav="archive" data-hub-keys="楼层收纳 隐藏 楼层 保留 恢复"><span class="bk-hub-glyph">藏</span><span class="bk-hub-copy"><strong>楼层收纳</strong><small>把整理过的旧楼层隐藏起来，保留最近几楼</small></span><span class="bk-hub-val" id="bakemono-memory-settings-hub-archive">手动</span><span class="bk-hub-chev" aria-hidden="true">›</span></button>
+        </section>
+        <section class="bk-hub-group" data-hub-group>
+          <span class="bk-auto-label">怎么生成</span>
+          <button type="button" class="bk-hub-row is-wall" data-bakemono-nav="generation" data-hub-keys="默认生成模型 模型 接口 api 密钥"><span class="bk-hub-glyph">模</span><span class="bk-hub-copy"><strong>默认生成模型</strong><small>摘要、总结、补写用哪个模型</small></span><span class="bk-hub-val" id="bakemono-memory-settings-hub-generation">酒馆主模型</span><span class="bk-hub-chev" aria-hidden="true">›</span></button>
+          <button type="button" class="bk-hub-row is-wall" data-bakemono-nav="prompts" data-hub-keys="生成提示词 提示词 模板 补写 阶段 多次"><span class="bk-hub-glyph">词</span><span class="bk-hub-copy"><strong>生成提示词</strong><small>剧情摘要、补写、阶段、多次总结四份</small></span><span class="bk-hub-val">四份</span><span class="bk-hub-chev" aria-hidden="true">›</span></button>
+        </section>
+        <section class="bk-hub-group" data-hub-group>
+          <span class="bk-auto-label">发给模型什么</span>
+          <button type="button" class="bk-hub-row is-done" data-bakemono-nav="injection" data-hub-keys="注入内容 注入 深度 角色 模板 上下文"><span class="bk-hub-glyph">注</span><span class="bk-hub-copy"><strong>注入内容</strong><small>是否注入、插入深度、角色和模板</small></span><span class="bk-hub-val" id="bakemono-memory-settings-hub-injection">等待</span><span class="bk-hub-chev" aria-hidden="true">›</span></button>
+        </section>
+        <section class="bk-hub-group" data-hub-group>
+          <span class="bk-auto-label">外观和备份</span>
+          <button type="button" class="bk-hub-row is-voice" data-bakemono-nav="appearance" data-hub-keys="外观与主题 主题 颜色 字体 夜间 日间"><span class="bk-hub-glyph">色</span><span class="bk-hub-copy"><strong>外观与主题</strong><small>跟随酒馆、场记板·夜、白板·日或自定义</small></span><span class="bk-hub-val" id="bakemono-memory-settings-hub-theme">跟随酒馆</span><span class="bk-hub-chev" aria-hidden="true">›</span></button>
+          <button type="button" class="bk-hub-row is-thread" data-bakemono-nav="config" data-hub-keys="整套配置 配置 导入 导出 备份 预设"><span class="bk-hub-glyph">套</span><span class="bk-hub-copy"><strong>整套配置</strong><small>把所有设置导出、导入或换一套</small></span><span class="bk-hub-val" id="bakemono-memory-settings-hub-config">导入导出</span><span class="bk-hub-chev" aria-hidden="true">›</span></button>
+        </section>
+        <section class="bk-hub-group" data-hub-group>
+          <span class="bk-auto-label">安全维护</span>
+          <button type="button" class="bk-hub-row is-voice" data-bakemono-nav="maintenance" data-hub-keys="撤回与事务 撤回 事务 修复 恢复 回滚"><span class="bk-hub-glyph">撤</span><span class="bk-hub-copy"><strong>撤回与事务</strong><small>撤回上一次保存，查看和修复中断的操作</small></span><span class="bk-hub-val">按需使用</span><span class="bk-hub-chev" aria-hidden="true">›</span></button>
+        </section>
       </section>
 
       <section class="bakemono-workbench-panel bakemono-memory-settings-panel" data-bakemono-panel="settings">
@@ -312,38 +303,6 @@
           <p id="bakemono-memory-memory-warning">等待扫描。</p>
           <span id="bakemono-memory-injection-stats">注入：多次 0 / 阶段 0 / 普通 0</span>
         </article>
-
-        <details class="bakemono-memory-card-panel bakemono-memory-database-panel bakemono-memory-settings-block bakemono-memory-console-disclosure" data-bakemono-owned-section="database">
-          <summary><span><i class="fa-solid fa-database"></i> 记忆数据库</span><small>记录、注入与队列状态</small></summary>
-          <div class="bakemono-memory-status-grid" aria-label="详细记忆状态">
-            <div class="bakemono-memory-stat"><strong id="bakemono-memory-count-story">0</strong><span>剧情摘要</span></div>
-            <div class="bakemono-memory-stat"><strong id="bakemono-memory-count-stage">0</strong><span>阶段总结</span></div>
-            <div class="bakemono-memory-stat"><strong id="bakemono-memory-count-epic">0</strong><span>多次总结</span></div>
-          </div>
-          <div class="bakemono-memory-database-grid">
-            <div>
-              <span>总记录</span>
-              <strong id="bakemono-memory-database-total">0</strong>
-            </div>
-            <div>
-              <span>可用记忆</span>
-              <strong id="bakemono-memory-database-active">0</strong>
-            </div>
-            <div>
-              <span>已选入记忆</span>
-              <strong id="bakemono-memory-database-injected">0</strong>
-            </div>
-            <div>
-              <span>草稿</span>
-              <strong id="bakemono-memory-database-drafts">0</strong>
-            </div>
-            <div>
-              <span>队列 运行/等待/失败</span>
-              <strong id="bakemono-memory-database-queue">0/0/0</strong>
-            </div>
-          </div>
-          <div id="bakemono-memory-database-description" class="bakemono-memory-status-line">等待扫描。</div>
-        </details>
 
         <details class="bakemono-memory-card-panel bakemono-memory-preset-panel bakemono-memory-settings-block" data-bakemono-owned-section="config">
           <summary><span><i class="fa-solid fa-box-archive"></i> 整套配置</span><small>保存、复制与导入导出</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看整套配置说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span id="bakemono-memory-active-config-status" class="bakemono-memory-help-content">这里保存/导出所有配置：工作流、扫描规则、自动总结、生成提示词和注入模板。</span></button></summary>
@@ -1550,7 +1509,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.20.1 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.21.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

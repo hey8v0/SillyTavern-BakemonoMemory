@@ -78,7 +78,6 @@ import { createSummaryGenerationController, getSummaryMaterialPreview } from './
 import { createSummaryBackfillController } from './src/features/summary-backfill-controller.js';
 import { createConfigurationService } from './src/features/configuration-service.js';
 import { createConfigurationController } from './src/features/configuration-controller.js';
-import { createMemoryRecordsUi } from './src/features/memory-records-ui.js';
 import { createOverviewTokenManifest } from './src/features/overview-token-manifest.js';
 import { createInjectionPreview } from './src/features/injection-preview.js';
 import { createWorkflowOverviewModel } from './src/features/workflow-overview-model.js';
@@ -1194,19 +1193,6 @@ const {
     usePromptPresetAsGlobalDefault,
 } = configurationController;
 
-const memoryRecordsUi = createMemoryRecordsUi({
-    query: $,
-    documentRef: document,
-    getState: ensureState,
-    memoryRecordStatuses,
-    blockTypes,
-    normalizeSearchText,
-    getKindLabel,
-});
-const {
-    renderMemoryDatabaseSummary,
-} = memoryRecordsUi;
-
 const vectorMemoryService = createVectorMemoryService({
     formatApiFailure,
     defaultVectorMemory,
@@ -2182,7 +2168,6 @@ workbenchRenderer = createWorkbenchRenderer({
     renderPresetControlPair,
     renderAreaPresetControl,
     renderWorkflowGuide,
-    renderMemoryDatabaseSummary,
     renderPromptInspector: () => promptInspector.render(),
     renderHubPanels: renderWorkbenchHubPanels,
     renderSummaryGenerationPanel,

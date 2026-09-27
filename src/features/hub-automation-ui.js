@@ -1,6 +1,7 @@
 import { themeChoiceLabel } from '../theme/theme-schema.js';
 import { stageAutomationStatus } from '../summary/automation-status.js';
 import { getSummarySourceShortLabel } from './summary-source-wizard.js';
+import { summarySourceChoice, tableModeChoice } from './turn-trigger-policy.js';
 
 export function createHubAutomationUi({
     documentRef,
@@ -21,25 +22,51 @@ export function createHubAutomationUi({
     describeSummary,
     escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]),
 }) {
+    // How far the next chapter is, shared by 自动总结 and its frame on 自动与数据.
+    function stageProgress(state, materials = getStageMaterialOverview()) {
+        const targets = materials.targets;
+        const triggerType = state.automation.triggerType || defaultAutomation.triggerType;
+        const currentValue = triggerType === 'chars'
+            ? targets.reduce((sum, block) => sum + String(block.content || '').length, 0)
+            : targets.length;
+        const threshold = triggerType === 'chars'
+            ? Math.max(100, Number(state.automation.charInterval || defaultAutomation.charInterval))
+            : Math.max(1, Number(state.automation.floorInterval || defaultAutomation.floorInterval));
+        const runtime = stageAutomationStatus(state, materials, { batch: getAutoStageTargets(targets),
+            records: getCurrentFloorMemoryIndex?.(state)?.records || [], busy: getIsBusy() });
+        const unit = triggerType === 'chars' ? '字' : '条摘要';
+        const left = Math.max(0, threshold - currentValue);
+        const title = runtime.code === 'waiting' ? `再攒 ${left.toLocaleString()} ${unit}就整理成下一章`
+            : runtime.code === 'off' ? '自动总结已关闭' : runtime.title;
+        return { materials, currentValue, threshold, unit, runtime, title,
+            progress: Math.max(0, Math.min(100, Math.round((currentValue / threshold) * 100))) };
+    }
+
+    // One frame per background tool: a line of state, a quiet second line, a small bar and a coloured state dot.
+    function setFrame(key, { line, copy, bar = 0, state, tone }) {
+        query(`#bakemono-memory-data-hub-${key}-line`).text(line);
+        query(`#bakemono-memory-data-hub-${key}-copy`).text(copy);
+        query(`#bakemono-memory-data-hub-${key}-bar`).css('width', `${Math.max(0, Math.min(100, bar))}%`);
+        query(`#bakemono-memory-data-hub-${key}-state`).text(state);
+        query(`[data-hub-frame="${key}"]`).attr?.('data-tone', tone);
+    }
+
     function renderHubPanels(state = getState()) {
-        const floorStats = getCurrentFloorMemoryIndex(state).aggregates;
-        const turnEnabled = !!state.turnSummary?.enabled;
+        const index = getCurrentFloorMemoryIndex(state);
+        const floorStats = index.aggregates;
+        const latest = index.latest;
+        const source = summarySourceChoice(state), tableMode = tableModeChoice(state);
+        // Summaries read from replies still count as recording; only “manual” for both is off.
+        const turnOn = !(source === 'manual' && tableMode === 'manual');
         const automationEnabled = !!state.automation?.enabled;
-        const tableEnabled = !!state.tableDatabase?.enabled;
+        const tables = Array.isArray(state.tableDatabase?.tables) ? state.tableDatabase.tables : [];
+        const tableRows = tables.reduce((sum, table) => sum + (Array.isArray(table.rows) ? table.rows.length : 0), 0);
+        const tableDrafts = state.tableDatabase?.editDrafts || [];
+        const tableOn = tables.length > 0 && tableMode !== 'manual';
         const vectorEnabled = !!state.vectorMemory?.enabled;
-        const enabledCount = [turnEnabled, automationEnabled, tableEnabled, vectorEnabled].filter(Boolean).length;
-        const tableCount = Array.isArray(state.tableDatabase?.tables) ? state.tableDatabase.tables.length : 0;
-        const vectorCount = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records.length : 0;
-        const triggerType = state.automation?.triggerType || defaultAutomation.triggerType;
-        const triggerValue = triggerType === 'chars'
-            ? Number(state.automation?.charInterval || defaultAutomation.charInterval)
-            : Number(state.automation?.floorInterval || defaultAutomation.floorInterval);
-        const automationMode = state.automation?.mode || defaultAutomation.mode;
-        const automationModeLabel = automationMode === 'commit_hide' ? '自动保存' : automationMode === 'draft' ? '生成草稿' : '仅提醒';
-        const injectionStatus = getInjectionHeaderStatus(state);
-        const scanMode = state.scanRules?.mode || defaultScanRules.mode;
-        const apiProvider = state.automation?.apiProvider || defaultAutomation.apiProvider;
-        const selectedConfig = getActiveGlobalConfig() || getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
+        const vectorRecords = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records : [];
+        const enabledCount = [turnOn, automationEnabled, tableOn, vectorEnabled].filter(Boolean).length;
+        const draftCount = (state.drafts || []).length;
 
         const orchestrationTitle = floorStats.pendingDraftCount
             ? `${floorStats.pendingDraftCount.toLocaleString()} 条内容待确认`
@@ -47,21 +74,65 @@ export function createHubAutomationUi({
                 ? '正在整理记忆'
                 : floorStats.missing
                     ? `${floorStats.missing.toLocaleString()} 楼尚无摘要`
-                    : enabledCount ? '记忆编排正常' : '等待启用后台工具';
+                    : enabledCount ? '后台都正常' : '后台工具都还没开';
         query('#bakemono-memory-data-hub-title').text(orchestrationTitle);
-        query('#bakemono-memory-data-hub-enabled').text(`${enabledCount} 项开启`);
-        query('#bakemono-memory-data-hub-turn-state').text(turnEnabled ? '已开启' : '未开启').toggleClass('is-on', turnEnabled);
-        query('#bakemono-memory-data-hub-auto-state').text(automationEnabled ? automationModeLabel : '未开启').toggleClass('is-on', automationEnabled);
-        query('#bakemono-memory-data-hub-auto-copy').text(automationEnabled
-            ? `每 ${triggerValue.toLocaleString()} ${triggerType === 'chars' ? '字' : '条摘要'}`
-            : '后台整理规则');
-        query('#bakemono-memory-data-hub-table-count').text(tableCount.toLocaleString());
-        query('#bakemono-memory-data-hub-vector-count').text(vectorCount.toLocaleString());
-        query('#bakemono-memory-data-hub-vector-copy').text(vectorEnabled
-            ? (vectorCount ? '索引健康' : '等待建立索引')
-            : '尚未开启');
+        query('#bakemono-memory-data-hub-enabled').text(`4 项开着 ${enabledCount} 项`);
+
+        const summaryName = { existing: '回复自带', inline: '随正文写', independent: '单独写', manual: '只手动' }[source] || '旧版组合';
+        const tableName = { inline: '随正文写', after: '单独写', manual: '只手动' }[tableMode];
+        const latestSaved = ['saved', 'covered'].includes(latest?.summaryState);
+        setFrame('turn', {
+            line: !latest ? '等待第一条回复' : latestSaved ? `第 ${latest.id} 楼已记好` : latest.summaryState === 'draft' ? `第 ${latest.id} 楼等你确认` : `第 ${latest.id} 楼还没有摘要`,
+            copy: `摘要${summaryName} · 表格${tableName}`,
+            bar: latest ? (latestSaved ? 100 : 40) : 0,
+            state: !turnOn ? '没开' : !latest || latestSaved ? '正常' : '要补',
+            tone: !turnOn ? 'off' : !latest || latestSaved ? 'ok' : 'alert',
+        });
+
+        const stage = stageProgress(state);
+        const modeName = { commit_hide: '直接保存并隐藏', draft: '生成草稿等我确认' }[state.automation?.mode] || '只提醒';
+        const stageAlert = ['failed', 'invalid', 'gap', 'paused'].includes(stage.runtime.code);
+        setFrame('auto', {
+            line: stage.title,
+            copy: automationEnabled ? modeName : `没整理 ${stage.currentValue.toLocaleString()} ${stage.unit}`,
+            bar: stage.progress,
+            state: !automationEnabled ? '没开' : stageAlert ? '要处理' : stage.runtime.code === 'draft' ? '有草稿' : stage.runtime.code === 'waiting' ? '在攒' : '正常',
+            tone: !automationEnabled ? 'off' : stageAlert ? 'alert' : stage.runtime.code === 'waiting' || stage.runtime.code === 'draft' ? 'wait' : 'ok',
+        });
+
+        const lastFloor = ids => Math.max(-1, ...(ids || []).map(Number).filter(Number.isFinite));
+        const appliedFloor = lastFloor((state.tableDatabase?.history || [])[0]?.sourceMessageIds);
+        const pendingOps = tableDrafts.reduce((sum, draft) => sum + (Array.isArray(draft.operations) ? draft.operations.length : 0), 0);
+        setFrame('table', {
+            line: tables.length ? `${tables.length} 张表 · ${tableRows.toLocaleString()} 行` : '还没有表格',
+            copy: tableDrafts.length ? `${pendingOps || tableDrafts.length} 处修改等你应用` : appliedFloor >= 0 ? `跟到第 ${appliedFloor} 楼` : `填表${tableName}`,
+            bar: latest && appliedFloor >= 0 ? appliedFloor / Math.max(1, latest.id) * 100 : 0,
+            state: !tables.length ? '没有表格' : tableDrafts.length ? '有待应用' : tableOn ? '正常' : '只手动',
+            tone: !tables.length ? 'off' : tableDrafts.length ? 'wait' : tableOn ? 'ok' : 'off',
+        });
+
+        const indexedFloors = new Set(vectorRecords.filter(record => !record.isSavedSummary).map(record => String(record.messageId))).size;
+        const hits = (state.vectorMemory?.lastHits || []).length;
+        setFrame('vector', {
+            line: !vectorRecords.length ? '还没有建索引' : state.vectorMemory?.dirty ? `${indexedFloors} 楼已索引，有改动要更新` : `${indexedFloors} 楼都已建索引`,
+            copy: vectorEnabled ? `召回开启${hits ? ` · 上次带上 ${hits} 条` : ''}` : '召回关闭',
+            bar: floorStats.total ? indexedFloors / floorStats.total * 100 : 0,
+            state: !vectorEnabled ? '没开' : state.vectorMemory?.dirty || !vectorRecords.length ? '等更新' : '正常',
+            tone: !vectorEnabled ? 'off' : state.vectorMemory?.dirty || !vectorRecords.length ? 'wait' : 'ok',
+        });
+
+        query('#bakemono-memory-data-hub-table-count').text(tableRows.toLocaleString());
+        query('#bakemono-memory-data-hub-vector-count').text(vectorRecords.length.toLocaleString());
+        query('#bakemono-memory-data-hub-draft-count').text(draftCount.toLocaleString());
+
+        const injectionStatus = getInjectionHeaderStatus(state);
+        const scanMode = state.scanRules?.mode || defaultScanRules.mode;
+        const apiProvider = state.automation?.apiProvider || defaultAutomation.apiProvider;
+        const selectedConfig = getActiveGlobalConfig() || getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
         query('#bakemono-memory-settings-hub-workflow').text(getSummarySourceShortLabel(state));
         query('#bakemono-memory-settings-hub-scan').text(scanMode === 'full' ? '全文管线' : '标签块');
+        query('#bakemono-memory-settings-hub-archive').text(state.autoHideRecent?.enabled
+            ? `自动 · 保留 ${Number(state.autoHideRecent.preserveRecent ?? 5)} 楼` : '手动');
         query('#bakemono-memory-settings-hub-injection').text(injectionStatus.short);
         query('#bakemono-memory-settings-hub-generation').text(apiProvider === 'custom'
             ? (String(state.automation?.customApi?.model || '').trim() || '自定义接口')
@@ -128,25 +199,9 @@ export function createHubAutomationUi({
     }
 
     function renderAutomationOverview(state = getState()) {
-        const materials = getStageMaterialOverview();
-        const targets = materials.targets;
-        const triggerType = state.automation.triggerType || defaultAutomation.triggerType;
-        const currentValue = triggerType === 'chars'
-            ? targets.reduce((sum, block) => sum + String(block.content || '').length, 0)
-            : targets.length;
-        const threshold = triggerType === 'chars'
-            ? Math.max(100, Number(state.automation.charInterval || defaultAutomation.charInterval))
-            : Math.max(1, Number(state.automation.floorInterval || defaultAutomation.floorInterval));
-        const progress = Math.max(0, Math.min(100, Math.round((currentValue / threshold) * 100)));
+        const { materials, currentValue, threshold, unit, runtime, title, progress } = stageProgress(state);
         const enabled = !!state.automation.enabled;
-        const runtime = stageAutomationStatus(state, materials, { batch: getAutoStageTargets(targets),
-            records: getCurrentFloorMemoryIndex?.(state)?.records || [], busy: getIsBusy() });
         const mode = state.automation.mode || defaultAutomation.mode;
-        const unit = triggerType === 'chars' ? '字' : '条摘要';
-        const left = Math.max(0, threshold - currentValue);
-        // Say how far the next chapter is; the other states keep their own words.
-        const title = runtime.code === 'waiting' ? `再攒 ${left.toLocaleString()} ${unit}就整理成下一章`
-            : runtime.code === 'off' ? '自动总结已关闭' : runtime.title;
         const notes = [runtime.detail, materials.excludedCount ? `另有 ${materials.excludedCount} 条摘要因来源设置没有算进来` : ''].filter(Boolean);
         query('#bakemono-memory-automation-mode-badge').text(enabled ? modeName(mode) : '已关闭');
         query('#bakemono-memory-automation-runtime-title').text(title);
@@ -224,7 +279,20 @@ export function createHubAutomationUi({
         root.addEventListener('change', event => {
             if (['bakemono-memory-auto-mode', 'bakemono-memory-auto-trigger'].includes(event.target?.id)) renderAutomationForm();
         });
+        root.addEventListener('input', event => {
+            if (event.target?.id !== 'bakemono-memory-settings-find') return;
+            const words = String(event.target.value || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+            let shown = 0;
+            root.querySelectorAll('[data-hub-keys]').forEach(row => {
+                const text = `${row.dataset.hubKeys} ${row.textContent}`.toLowerCase();
+                row.hidden = !words.every(word => text.includes(word));
+                if (!row.hidden) shown++;
+            });
+            root.querySelectorAll('[data-hub-group]').forEach(group => { group.hidden = !group.querySelector('[data-hub-keys]:not([hidden])'); });
+            const count = root.querySelector('#bakemono-memory-settings-find-count');
+            if (count) count.textContent = words.length ? `${shown} 项` : '';
+        });
     }
 
-    return { renderAutomationOverview, renderAutomationForm, renderHubPanels, bindAutomation };
+    return { renderAutomationOverview, renderAutomationForm, renderHubPanels, bindAutomation, stageProgress };
 }

@@ -72,3 +72,30 @@ test('自动总结 says how far the next chapter is and lists the latest chapter
     assert.match(recent, /第 151–172 楼/); assert.match(recent, /草稿等确认/); assert.match(recent, /data-bakemono-summary-focus="s1"/);
     assert.match(node('bakemono-memory-automation-ways').innerHTML, /整理完怎么办[\s\S]*生成草稿等我确认/);
 });
+
+test('自动与数据 frames say each tool’s state and colour it', async () => {
+    const { createHubAutomationUi } = await import('../src/features/hub-automation-ui.js');
+    const texts = new Map(), tones = new Map();
+    const query = selector => ({ text(value) { texts.set(selector, value); return this; }, css() { return this; }, toggleClass() { return this; },
+        prop() { return this; }, attr(name, value) { tones.set(selector, value); return this; }, val: () => undefined });
+    const state = {
+        turnSummary: { enabled: false, auto: false, processingMode: 'both' }, inlineGeneration: { summaryEnabled: true, tableEnabled: true },
+        automation: { enabled: true, mode: 'draft', triggerType: 'floors', floorInterval: 10 },
+        tableDatabase: { enabled: false, tables: [{ rows: [[1], [2]] }], editDrafts: [{ operations: [{}] }], history: [] },
+        vectorMemory: { enabled: true, dirty: false, records: [{ messageId: 1 }, { messageId: 2 }], lastHits: [{}, {}] },
+        drafts: [{ id: 'x' }], scanRules: {}, autoHideRecent: { enabled: true, preserveRecent: 3 },
+    };
+    const ui = createHubAutomationUi({ query, getState: () => state, documentRef: { getElementById: () => null, querySelectorAll: () => [] },
+        getCurrentFloorMemoryIndex: () => ({ aggregates: { pendingDraftCount: 1, total: 2 }, latest: { id: 2, summaryState: 'saved' }, records: [] }),
+        getStageMaterialOverview: () => ({ targets: Array.from({ length: 7 }, (_, i) => ({ hash: `b${i}`, content: '摘要' })), issues: [] }),
+        getInjectionHeaderStatus: () => ({ short: '注入 1,000 字' }), getAppearanceSettings: () => ({}), getActiveGlobalConfig: () => null,
+        getPromptPresets: () => [], getSelectedPromptPresetId: () => '', defaultAutomation: { triggerType: 'floors', floorInterval: 10 }, defaultScanRules: { mode: 'tags' } });
+    ui.renderHubPanels();
+    assert.equal(texts.get('#bakemono-memory-data-hub-title'), '1 条内容待确认');
+    assert.equal(texts.get('#bakemono-memory-data-hub-turn-line'), '第 2 楼已记好');
+    assert.equal(texts.get('#bakemono-memory-data-hub-auto-line'), '再攒 3 条摘要就整理成下一章');
+    assert.equal(texts.get('#bakemono-memory-data-hub-table-copy'), '1 处修改等你应用');
+    assert.equal(texts.get('#bakemono-memory-data-hub-vector-line'), '2 楼都已建索引');
+    assert.deepEqual(['turn', 'auto', 'table', 'vector'].map(key => tones.get(`[data-hub-frame="${key}"]`)), ['ok', 'wait', 'wait', 'ok']);
+    assert.equal(texts.get('#bakemono-memory-settings-hub-archive'), '自动 · 保留 3 楼');
+});

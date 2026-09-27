@@ -26,7 +26,6 @@ export function createWorkbenchRenderer({
     renderPresetControlPair,
     renderAreaPresetControl,
     renderWorkflowGuide,
-    renderMemoryDatabaseSummary,
     renderPromptInspector,
     renderHubPanels,
     renderSummaryGenerationPanel,
@@ -179,12 +178,10 @@ export function createWorkbenchRenderer({
         renderActivePresetControls(tabName);
         if (tabName === 'overview') {
             renderWorkflowGuide(state);
-            renderMemoryDatabaseSummary(state);
         } else if (tabName === 'prompt-inspector') {
             void renderPromptInspector();
         } else if (tabName === 'data-hub') {
             renderHubPanels(state);
-            renderMemoryDatabaseSummary(state);
         } else if (tabName === 'settings-hub') renderHubPanels(state);
         else if (tabName === 'settings') renderWorkflowGuide(state);
         else if (tabName === 'preview') {
@@ -221,13 +218,11 @@ export function createWorkbenchRenderer({
         query('#bakemono-memory-count-stage').text(blocks.stage.length);
         query('#bakemono-memory-count-epic').text(blocks.epic.length);
         renderHubPanels(state);
-        renderMemoryDatabaseSummary(state);
     }
 
     function renderOverviewMemory(state) {
         state.memoryRecords = buildMemoryRecords(state);
         renderWorkflowGuide(state);
-        renderMemoryDatabaseSummary(state);
     }
 
     function renderSummarySurface(activeTab, state) {
