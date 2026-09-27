@@ -136,7 +136,6 @@ export function createVectorWorkbenchUi({
             : index.ready ? '重建索引' : index.waiting && index.records.length ? `更新索引（${index.waiting} 楼）` : index.records.length ? '更新索引' : '建立索引');
         query('.bk-vec-index').toggleClass('is-quiet', index.ready);
         query('[data-bakemono-action="vector-pause"]').prop('hidden', !index.running);
-        query('#bakemono-memory-vector-enabled-note').text(config.enabled ? '每次回复前找回最相关的几段，放进上下文' : '只建索引，不放进上下文');
         renderVectorSettingsSummary();
         renderVectorRecall(state);
     }

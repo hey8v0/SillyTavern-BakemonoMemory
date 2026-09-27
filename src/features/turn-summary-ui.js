@@ -91,10 +91,6 @@ export function createTurnSummaryUi({
             'no-prompt': source === 'existing' && table !== 'inline',
         };
         for (const [key, visible] of Object.entries(when)) query(`[data-bk-auto-when="${key}"]`).prop('hidden', !visible);
-        query('#bakemono-memory-turn-prompt-summary').text([
-            separateSummary ? '单独写摘要' : source === 'inline' ? '随正文摘要' : '',
-            table === 'inline' ? '随正文填表' : '',
-        ].filter(Boolean).join('、') || '当前方式不需要');
     }
 
     function renderStatus(state) {

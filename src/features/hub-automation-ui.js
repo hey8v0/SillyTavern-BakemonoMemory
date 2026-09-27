@@ -162,7 +162,6 @@ export function createHubAutomationUi({
         const byChars = String(query('#bakemono-memory-auto-trigger').val?.() || defaultAutomation.triggerType) === 'chars';
         documentRef.querySelectorAll?.('[data-bakemono-auto-rule]').forEach(input => { input.hidden = input.dataset.bakemonoAutoRule !== (byChars ? 'chars' : 'floors'); });
         query('#bakemono-memory-automation-goal-unit').text(byChars ? '字' : '条');
-        query('#bakemono-memory-automation-goal-note').text(byChars ? '没整理的摘要一共多少字' : '没整理的剧情摘要条数');
         query('[data-bk-stage-when="commit_hide"]').prop?.('hidden', mode !== 'commit_hide');
         const container = documentRef.getElementById?.('bakemono-memory-automation-ways');
         if (!container) return;
