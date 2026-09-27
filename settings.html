@@ -809,190 +809,111 @@
             </div>
           </details>
 
-          <div class="bakemono-memory-card-panel bakemono-table-panel-card">
-          <h4><i class="fa-solid fa-table"></i> 表格数据库</h4>
-            <div class="bakemono-memory-table-overview-strip" aria-label="表格概览">
-              <div><strong id="bakemono-memory-table-overview-count">0</strong><span>当前表格</span></div>
-              <div><strong id="bakemono-memory-table-overview-row-count">0</strong><span>数据行</span></div>
-              <div><strong id="bakemono-memory-table-overview-draft-count">0</strong><span>待应用</span></div>
-            </div>
-            <div class="bakemono-memory-table-current-head bakemono-memory-section-head">
-              <div>
-                <span class="bakemono-memory-next-kicker">当前数据</span>
-                <h3>先看表格，再决定修改</h3>
+          <div class="bakemono-table-panel-card bk-sum bk-tbl-page">
+            <section class="bk-tbl-status">
+              <div class="bk-sum-kicker"><span>表格</span><span id="bakemono-memory-table-schema-status">当前聊天表格</span></div>
+              <h3 id="bakemono-memory-table-headline">还没有填过表</h3>
+              <div class="bk-sum-meta bk-tbl-facts">
+                <span><b id="bakemono-memory-table-overview-count">0</b> 张表</span>
+                <span><b id="bakemono-memory-table-overview-row-count">0</b> 行</span>
+                <span>待应用 <b id="bakemono-memory-table-overview-draft-count">0</b> 处</span>
               </div>
-              <button class="bakemono-memory-table-fill-action" type="button" data-bakemono-action="process-latest-table">
-                <i class="fa-solid fa-table-list"></i><span>只填表格</span>
-              </button>
-            </div>
-            <div class="bakemono-memory-table-hero">
-              <div>
-                <strong>当前表格组</strong>
-                <span id="bakemono-memory-table-schema-status" class="bakemono-memory-status-line">当前聊天表格</span>
+              <div class="bk-sum-actions">
+                <button class="menu_button bk-tbl-fill" type="button" data-bakemono-action="process-latest-table"><span>只填表格</span><small class="bk-tbl-cost">+1 次请求</small></button>
               </div>
-              <div class="bakemono-memory-table-quick-actions">
-              <label class="checkbox_label bakemono-memory-switch bakemono-memory-table-inject-toggle">
-                <input type="checkbox" id="bakemono-memory-table-inject-memory" title="此开关立即保存" checked>
-                <span>表格记忆注入上下文</span>
+              <label class="bk-tbl-switch">
+                <span class="bk-tbl-switch-copy">表格注入上下文<small>回复时带上这些表格；关掉后表格只保存</small></span>
+                <input type="checkbox" id="bakemono-memory-table-inject-memory" role="switch" title="此开关立即保存" checked>
+                <span class="bk-tbl-toggle" aria-hidden="true"></span>
               </label>
-              </div>
-            </div>
-            <div id="bakemono-memory-table-list" class="bakemono-memory-table-list bakemono-memory-table-list-primary"></div>
+            </section>
 
-            <div class="bakemono-memory-table-diff-head bakemono-memory-section-head">
-              <div>
-                <span class="bakemono-memory-next-kicker">待应用</span>
-                <h3>本轮差异</h3>
-              </div>
-              <span id="bakemono-memory-table-draft-label" class="bakemono-memory-table-draft-label">0 处</span>
-            </div>
-            <div id="bakemono-memory-table-draft-list" class="bakemono-memory-table-draft-list"></div>
+            <div class="bakemono-memory-table-diff-head bk-tbl-diff-head" hidden><span id="bakemono-memory-table-draft-label">0 处</span></div>
+            <div id="bakemono-memory-table-draft-list" class="bk-tbl-diffs"></div>
 
-            <details class="bakemono-memory-table-import bakemono-memory-table-maintenance">
-              <summary><i class="fa-solid fa-shield-halved"></i><span>维护与恢复</span><small>撤销、重做、导出与清空</small></summary>
-              <div class="bakemono-memory-table-quick-actions">
-                <button class="menu_button" id="bakemono-memory-redo-table-operation">
-                  <i class="fa-solid fa-rotate-right"></i><span>重做表格操作</span>
-                </button>
-                <button class="menu_button" id="bakemono-memory-undo-table-operation">
-                  <i class="fa-solid fa-rotate-left"></i><span>撤销表格操作</span>
-                </button>
-                <button class="menu_button" id="bakemono-memory-export-table-json">
-                  <i class="fa-solid fa-file-export"></i><span>导出当前表格</span>
-                </button>
-                <button class="menu_button danger_button" id="bakemono-memory-clear-table-db">
-                  <i class="fa-solid fa-trash"></i><span>清空表格</span>
-                </button>
-              </div>
-            </details>
+            <div id="bakemono-memory-table-list" class="bk-tbl-list"></div>
 
-            <details class="bakemono-memory-table-import bakemono-memory-table-advanced">
-              <summary><i class="fa-solid fa-layer-group"></i><span>表格框架与表格组</span><button type="button" class="bakemono-memory-help-trigger" aria-label="查看表格框架说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">这里管理表格框架保存在哪个范围，以及切换不同表格组。日常查看和填表不需要展开。</span></button></summary>
-              <div class="bakemono-memory-table-scope">
-                <label class="bakemono-memory-field">
-                  <span>表格框架作用域</span>
-                  <select id="bakemono-memory-table-schema-scope" class="text_pole" title="确认后立即切换表格组">
-                    <option value="chat">当前聊天</option>
-                    <option value="character">当前角色</option>
-                    <option value="global">全局</option>
-                  </select>
-                </label>
-                <div class="bakemono-memory-table-scope-actions">
-                  <button class="menu_button" id="bakemono-memory-save-table-schema">
-                    <i class="fa-solid fa-floppy-disk"></i>
-                    <span>保存框架</span>
-                  </button>
-                  <button class="menu_button" id="bakemono-memory-load-table-schema">
-                    <i class="fa-solid fa-download"></i>
-                    <span>拉取框架</span>
-                  </button>
+            <section class="bk-tbl-settings" aria-label="表格设置">
+              <span class="bk-tbl-settings-label">表格设置</span>
+
+              <details class="bk-tbl-set bakemono-memory-table-advanced">
+                <summary><span class="bk-tbl-set-copy">表格组<small>换一组表格，或存成新的一组</small></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+                <div class="bk-tbl-set-body">
+                  <p class="bk-tbl-set-note">表格框架保存在哪个范围，以及切换不同表格组。日常查看和填表用不到这里。</p>
+                  <label class="bk-sum-field"><span>作用范围</span>
+                    <select id="bakemono-memory-table-schema-scope" class="text_pole" title="确认后立即切换表格组">
+                      <option value="chat">当前聊天</option>
+                      <option value="character">当前角色</option>
+                      <option value="global">全局</option>
+                    </select>
+                  </label>
+                  <div class="bk-tbl-set-actions">
+                    <button class="bk-sum-link" id="bakemono-memory-load-table-schema">拉取这个范围的表格</button>
+                    <button class="bk-sum-link" id="bakemono-memory-save-table-schema">把当前表格存到这个范围</button>
+                  </div>
+                  <label class="bk-sum-field"><span>表格组</span><select id="bakemono-memory-table-profile-select" class="text_pole"></select></label>
+                  <label class="bk-sum-field"><span>表格组名称</span><input id="bakemono-memory-table-profile-name" class="text_pole" type="text" placeholder="例如：剧情指导表组"></label>
+                  <div class="bk-tbl-set-actions">
+                    <button class="bk-sum-link" id="bakemono-memory-new-table-profile">新建组</button>
+                    <button class="bk-sum-link" id="bakemono-memory-save-table-profile">保存组</button>
+                    <button class="bk-sum-link is-alert" id="bakemono-memory-delete-table-profile">删除组…</button>
+                    <span class="bk-tbl-spacer"></span>
+                    <button class="menu_button bk-sum-primary" id="bakemono-memory-switch-table-profile">切换到这一组</button>
+                  </div>
                 </div>
-              </div>
-              <div class="bakemono-memory-table-profile">
-                <label class="bakemono-memory-field">
-                  <span>表格组</span>
-                  <select id="bakemono-memory-table-profile-select" class="text_pole"></select>
-                </label>
-                <label class="bakemono-memory-field">
-                  <span>表格组名称</span>
-                  <input id="bakemono-memory-table-profile-name" class="text_pole" type="text" placeholder="例如：剧情指导表组">
-                </label>
-                <div class="bakemono-memory-table-scope-actions">
-                  <button class="menu_button" id="bakemono-memory-switch-table-profile">
-                    <i class="fa-solid fa-right-left"></i>
-                    <span>切换</span>
-                  </button>
-                  <button class="menu_button" id="bakemono-memory-new-table-profile">
-                    <i class="fa-solid fa-plus"></i>
-                    <span>新建组</span>
-                  </button>
-                  <button class="menu_button" id="bakemono-memory-save-table-profile">
-                    <i class="fa-solid fa-floppy-disk"></i>
-                    <span>保存组</span>
-                  </button>
-                  <button class="menu_button danger_button" id="bakemono-memory-delete-table-profile">
-                    <i class="fa-solid fa-trash"></i>
-                    <span>删除组</span>
-                  </button>
-                </div>
-              </div>
-            </details>
+              </details>
 
-            <details class="bakemono-memory-table-import bakemono-memory-table-advanced">
-              <summary><i class="fa-solid fa-plus"></i><span>新建与导入表格</span></summary>
-              <div class="bakemono-memory-builtin-table-preset">
-                <button class="menu_button" id="bakemono-memory-create-base-ledger">
-                  <i class="fa-solid fa-book-open"></i>
-                  <span>创建基础表格</span>
-                </button>
-                <button type="button" class="bakemono-memory-help-trigger" aria-label="查看基础表格说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">会新建一组角色、关系、世界、物品、约定与剧情指导表。不会加入事件摘要或大总结表，也不会覆盖当前表格组。</span></button>
-              </div>
-              <div class="bakemono-memory-table-create">
-                <label class="bakemono-memory-field">
-                  <span>新表名称</span>
-                  <input id="bakemono-memory-new-table-name" class="text_pole" type="text" placeholder="例如：角色关系表">
-                </label>
-                <label class="bakemono-memory-field">
-                  <span>字段名</span>
-                  <input id="bakemono-memory-new-table-columns" class="text_pole" type="text" placeholder="用逗号分隔，例如：角色A,角色B,关系,备注">
-                </label>
-                <button class="menu_button" id="bakemono-memory-create-table">
-                  <i class="fa-solid fa-plus"></i>
-                  <span>创建表格</span>
-                </button>
-              </div>
-            <details class="bakemono-memory-table-import">
-              <summary><i class="fa-solid fa-file-import"></i><span>从表格数据导入</span></summary>
-              <label class="bakemono-memory-editor">
-                <span>表格数据</span>
-                <textarea id="bakemono-memory-table-json" class="text_pole textarea_compact" rows="5" spellcheck="false" placeholder="粘贴表格结构或聊天表格数据"></textarea>
-              </label>
-              <input id="bakemono-memory-table-file" type="file" accept=".json,application/json" hidden>
-              <div class="bakemono-memory-inline-actions">
-                <button class="menu_button" id="bakemono-memory-pick-table-file">
-                  <i class="fa-solid fa-folder-open"></i>
-                  <span>选择表格文件</span>
-                </button>
-                <button class="menu_button" id="bakemono-memory-import-table-json">
-                  <i class="fa-solid fa-file-import"></i>
-                  <span>导入表格</span>
-                </button>
-              </div>
-            </details>
-            </details>
+              <details class="bk-tbl-set bakemono-memory-table-advanced">
+                <summary><span class="bk-tbl-set-copy">新建与导入<small>新建一张表、创建基础表格、从文件导入</small></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+                <div class="bk-tbl-set-body">
+                  <div class="bk-tbl-set-actions">
+                    <button class="bk-sum-link" id="bakemono-memory-create-base-ledger">创建基础表格 ›</button>
+                    <small class="bk-tbl-set-note">会新建一组角色、关系、世界、物品、约定与剧情指导表。不会加入事件摘要或大总结表，也不会覆盖当前表格组。</small>
+                  </div>
+                  <label class="bk-sum-field"><span>新表名称</span><input id="bakemono-memory-new-table-name" class="text_pole" type="text" placeholder="例如：角色关系表"></label>
+                  <label class="bk-sum-field"><span>栏名（用逗号分隔）</span><input id="bakemono-memory-new-table-columns" class="text_pole" type="text" placeholder="例如：角色A,角色B,关系,备注"></label>
+                  <div class="bk-tbl-set-actions"><span class="bk-tbl-spacer"></span><button class="menu_button bk-sum-primary" id="bakemono-memory-create-table">新建这张表</button></div>
+                  <label class="bk-sum-field"><span>从表格数据导入</span><textarea id="bakemono-memory-table-json" class="text_pole" rows="4" spellcheck="false" placeholder="粘贴表格结构或聊天表格数据"></textarea></label>
+                  <input id="bakemono-memory-table-file" type="file" accept=".json,application/json" hidden>
+                  <div class="bk-tbl-set-actions">
+                    <button class="bk-sum-link" id="bakemono-memory-pick-table-file">选择表格文件…</button>
+                    <span class="bk-tbl-spacer"></span>
+                    <button class="menu_button bk-sum-primary" id="bakemono-memory-import-table-json">导入</button>
+                  </div>
+                </div>
+              </details>
+
+              <details class="bk-tbl-set bakemono-memory-table-prompt-settings">
+                <summary><span class="bk-tbl-set-copy">填表提示词<small>AI 修改表格时照着写的规则</small></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+                <div class="bk-tbl-set-body">
+                  <label class="bk-sum-field"><span>提示词预设</span><select id="bakemono-memory-table-preset-select" class="text_pole"></select></label>
+                  <label class="bk-sum-field"><span>预设名称</span><input id="bakemono-memory-table-preset-name" class="text_pole bakemono-memory-preset-name" type="text" placeholder="我的表格提示词"></label>
+                  <div class="bk-tbl-set-actions">
+                    <button class="bk-sum-link" id="bakemono-memory-save-table-preset">保存为预设</button>
+                    <button class="bk-sum-link is-alert" id="bakemono-memory-delete-table-preset">删除预设…</button>
+                  </div>
+                  <label class="bk-sum-field"><span>表格提示词</span><textarea id="bakemono-memory-table-prompt" class="text_pole" rows="10" spellcheck="false"></textarea></label>
+                  <div class="bk-tbl-set-actions"><button class="bk-sum-link" id="bakemono-memory-reset-table-prompt">恢复默认</button></div>
+                </div>
+              </details>
+
+              <button type="button" class="bk-tbl-set bk-tbl-set-link" data-bakemono-nav="turn-summary"><span class="bk-tbl-set-copy">什么时候填表<small>每次回复后、随正文或只手动，在“自动记忆”里设置</small></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></button>
+
+              <details class="bk-tbl-set bakemono-memory-table-maintenance">
+                <summary><span class="bk-tbl-set-copy">撤销、导出与清空<small>撤销上次表格修改、导出、清空全部表格</small></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+                <div class="bk-tbl-set-body">
+                  <div class="bk-tbl-set-actions">
+                    <button class="bk-sum-link" id="bakemono-memory-undo-table-operation">撤销上次表格修改</button>
+                    <button class="bk-sum-link" id="bakemono-memory-redo-table-operation">重做</button>
+                    <button class="bk-sum-link" id="bakemono-memory-export-table-json">导出全部表格</button>
+                  </div>
+                  <div class="bk-tbl-set-actions"><button class="bk-sum-link is-alert" id="bakemono-memory-clear-table-db">清空全部表格…</button></div>
+                </div>
+              </details>
+            </section>
           </div>
         </div>
 
-        <details class="bakemono-memory-table-prompt-settings bakemono-memory-table-import bakemono-table-panel-card">
-          <summary><i class="fa-solid fa-code"></i><span>表格修改提示词</span><small>预设与高级生成格式</small></summary>
-          <div class="bakemono-memory-table-prompt-body">
-          <div class="bakemono-memory-preset-controls">
-            <label class="bakemono-memory-field">
-              <span>表格提示词预设</span>
-              <select id="bakemono-memory-table-preset-select" class="text_pole"></select>
-            </label>
-            <input id="bakemono-memory-table-preset-name" class="text_pole bakemono-memory-preset-name" type="text" placeholder="我的表格提示词">
-            <button class="menu_button" id="bakemono-memory-save-table-preset">
-              <i class="fa-solid fa-floppy-disk"></i>
-              <span>保存</span>
-            </button>
-            <button class="menu_button danger_button" id="bakemono-memory-delete-table-preset">
-              <i class="fa-solid fa-trash"></i>
-              <span>删除</span>
-            </button>
-          </div>
-          <label class="bakemono-memory-editor">
-            <span>表格提示词</span>
-            <textarea id="bakemono-memory-table-prompt" class="text_pole textarea_compact" rows="10" spellcheck="false"></textarea>
-          </label>
-          <div class="bakemono-memory-inline-actions">
-            <button class="menu_button" id="bakemono-memory-reset-table-prompt">
-              <i class="fa-solid fa-rotate-left"></i>
-              <span>恢复默认</span>
-            </button>
-          </div>
-        </div>
-        </details>
 
       </section>
 
@@ -1984,7 +1905,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.15.1 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.16.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

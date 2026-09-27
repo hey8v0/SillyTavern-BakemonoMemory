@@ -337,7 +337,8 @@ test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
 });
 
 test('expanded disclosures expose anchored help and important operations expose live feedback', () => {
-    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 12);
+    // The 表格 page shows its two explanations as plain notes in its settings list instead of help buttons.
+    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 10);
     assert.match(settingsSource, /class="bakemono-memory-help-content"/);
     assert.match(source, /import \{ createHelpPopover \} from '\.\/src\/ui\/help-popover\.js';/);
     assert.match(source, /const helpPopover = createHelpPopover\(\)/);

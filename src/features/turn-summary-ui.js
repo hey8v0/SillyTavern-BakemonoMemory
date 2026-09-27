@@ -59,6 +59,13 @@ export function createTurnSummaryUi({
         query('#bakemono-memory-table-overview-row-count').text(tableRowCount);
         query('#bakemono-memory-table-overview-draft-count').text(tableDraftOperationCount);
         query('#bakemono-memory-table-draft-label').text(`${tableDraftOperationCount} 处`);
+        // One line on the 表格 page: what is waiting, or how far the tables have followed the story.
+        const lastFloor = ids => Math.max(-1, ...(ids || []).map(Number).filter(Number.isFinite));
+        const pendingFloor = Math.max(-1, ...tableDrafts.map(draft => lastFloor(draft.sourceMessageIds)));
+        const appliedFloor = lastFloor((state.tableDatabase.history || [])[0]?.sourceMessageIds);
+        query('#bakemono-memory-table-headline').text(tableDrafts.length
+            ? `${pendingFloor >= 0 ? `第 ${pendingFloor} 楼` : '这一轮'}有${tableDraftOperationCount ? ` ${tableDraftOperationCount} 处` : ''}修改等你应用`
+            : appliedFloor >= 0 ? `表格已跟到第 ${appliedFloor} 楼` : tables.length ? '表格还没有自动填过' : '还没有表格');
         renderTableProfileControls(state);
 
         query('#bakemono-memory-turn-prompt').val(state.turnSummary.prompt || defaultTurnSummaryPrompt);

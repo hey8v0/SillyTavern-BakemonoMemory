@@ -1,3 +1,6 @@
+import { sheetAction, sheetConfirm } from '../ui/action-sheet.js';
+import { scrollIntoMain } from '../ui/scroll-into-main.js';
+
 export function createTableEditorEvents({
     query,
     getState,
@@ -16,7 +19,63 @@ export function createTableEditorEvents({
     redoLastTableOperation,
     createCustomTableFromUi,
     createBaseStoryLedgerProfile,
+    sheet = null,
+    escapeHtml = String,
 } = {}) {
+    const rerender = message => renderWorkbenchScope(workbenchRenderScopes.TABLES, message);
+    const findTable = (state, tableIndex) => (state.tableDatabase.tables || []).find(item => Number(item.tableIndex) === Number(tableIndex));
+
+    function deleteTable(tableIndex) {
+        const state = getState();
+        const table = findTable(state, tableIndex);
+        if (!table) return;
+        pushTableUndoSnapshot(`删除表格：${table.name || tableIndex}`, state);
+        state.tableDatabase.tables = (state.tableDatabase.tables || []).filter(item => Number(item.tableIndex) !== Number(tableIndex));
+        if (String(tableUiState.openTableIndex) === String(tableIndex)) tableUiState.openTableIndex = '';
+        persistCurrentTableDatabase(state);
+        rerender('表格已删除。');
+        toastr.success?.('表格已删除。点这里撤销。', '', { timeOut: 8000, onclick: () => undoLastTableOperation(getState()) });
+    }
+
+    // Everything about a whole table sits behind its “⋯”; deleting it asks once more inside the sheet.
+    function openTableActions(section, trigger) {
+        const tableIndex = section.dataset.tableIndex;
+        const table = findTable(getState(), tableIndex);
+        if (!table || !sheet) return;
+        const opts = { escapeHtml };
+        sheet.open({
+            title: table.name || `表格 #${tableIndex}`,
+            subtitle: `${table.columns.length} 栏 · ${(table.rows || []).length} 行`,
+            trigger,
+            keepFocus: ['fields'],
+            render: view => view === 'delete'
+                ? sheetConfirm(`删除整张“${table.name}”和里面的 ${(table.rows || []).length} 行。之后可以在“撤销、导出与清空”里撤销。`, 'delete', '删除表格', opts)
+                : [
+                    sheetAction('fields', '栏目与规则', '栏名、每栏写什么、整张表的规则', opts),
+                    sheetAction('access', table.readOnly ? '允许 AI 修改' : '设为只读', table.readOnly ? '现在 AI 不能改这张表' : '只读后 AI 不再改这张表', opts),
+                    sheetAction('delete', '删除表格', '会再确认一次', { ...opts, danger: true, view: true }),
+                ].join(''),
+            run: name => {
+                const state = getState();
+                const current = findTable(state, tableIndex);
+                if (!current) return;
+                if (name === 'fields') {
+                    tableUiState.editFields = String(tableIndex);
+                    tableUiState.editRow = null;
+                    tableUiState.closed.delete(String(tableIndex));
+                    tableUiState.focusField = { tableIndex: String(tableIndex), colIndex: '0' };
+                    rerender();
+                } else if (name === 'access') {
+                    pushTableUndoSnapshot(`修改表格权限：${current.name || tableIndex}`, state);
+                    current.readOnly = !current.readOnly;
+                    current.allowAiEdit = !current.readOnly;
+                    persistCurrentTableDatabase(state);
+                    rerender(current.readOnly ? '已设为只读。' : '已允许 AI 修改。');
+                } else if (name === 'delete') deleteTable(tableIndex);
+            },
+        });
+    }
+
     function bind(rootSelector = '#bakemono-workbench-root') {
         const root = query(rootSelector);
         root.off('click.bakemonoTableDraftAction').on('click.bakemonoTableDraftAction', '[data-bakemono-table-draft-action]', function (event) {
@@ -55,10 +114,7 @@ export function createTableEditorEvents({
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, `已重新解析：${draft.operations.length} 项操作。`);
                 return;
             }
-            if (action !== 'apply' || !confirmDanger(
-                `应用 ${draft.operations.length} 项表格修改？`,
-                ['这会修改当前聊天的表格数据库。应用后可以从导出数据中查看结果。'],
-            )) return;
+            if (action !== 'apply') return;
             try {
                 const undoSnapshot = applyTableOperations(draft.operations, state, {
                     raw: draft.raw,
@@ -69,7 +125,7 @@ export function createTableEditorEvents({
                 state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draftId);
                 persistCurrentTableDatabase(state);
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改已应用。');
-                toastr.success('表格修改已应用。');
+                toastr.success('表格修改已应用。点这里撤销。', '', { timeOut: 8000, onclick: () => undoLastTableOperation(getState()) });
             } catch (error) {
                 draft.applicationError = `应用失败：${error?.message || error}`;
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改应用失败。');
@@ -84,7 +140,23 @@ export function createTableEditorEvents({
             const action = this.dataset.bakemonoTableAction;
             if (!details) return;
             tableUiState.openTableIndex = String(details.dataset.tableIndex || '');
-            if (action === 'add-row') {
+            if (action === 'edit-row') {
+                tableUiState.editRow = { tableIndex: String(details.dataset.tableIndex), rowIndex: String(this.dataset.tableRow), colIndex: '0' };
+                tableUiState.editFields = null;
+                rerender();
+            } else if (action === 'cancel-row') {
+                tableUiState.editRow = null;
+                rerender();
+            } else if (action === 'save-row') {
+                const state = getState();
+                pushTableUndoSnapshot(`编辑数据行：${findTable(state, details.dataset.tableIndex)?.name || details.dataset.tableIndex}`, state);
+                tableUiState.editRow = null;
+                saveEditedTableFromElement(details, { state });
+                toastr.success('这一行已保存。');
+            } else if (action === 'close-fields') {
+                tableUiState.editFields = null;
+                rerender();
+            } else if (action === 'add-row') {
                 const state = getState();
                 const table = saveEditedTableFromElement(details, { render: false, persist: false, state });
                 if (!table) return;
@@ -93,8 +165,8 @@ export function createTableEditorEvents({
                 const newRowIndex = table.rows.length;
                 table.rows.push(table.columns.map(() => ''));
                 tableUiState.openTableIndex = String(table.tableIndex);
-                tableUiState.openSection = 'rows';
-                tableUiState.focusCell = { tableIndex: String(table.tableIndex), rowIndex: String(newRowIndex), colIndex: '0' };
+                tableUiState.closed.delete(String(table.tableIndex));
+                tableUiState.editRow = { tableIndex: String(table.tableIndex), rowIndex: String(newRowIndex), colIndex: '0' };
                 persistCurrentTableDatabase(state);
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, `已新增一行：${table.name}`);
             } else if (action === 'add-column') {
@@ -135,9 +207,8 @@ export function createTableEditorEvents({
             } else if (action === 'delete-row') {
                 const state = getState();
                 const table = saveEditedTableFromElement(details, { render: false, persist: false, state });
-                const row = this.closest('tr[data-table-row]');
-                if (!row || !table) return;
-                const rowIndex = Number(row.dataset.tableRow);
+                const rowIndex = Number(this.dataset.tableRow ?? this.closest('tr[data-table-row]')?.dataset.tableRow);
+                if (!Number.isInteger(rowIndex) || !table) return;
                 const rowData = table.rows?.[rowIndex] || [];
                 const preview = rowData.map(value => String(value || '').trim()).filter(Boolean).slice(0, 3).join(' / ') || `第 ${rowIndex + 1} 行`;
                 if (!confirmDanger(`删除「${table.name || table.tableIndex}」的第 ${rowIndex + 1} 行？`, [
@@ -150,23 +221,42 @@ export function createTableEditorEvents({
                 pushTableUndoSnapshot(`删除数据行：${table.name || table.tableIndex} #${rowIndex + 1}`, state);
                 table.rows.splice(rowIndex, 1);
                 table.rowIds?.splice(rowIndex, 1);
-                tableUiState.openSection = 'rows';
+                tableUiState.editRow = null;
                 persistCurrentTableDatabase(state);
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, `已删除数据行：${table.name || table.tableIndex}`);
             } else if (action === 'save-table') {
+                pushTableUndoSnapshot(`编辑栏目与规则：${findTable(getState(), details.dataset.tableIndex)?.name || details.dataset.tableIndex}`, getState());
+                tableUiState.editFields = null;
                 saveEditedTableFromElement(details);
                 toastr.success('表格已保存。');
             } else if (action === 'delete-table') {
-                const state = getState();
-                const tableIndex = Number(details.dataset.tableIndex);
-                const table = (state.tableDatabase.tables || []).find(item => Number(item.tableIndex) === tableIndex);
-                if (!confirmDanger(`删除表格「${table?.name || tableIndex}」？`, ['这会删除整张表和其中所有数据行，无法从当前聊天里恢复。'])) return;
-                pushTableUndoSnapshot(`删除表格：${table?.name || tableIndex}`, state);
-                state.tableDatabase.tables = (state.tableDatabase.tables || []).filter(item => Number(item.tableIndex) !== tableIndex);
-                if (String(tableUiState.openTableIndex) === String(tableIndex)) tableUiState.openTableIndex = '';
-                details.remove();
-                persistCurrentTableDatabase(state);
-                renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格已删除。');
+                const table = findTable(getState(), details.dataset.tableIndex);
+                if (!confirmDanger(`删除表格「${table?.name || details.dataset.tableIndex}」？`, ['这会删除整张表和其中所有数据行。之后可以用“撤销表格操作”恢复。'])) return;
+                deleteTable(details.dataset.tableIndex);
+            }
+        });
+
+        // Reading aids that change only what is shown: fold a table, jump to one, switch records/grid, show all rows.
+        root.off('click.bakemonoTableView').on('click.bakemonoTableView', '[data-bk-tbl-fold], [data-bk-tbl-jump], [data-bk-tbl-view], [data-bk-tbl-all], [data-bk-tbl-diff-all], [data-bk-tbl-menu], [data-bk-tbl-expand]', function (event) {
+            event.preventDefault();
+            const data = this.dataset;
+            if (data.bkTblExpand !== undefined) {
+                const cell = this.closest('.bk-tbl-cell');
+                cell?.classList.toggle('is-expanded');
+                this.textContent = cell?.classList.contains('is-expanded') ? '收起 ↑' : '展开 ›';
+                return;
+            }
+            if (data.bkTblMenu !== undefined) return openTableActions(this.closest('.bakemono-memory-table-item'), this);
+            if (data.bkTblFold) {
+                if (tableUiState.closed.has(data.bkTblFold)) tableUiState.closed.delete(data.bkTblFold); else tableUiState.closed.add(data.bkTblFold);
+            } else if (data.bkTblJump) tableUiState.closed.delete(data.bkTblJump);
+            else if (data.bkTblView !== undefined) { tableUiState.view = tableUiState.view === 'grid' ? 'records' : 'grid'; tableUiState.editRow = null; }
+            else if (data.bkTblAll) tableUiState.full.add(data.bkTblAll);
+            else if (data.bkTblDiffAll) tableUiState.fullDiffs.add(data.bkTblDiffAll);
+            rerender();
+            if (data.bkTblJump) {
+                const target = root[0]?.querySelector?.(`.bakemono-memory-table-item[data-table-index="${data.bkTblJump}"]`);
+                if (target) scrollIntoMain(target, { block: 'start' });
             }
         });
 

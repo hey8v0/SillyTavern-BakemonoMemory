@@ -1008,7 +1008,6 @@ const {
     importTablesFromText,
     renderTableEditDrafts,
     renderTableList,
-    renderTablePreviewMarkup,
     renderTableProfileControls,
     renderTablePromptPresetControls,
     saveEditedTableFromElement,
@@ -1034,6 +1033,8 @@ const tableEditorEvents = createTableEditorEvents({
     redoLastTableOperation,
     createCustomTableFromUi,
     createBaseStoryLedgerProfile,
+    sheet: actionSheet,
+    escapeHtml,
 });
 
 const vectorSettingsModel = createVectorSettingsModel({
