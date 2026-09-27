@@ -198,10 +198,14 @@ export function createVectorWorkbenchUi({
         const ordered = [...kept, ...cut];
         const intent = String(config.lastRewriteIntent || '').trim();
         const searched = intent || queries[0] || '';
+        const ownKeywords = String(config.keywordTriggers || '').split(/[,，\n]+/).map(word => word.trim()).filter(Boolean);
+        const inferredKeywords = config.lastInferredKeywords || [];
+        const keywordLine = ownKeywords.length || inferredKeywords.length
+            ? `<p class="bk-vec-keywords">${ownKeywords.length ? `<span>你填的关键词：${escapeHtml(ownKeywords.join('、'))}</span>` : ''}${inferredKeywords.length ? `<span>模型这一轮加的：${escapeHtml(inferredKeywords.join('、'))}</span>` : ''}</p>` : '';
         container.innerHTML = `<div class="bk-vec-last-h"><h4>上次召回 · 找到 ${ordered.length} 条，带上 ${hits.length} 条</h4>${when ? `<span class="bk-sum-meta">${escapeHtml(when)}</span>` : ''}</div>
           <div class="bk-sum-meta bk-vec-counts"><span>摘要 <b>${hits.length - fullCount}</b> / ${limits.maxSummary}</span><span>正文 <b>${fullCount}</b> / ${limits.maxFull}</span><span><b>${Number(config.estimatedChars || 0).toLocaleString()}</b> 字</span></div>
           ${searched ? `<button type="button" class="bk-vec-searched" data-bk-vec-toggle="queries" aria-expanded="${view.queries}"><span class="bk-vec-searched-k">拿去搜的是</span><span class="bk-vec-searched-v">${escapeHtml(searched)}</span><span class="bk-vec-chev" aria-hidden="true">›</span></button>
-            ${view.queries ? `<ol class="bk-vec-queries">${queries.map(text => `<li>${escapeHtml(text)}</li>`).join('')}</ol>` : ''}` : ''}
+            ${view.queries ? `<ol class="bk-vec-queries">${queries.map(text => `<li>${escapeHtml(text)}</li>`).join('')}</ol>${keywordLine}` : ''}` : ''}
           <div class="bk-vec-hits">${ordered.map((item, index) => `${index === kept.length && cut.length ? '<div class="bk-vec-cut-line">这次不带</div>' : ''}${hitMarkup(item, index, fullTextOf(item))}`).join('')}</div>
           ${pool.length ? `<button type="button" class="bk-sum-link bk-vec-pool-toggle" data-bk-vec-toggle="pool" aria-expanded="${view.pool}">${view.pool ? '收起初筛候选' : `看初筛的 ${pool.length} 条候选 ›`}</button>
             ${view.pool ? `<ol class="bk-vec-pool">${pool.map(item => `<li><span class="bk-vec-pool-score">${percent(item.rerankScore ?? item.score)}</span><span>${item.kind === 'summary' ? (item.isSavedSummary ? '总结' : '摘要') : '正文'} · ${escapeHtml(floorLabel(item))}</span><span class="bk-vec-pool-text">${escapeHtml(plainText(item.preview || item.text))}</span></li>`).join('')}</ol>` : ''}` : ''}`;

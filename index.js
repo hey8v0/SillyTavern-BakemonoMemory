@@ -1685,6 +1685,8 @@ const turnSummaryUi = createTurnSummaryUi({
     renderInlinePromptPresetControls,
     renderTableList,
     renderTableEditDrafts,
+    getFloorMemoryIndex: state => workflowOverviewModel.getCurrentFloorMemoryIndex(state),
+    escapeHtml,
 });
 const { render: renderTurnSummaryPanel } = turnSummaryUi;
 
@@ -2299,8 +2301,10 @@ pageSettings = createPageSettings({
             injection: readInjectionFieldsFromUi, 'turn-summary': readTurnSummaryFieldsFromUi,
             settings: readWorkflowFieldsFromUi };
         if (!readers[tab]) throw new Error('当前页面没有可保存的设置。');
+        const sourceBefore = summarySourceChoice(state);
         readers[tab](state);
-        if (tab === 'scan' || tab === 'settings') scanBakemonoBlocks({ persist: false, render: false });
+        // 自动记忆 can change where summaries come from, which changes how the chat is read.
+        if (tab === 'scan' || tab === 'settings' || summarySourceChoice(state) !== sourceBefore) scanBakemonoBlocks({ persist: false, render: false });
         syncInjection();
         const config = persistSharedConfigurationFromState(state);
         const revision = state.activeConfigSignature;
@@ -2343,6 +2347,7 @@ function getKindLabel(kind) {
 function bindSettingsEvents() {
     pageSettings.bind(document.getElementById('bakemono-workbench-root'));
     summarySourceWizard.bind(document.getElementById('bakemono-workbench-root'));
+    turnSummaryUi.bind(document.getElementById('bakemono-workbench-root'));
     workbenchShellEvents.bind();
     bindArchiveEvents();
     reviewQueueEvents.bind();

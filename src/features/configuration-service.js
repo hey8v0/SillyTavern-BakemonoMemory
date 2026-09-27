@@ -1,4 +1,4 @@
-import { applySummarySourceChoice } from './turn-trigger-policy.js';
+import { applySummarySourceChoice, applyTableModeChoice, summarySourceChoice, tableModeChoice, workflowForSummarySource } from './turn-trigger-policy.js';
 
 export function createConfigurationService({
     query,
@@ -142,10 +142,15 @@ export function createConfigurationService({
         if (!query('#bakemono-memory-turn-trigger-timing').length) {
             return state;
         }
+        // 自动记忆 chooses the summary source and the table mode with two selects; the flags below follow from them.
+        const previousSource = summarySourceChoice(state), previousTable = tableModeChoice(state);
+        const chosenSource = String(query('#bakemono-memory-turn-summary-source').val() || previousSource);
+        const chosenTable = String(query('#bakemono-memory-turn-table-mode').val() || previousTable);
+        const checked = (selector, current) => query(selector).length ? !!query(selector).prop('checked') : current;
         state.turnSummary = {
             ...state.turnSummary,
             triggerTiming: String(query('#bakemono-memory-turn-trigger-timing').val() || 'immediate') === 'next_user' ? 'next_user' : 'immediate',
-            processingMode: String(query('#bakemono-memory-turn-processing-mode').val() || turnProcessingModes.BOTH),
+            processingMode: String(query('#bakemono-memory-turn-processing-mode').val() || state.turnSummary.processingMode || turnProcessingModes.BOTH),
             saveMode: query('#bakemono-memory-turn-auto-save').prop('checked') ? 'commit' : 'draft',
             includeUserMessage: query('#bakemono-memory-turn-include-user').prop('checked'),
             includeCharacterContext: query('#bakemono-memory-turn-include-character').prop('checked'),
@@ -159,7 +164,7 @@ export function createConfigurationService({
         };
         state.tableDatabase = {
             ...state.tableDatabase,
-            enabled: query('#bakemono-memory-table-enabled').prop('checked'),
+            enabled: checked('#bakemono-memory-table-enabled', !!state.tableDatabase.enabled),
             injectMemory: query('#bakemono-memory-table-inject-memory').length
                 ? query('#bakemono-memory-table-inject-memory').prop('checked')
                 : state.tableDatabase.injectMemory !== false,
@@ -168,11 +173,17 @@ export function createConfigurationService({
         };
         state.inlineGeneration = {
             ...state.inlineGeneration,
-            tableEnabled: query('#bakemono-memory-inline-table-enabled').prop('checked'),
+            tableEnabled: checked('#bakemono-memory-inline-table-enabled', !!state.inlineGeneration.tableEnabled),
             hideTableEdit: query('#bakemono-memory-inline-hide-table').prop('checked'),
             summaryPrompt: String(query('#bakemono-memory-inline-summary-prompt').val() || defaultInlineSummaryPrompt),
             tablePrompt: String(query('#bakemono-memory-inline-table-prompt').val() || defaultInlineTablePrompt),
         };
+        const sourceChanged = chosenSource !== previousSource && chosenSource !== 'legacy';
+        if (sourceChanged) {
+            applySummarySourceChoice(state, chosenSource);
+            Object.assign(state, workflowForSummarySource(chosenSource));
+        }
+        if (sourceChanged || chosenTable !== previousTable) applyTableModeChoice(state, chosenTable);
         setTableSchemaScope(state.tableDatabase.schemaScope, state);
         return state;
     }

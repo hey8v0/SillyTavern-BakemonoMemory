@@ -27,6 +27,7 @@ export function parseVectorQueryRewritePayload(raw) {
             return {
                 intent: normalizeVectorRewriteIntent(parsed.intent || parsed.searchIntent || parsed.goal || ''),
                 queries: normalizeVectorRewriteQueries(parsed.queries),
+                keywords: parseVectorRewriteKeywords(parsed.keywords || []).slice(0, 8),
             };
         }
         if (Array.isArray(parsed?.query)) {
@@ -63,8 +64,13 @@ export function parseVectorQueryRewriteLines(source) {
         .map(line => line.trim())
         .filter(Boolean);
     let intent = '';
-    const queries = [];
+    const queries = [], keywords = [];
     for (const line of lines) {
+        const keywordMatch = line.match(/^\s*(?:KEYWORDS?|关键词)\s*[:：]\s*(.+)$/i);
+        if (keywordMatch) {
+            keywords.push(...parseVectorRewriteKeywords(keywordMatch[1]));
+            continue;
+        }
         const intentMatch = line.match(/^\s*INTENT\s*[:：]\s*(.+)$/i);
         if (intentMatch) {
             intent = normalizeVectorRewriteIntent(intentMatch[1]);
@@ -78,7 +84,14 @@ export function parseVectorQueryRewriteLines(source) {
             }
         }
     }
-    return { intent, queries: unique(queries) };
+    return { intent, queries: unique(queries), keywords: unique(keywords).slice(0, 8) };
+}
+
+// Names, places and objects the model picked for this turn: short items separated by commas, 、 or spaces.
+export function parseVectorRewriteKeywords(value) {
+    const items = Array.isArray(value) ? value : String(value || '').split(/[,，、;；|/\s]+/);
+    return unique(items.map(item => String(item || '').replace(/^["'“”‘’「」《》【】\[\]()（）*_`#]+|["'“”‘’「」《》【】\[\]()（）*_`#。.]+$/g, '').trim())
+        .filter(item => item.length >= 2 && item.length <= 16 && !/^(?:无|没有|none|n\/a)$/i.test(item)));
 }
 
 export function parseVectorQueryRewriteResult(raw) {

@@ -338,8 +338,8 @@ test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
 });
 
 test('expanded disclosures expose anchored help and important operations expose live feedback', () => {
-    // The 表格 and 向量记忆 pages show their explanations as plain notes in their settings lists instead of help buttons.
-    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 7);
+    // The 表格, 向量记忆 and 自动记忆 pages show their explanations as plain notes in their settings lists instead of help buttons.
+    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 6);
     assert.match(settingsSource, /class="bakemono-memory-help-content"/);
     assert.match(source, /import \{ createHelpPopover \} from '\.\/src\/ui\/help-popover\.js';/);
     assert.match(source, /const helpPopover = createHelpPopover\(\)/);
@@ -450,14 +450,16 @@ test('review desk keeps drafts first while preserving task and history operation
 });
 
 test('automatic memory and tables keep the demo status-first hierarchy', () => {
-    assert.match(settingsSource, /class="bakemono-memory-turn-status-hero bakemono-turn-panel-card"/);
-    assert.match(settingsSource, /id="bakemono-memory-turn-flow-read"/);
-    assert.match(settingsSource, /class="bakemono-memory-turn-settings/);
+    // 自动记忆: status, how each turn is recorded (two hidden selects drive the choice rows), recent floors, settings.
+    assert.match(settingsSource, /class="bakemono-turn-panel-card bk-sum bk-auto"/);
+    assert.match(settingsSource, /<select id="bakemono-memory-turn-summary-source" hidden/);
+    assert.match(settingsSource, /<select id="bakemono-memory-turn-table-mode" hidden/);
+    assert.match(settingsSource, /id="bakemono-memory-turn-recent"/);
     assert.match(settingsSource, /id="bakemono-memory-table-overview-count"/);
     assert.match(settingsSource, /class="bakemono-memory-table-diff-head/);
     assert.match(settingsSource, /id="bakemono-memory-table-draft-list"/);
     assert.match(settingsSource, /class="[^"]*bakemono-memory-table-maintenance/);
-    assert.match(turnSummaryUiSource, /bakemono-memory-turn-runtime-label/);
+    assert.match(turnSummaryUiSource, /data-bk-auto-pick/);
     assert.match(turnSummaryUiSource, /bakemono-memory-table-overview-draft-count/);
     assert.match(tableWorkbenchUiSource, /className = 'bakemono-memory-table-diff-list'/);
 });

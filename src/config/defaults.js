@@ -688,6 +688,7 @@ export function createDefaultConfiguration({
         lastQuery: '',
         lastQueries: [],
         lastRewriteIntent: '',
+        lastInferredKeywords: [],
         lastEmbeddingCandidates: [],
         lastRerankCandidates: [],
         lastRecallSkippedReason: '',

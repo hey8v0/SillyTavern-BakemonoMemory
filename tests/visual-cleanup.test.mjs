@@ -17,7 +17,7 @@ test('decorative tape stripes are gone; repeating gradients are only texture, th
 
 test('every primary action uses the accent colour', async () => {
     const css = await read('style.css');
-    for (const selector of ['.bakemono-memory-turn-status-actions .bakemono-memory-turn-primary', '.bk-vec .bk-vec-status .bk-vec-index.menu_button {']) {
+    for (const selector of ['.bk-vec .bk-vec-status .bk-vec-index.menu_button {']) {
         const rule = css.slice(css.indexOf(selector), css.indexOf('}', css.indexOf(selector)));
         assert.match(rule, /background: var\(--bk-accent\) !important;/, selector);
         assert.doesNotMatch(rule, /background: var\(--SmartThemeBodyColor\)/, selector);

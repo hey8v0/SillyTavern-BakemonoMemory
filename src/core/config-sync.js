@@ -19,6 +19,7 @@ export const vectorRuntimeFieldNames = Object.freeze([
     'lastQuery',
     'lastQueries',
     'lastRewriteIntent',
+    'lastInferredKeywords',
     'lastEmbeddingCandidates',
     'lastRerankCandidates',
     'lastRecallSkippedReason',

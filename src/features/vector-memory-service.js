@@ -253,6 +253,7 @@ export function createVectorMemoryService({
         const baseQuery = getVectorQueryText(state, explicitQuery);
         const mode = String(state.vectorMemory.queryMode || defaultVectorMemory.queryMode);
         state.vectorMemory.lastRewriteIntent = getVectorRewriteIntentText(baseQuery);
+        state.vectorMemory.lastInferredKeywords = [];
         if (!baseQuery.trim()) {
             return [];
         }
@@ -265,7 +266,7 @@ export function createVectorMemoryService({
                 ...parseList(state.vectorMemory.keywordTriggers),
             ]).filter(Boolean).slice(0, 6);
         }
-        const systemPrompt = '你是剧情记忆检索的查询改写器。关闭思考过程。只输出 INTENT 与 Q1-Q5 六行中文，不输出解释、英文、JSON、Markdown 或分析。';
+        const systemPrompt = '你是剧情记忆检索的查询改写器。关闭思考过程。只输出 INTENT、Q1-Q5 与 KEYWORDS 七行中文，不输出解释、英文、JSON、Markdown 或分析。';
         const prompt = `${state.vectorMemory.queryRewritePrompt || defaultVectorMemory.queryRewritePrompt}
     ${storyTimeContext(state)}
     
@@ -273,18 +274,25 @@ export function createVectorMemoryService({
     ${baseQuery}
     </最近剧情>
     
-    请严格输出下面 6 行，不要输出任何解释、标题、JSON 或 Markdown：
+    请严格输出下面 7 行，不要输出任何解释、标题、JSON 或 Markdown：
     INTENT: 一句话检索意图
     Q1: 第一条旧记忆检索线索
     Q2: 第二条旧记忆检索线索
     Q3: 第三条旧记忆检索线索
     Q4: 第四条旧记忆检索线索
-    Q5: 第五条旧记忆检索线索`;
+    Q5: 第五条旧记忆检索线索
+    KEYWORDS: 这一轮最关键的人名、地名、物品，最多 6 个，用顿号分隔，只写最近剧情里原样出现过的词`;
         const rewritten = await callVectorQueryRewriteModel(prompt, systemPrompt, state, options);
         const payload = parseVectorQueryRewritePayload(rewritten);
         if (payload.intent) {
             state.vectorMemory.lastRewriteIntent = payload.intent;
         }
+        // A keyword only counts if it really appears in the recent conversation, so a guessed name cannot steer recall.
+        const recentText = String(baseQuery).split(/\n\n关键词提示：/)[0].toLowerCase();
+        const own = new Set(parseList(state.vectorMemory.keywordTriggers).map(word => word.toLowerCase()));
+        state.vectorMemory.lastInferredKeywords = unique(payload.keywords || [])
+            .filter(word => recentText.includes(word.toLowerCase()) && !own.has(word.toLowerCase()))
+            .slice(0, 6);
         const queries = unique(payload.queries)
             .map(text => text.slice(0, 260))
             .filter(Boolean)
@@ -394,6 +402,7 @@ export function createVectorMemoryService({
         state.vectorMemory.lastHits = [];
         state.vectorMemory.lastQueries = [];
         state.vectorMemory.lastRewriteIntent = '';
+        state.vectorMemory.lastInferredKeywords = [];
         state.vectorMemory.lastEmbeddingCandidates = [];
         state.vectorMemory.lastRerankCandidates = [];
         state.vectorMemory.lastQuery = '';
@@ -888,7 +897,8 @@ export function createVectorMemoryService({
         if (recallRecords.some(record => !Array.isArray(record.embedding) || queryEmbeddings.some(vector => vector.length !== record.embedding.length))) {
             return clearVectorRecall('向量维度不一致，请刷新索引；本次未混用不同维度。', state);
         }
-        const keywords = parseList(state.vectorMemory.keywordTriggers);
+        const inferredKeywords = requestState.vectorMemory.lastInferredKeywords || [];
+        const keywords = unique([...parseList(state.vectorMemory.keywordTriggers), ...inferredKeywords]);
         const embeddingThreshold = Math.max(0, Number(state.vectorMemory.embeddingThreshold ?? state.vectorMemory.minScore ?? defaultVectorMemory.embeddingThreshold));
         const limits = recallLimits({ ...defaultVectorMemory, ...state.vectorMemory });
         const rerankCandidateCount = Math.max(1, Number(state.vectorMemory.rerankCandidateCount || state.vectorMemory.topK || defaultVectorMemory.rerankCandidateCount),
@@ -942,6 +952,7 @@ export function createVectorMemoryService({
         state.vectorMemory.lastQuery = queries.join('\n');
         state.vectorMemory.lastQueries = queries;
         state.vectorMemory.lastRewriteIntent = requestState.vectorMemory.lastRewriteIntent || '';
+        state.vectorMemory.lastInferredKeywords = inferredKeywords;
         const plan = { groups, signature, lastHits: null };
         recallPlans.set(state, plan);
         applyRecallPlan(state, plan);

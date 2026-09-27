@@ -7,6 +7,7 @@ import * as math from '../src/vector/math.js';
 import { compactEmbedding, getClippedVectorText, slimVectorMemoryForSave } from '../src/vector/storage.js';
 import { groupRecallCandidates, selectRecallPlan } from '../src/vector/recall-plan.js';
 import { createVectorAutoRecall } from '../src/features/vector-auto-recall.js';
+import { parseVectorQueryRewritePayload } from '../src/vector/query-parser.js';
 
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 
@@ -304,3 +305,18 @@ test('a full text is injected whole and never split, however long', async () => 
 });
 
 export { fixture };
+
+test('model keywords count only when they appear in the recent chat, alongside the user’s own list', async () => {
+    const hits = [];
+    const f = fixture([{ body: .9, text: '旧剧情：莉娜收好了后门钥匙。' }], { queryMode: 'model-required', keywordTriggers: '通行证' }, {
+        createLocalEmbedding: () => [1, 0],
+        rewriteWithTavern: async () => 'INTENT: 找钥匙\nQ1: 莉娜把后门钥匙交给了谁\nKEYWORDS: 莉娜、后门钥匙、格伦',
+        parseVectorQueryRewritePayload,
+        countKeywordHits: (_text, keywords) => { hits.push(keywords); return 0; },
+    });
+    f.chat.push({ is_user: true, mes: '莉娜的后门钥匙去哪了？' });
+    await f.service.buildVectorMemoryIndex();
+    await f.service.retrieveVectorMemoryHits();
+    assert.deepEqual(f.state.vectorMemory.lastInferredKeywords, ['莉娜', '后门钥匙']);
+    assert.deepEqual(hits[0], ['通行证', '莉娜', '后门钥匙']);
+});

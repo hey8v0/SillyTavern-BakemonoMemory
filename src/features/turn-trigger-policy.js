@@ -47,3 +47,35 @@ export function shouldRunTurnProcessing(turnSummary = {}, trigger = 'assistant')
         : trigger === 'assistant';
 }
 
+
+// How tables are filled each turn, read from the existing flags: written into the reply, a separate request after
+// the reply (turn processing with tables), or only when asked on the 表格 page.
+export function tableModeChoice(state) {
+    if (state.inlineGeneration?.tableEnabled) return 'inline';
+    const turn = state.turnSummary || {};
+    if (state.tableDatabase?.enabled && turn.auto && turn.processingMode !== 'summary') return 'after';
+    return 'manual';
+}
+
+// A separate table request rides on automatic turn processing, which a manual summary source turns off.
+export function tableModeAvailable(state, choice) {
+    return choice !== 'after' || !(state.turnSummary?.enabled && !state.turnSummary?.auto);
+}
+
+// Call after the summary source is applied. Never produces the legacy "tables only" processing mode.
+export function applyTableModeChoice(state, choice) {
+    if (!['inline', 'after', 'manual'].includes(choice)) return;
+    if (!tableModeAvailable(state, choice)) choice = 'manual';
+    const turn = state.turnSummary;
+    state.inlineGeneration.tableEnabled = choice === 'inline';
+    if (choice === 'after') {
+        state.tableDatabase.enabled = true;
+        if (!turn.enabled) turn.auto = true;
+        turn.processingMode = 'both';
+    } else if (turn.enabled) {
+        turn.processingMode = 'summary';
+    } else {
+        turn.auto = false;
+        if (turn.processingMode === 'table') turn.processingMode = 'both';
+    }
+}
