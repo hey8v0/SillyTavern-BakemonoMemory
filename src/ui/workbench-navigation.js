@@ -1,3 +1,4 @@
+import { resetWorkbenchFrame } from './scroll-into-main.js';
 export function createWorkbenchNavigation({
     getPanelTitle,
     renderHeaderContext,
@@ -27,7 +28,8 @@ export function createWorkbenchNavigation({
 
     function getMenuTab(tabName) {
         if (tabName === 'prompt-inspector') return 'overview';
-        if (['turn-summary', 'tables', 'automation', 'vector'].includes(tabName)) return 'data-hub';
+        // 表格 and 向量召回 have their own sidebar entries; the rest of 自动与数据 highlights its hub.
+        if (['turn-summary', 'automation'].includes(tabName)) return 'data-hub';
         if (['settings', 'scan', 'injection', 'generation', 'prompts', 'appearance', 'config', 'maintenance'].includes(tabName)) return 'settings-hub';
         if (tabName === 'timeline') return 'preview';
         return tabName;
@@ -130,9 +132,12 @@ export function createWorkbenchNavigation({
         panels.forEach(panel => {
             panel.classList.toggle('is-active', panel.dataset.bakemonoPanel === panelName);
         });
-        // All panels share one scroll surface; a new page always starts at its top.
+        // All panels share one scroll surface; a new page always starts at its top, with the header in view.
         const main = root.querySelector('.bakemono-workbench-main');
-        if (main) main.scrollTop = 0;
+        if (main) {
+            main.scrollTop = 0;
+            resetWorkbenchFrame(main);
+        }
         renderAll?.();
         requestAnimationFrame(() => setMenuOpen(false));
         syncMobileCollapsibles(targetPanel);

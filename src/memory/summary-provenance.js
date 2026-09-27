@@ -20,6 +20,19 @@ export function summaryNodes(state) {
 const failure = (code, detail, path=[]) => ({valid:false,code,reason:detail,path});
 const ok = () => ({valid:true,code:'valid',reason:'来源有效',path:[]});
 const refFloor = ref => Number.isInteger(ref.floor) ? '第 '+ref.floor+' 楼' : '来源';
+// Tags the user excludes now. Text added later inside such tags (e.g. an image a picture plugin inserted into an old
+// floor) is not a change to the story, so source checks also try the current list, not only the one recorded
+// when the summary was made.
+const currentExcludes = state => [...new Set([...parseList(state.scanRules?.excludeTags), ...parseList(state.vectorMemory?.excludeTags)])];
+function consumedText(message, input, tags, unpaired) {
+    const mes = unpaired ? stripConfiguredTags(message.mes || '', tags, {unpaired:true}) : (message.mes || '');
+    const text = stripConfiguredTags(mes, tags).trim();
+    if (input.kind === 'tag') {
+        const matches = extractConfiguredTagBlocks(text,[input.tag]);
+        return matches.length === input.tagCount ? {consumed:matches[input.ordinal]?.content} : {countChanged:true};
+    }
+    return {consumed: input.filter === 'turn-v1' ? stripPostProcessNoise(filterTextByConfiguredTags(mes, {excludeTags:tags,includeTags:input.includeTags || []})) : text};
+}
 function checkSource(state, input) {
     const sources = state.chronicle?.sources || [];
     const source = sources.find(s => s.id === input.sourceId);
@@ -27,20 +40,15 @@ function checkSource(state, input) {
     if (!source || !message) return failure('source_missing',refFloor(input)+'已删除或来源缺失');
     if (source.ambiguous) return failure('ambiguous_identity',refFloor(input)+'来源身份不唯一');
     if (String(source.variant ?? '') !== String(input.variant ?? '')) return failure('source_changed',refFloor(input)+'回复变体已变化');
-    const text = stripConfiguredTags(message.mes || '',input.excludeTags || []).trim();
-    let consumed = input.filter === 'turn-v1' ? stripPostProcessNoise(filterTextByConfiguredTags(message.mes || '', {excludeTags:input.excludeTags || [],includeTags:input.includeTags || []})) : text;
-    if (input.kind === 'tag') {
-        const matches = extractConfiguredTagBlocks(text,[input.tag]);
-        if (matches.length !== input.tagCount) return failure('source_changed',refFloor(input)+'摘要标签数量变化');
-        consumed = matches[input.ordinal]?.content;
-    }
-    if (typeof consumed !== 'string' || getHash(consumed) !== input.revision || consumed.length !== input.length)
-        return failure('source_changed',refFloor(input)+'的实际输入版本变化');
-    return ok();
+    const recorded = input.excludeTags || [];
+    const widened = [...new Set([...recorded, ...currentExcludes(state)])];
+    const tries = [[recorded,false],[widened,false],[widened,true]].map(([tags,unpaired]) => consumedText(message,input,tags,unpaired));
+    if (tries.some(({consumed}) => typeof consumed === 'string' && getHash(consumed) === input.revision && consumed.length === input.length)) return ok();
+    return failure('source_changed',refFloor(input)+(tries.every(t => t.countChanged) ? '摘要标签数量变化' : '的实际输入版本变化'));
 }
 export function resolveSummaryGraph(state) {
     const nodes = summaryNodes(state);
-    const signature = getHash(JSON.stringify([nodes,state.chronicle?.sources,state.chronicle?.links]));
+    const signature = getHash(JSON.stringify([nodes,state.chronicle?.sources,state.chronicle?.links,currentExcludes(state)]));
     if (cache.get(state)?.signature === signature) return cache.get(state);
     const byKey = new Map(), byHash = new Map();
     for (const node of nodes) {
@@ -109,9 +117,16 @@ export function resolveSummaryGraph(state) {
         const source=state.chronicle?.sources?.find(s=>s.id===ref.id);
         if (!source) return failure('source_missing',refFloor(ref)+'来源缺失');
         if (source.ambiguous) return failure('ambiguous_identity',refFloor(ref)+'来源身份不唯一');
-        if (source.floor !== ref.floor || (ref.memoryRevision ? source.memoryRevision !== ref.memoryRevision : source.revision !== ref.revision))
-            return failure('source_changed',refFloor(ref)+'的原输入版本变化');
-        return ok();
+        if (source.floor !== ref.floor) return failure('source_changed',refFloor(ref)+'的原输入版本变化');
+        if (ref.memoryRevision ? source.memoryRevision === ref.memoryRevision : source.revision === ref.revision) return ok();
+        // Same text once everything the user excludes now is taken out (including unpaired tags such as <img …>)?
+        const message = chats.get(state)?.[source.floor];
+        if (ref.memoryRevision && message) {
+            const tags = [...new Set([...currentExcludes(state), 'script', 'style'])];
+            const mes = stripConfiguredTags(stripConfiguredTags(message.mes || '', tags, {unpaired:true}), tags).trim();
+            if (getHash(`${mes}|${message.swipe_id ?? ''}|${!!message.is_user}`) === ref.memoryRevision) return ok();
+        }
+        return failure('source_changed',refFloor(ref)+'的原输入版本变化');
     }
     nodes.forEach(check);
     const coveredBy = new Map(), coveredStoryHashes=new Set(), coveredStageHashes=new Set(), coveredEpicHashes=new Set();

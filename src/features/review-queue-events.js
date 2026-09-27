@@ -1,4 +1,5 @@
 import { sheetAction, sheetConfirm } from '../ui/action-sheet.js';
+import { scrollIntoMain } from '../ui/scroll-into-main.js';
 
 export function createReviewQueueEvents({
     query,
@@ -88,7 +89,7 @@ export function createReviewQueueEvents({
         root.off('click.bakemonoDraftToggle').on('click.bakemonoDraftToggle', '[data-bakemono-draft-toggle]', function () {
             const item = this.closest('.bk-rev-draft');
             if (!item || item.classList.contains('is-editing')) return;
-            if (!toggleDraft?.(item)) item.scrollIntoView?.({ block: 'nearest' });
+            if (!toggleDraft?.(item)) scrollIntoMain(item, { block: 'nearest' });
         });
         root.off('click.bakemonoDraftMenu').on('click.bakemonoDraftMenu', '[data-bakemono-draft-menu]', function () {
             const item = this.closest('.bk-rev-draft');

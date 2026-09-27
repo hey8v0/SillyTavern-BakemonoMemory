@@ -10,7 +10,6 @@ export const workbenchParentNavigation = Object.freeze({
     'prompt-inspector': { target: 'overview', label: '返回剪辑台' },
     'turn-summary': { target: 'data-hub', label: '返回自动与数据' },
     automation: { target: 'data-hub', label: '返回自动与数据' },
-    vector: { target: 'data-hub', label: '返回自动与数据' },
     settings: { target: 'settings-hub', label: '返回设置中心' },
     scan: { target: 'settings-hub', label: '返回设置中心' },
     injection: { target: 'settings-hub', label: '返回设置中心' },

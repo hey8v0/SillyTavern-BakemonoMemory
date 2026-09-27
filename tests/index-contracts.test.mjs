@@ -163,7 +163,7 @@ test('settings center owns global preferences while feature settings stay with t
 test('secondary workbench pages install a consistent parent navigation', () => {
     assert.match(workbenchLayoutSource, /const workbenchParentNavigation = Object\.freeze\(\{/);
     assert.match(workbenchLayoutSource, /'turn-summary': \{ target: 'data-hub', label: '返回自动与数据' \}/);
-    assert.match(workbenchLayoutSource, /vector: \{ target: 'data-hub', label: '返回自动与数据' \}/);
+    assert.doesNotMatch(workbenchLayoutSource, /vector: \{ target: 'data-hub'/, '向量召回 is a sidebar entry of its own');
     assert.match(workbenchLayoutSource, /settings: \{ target: 'settings-hub', label: '返回设置中心' \}/);
     assert.match(workbenchLayoutSource, /prompts: \{ target: 'settings-hub', label: '返回设置中心' \}/);
     assert.match(workbenchLayoutSource, /archive: \{ target: 'settings-hub', label: '返回设置中心' \}/);

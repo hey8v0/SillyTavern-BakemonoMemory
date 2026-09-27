@@ -34,7 +34,8 @@ export function normalizeTagName(value) {
     return source.replace(/^\/?/, '').replace(/\/?\s*>$/, '').trim();
 }
 
-export function stripConfiguredTags(text, tags) {
+// `unpaired` also drops a leftover opening or closing tag, such as an HTML <img src="…"> that has no end tag.
+export function stripConfiguredTags(text, tags, { unpaired = false } = {}) {
     let result = String(text || '');
     for (const tag of tags) {
         const tagName = normalizeTagName(tag);
@@ -43,6 +44,7 @@ export function stripConfiguredTags(text, tags) {
         const paired = new RegExp(`<${escapedTag}(?=\\s|>)[^>]*>[\\s\\S]*?<\\/${escapedTag}\\s*>`, 'gi');
         const selfClosing = new RegExp(`<${escapedTag}(?=\\s|/?>)[^>]*\\/\\s*>`, 'gi');
         result = result.replace(paired, '').replace(selfClosing, '');
+        if (unpaired) result = result.replace(new RegExp(`<\\/?${escapedTag}(?=\\s|/?>)[^>]*>`, 'gi'), '');
     }
     return result;
 }

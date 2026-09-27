@@ -1,3 +1,5 @@
+import { scrollIntoMain } from '../ui/scroll-into-main.js';
+
 export function createSummaryBrowserEvents({
     query,
     getSummaryBrowserActiveType,
@@ -63,7 +65,7 @@ export function createSummaryBrowserEvents({
             if (!item || item.classList.contains('is-editing')) return;
             const open = toggleSummaryOpen?.(item);
             // Folding a long item from its end would leave the reader far below it.
-            if (!open) item.scrollIntoView?.({ block: 'nearest' });
+            if (!open) scrollIntoMain(item, { block: 'nearest' });
             stabilizeMobilePreviewScroll?.();
         });
         root.off('click.bakemonoSummaryMenu').on('click.bakemonoSummaryMenu', '[data-bakemono-summary-menu]', function () {

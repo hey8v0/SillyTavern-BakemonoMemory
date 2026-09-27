@@ -1,3 +1,5 @@
+import { scrollIntoMain } from '../ui/scroll-into-main.js';
+
 export function createSummaryBrowserUi({
     documentRef,
     query,
@@ -213,7 +215,7 @@ export function createSummaryBrowserUi({
         if (notebook) {
             notebook.tabIndex = -1;
             notebook.focus?.({ preventScroll: true });
-            notebook.scrollIntoView?.({ block: 'start' });
+            scrollIntoMain(notebook, { block: 'start' });
         }
         return !!notebook;
     }
