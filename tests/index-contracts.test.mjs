@@ -334,7 +334,6 @@ test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
     // A never-matching @media (max-width: 0px) block used to hold a disabled copy of this scale.
     assert.doesNotMatch(styleSource, /@media \(max-width: 0px\)/);
     assert.match(styleSource, /\.bakemono-memory-page-intro p,[\s\S]*?font-size:\s*13px\s*!important;/s);
-    assert.match(styleSource, /\.bakemono-memory-timeline-meta,[\s\S]*?font-size:\s*12px\s*!important;/s);
 });
 
 test('expanded disclosures expose anchored help and important operations expose live feedback', () => {
@@ -406,10 +405,12 @@ test('archive and timeline pages keep the demo hierarchy without dropping contro
     assert.match(settingsSource, /class="bakemono-memory-record-filter-disclosure/);
     assert.match(settingsSource, /id="bakemono-memory-record-kind"/);
     assert.match(settingsSource, /id="bakemono-memory-record-status"/);
-    assert.match(settingsSource, /class="bakemono-memory-timeline-overview"/);
+    assert.match(settingsSource, /class="bakemono-workbench-panel bk-sum bk-tree" data-bakemono-panel="timeline"/);
     assert.match(settingsSource, /id="bakemono-memory-timeline-epic-count"/);
-    assert.match(summaryTimelineUiSource, /className = 'bakemono-memory-timeline-copy'/);
-    assert.match(summaryTimelineUiSource, /if \(kind === 'epic'\) (?:\{\s*)?details\.open = true;/);
+    assert.match(settingsSource, /id="bakemono-memory-timeline-strip"/);
+    // Volumes start open and can be folded; chapters start folded.
+    assert.match(summaryTimelineUiSource, /const open = !closedVolumes\.has\(key\);/);
+    assert.match(summaryTimelineUiSource, /const open = openChapters\.has\(key\);/);
     assert.doesNotMatch(summaryTimelineUiSource, /if \(kind !== 'story'\) \{\s*details\.open = true;/);
     assert.match(archiveControllerSource, /function bindEvents\(/);
     assert.match(archiveControllerSource, /bakemonoAutoArchiveToggle/);

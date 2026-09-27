@@ -15,6 +15,9 @@ export function createSummaryBrowserEvents({
     focusSummaryRecord,
     toggleSummaryOpen,
     openSummaryActions,
+    toggleTimeline,
+    setTimelineFilter,
+    toggleTimelineOrder,
 } = {}) {
     function bind(rootSelector = '#bakemono-workbench-root') {
         const root = query(rootSelector);
@@ -69,6 +72,17 @@ export function createSummaryBrowserEvents({
         });
         root.off('click.bakemonoTimelinePage').on('click.bakemonoTimelinePage', '[data-bakemono-timeline-page]', function () {
             changeTimelinePage(this.dataset.bakemonoTimelinePage === 'next' ? 1 : -1);
+            renderTimeline();
+        });
+        root.off('click.bakemonoTreeToggle').on('click.bakemonoTreeToggle', '[data-bakemono-tree-toggle]', function () {
+            toggleTimeline?.(this.dataset.bakemonoTreeToggle, this.dataset.treeKey);
+            renderTimeline();
+            const key = this.dataset.treeKey, kind = this.dataset.bakemonoTreeToggle;
+            [...root[0]?.querySelectorAll?.('[data-bakemono-tree-toggle]') || []].find(node => node.dataset.treeKey === key && node.dataset.bakemonoTreeToggle === kind)?.focus({ preventScroll: true });
+        });
+        root.off('click.bakemonoTreeFilter').on('click.bakemonoTreeFilter', '[data-bakemono-tree-filter], #bakemono-memory-timeline-order', function () {
+            if (this.dataset.bakemonoTreeFilter) setTimelineFilter?.(this.dataset.bakemonoTreeFilter);
+            else toggleTimelineOrder?.();
             renderTimeline();
         });
         root.off('click.bakemonoRecordPage').on('click.bakemonoRecordPage', '[data-bakemono-record-page]', function () {

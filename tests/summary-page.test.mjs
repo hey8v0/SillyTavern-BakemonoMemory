@@ -63,3 +63,14 @@ test('each level of the summary page has its own next step', () => {
     assert.equal(text['#bakemono-memory-summary-generation-title'], '1 条阶段总结可以串成一卷');
     assert.equal(primary.dataset.bakemonoAction, 'generate-epic');
 });
+
+test('the summary tree strip merges floors into runs by the highest level that holds them', async () => {
+    const { coverageRuns } = await import('../src/features/summary-timeline-ui.js');
+    const records = [[1, 'covered'], [3, 'covered'], [5, 'covered'], [7, 'saved'], [9, 'missing'], [11, 'missing']].map(([id, summaryState]) => ({ id, summaryState }));
+    assert.deepEqual(coverageRuns(records, new Set([1, 3])), [
+        { band: 'epic', from: 1, to: 3, count: 2 },
+        { band: 'stage', from: 5, to: 5, count: 1 },
+        { band: 'story', from: 7, to: 7, count: 1 },
+        { band: 'missing', from: 9, to: 11, count: 2 },
+    ]);
+});

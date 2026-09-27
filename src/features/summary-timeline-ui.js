@@ -1,4 +1,21 @@
-import {getSummaryStatus, resolveSummaryGraph} from '../memory/summary-provenance.js';
+import {getSummaryStatus, resolveSummaryGraph, summarySourceFloors} from '../memory/summary-provenance.js';
+
+// 摘要树: which part of the story sits at which level. Volumes (多次总结) hold chapters (阶段总结), chapters hold
+// story summaries; whatever is not gathered yet comes last. The tree shows structure only — every item has
+// “打开 ›”, which opens it on the 总结 page.
+
+// Runs of consecutive floors in the same state, for the coverage strip.
+export function coverageRuns(records = [], epicFloors = new Set()) {
+    const runs = [];
+    for (const record of records) {
+        const state = record.summaryState;
+        const band = state === 'covered' ? (epicFloors.has(record.id) ? 'epic' : 'stage') : state === 'saved' ? 'story' : 'missing';
+        const last = runs.at(-1);
+        if (last?.band === band) { last.to = record.id; last.count += 1; } else runs.push({ band, from: record.id, to: record.id, count: 1 });
+    }
+    return runs;
+}
+
 export function createSummaryTimelineUi({
     documentRef,
     getState,
@@ -11,95 +28,128 @@ export function createSummaryTimelineUi({
     getMultiSummaryLabel,
     getKindLabel,
     getBlockTitle,
+    getFloorIndex = null,
+    describeSummary = null,
+    escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]),
     pageSize = 25,
+    storyPreview = 12,
 }) {
+    const esc = escapeHtml;
     const pageState = { page: 0 };
+    const view = { filter: 'all', ascending: true };
+    const closedVolumes = new Set();
+    const openChapters = new Set();
+    const fullLists = new Set();
 
     function changePage(direction) {
         pageState.page = Math.max(0, (pageState.page || 0) + direction);
     }
 
-    function isVirtualMessageId(messageId) {
-        return !Number.isFinite(messageId) || messageId >= Number.MAX_SAFE_INTEGER;
+    function setFilter(filter) {
+        view.filter = ['all', 'loose', 'stale'].includes(filter) ? filter : 'all';
+        pageState.page = 0;
     }
 
-    function formatMessageIdRange(messageIds = []) {
-        const ids = unique(messageIds.filter(id => Number.isFinite(id) && !isVirtualMessageId(id)).map(Number)).sort((a, b) => a - b);
-        if (!ids.length) return '';
-        if (ids.length === 1) return `楼层 ${ids[0]}`;
-        return `楼层 ${ids[0]}-${ids.at(-1)}`;
+    function toggleOrder() {
+        view.ascending = !view.ascending;
     }
 
-    function getMetaText(item, sourceCount = 0) {
-        if (sourceCount) {
-            const sourceRange = formatMessageIdRange(item.sourceMessageIds || []);
-            return sourceRange ? `覆盖 ${sourceCount} 个片段 · 来源${sourceRange}` : `覆盖 ${sourceCount} 个片段`;
-        }
-        if (item.sourceMessageIds?.length) return `来源${formatMessageIdRange(item.sourceMessageIds)}`;
-        if (isVirtualMessageId(item.messageId)) {
-            return item.createdAt ? `记忆摘要 · ${new Date(item.createdAt).toLocaleString()}` : '记忆摘要';
-        }
-        return `楼层 ${item.messageId}`;
+    // Open state lives here so a re-render keeps what the reader unfolded.
+    function toggle(kind, key) {
+        const set = kind === 'volume' ? closedVolumes : kind === 'chapter' ? openChapters : fullLists;
+        if (set.has(key)) set.delete(key); else set.add(key);
     }
 
-    function createNode(item, kind, children = []) {
-        const details = documentRef.createElement('details');
-        details.className = `bakemono-memory-timeline-node is-${kind}`;
-        if (kind === 'epic') details.open = true;
-        const summary = documentRef.createElement('summary');
-        const marker = documentRef.createElement('span');
-        marker.className = 'bakemono-memory-timeline-dot';
-        marker.setAttribute('aria-hidden', 'true');
-        const copy = documentRef.createElement('span');
-        copy.className = 'bakemono-memory-timeline-copy';
-        const kindLabel = documentRef.createElement('small');
-        const label = documentRef.createElement('strong');
-        kindLabel.textContent = kind === blockTypes.EPIC || kind === 'epic' ? getMultiSummaryLabel(item) : getKindLabel(kind);
-        label.textContent = item.title || getBlockTitle(item.content, '未命名');
-        const meta = documentRef.createElement('span');
-        meta.className = 'bakemono-memory-timeline-meta';
-        meta.textContent = getMetaText(item, Array.isArray(item.sourceHashes) ? item.sourceHashes.length : 0);
-        copy.append(kindLabel, label, meta);
-        const status=getSummaryStatus(getState(),{...item,type:kind});
-        if(!status.valid || status.coveredBy.length){
-            const reason=documentRef.createElement('span');
-            reason.textContent=(!status.valid?'需重建：':'')+status.reason;
-            copy.append(reason);
+    const keyOf = block => block.id || block.hash;
+
+    function floorText(state, block) {
+        const floors = summarySourceFloors(state, block);
+        if (!floors.length) {
+            const own = Number(block.messageId);
+            return Number.isFinite(own) && own < Number.MAX_SAFE_INTEGER ? { first: own, last: own, text: `第 ${own} 楼` } : { first: Infinity, last: Infinity, text: '' };
         }
-        const toggle = documentRef.createElement('i');
-        toggle.className = 'fa-solid fa-chevron-right bakemono-memory-timeline-toggle';
-        toggle.setAttribute('aria-hidden', 'true');
-        summary.append(marker, copy, toggle);
-        details.append(summary);
-        if (children.length) {
-            const childWrap = documentRef.createElement('div');
-            childWrap.className = 'bakemono-memory-timeline-children';
-            children.forEach(child => childWrap.append(child));
-            details.append(childWrap);
-        }
-        return details;
+        const [first, last] = [floors[0], floors.at(-1)];
+        return { first, last, text: first === last ? `第 ${first} 楼` : `第 ${first}–${last} 楼` };
     }
 
-    function createPager(start, total, pageCount) {
-        const controls = documentRef.createElement('div');
-        controls.className = 'bakemono-memory-preview-pager bakemono-memory-timeline-pager';
-        const prev = documentRef.createElement('button');
-        prev.type = 'button';
-        prev.className = 'menu_button bakemono-preview-page-button';
-        prev.dataset.bakemonoTimelinePage = 'prev';
-        prev.disabled = pageState.page <= 0;
-        prev.innerHTML = '<i class="fa-solid fa-chevron-left"></i><span>上一页</span>';
-        const info = documentRef.createElement('span');
-        info.className = 'bakemono-memory-preview-page-info';
-        info.textContent = `${total ? start + 1 : 0}-${Math.min(start + pageSize, total)} / ${total}`;
-        const next = documentRef.createElement('button');
-        next.type = 'button';
-        next.className = 'menu_button bakemono-preview-page-button';
-        next.dataset.bakemonoTimelinePage = 'next';
-        next.disabled = pageState.page >= pageCount - 1;
-        next.innerHTML = '<span>下一页</span><i class="fa-solid fa-chevron-right"></i>';
-        controls.append(prev, info, next);
-        return controls;
+    function nameOf(block, kind) {
+        const described = describeSummary?.({ ...block, type: kind })?.title;
+        if (described) return described;
+        return block.title || getBlockTitle(block.content || '', kind === blockTypes.EPIC ? getMultiSummaryLabel(block) : getKindLabel(kind));
+    }
+
+    const openLink = (block, kind) => `<button type="button" class="bk-sum-link bk-tree-open" data-bakemono-summary-focus="${esc(keyOf(block))}" data-summary-type="${esc(kind)}">打开 ›</button>`;
+
+    function storyRow(state, story) {
+        const status = getSummaryStatus(state, { ...story, type: blockTypes.STORY });
+        const floor = floorText(state, story);
+        return `<div class="bk-tree-story${status.valid ? '' : ' is-stale'}"><span class="bk-tree-no">${Number.isFinite(floor.first) ? `#${floor.first}` : '#?'}</span>
+            <span class="bk-tree-title"${status.valid ? '' : ` title="${esc(status.reason)}"`}>${esc(nameOf(story, blockTypes.STORY))}</span>${openLink(story, blockTypes.STORY)}</div>`;
+    }
+
+    function missingRow(floor) {
+        return `<div class="bk-tree-story is-missing"><span class="bk-tree-no">#${floor}</span><span class="bk-tree-title">没有摘要</span>
+            <button type="button" class="bk-sum-link bk-tree-open" data-bakemono-nav="preview" data-bakemono-preview-type="story" data-bakemono-open-batch>去补写 ›</button></div>`;
+    }
+
+    function storyList(state, key, stories, extra = []) {
+        const ordered = view.ascending ? stories : [...stories].reverse();
+        const rows = [...ordered.map(story => ({ at: floorText(state, story).first, html: () => storyRow(state, story) })), ...extra];
+        rows.sort((a, b) => view.ascending ? a.at - b.at : b.at - a.at);
+        const shown = fullLists.has(key) ? rows : rows.slice(0, storyPreview);
+        return `<div class="bk-tree-stories">${shown.map(row => row.html()).join('')}${rows.length > shown.length
+            ? `<button type="button" class="bk-sum-link bk-tree-more" data-bakemono-tree-toggle="list" data-tree-key="${esc(key)}">其余 ${rows.length - shown.length} 条 ›</button>` : ''}</div>`;
+    }
+
+    function chapterNode(state, stage, stories, loose) {
+        const key = keyOf(stage);
+        const open = openChapters.has(key);
+        const status = getSummaryStatus(state, { ...stage, type: blockTypes.STAGE });
+        const floor = floorText(state, stage);
+        return `<div class="bk-tree-chapter${status.valid ? '' : ' is-stale'}${open ? ' is-open' : ''}">
+            <div class="bk-tree-chapter-h">
+                <button type="button" class="bk-tree-head" data-bakemono-tree-toggle="chapter" data-tree-key="${esc(key)}" aria-expanded="${open}">
+                    <span class="bk-tree-chev" aria-hidden="true">›</span>
+                    <span class="bk-tree-main"><strong>${esc(nameOf(stage, blockTypes.STAGE))}</strong>
+                    <span class="bk-sum-meta">${[floor.text, `${stories.length} 条摘要`].filter(Boolean).map(text => `<span>${esc(text)}</span>`).join('')}${loose ? '<span class="is-alert">还没收进卷</span>' : ''}</span>
+                    ${status.valid ? '' : `<span class="bk-tree-why">需重建：${esc(status.reason)}</span>`}</span>
+                </button>${openLink(stage, blockTypes.STAGE)}
+            </div>
+            ${open ? storyList(state, key, stories) : ''}</div>`;
+    }
+
+    function volumeNode({ key, kicker, title, meta = [], warn = '', loose = false, link = '', body }) {
+        const open = !closedVolumes.has(key);
+        return `<section class="bk-tree-volume${loose ? ' is-loose' : ''}${open ? ' is-open' : ''}">
+            <div class="bk-tree-volume-h">
+                <button type="button" class="bk-tree-head" data-bakemono-tree-toggle="volume" data-tree-key="${esc(key)}" aria-expanded="${open}">
+                    <span class="bk-tree-chev" aria-hidden="true">›</span>
+                    <span class="bk-tree-main"><span class="bk-tree-kicker">${esc(kicker)}</span><strong>${esc(title)}</strong>
+                    <span class="bk-sum-meta">${meta.filter(Boolean).map(text => `<span>${esc(text)}</span>`).join('')}${warn ? `<span class="is-alert">${esc(warn)}</span>` : ''}</span></span>
+                </button>${link}
+            </div>
+            ${open ? `<div class="bk-tree-volume-body">${body()}</div>` : ''}</section>`;
+    }
+
+    function renderSummary(state, counts, runs, missingFloors) {
+        const set = (selector, text) => { const node = documentRef.querySelector(selector); if (node) node.textContent = text; };
+        set('#bakemono-memory-timeline-story-count', counts.story);
+        set('#bakemono-memory-timeline-stage-count', counts.stage);
+        set('#bakemono-memory-timeline-epic-count', counts.epic);
+        const total = runs.reduce((sum, run) => sum + run.count, 0);
+        const inVolume = runs.filter(run => run.band === 'epic').reduce((sum, run) => sum + run.count, 0);
+        set('#bakemono-memory-timeline-headline', !total ? '还没有楼层' : counts.epic ? `${inVolume} / ${total} 楼已收进卷` : `${total} 楼，还没有卷`);
+        const strip = documentRef.querySelector('#bakemono-memory-timeline-strip');
+        if (strip) {
+            strip.innerHTML = runs.map(run => `<i class="is-${run.band}" style="flex:${run.count}" title="${run.from === run.to ? `第 ${run.from} 楼` : `第 ${run.from}–${run.to} 楼`}"></i>`).join('');
+            strip.setAttribute('aria-label', runs.map(run => `${run.from === run.to ? `第 ${run.from} 楼` : `第 ${run.from}–${run.to} 楼`}${{ epic: '收进卷', stage: '只收进章', story: '只有剧情摘要', missing: '没有摘要' }[run.band]}`).join('，') || '还没有楼层');
+            strip.hidden = !runs.length;
+        }
+        documentRef.querySelectorAll('[data-bakemono-tree-filter]').forEach(button => {
+            button.setAttribute('aria-pressed', String(button.dataset.bakemonoTreeFilter === view.filter));
+        });
+        set('#bakemono-memory-timeline-order', view.ascending ? '最早在前 ⇅' : '最新在前 ⇅');
+        return missingFloors;
     }
 
     function render(state = getState()) {
@@ -109,51 +159,98 @@ export function createSummaryTimelineUi({
         const stageBlocks = dedupeByHash([...getBlocksByType(blockTypes.STAGE), ...state.stageSummaries.map(summaryToBlock)]);
         const epicBlocks = dedupeByHash([...getBlocksByType(blockTypes.EPIC), ...state.epicSummaries.map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC }))]);
         const byHash = new Map([...storyBlocks, ...stageBlocks, ...epicBlocks].map(block => [block.hash, block]));
-        documentRef.querySelector('#bakemono-memory-timeline-story-count').textContent = storyBlocks.length;
-        documentRef.querySelector('#bakemono-memory-timeline-stage-count').textContent = stageBlocks.length;
-        documentRef.querySelector('#bakemono-memory-timeline-epic-count').textContent = epicBlocks.length;
+        const graph = resolveSummaryGraph(state);
+        const isValid = (block, kind) => getSummaryStatus(state, { ...block, type: kind }, graph).valid;
+
+        let records = [];
+        try { records = getFloorIndex?.(state)?.records || []; } catch { records = []; }
+        const epicFloors = new Set(epicBlocks.flatMap(epic => summarySourceFloors(state, epic, graph)));
+        const runs = coverageRuns(records, epicFloors);
+        const missingFloors = records.filter(record => record.summaryState === 'missing').map(record => record.id);
+        renderSummary(state, { story: storyBlocks.length, stage: stageBlocks.length, epic: epicBlocks.length }, runs, missingFloors);
+
         container.innerHTML = '';
         if (!storyBlocks.length && !stageBlocks.length && !epicBlocks.length) {
-            const empty = documentRef.createElement('div');
-            empty.className = 'bakemono-memory-empty';
-            empty.textContent = '暂无摘要树。扫描或保存草稿后会显示覆盖关系。';
-            container.append(empty);
+            container.innerHTML = '<p class="bk-sum-empty">还没有摘要。扫描聊天或保存草稿后，这里会显示每段剧情收在哪一层。</p>';
             return;
         }
 
-        const makeStoryNode = story => createNode(story, 'story');
-        const makeStageNode = stage => createNode(stage, 'stage', (stage.sourceHashes || []).map(hash => byHash.get(hash)).filter(Boolean).map(makeStoryNode));
-        const makeEpicNode = (epic, ancestors = new Set()) => {
-            if(ancestors.has(epic.hash) || ancestors.size>50)return createNode(epic,'epic');
-            const visited=new Set([...ancestors,epic.hash]);
-            const sourceHashes = unique([...(epic.sourceStageHashes || []), ...(epic.sourceHashes || [])]);
-            const children = sourceHashes.map(hash => {
-                const block = byHash.get(hash);
-                if (!block) return null;
-                if (block.type === blockTypes.EPIC || block.kind === blockTypes.EPIC) return makeEpicNode(block,visited);
-                if (block.type === blockTypes.STAGE || block.kind === blockTypes.STAGE) return makeStageNode(block);
-                return makeStoryNode(block);
-            }).filter(Boolean);
-            return createNode(epic, 'epic', children);
+        const storiesOf = stage => (stage.sourceHashes || []).map(hash => byHash.get(hash)).filter(block => block && block.type !== blockTypes.STAGE && block.type !== blockTypes.EPIC);
+        const staleOnly = view.filter === 'stale';
+        const chapterPasses = stage => !staleOnly || !isValid(stage, blockTypes.STAGE) || storiesOf(stage).some(story => !isValid(story, blockTypes.STORY));
+        const order = list => list.sort((a, b) => (floorText(state, a).first - floorText(state, b).first) * (view.ascending ? 1 : -1));
+
+        // A volume's body: chapters and any nested volumes or loose stories it gathered directly.
+        const volumeBody = (epic, ancestors = new Set()) => () => {
+            const visited = new Set([...ancestors, epic.hash]);
+            const parts = unique([...(epic.sourceStageHashes || []), ...(epic.sourceHashes || [])]).map(hash => byHash.get(hash)).filter(Boolean);
+            const chapters = order(parts.filter(block => block.type === blockTypes.STAGE && chapterPasses(block)));
+            const nested = order(parts.filter(block => block.type === blockTypes.EPIC && !visited.has(block.hash) && visited.size < 50));
+            const stories = parts.filter(block => block.type !== blockTypes.STAGE && block.type !== blockTypes.EPIC);
+            return [
+                ...chapters.map(stage => chapterNode(state, stage, storiesOf(stage), false)),
+                ...nested.map(child => volumeNode(volumeOptions(child, visited))),
+                stories.length ? storyList(state, keyOf(epic) + ':stories', stories) : '',
+            ].join('') || '<p class="bk-sum-empty">这一卷里没有符合筛选的内容。</p>';
+        };
+        const volumeOptions = (epic, ancestors = new Set()) => {
+            const floor = floorText(state, epic);
+            const chapterCount = (epic.sourceStageHashes || []).length;
+            const valid = isValid(epic, blockTypes.EPIC);
+            return {
+                key: keyOf(epic), kicker: '卷 · 多次总结', title: nameOf(epic, blockTypes.EPIC),
+                meta: [floor.text, chapterCount ? `${chapterCount} 章` : ''],
+                warn: valid ? '' : '需重建：' + getSummaryStatus(state, { ...epic, type: blockTypes.EPIC }, graph).reason,
+                link: openLink(epic, blockTypes.EPIC),
+                body: volumeBody(epic, ancestors),
+            };
         };
 
+        // An item listed inside a volume or chapter stays there even when that parent needs rebuilding (it is marked
+        // there instead), so nothing shows up twice.
+        const coveredStage = new Set([...graph.coveredStageHashes, ...graph.coveredEpicHashes]);
+        const listedInVolume = new Set(epicBlocks.flatMap(epic => [...(epic.sourceStageHashes || []), ...(epic.sourceHashes || [])]));
+        const listedInChapter = new Set([...stageBlocks, ...epicBlocks].flatMap(block => block.sourceHashes || []));
+        const rootEpics = order(epicBlocks.filter(epic => !coveredStage.has(epic.hash) && !listedInVolume.has(epic.hash)));
+        const looseStages = order(stageBlocks.filter(stage => !coveredStage.has(stage.hash) && !listedInVolume.has(stage.hash) && chapterPasses(stage)));
+        const looseStories = storyBlocks.filter(story => !graph.coveredStoryHashes.has(story.hash) && !listedInChapter.has(story.hash) && (!staleOnly || !isValid(story, blockTypes.STORY)));
+
         const rootFactories = [];
-        const graph=resolveSummaryGraph(state);
-        const epicCoveredStage = new Set([...graph.coveredStageHashes,...graph.coveredEpicHashes]);
-        for (const epic of state.epicSummaries.filter(summary => !epicCoveredStage.has(summary.hash))) {
-            rootFactories.push(() => makeEpicNode({ ...summaryToBlock(epic), type: blockTypes.EPIC }));
+        if (view.filter !== 'loose') {
+            for (const epic of rootEpics) {
+                const options = volumeOptions(epic);
+                if (staleOnly && !options.warn && !options.body().includes('is-stale')) continue;
+                rootFactories.push(() => volumeNode(options));
+            }
         }
-        for (const stage of state.stageSummaries.filter(summary => !epicCoveredStage.has(summary.hash))) rootFactories.push(() => makeStageNode(stage));
-        const coveredStory = graph.coveredStoryHashes;
-        for (const story of storyBlocks.filter(block => !coveredStory.has(block.hash))) rootFactories.push(() => createNode(story, 'story'));
+        if (looseStages.length) {
+            const first = floorText(state, looseStages[0]), last = floorText(state, looseStages.at(-1));
+            rootFactories.push(() => volumeNode({
+                key: 'loose-stages', kicker: '还没整理', title: '没收进卷的章', loose: true,
+                meta: [`${looseStages.length} 章`, Number.isFinite(first.first) ? `第 ${Math.min(first.first, last.first)}–${Math.max(first.last, last.last)} 楼` : ''],
+                body: () => looseStages.map(stage => chapterNode(state, stage, storiesOf(stage), true)).join(''),
+            }));
+        }
+        const missingRows = staleOnly ? [] : missingFloors.map(floor => ({ at: floor, html: () => missingRow(floor) }));
+        if (looseStories.length || missingRows.length) {
+            rootFactories.push(() => volumeNode({
+                key: 'loose-stories', kicker: '还没整理', title: '没收进章的剧情摘要', loose: true,
+                meta: [looseStories.length ? `${looseStories.length} 条` : ''],
+                warn: missingRows.length ? `${missingRows.length} 楼没有摘要` : '',
+                link: looseStories.length ? '<button type="button" class="bk-sum-link bk-tree-open" data-bakemono-nav="preview" data-bakemono-preview-type="stage">整理成一章 ›</button>' : '',
+                body: () => storyList(state, 'loose-stories', looseStories, missingRows),
+            }));
+        }
 
         const pageCount = Math.max(1, Math.ceil(rootFactories.length / pageSize));
         pageState.page = Math.min(Math.max(0, pageState.page || 0), pageCount - 1);
         const start = pageState.page * pageSize;
-        const visibleRoots = rootFactories.slice(start, start + pageSize).map(createRoot => createRoot());
-        const pager = createPager(start, rootFactories.length, pageCount);
-        container.append(pager.cloneNode(true), ...visibleRoots, pager);
+        const html = rootFactories.slice(start, start + pageSize).map(createRoot => createRoot()).join('');
+        container.innerHTML = (html || '<p class="bk-sum-empty">没有符合筛选的内容。</p>') + (pageCount > 1 ? `<div class="bakemono-memory-preview-pager bk-sum-pager">
+            <button type="button" class="bk-sum-link bakemono-preview-page-button" data-bakemono-timeline-page="prev"${pageState.page <= 0 ? ' disabled' : ''}>‹ 上一页</button>
+            <span class="bakemono-memory-preview-page-info">${start + 1}-${Math.min(start + pageSize, rootFactories.length)} / ${rootFactories.length}</span>
+            <button type="button" class="bk-sum-link bakemono-preview-page-button" data-bakemono-timeline-page="next"${pageState.page >= pageCount - 1 ? ' disabled' : ''}>下一页 ›</button></div>` : '');
     }
 
-    return { changePage, render };
+    return { changePage, render, setFilter, toggle, toggleOrder };
 }

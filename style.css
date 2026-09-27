@@ -1325,7 +1325,6 @@
   line-height: 1.45;
 }
 
-.bakemono-memory-timeline,
 .bakemono-memory-record-list,
 .bakemono-memory-table-list,
 .bakemono-memory-table-draft-list,
@@ -2131,49 +2130,14 @@
   line-height: 1.45;
 }
 
-.bakemono-memory-timeline-node {
-  border: 1px dashed var(--bk-line);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-}
 
-.bakemono-memory-timeline-node > summary {
-  justify-content: space-between;
-  cursor: pointer;
-  list-style: none;
-}
 
-.bakemono-memory-timeline-node > summary::-webkit-details-marker {
-  display: none;
-}
 
-.bakemono-memory-timeline-node > summary strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
 
-.bakemono-memory-timeline-node > summary span {
-  flex: 0 0 auto;
-  color: var(--bk-ink-soft);
-  font-size: 12px;
-}
 
-.bakemono-memory-timeline-node.is-epic {
-  border-style: solid;
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
-}
 
-.bakemono-memory-timeline-node.is-stage {
-  margin-left: 10px;
-}
 
-.bakemono-memory-timeline-node.is-story {
-  margin-left: 20px;
-}
 
-.bakemono-memory-timeline-children {
-  display: grid;
-}
 
 #bakemono-memory-injection-content {
   min-height: 108px;
@@ -2658,7 +2622,6 @@
   }
 
   .bakemono-workbench-root[data-active-tab="records"] .bakemono-memory-record-list,
-.bakemono-workbench-root[data-active-tab="timeline"] .bakemono-memory-timeline,
 .bakemono-workbench-root[data-active-tab="vector"] .bakemono-memory-vector-list {
     max-width: 980px;
   }
@@ -3056,10 +3019,6 @@
     overflow-y: auto;
   }
 
-  .bakemono-memory-timeline-node.is-stage,
-  .bakemono-memory-timeline-node.is-story {
-    margin-left: 0;
-  }
 }
 
 @media (max-width: 430px) {
@@ -4061,16 +4020,14 @@
 .bakemono-memory-vector-hit,
 .bakemono-memory-vector-detail-item,
 .bakemono-memory-table-item,
-.bakemono-memory-table-draft-card,
-.bakemono-memory-timeline-node {
+.bakemono-memory-table-draft-card {
   border: 1px solid var(--bk-line);
   border-radius: 15px;
   background: color-mix(in srgb, var(--bk-paper-raised) 94%, transparent);
   box-shadow: none;
 }
 
-.bakemono-memory-record-item.is-injected,
-.bakemono-memory-timeline-node.is-epic {
+.bakemono-memory-record-item.is-injected {
   border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 44%, var(--bk-line));
   background: color-mix(in srgb, var(--SmartThemeQuoteColor) 9%, var(--bk-paper-raised));
 }
@@ -4080,9 +4037,6 @@
   background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
 }
 
-.bakemono-memory-timeline-children {
-  border-left-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 34%, var(--bk-line));
-}
 
 .bakemono-memory-table-hero,
 .bakemono-memory-table-scope,
@@ -4746,47 +4700,30 @@
   width: 100%;
 }
 
-.bakemono-memory-record-section-head,
-.bakemono-memory-timeline-section-head {
+.bakemono-memory-record-section-head {
   margin: 0 2px 9px;
 }
 
-.bakemono-memory-record-section-head .bakemono-memory-next-kicker,
-.bakemono-memory-timeline-section-head .bakemono-memory-next-kicker {
+.bakemono-memory-record-section-head .bakemono-memory-next-kicker {
   font-weight: 850;
   letter-spacing: 0.15em;
 }
 
-.bakemono-memory-record-section-head h3,
-.bakemono-memory-timeline-section-head h3 {
+.bakemono-memory-record-section-head h3 {
   margin-top: 3px;
   font-size: 18px;
 }
 
-.bakemono-memory-record-result-count,
-.bakemono-memory-timeline-legend {
+.bakemono-memory-record-result-count {
   flex: 0 0 auto;
   color: var(--bk-ink-soft);
   font-size: 9px;
   white-space: nowrap;
 }
 
-.bakemono-memory-timeline-legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
 
-.bakemono-memory-timeline-legend i {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--bk-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
-}
 
-.bakemono-memory-record-surface,
-.bakemono-memory-timeline-surface {
+.bakemono-memory-record-surface {
   min-width: 0;
 }
 
@@ -4861,8 +4798,7 @@
   display: none;
 }
 
-.bakemono-memory-record-pager,
-.bakemono-memory-timeline-pager {
+.bakemono-memory-record-pager {
   margin-top: 4px;
   padding: 5px;
   border: 1px solid var(--bk-line);
@@ -4870,184 +4806,29 @@
   background: color-mix(in srgb, var(--bk-paper-raised) 86%, transparent);
 }
 
-.bakemono-memory-timeline-overview {
-  position: relative;
-  display: grid;
-  gap: 14px;
-  margin-bottom: 18px;
-  padding: 18px;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 38%, var(--bk-line));
-  border-radius: 20px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, var(--bk-paper-raised)), var(--bk-paper-raised));
-  box-shadow: 0 10px 24px color-mix(in srgb, var(--bk-shadow) 14%, transparent);
-}
 
-.bakemono-memory-timeline-overview > div:first-child {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
 
-.bakemono-memory-timeline-overview .bakemono-memory-next-kicker {
-  font-weight: 850;
-  letter-spacing: 0.15em;
-}
 
-.bakemono-memory-timeline-overview strong {
-  color: var(--SmartThemeBodyColor);
-  font-family: var(--bk-display);
-  font-size: 20px;
-  line-height: 1.3;
-}
 
-.bakemono-memory-timeline-overview small {
-  color: var(--bk-ink-soft);
-}
 
-.bakemono-memory-timeline-counts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding-top: 12px;
-  border-top: 1px solid var(--bk-line);
-}
 
-.bakemono-memory-timeline-counts span {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-  justify-items: center;
-  color: var(--bk-ink-soft);
-  font-size: 8px;
-}
 
-.bakemono-memory-timeline-counts span + span {
-  border-left: 1px solid var(--bk-line);
-}
 
-.bakemono-memory-timeline-counts b {
-  max-width: 100%;
-  color: var(--SmartThemeBodyColor);
-  font-family: var(--bk-display);
-  font-size: 18px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
-.bakemono-memory-timeline {
-  position: relative;
-  display: grid;
-  gap: 8px;
-}
 
-.bakemono-memory-timeline-node,
-.bakemono-memory-timeline-node.is-stage,
-.bakemono-memory-timeline-node.is-story {
-  margin-left: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  opacity: 1;
-}
 
-.bakemono-memory-timeline-node > summary {
-  min-width: 0;
-  min-height: 62px;
-  display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) 12px;
-  gap: 10px;
-  align-items: center;
-  padding: 10px 10px 10px 3px;
-  border-bottom: 1px solid var(--bk-line);
-  border-radius: 0;
-  background: transparent;
-}
 
-.bakemono-memory-timeline-node.is-epic > summary {
-  min-height: 78px;
-  padding: 13px 12px;
-  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, var(--bk-line));
-  border-radius: 16px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, var(--bk-paper-raised)), var(--bk-paper-raised));
-}
 
-.bakemono-memory-timeline-dot {
-  width: 9px;
-  height: 9px;
-  display: block;
-  border: 2px solid var(--bk-paper-raised);
-  border-radius: 999px;
-  background: var(--bk-accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--SmartThemeQuoteColor) 50%, var(--bk-line));
-}
 
-.bakemono-memory-timeline-node.is-story .bakemono-memory-timeline-dot {
-  width: 7px;
-  height: 7px;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 32%, var(--bk-paper));
-}
 
-.bakemono-memory-timeline-copy {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-  flex: 1 1 auto !important;
-  color: inherit !important;
-  font-size: inherit !important;
-}
 
-.bakemono-memory-timeline-copy small {
-  color: var(--bk-accent);
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
 
-.bakemono-memory-timeline-copy strong {
-  color: var(--SmartThemeBodyColor);
-  font-family: var(--bk-display);
-  font-size: 13px;
-  line-height: 1.35;
-}
 
-.bakemono-memory-timeline-node.is-epic .bakemono-memory-timeline-copy strong {
-  font-size: 16px;
-}
 
-.bakemono-memory-timeline-meta {
-  min-width: 0;
-  display: block;
-  flex: 1 1 auto !important;
-  color: var(--bk-ink-soft) !important;
-  font-size: 9px !important;
-  line-height: 1.45;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
 
-.bakemono-memory-timeline-toggle {
-  color: var(--bk-ink-soft);
-  font-size: 8px;
-  transition: transform 160ms var(--bk-ease);
-}
 
-.bakemono-memory-timeline-node[open] > summary .bakemono-memory-timeline-toggle {
-  transform: rotate(90deg);
-}
 
-.bakemono-memory-timeline-children {
-  gap: 2px;
-  margin: 3px 0 4px 7px;
-  padding: 2px 0 2px 18px;
-  border-left: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 34%, var(--bk-line));
-}
 
-.bakemono-memory-timeline-children:empty {
-  display: none;
-}
 
 @media (max-width: 430px) {
   .bakemono-memory-record-filter-disclosure .bakemono-memory-preview-toolbar {
@@ -5071,9 +4852,6 @@
     text-overflow: ellipsis;
   }
 
-  .bakemono-memory-timeline-section-head {
-    align-items: end;
-  }
 }
 
 /* Vector recall and automation demo precision pass ------------------------ */
@@ -6706,7 +6484,7 @@
   line-height: 1.65;
 }
 
-.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"], [data-bakemono-panel="preview"], [data-bakemono-panel="drafts"]) small {
+.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"], [data-bakemono-panel="preview"], [data-bakemono-panel="drafts"], [data-bakemono-panel="timeline"]) small {
   font-size: var(--bk-type-meta) !important;
   line-height: 1.45;
 }
@@ -6872,10 +6650,10 @@
 
 /* Release typography sweep: legacy precision rules also used tiny text on
  * spans, ems, times and custom buttons, so they need semantic overrides too. */
-/* 剧情状态, the home page, 总结 and 待确认 set their own type scale. */
-.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"], [data-bakemono-panel="preview"], [data-bakemono-panel="drafts"]) button:not(.bakemono-icon-button),
-.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"], [data-bakemono-panel="preview"], [data-bakemono-panel="drafts"]) label,
-.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"], [data-bakemono-panel="preview"], [data-bakemono-panel="drafts"]) .checkbox_label {
+/* 剧情状态, the home page, 总结, 待确认 and 摘要树 set their own type scale. */
+.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"], [data-bakemono-panel="preview"], [data-bakemono-panel="drafts"], [data-bakemono-panel="timeline"]) button:not(.bakemono-icon-button),
+.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"], [data-bakemono-panel="preview"], [data-bakemono-panel="drafts"], [data-bakemono-panel="timeline"]) label,
+.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"], [data-bakemono-panel="preview"], [data-bakemono-panel="drafts"], [data-bakemono-panel="timeline"]) .checkbox_label {
   font-size: var(--bk-type-copy) !important;
 }
 
@@ -6891,7 +6669,6 @@
 .bakemono-workbench-root .bakemono-memory-record-stat-strip span,
 .bakemono-workbench-root .bakemono-memory-record-section-head > span,
 .bakemono-workbench-root .bakemono-memory-record-chip,
-.bakemono-workbench-root .bakemono-memory-timeline-meta,
 .bakemono-workbench-root .bakemono-memory-scan-status-hero > header em,
 .bakemono-workbench-root .bakemono-memory-scan-meter em,
 .bakemono-workbench-root .bakemono-memory-prompts-preset-card > summary span,
@@ -7260,8 +7037,6 @@ details[open] > summary > .bakemono-memory-help-trigger {
 .bakemono-workbench-root .bakemono-memory-record-result-count,
 .bakemono-workbench-root .bakemono-memory-record-main span,
 .bakemono-workbench-root .bakemono-memory-record-chip,
-.bakemono-workbench-root .bakemono-memory-timeline-meta,
-.bakemono-workbench-root .bakemono-memory-timeline-counts span,
 .bakemono-workbench-root .bakemono-memory-table-draft-meta,
 .bakemono-workbench-root .bakemono-memory-table-overview-strip span,
 .bakemono-workbench-root .bakemono-memory-record-stat-strip span,
@@ -10363,3 +10138,66 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .bk-rev-hist time { font: 12px var(--ns-mono); color: var(--ns-faint); white-space: nowrap; }
 #bakemono-workbench-root .bk-rev-hist.is-last .bk-rev-hist-title::after { content: "最近一次"; margin-left: 8px; font: 500 11px var(--ns-mono); color: var(--ns-accent); }
 @media (prefers-reduced-motion: reduce) { #bakemono-workbench-root .bk-rev-bar i { animation: none; } }
+
+/* Summary tree (摘要树): volumes > chapters > story summaries as a nested timeline, one rule per level.
+   The panel also carries .bk-sum, so links, meta, pager and empty states come from the 总结 block. */
+#bakemono-workbench-root[data-active-tab="timeline"] .bakemono-workbench-main { background: var(--bk-paper); }
+#bakemono-workbench-root .bk-tree { --tree-epic: color-mix(in srgb, var(--ns-accent) 80%, transparent); --tree-stage: color-mix(in srgb, var(--ns-accent) 45%, transparent); --tree-story: color-mix(in srgb, var(--ns-accent) 18%, transparent); }
+#bakemono-workbench-root .bk-tree-overview { padding: 18px 0 20px; border-bottom: 1px solid var(--ns-rule); }
+#bakemono-workbench-root .bk-tree-overview h3 { margin: 6px 0 0; font: 600 clamp(1.3em, 5vw, 1.6em)/1.3 var(--ns-serif); color: var(--ns-text); text-wrap: balance; }
+#bakemono-workbench-root .bk-tree-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 14px; border-top: 1px solid var(--ns-rule); }
+#bakemono-workbench-root .bk-tree-counts div { min-width: 0; padding-top: 10px; }
+#bakemono-workbench-root .bk-tree-counts div + div { padding-left: 14px; border-left: 1px solid var(--ns-rule); }
+#bakemono-workbench-root .bk-tree-counts b { display: block; font: 600 1.6em/1.2 var(--ns-serif); color: var(--ns-text); font-variant-numeric: tabular-nums; }
+#bakemono-workbench-root .bk-tree-counts span { font-size: .84em; color: var(--ns-faint); }
+#bakemono-workbench-root .bk-tree-strip { display: flex; gap: 2px; height: 8px; margin-top: 16px; overflow: hidden; border-radius: 2px; }
+#bakemono-workbench-root .bk-tree-strip[hidden] { display: none; }
+#bakemono-workbench-root .bk-tree-strip i { display: block; min-width: 2px; height: 100%; }
+#bakemono-workbench-root .bk-tree-strip .is-epic { background: var(--tree-epic); }
+#bakemono-workbench-root .bk-tree-strip .is-stage { background: var(--tree-stage); }
+#bakemono-workbench-root .bk-tree-strip .is-story { background: var(--tree-story); }
+#bakemono-workbench-root .bk-tree-strip .is-missing { background: repeating-linear-gradient(135deg, var(--ns-alert) 0 2px, transparent 2px 5px); opacity: .75; }
+#bakemono-workbench-root .bk-tree-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: .8em; color: var(--ns-faint); }
+#bakemono-workbench-root .bk-tree-legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 2px; vertical-align: -1px; }
+#bakemono-workbench-root .bk-tree-legend .is-epic::before { background: var(--tree-epic); }
+#bakemono-workbench-root .bk-tree-legend .is-stage::before { background: var(--tree-stage); }
+#bakemono-workbench-root .bk-tree-legend .is-story::before { background: var(--tree-story); }
+#bakemono-workbench-root .bk-tree-legend .is-missing::before { background: var(--ns-alert); }
+#bakemono-workbench-root .bk-tree-filters { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 0; padding: 14px 0 4px; }
+#bakemono-workbench-root .bk-tree .bk-tree-filters button { color: var(--ns-muted) !important; }
+#bakemono-workbench-root .bk-tree .bk-tree-filters button[aria-pressed="true"] { color: var(--ns-text) !important; text-decoration: underline; text-decoration-color: var(--ns-accent); text-underline-offset: 6px; }
+#bakemono-workbench-root .bk-tree .bk-tree-filters [data-bakemono-tree-filter="stale"] { color: var(--ns-alert) !important; }
+#bakemono-workbench-root .bk-tree-sep { margin: 0 10px; color: var(--ns-rule-strong); }
+#bakemono-workbench-root .bk-tree .bk-tree-order { margin-left: auto !important; padding-left: 16px !important; font-size: .87em; white-space: nowrap; }
+#bakemono-workbench-root .bk-tree-body { margin-top: 8px; }
+
+#bakemono-workbench-root .bk-tree-volume { position: relative; padding: 0 0 14px 22px; }
+#bakemono-workbench-root .bk-tree-volume.is-open::before { content: ""; position: absolute; left: 6px; top: 24px; bottom: 8px; width: 1px; background: var(--ns-rule-strong); }
+#bakemono-workbench-root .bk-tree-volume-h, #bakemono-workbench-root .bk-tree-chapter-h { display: flex; align-items: flex-start; gap: 8px; }
+#bakemono-workbench-root .bk-tree-volume-h { position: sticky; top: 0; z-index: 3; padding: 12px 0 8px; background: var(--bk-paper); }
+#bakemono-workbench-root .bk-tree-volume-h::before { content: ""; position: absolute; left: -22px; top: 20px; width: 13px; height: 13px; border-radius: 3px; background: var(--ns-accent); }
+#bakemono-workbench-root .bk-tree-volume.is-loose > .bk-tree-volume-h::before { box-sizing: border-box; border: 1.5px solid var(--ns-alert); background: none; }
+#bakemono-workbench-root .bk-tree .bk-tree-head { flex: 1; min-width: 0; display: flex !important; align-items: flex-start; gap: 8px; }
+#bakemono-workbench-root .bk-tree-chev { flex: none; width: 12px; margin-top: 3px; font: 13px/1.4 var(--ns-mono); color: var(--ns-faint); transition: transform .2s; }
+#bakemono-workbench-root :is(.bk-tree-volume, .bk-tree-chapter).is-open > :is(.bk-tree-volume-h, .bk-tree-chapter-h) .bk-tree-chev { transform: rotate(90deg); }
+#bakemono-workbench-root .bk-tree-main { flex: 1; min-width: 0; display: block; }
+#bakemono-workbench-root .bk-tree-kicker { display: block; font: 500 10.5px/1.4 var(--ns-mono); letter-spacing: .14em; color: var(--ns-faint); }
+#bakemono-workbench-root .bk-tree-volume-h strong { display: block; font: 600 1.2em/1.35 var(--ns-serif); color: var(--ns-text); }
+#bakemono-workbench-root .bk-tree-chapter-h strong { display: block; font: 600 1.05em/1.45 var(--ns-serif); color: var(--ns-text); }
+#bakemono-workbench-root .bk-tree .bk-tree-open { flex: none; margin-top: 3px !important; }
+#bakemono-workbench-root .bk-tree-volume-h .bk-tree-open { margin-top: 16px !important; }
+#bakemono-workbench-root .bk-tree-why { display: block; margin-top: 2px; font-size: .87em; color: var(--ns-alert); }
+
+#bakemono-workbench-root .bk-tree-chapter { position: relative; }
+#bakemono-workbench-root .bk-tree-chapter::before { content: ""; position: absolute; left: -19px; top: 18px; width: 7px; height: 7px; border: 1.5px solid var(--ns-accent); border-radius: 50%; background: var(--bk-paper); }
+#bakemono-workbench-root .bk-tree-chapter.is-stale::before { border-color: var(--ns-alert); }
+#bakemono-workbench-root .bk-tree-chapter-h { padding: 11px 0; border-bottom: 1px dashed var(--ns-rule); }
+#bakemono-workbench-root .bk-tree-stories { margin: 2px 0 8px 20px; padding-left: 14px; border-left: 1px solid var(--ns-rule); }
+#bakemono-workbench-root .bk-tree-volume-body > .bk-tree-stories { margin-left: 0; }
+#bakemono-workbench-root .bk-tree-story { display: grid; grid-template-columns: 3.4em minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px dotted var(--ns-rule); font-size: .94em; }
+#bakemono-workbench-root .bk-tree-story:last-of-type { border-bottom: 0; }
+#bakemono-workbench-root .bk-tree-no { font: 12px var(--ns-mono); color: var(--ns-faint); }
+#bakemono-workbench-root .bk-tree-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ns-text); }
+#bakemono-workbench-root .bk-tree-story:is(.is-missing, .is-stale) .bk-tree-title { color: var(--ns-alert); }
+#bakemono-workbench-root .bk-tree .bk-tree-more { display: inline-block; margin: 8px 0 2px !important; }
+@media (prefers-reduced-motion: reduce) { #bakemono-workbench-root .bk-tree-chev { transition: none; } }

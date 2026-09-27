@@ -1036,29 +1036,25 @@
         </div>
       </section>
 
-      <section class="bakemono-workbench-panel" data-bakemono-panel="timeline">
-        <div class="bakemono-memory-timeline-overview">
-          <div>
-            <span class="bakemono-memory-next-kicker">当前结构</span>
-            <strong>全部已保存记忆</strong>
-            <small>从总览向下展开，检查每段剧情被收进了哪一层。</small>
+      <section class="bakemono-workbench-panel bk-sum bk-tree" data-bakemono-panel="timeline">
+        <section class="bk-tree-overview">
+          <div class="bk-sum-kicker"><span>哪段剧情收在哪一层</span></div>
+          <h3 id="bakemono-memory-timeline-headline">还没有楼层</h3>
+          <div class="bk-tree-counts">
+            <div><b id="bakemono-memory-timeline-epic-count">0</b><span>卷 · 多次总结</span></div>
+            <div><b id="bakemono-memory-timeline-stage-count">0</b><span>章 · 阶段总结</span></div>
+            <div><b id="bakemono-memory-timeline-story-count">0</b><span>条剧情摘要</span></div>
           </div>
-          <div class="bakemono-memory-timeline-counts" aria-label="摘要树统计">
-            <span><b id="bakemono-memory-timeline-epic-count">0</b> 多次</span>
-            <span><b id="bakemono-memory-timeline-stage-count">0</b> 阶段</span>
-            <span><b id="bakemono-memory-timeline-story-count">0</b> 剧情</span>
-          </div>
-          </div>
-        <div class="bakemono-memory-timeline-section-head bakemono-memory-section-head">
-          <div>
-            <span class="bakemono-memory-next-kicker">覆盖关系</span>
-            <h3>从总览走到原始摘要</h3>
-          </div>
-          <span class="bakemono-memory-timeline-legend"><i></i> 可逐层展开</span>
+          <div id="bakemono-memory-timeline-strip" class="bk-tree-strip" role="img" hidden></div>
+          <div class="bk-tree-legend"><span class="is-epic">收进卷</span><span class="is-stage">只收进章</span><span class="is-story">只有剧情摘要</span><span class="is-missing">没有摘要</span></div>
+        </section>
+        <div class="bk-tree-filters" role="group" aria-label="筛选">
+          <button type="button" data-bakemono-tree-filter="all" aria-pressed="true">全部</button><span class="bk-tree-sep" aria-hidden="true">/</span>
+          <button type="button" data-bakemono-tree-filter="loose" aria-pressed="false">还没整理的</button><span class="bk-tree-sep" aria-hidden="true">/</span>
+          <button type="button" data-bakemono-tree-filter="stale" aria-pressed="false">需重建</button>
+          <button type="button" id="bakemono-memory-timeline-order" class="bk-tree-order">最早在前 ⇅</button>
         </div>
-        <div class="bakemono-memory-timeline-surface">
-          <div id="bakemono-memory-timeline" class="bakemono-memory-timeline"></div>
-        </div>
+        <div id="bakemono-memory-timeline" class="bk-tree-body"></div>
       </section>
 
       <section class="bakemono-workbench-panel bk-sum bk-rev" data-bakemono-panel="drafts">
@@ -1982,7 +1978,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.14.1 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.15.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

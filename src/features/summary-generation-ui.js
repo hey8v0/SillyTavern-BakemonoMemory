@@ -135,6 +135,8 @@ export function createSummaryGenerationUi({ documentRef, query, getState, getSta
         query(rootSelector).off('click.bakemonoSummaryMode').on('click.bakemonoSummaryMode', '[data-bakemono-summary-mode], [data-bakemono-preview-type]', function () {
             if (this.hasAttribute('data-bakemono-preview-page')) return;
             setMode(this.dataset.bakemonoSummaryMode || this.dataset.bakemonoPreviewType || 'stage');
+            // Links from elsewhere (摘要树 “去补写 ›”) can ask for the 补写旧聊天 form to be open on arrival.
+            if (this.hasAttribute('data-bakemono-open-batch')) setBatchOpen(true);
             render();
         });
         query(rootSelector).off('click.bakemonoBatchToggle').on('click.bakemonoBatchToggle', '[data-bakemono-batch-toggle]', () => {

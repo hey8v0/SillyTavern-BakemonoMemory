@@ -1931,6 +1931,9 @@ const summaryTimelineUi = createSummaryTimelineUi({
     getMultiSummaryLabel,
     getKindLabel,
     getBlockTitle,
+    getFloorIndex: state => getCurrentFloorMemoryIndex(state),
+    describeSummary,
+    escapeHtml,
 });
 const {
     changePage: changeTimelinePage,
@@ -1941,6 +1944,8 @@ const summaryBrowserEvents = createSummaryBrowserEvents({
     query: $,
     focusSummaryRecord: async (key, type) => {
         if (!await switchWorkbenchTab('preview')) return;
+        summaryGenerationUi.setMode(type || 'story');
+        renderSummaryGenerationPanel();
         if (!summaryBrowserUi.focusRecord(key, type)) toastr.info('这条摘要已不在当前聊天中，请刷新后查看。');
     },
     getSummaryBrowserActiveType,
@@ -1956,6 +1961,9 @@ const summaryBrowserEvents = createSummaryBrowserEvents({
     renderMemoryRecordList,
     saveEditedSummary,
     toggleSummaryOpen: item => summaryBrowserUi.toggleOpen(item),
+    toggleTimeline: (kind, key) => summaryTimelineUi.toggle(kind, key),
+    setTimelineFilter: filter => summaryTimelineUi.setFilter(filter),
+    toggleTimelineOrder: () => summaryTimelineUi.toggleOrder(),
     openSummaryActions: (item, trigger) => summaryActionSheet.open(item, trigger),
 });
 
