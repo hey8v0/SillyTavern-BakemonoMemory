@@ -8644,15 +8644,6 @@ details[open] > summary > .bakemono-memory-help-trigger {
 
 /* a summary read as a document: short label, then the section */
 #bakemono-workbench-root .bk-sum-doc { margin-top: 4px; }
-#bakemono-workbench-root .bk-sum-sec { display: grid; grid-template-columns: minmax(0, 1fr); padding: 12px 0; border-top: 1px dashed var(--ns-rule); }
-#bakemono-workbench-root .bk-sum-sec:first-child { padding-top: 4px; border-top: 0; }
-#bakemono-workbench-root .bk-sum-sec-label { padding-bottom: 4px; font: 500 10.5px/1.4 var(--ns-mono); letter-spacing: .1em; color: var(--ns-faint); }
-#bakemono-workbench-root .bk-sum-sec-label:empty { display: none; }
-@media (min-width: 560px) {
-  #bakemono-workbench-root .bk-sum-sec { grid-template-columns: 3.6em minmax(0, 1fr); gap: 0 14px; }
-  #bakemono-workbench-root .bk-sum-sec-label { padding: 6px 0 0; }
-  #bakemono-workbench-root .bk-sum-sec-label:empty { display: block; }
-}
 #bakemono-workbench-root .bk-sum-sec-body { min-width: 0; font: 400 1em/1.8 var(--ns-serif); color: var(--ns-text); overflow-wrap: anywhere; }
 #bakemono-workbench-root .bk-sum-sec-body :is(p, ul, blockquote) { margin: 0; }
 #bakemono-workbench-root .bk-sum-sec-body > * + * { margin-top: 8px; }
@@ -8660,12 +8651,10 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .bk-sum-sec-body li { position: relative; padding-left: 14px; }
 #bakemono-workbench-root .bk-sum-sec-body li::before { content: ""; position: absolute; left: 1px; top: .9em; width: 5px; height: 1px; background: var(--ns-faint); }
 #bakemono-workbench-root .bk-sum-sec-body li + li { margin-top: 4px; }
-#bakemono-workbench-root .bk-sum-quote { padding-left: 12px; border-left: 1px solid var(--ns-rule-strong); color: var(--ns-text); }
 #bakemono-workbench-root .bk-sum-quote cite { display: block; font: 12px/1.5 var(--ns-mono); font-style: normal; color: var(--ns-faint); }
 #bakemono-workbench-root .bk-sum-quote cite::before { content: "— "; }
 #bakemono-workbench-root .bk-sum-kv + .bk-sum-kv { margin-top: 4px; }
 #bakemono-workbench-root .bk-sum-k { margin-right: 8px; font-size: .87em; color: var(--ns-faint); white-space: nowrap; }
-#bakemono-workbench-root .bk-sum-k.is-done { color: var(--ns-accent); }
 #bakemono-workbench-root .bk-sum-aside { font-style: italic; }
 #bakemono-workbench-root .bk-sum-none { color: var(--ns-faint); }
 #bakemono-workbench-root .bk-sum-event-h { font-weight: 600; color: var(--ns-text); }
@@ -9097,3 +9086,62 @@ details[open] > summary > .bakemono-memory-help-trigger {
   #bakemono-workbench-root .bk-auto .bk-vec-row select { width: 100%; max-width: none; }
 }
 #bakemono-workbench-root .bk-vec-keywords { display: flex; flex-wrap: wrap; gap: 2px 16px; margin: 0 0 8px; font: 12px/1.6 var(--ns-mono); color: var(--ns-faint); }
+
+/* Colours with a meaning, shared by every page: what happened, who said it, people and places, open threads, what only
+   the reader knows (and the plugin's own progress), and what is saved. Each hue is mixed with the page's text colour,
+   so on a dark theme it comes out as a light tint and on a light theme as a deep tone, and follows tavern themes. */
+#bakemono-workbench-root {
+  --ns-c-event: color-mix(in oklab, #d4892a 60%, var(--ns-ink));
+  --ns-c-voice: color-mix(in oklab, #c9566b 58%, var(--ns-ink));
+  --ns-c-people: color-mix(in oklab, #22977f 58%, var(--ns-ink));
+  --ns-c-thread: color-mix(in oklab, #7a58cc 55%, var(--ns-ink));
+  --ns-c-wall: color-mix(in oklab, #3b7fd4 55%, var(--ns-ink));
+  --ns-c-done: color-mix(in oklab, #6c9a33 58%, var(--ns-ink));
+  --ns-c-plain: color-mix(in oklab, #a58a57 45%, var(--ns-ink));
+}
+/* With a tavern theme, dialogue takes the theme's own quote colour, like the quotes in the chat. */
+#bakemono-workbench-root[data-bakemono-theme-mode="tavern"] { --ns-c-voice: color-mix(in oklab, var(--SmartThemeQuoteColor, #c9566b) 82%, var(--ns-ink)); }
+
+/* Summary documents (总结, 摘要树, 待确认): a coloured title, and each section laid out by what it holds. */
+#bakemono-workbench-root .bk-sum-ttl, #bakemono-workbench-root .bk-sum-chapter-h h4 { color: var(--ns-c-event); }
+#bakemono-workbench-root .bk-sum-people { color: var(--ns-c-people); }
+#bakemono-workbench-root .bk-sum-sec { --sec: var(--ns-c-plain); display: block; margin-top: 12px; padding: 2px 0 2px 12px; border-top: 0; border-left: 2px solid color-mix(in srgb, var(--sec) 55%, transparent); }
+#bakemono-workbench-root .bk-sum-sec:first-child { margin-top: 4px; padding-top: 2px; }
+#bakemono-workbench-root .bk-sum-sec.is-events { --sec: var(--ns-c-event); }
+#bakemono-workbench-root .bk-sum-sec.is-voice { --sec: var(--ns-c-voice); }
+#bakemono-workbench-root .bk-sum-sec.is-elsewhere, #bakemono-workbench-root .bk-sum-sec.is-people { --sec: var(--ns-c-people); }
+#bakemono-workbench-root .bk-sum-sec.is-threads { --sec: var(--ns-c-thread); }
+#bakemono-workbench-root .bk-sum-sec.is-wall { --sec: var(--ns-c-wall); }
+#bakemono-workbench-root .bk-sum-sec-label { display: flex; align-items: center; gap: 7px; padding: 0 0 6px; font: 600 11.5px/1.4 var(--ns-mono); letter-spacing: .12em; color: var(--sec); }
+#bakemono-workbench-root .bk-sum-sec-label::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 2px; background: var(--sec); }
+#bakemono-workbench-root .bk-sum-sec-label:empty { display: none; }
+/* 场记: numbered beats */
+#bakemono-workbench-root .bk-sum-sec-body ol { margin: 0; padding: 0; list-style: none; counter-reset: beat; }
+#bakemono-workbench-root .bk-sum-sec-body ol > li { counter-increment: beat; display: grid; grid-template-columns: 1.9em minmax(0, 1fr); gap: 8px; padding-left: 0; }
+#bakemono-workbench-root .bk-sum-sec-body ol > li::before { content: counter(beat, decimal-leading-zero); position: static; width: auto; height: auto; background: none; font: 500 11.5px/2.3 var(--ns-mono); color: var(--sec); }
+#bakemono-workbench-root .bk-sum-sec-body ol > li + li { margin-top: 4px; }
+/* 收音: lines on a soft tint in the dialogue colour */
+#bakemono-workbench-root .bk-sum-quote { padding: 8px 12px; border: 0; border-radius: 4px; background: color-mix(in srgb, var(--ns-c-voice) 11%, transparent); }
+#bakemono-workbench-root .bk-sum-quote cite { color: var(--ns-c-voice); }
+/* 副镜: a place chip, then what happened there */
+#bakemono-workbench-root .bk-sum-sec.is-elsewhere .bk-sum-kv, #bakemono-workbench-root .bk-sum-sec.is-people .bk-sum-kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; align-items: baseline; }
+#bakemono-workbench-root .bk-sum-sec.is-elsewhere .bk-sum-k, #bakemono-workbench-root .bk-sum-sec.is-people .bk-sum-k { margin: 0; padding: 1px 7px; border-radius: 3px; background: color-mix(in srgb, var(--ns-c-people) 14%, transparent); font: 500 .84em/1.6 inherit; color: var(--ns-text); }
+/* labelled lines elsewhere: the label in the section colour */
+#bakemono-workbench-root .bk-sum-k { color: var(--sec, var(--ns-faint)); }
+#bakemono-workbench-root .bk-sum-k.is-done { color: var(--ns-c-done); }
+/* 暗线: ○ open, ● resolved */
+#bakemono-workbench-root .bk-sum-thread { display: grid; grid-template-columns: 1.3em minmax(0, 1fr); gap: 6px; }
+#bakemono-workbench-root .bk-sum-thread > i { font-style: normal; color: var(--ns-c-thread); }
+#bakemono-workbench-root .bk-sum-thread.is-done > i { color: var(--ns-c-done); }
+#bakemono-workbench-root .bk-sum-thread.is-done > span { color: var(--ns-muted); }
+#bakemono-workbench-root .bk-sum-thread small { display: block; font: 11.5px/1.5 var(--ns-mono); color: var(--ns-faint); }
+/* 第四面墙: what only the reader knows, in a dashed box */
+#bakemono-workbench-root .bk-sum-sec.is-wall .bk-sum-sec-body { padding: 8px 12px; border: 1px dashed color-mix(in srgb, var(--ns-c-wall) 60%, transparent); border-radius: 4px; font-style: italic; color: var(--ns-muted); }
+#bakemono-workbench-root .bk-sum-sec.is-wall .bk-sum-aside { font-style: inherit; }
+/* the same colours on the other pages */
+#bakemono-workbench-root .bk-vec-tier.is-summary { color: var(--ns-c-event); }
+#bakemono-workbench-root .bk-vec-tier.is-full { color: var(--ns-c-people); }
+#bakemono-workbench-root .bk-vec-in { color: var(--ns-c-done); }
+#bakemono-workbench-root .bk-auto-what b.is-done, #bakemono-workbench-root .bk-auto-steps b { color: var(--ns-c-done); }
+#bakemono-workbench-root .bk-auto-table { color: var(--ns-c-people); }
+#bakemono-workbench-root .bk-tbl-cell dt { color: var(--ns-c-people); }

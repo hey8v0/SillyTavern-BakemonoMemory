@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifySummaryLine, parseSummaryHeader, splitSummarySections } from '../src/features/summary-preview-renderer.js';
+import { classifySummaryLine, parseSummaryHeader, readLooseSummary, splitSummarySections, summarySectionKind } from '../src/features/summary-preview-renderer.js';
 import { createSummaryGenerationUi } from '../src/features/summary-generation-ui.js';
 
 const story = `【☆『第4章：北境地图』★时间：深夜★铁匠铺|旅人、格伦☆】
@@ -73,4 +73,25 @@ test('the summary tree strip merges floors into runs by the highest level that h
         { band: 'story', from: 7, to: 7, count: 1 },
         { band: 'missing', from: 9, to: 11, count: 2 },
     ]);
+});
+
+test('each section kind is read from its name, so it can be laid out its own way', () => {
+    assert.deepEqual(['🎬 场记打板', '🎙️ 高光收音', '🌍 副镜监视器', '🪢 剧本暗线', '💡 第四面墙', '🎭 角色进化录', '随便写的段'].map(summarySectionKind),
+        ['events', 'voice', 'elsewhere', 'threads', 'wall', 'people', 'plain']);
+});
+
+const NL = String.fromCharCode(10);
+test('summaries in other formats are read into a title, a time/place/people header and sections', () => {
+    const kv = readLooseSummary(['【第12回 码头的交易】', '时间：傍晚', '地点：雾港码头', '人物：旅人、船老大', '事件：旅人换到一个船位。', '对话：“天一亮船就走。”', '伏笔：船老大提到另一位客人。'].join(NL));
+    assert.equal(kv.header.title, '第12回 码头的交易');
+    assert.deepEqual(kv.header.bits, ['时间：傍晚', '雾港码头|旅人、船老大']);
+    assert.deepEqual(kv.intro, ['[事件]：旅人换到一个船位。']);
+    assert.deepEqual(kv.sections.map(section => [section.name, summarySectionKind(section.name), section.lines[0]]),
+        [['对话', 'voice', '> “天一亮船就走。”'], ['伏笔', 'threads', '船老大提到另一位客人。']]);
+    const md = readLooseSummary(['📋 剧情摘要', '## 雨夜来客', '**概要**：来了一位客人。', '- 莉娜说格伦在铁匠铺。', '**重要对话**', '“告诉他，旧账该算了。”——斗篷客'].join(NL));
+    assert.equal(md.header.title, '雨夜来客');
+    assert.deepEqual(md.intro, ['[概要]：来了一位客人。', '- 莉娜说格伦在铁匠铺。']);
+    assert.deepEqual(md.sections, [{ name: '重要对话', lines: ['> “告诉他，旧账该算了。” —— [斗篷客]'] }]);
+    const prose = readLooseSummary(['他们在雨夜进了镇。', '第二天去了铁匠铺。'].join(NL));
+    assert.deepEqual(prose, { header: { title: '', bits: [] }, intro: ['他们在雨夜进了镇。', '第二天去了铁匠铺。'], sections: [] });
 });

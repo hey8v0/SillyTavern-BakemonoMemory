@@ -162,7 +162,7 @@ export function createVectorWorkbenchUi({
         return `<div class="bk-vec-hit${kept ? '' : ' is-cut'}${open ? ' is-open' : ''}">
             <span class="bk-vec-score">${percent(item.rerankScore ?? item.score)}<span class="bk-vec-bar"><i style="width:${percent(item.rerankScore ?? item.score)}%"></i></span></span>
             <button type="button" class="bk-vec-hit-main" data-bk-vec-hit="${index}" aria-expanded="${open}">
-              <span class="bk-vec-line1">${kept ? `<span class="bk-vec-tier">${tier}</span>` : ''}<span>${escapeHtml(floorLabel(item))}</span>${kept
+              <span class="bk-vec-line1">${kept ? `<span class="bk-vec-tier is-${item.recallTier === 'full' ? 'full' : 'summary'}">${tier}</span>` : ''}<span>${escapeHtml(floorLabel(item))}</span>${kept
                 ? '<span class="bk-vec-in">会注入</span>' : `<span class="bk-vec-out">不带：${escapeHtml(item.decisionReason || '没有选上')}</span>`}</span>
               ${item.isSavedSummary && item.title ? `<strong>${escapeHtml(item.title)}</strong>` : ''}
               <span class="bk-vec-text">${escapeHtml(text)}</span>

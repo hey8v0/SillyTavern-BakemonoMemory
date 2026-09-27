@@ -148,7 +148,7 @@ export function createTurnSummaryUi({
                 ? ''
                 : '<button type="button" class="bk-sum-link bk-auto-fix" data-bakemono-nav="preview" data-bakemono-preview-type="story" data-bakemono-open-batch>去补写 ›</button>') : '';
             return `<div class="bk-auto-turn"><span class="bk-auto-floor">${floor.id} 楼</span>
-              <span class="bk-auto-what">${summary ? `<b>${summary}</b>` : '<b class="is-alert">没写摘要</b>'}${table ? ` · ${escapeHtml(table)}` : ''}</span>${fix}</div>`;
+              <span class="bk-auto-what">${summary ? `<b class="is-done">${summary}</b>` : '<b class="is-alert">没写摘要</b>'}${table ? ` · <span class="bk-auto-table">${escapeHtml(table)}</span>` : ''}</span>${fix}</div>`;
         }).join('');
     }
 

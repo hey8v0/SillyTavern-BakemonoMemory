@@ -23,6 +23,64 @@ export function parseSummaryHeader(line) {
     return { title, bits: rest.split('★').map(bit => bit.replace(/^[☆\s]+|[☆\s]+$/g, '')).filter(Boolean) };
 }
 
+// What a section is about, from its name, so each kind can be laid out and coloured its own way.
+export function summarySectionKind(name) {
+    const text = String(name || '');
+    if (/收音|对话|台词|语录|原话/.test(text)) return 'voice';
+    if (/副镜|监视器|平行|别处|其他地点/.test(text)) return 'elsewhere';
+    if (/暗线|伏笔|未解|线索|谜|悬念/.test(text)) return 'threads';
+    if (/第四面墙|隐藏|笔记|读者/.test(text)) return 'wall';
+    if (/角色|人物|进化|关系/.test(text)) return 'people';
+    if (/场记|长焦|锚点|事件|经过|概要|剧情|发生/.test(text)) return 'events';
+    return 'plain';
+}
+
+const looseMetaKeys = /^(时间|时间跨度|地点|场景|位置|人物|角色|出场人物|出场角色|在场人物|在场)$/;
+const cleanMarkdown = text => String(text || '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/__([^_]+)__/g, '$1').trim();
+
+// Summaries written in another format (other tags, other prompts): read the common shapes instead of one block.
+// 【…】 / # heading / a bold line → title or section; 时间/地点/人物：… → the header; “名称：内容” → a labelled line
+// (or its own section when the name says what it is, like 对话 or 伏笔); a quoted line → a quote.
+export function readLooseSummary(text) {
+    const header = { title: '', bits: [] }, meta = {}, intro = [], sections = [];
+    const push = line => (sections.length ? sections.at(-1).lines : intro).push(line);
+    for (const raw of String(text || '').split('\n')) {
+        const line = raw.trim();
+        if (!line || /^[-=*_]{3,}$/.test(line) || /^[📋\s]*(剧情摘要|正文摘要|摘要)$/.test(line)) continue;
+        let match;
+        const heading = line.match(/^#{1,4}\s+(.+)$/) || line.match(/^\*\*([^*]{1,40})\*\*[：:]?$/) || line.match(/^【([^】]{1,40})】$/);
+        if (heading) {
+            const name = cleanMarkdown(heading[1]).replace(/^[📋\s]+/, '');
+            if (!header.title && !sections.length && !intro.length && !/^(剧情摘要|正文摘要|摘要)$/.test(name)) header.title = name;
+            else if (!/^(剧情摘要|正文摘要|摘要)$/.test(name)) sections.push({ name, lines: [] });
+            continue;
+        }
+        if ((match = cleanMarkdown(line.replace(/^[-*•]\s+/, '')).match(/^([^：:，,。“”"\s]{1,8})[：:]\s*(.*)$/))) {
+            const [, key, value] = match;
+            if (looseMetaKeys.test(key) && value) { meta[key] = value; continue; }
+            if (!value) { sections.push({ name: key, lines: [] }); continue; }
+            if (summarySectionKind(key) !== 'plain' && summarySectionKind(key) !== 'events') {
+                sections.push({ name: key, lines: [] });
+                push(/^[“"「]/.test(value) ? `> ${value}` : value);
+                continue;
+            }
+            push(`[${key}]：${value}`);
+            continue;
+        }
+        if ((match = line.match(/^([“"「].+[”"」])\s*(?:[—-]{1,2}\s*(.+))?$/))) {
+            push(match[2] ? `> ${match[1]} —— [${match[2].replace(/^[\[【]|[\]】]$/g, '')}]` : `> ${match[1]}`);
+            continue;
+        }
+        push(cleanMarkdown(line));
+    }
+    const time = meta['时间'] || meta['时间跨度'];
+    const place = meta['地点'] || meta['场景'] || meta['位置'];
+    const people = meta['人物'] || meta['角色'] || meta['出场人物'] || meta['出场角色'] || meta['在场人物'] || meta['在场'];
+    if (time) header.bits.push(`时间：${time}`);
+    if (place || people) header.bits.push(`${place || ''}${people ? `|${people}` : ''}`);
+    return { header, intro, sections };
+}
+
 // One line of summary text → the kind of line it is. Leading marks decide: “-” list, “>” quote, “[名]：” label, “*…*” aside.
 export function classifySummaryLine(raw, inEvent = false) {
     const text = String(raw || '').trim();
@@ -177,6 +235,10 @@ export function createSummaryPreviewRenderer({
         const text = getBlockPlainText(block.content);
         const { intro, sections } = splitSummarySections(text);
         const header = parseSummaryHeader(getBracketMetaLine(text));
+        if (!sections.length && !header.title) {
+            const loose = readLooseSummary(text);
+            return { text, header: loose.header, sections: loose.sections, introLines: loose.intro, loose: true };
+        }
         const introLines = intro.filter(line => !/^【[\s\S]+】$/.test(line.trim()));
         return { text, header, sections, introLines };
     }
@@ -190,7 +252,8 @@ export function createSummaryPreviewRenderer({
         const headerTitle = parts.header.title.replace(/^(长期总览|正文摘要)\s*[：:]\s*/, '');
         if (headerTitle && !genericTitles.has(headerTitle)) return block.type === blockTypes.STORY ? headerTitle.replace(/^第\s*[^章：:]+章\s*[：:]\s*/, '') : chapterTitle(headerTitle);
         const title = String(block.title || '').replace(/[📋【】]/g, '').trim();
-        return title && !genericTitles.has(title) ? title : '';
+        // A scanned block's own title can be just its position (“#3.1”); that is not a name.
+        return title && !genericTitles.has(title) && !/^#?\d+(\.\d+)?$/.test(title) ? title : '';
     }
 
     function firstBeat(parts) {
@@ -224,7 +287,7 @@ export function createSummaryPreviewRenderer({
         return parent ? { key: parent.key, name: parent.name, pending: false } : { key: 'pending', name: '待整理', pending: true };
     }
 
-    function renderLines(type, lines) {
+    function renderLines(type, lines, kind = 'plain') {
         const body = element('div', 'bk-sum-sec-body');
         if (lines.length === 1 && /^无[。.]?$/.test(lines[0].trim())) {
             body.append(element('p', 'bk-sum-none', '无'));
@@ -242,7 +305,8 @@ export function createSummaryPreviewRenderer({
             if (line.kind !== 'item') list = null;
             if (line.kind !== 'detail') event = null;
             if (line.kind === 'item') {
-                if (!list) body.append(list = element('ul'));
+                // Events read as numbered beats; other lists keep their dashes.
+                if (!list) body.append(list = element(kind === 'events' ? 'ol' : 'ul'));
                 list.append(element('li', '', plain(line.text)));
             } else if (line.kind === 'quote') {
                 const quote = element('blockquote', 'bk-sum-quote', plain(line.text));
@@ -254,6 +318,16 @@ export function createSummaryPreviewRenderer({
                 head.append(element('small', '', line.meta));
                 event.append(head);
                 body.append(event);
+            } else if (line.kind === 'label' && kind === 'threads') {
+                // A thread: ○ still open, ● resolved; the label becomes a small caption under it. “无” rows say nothing.
+                if (/^无[。.]?$/.test(line.text.trim())) continue;
+                const key = line.key.replace(/^✅\s*/, '');
+                const done = key !== line.key || (!/^未/.test(key) && /回收|解决|揭晓/.test(key));
+                const row = element('p', `bk-sum-thread${done ? ' is-done' : ''}`);
+                const text = element('span', '', plain(line.text));
+                text.append(element('small', '', key));
+                row.append(element('i', '', done ? '●' : '○'), text);
+                body.append(row);
             } else if (line.kind === 'label') {
                 const row = element('p', 'bk-sum-kv');
                 const key = line.key.replace(/^✅\s*/, '');
@@ -261,6 +335,10 @@ export function createSummaryPreviewRenderer({
                 body.append(row);
             } else if (line.kind === 'aside') {
                 body.append(element('p', 'bk-sum-aside', plain(line.text)));
+            } else if (kind === 'threads' && line.text && !/^无[。.]?$/.test(line.text)) {
+                const row = element('p', 'bk-sum-thread');
+                row.append(element('i', '', '○'), element('span', '', plain(line.text)));
+                body.append(row);
             } else {
                 body.append(element('p', '', plain(line.text)));
             }
@@ -273,8 +351,9 @@ export function createSummaryPreviewRenderer({
         const sections = parts.sections.length ? parts.sections : [{ name: '', lines: parts.introLines.length ? parts.introLines : parts.text.split('\n').filter(Boolean) }];
         if (parts.sections.length && parts.introLines.length) sections.unshift({ name: '', lines: parts.introLines });
         for (const section of sections) {
-            const row = element('div', 'bk-sum-sec');
-            row.append(element('span', 'bk-sum-sec-label', section.name ? shortSectionName(block.type, section.name) : ''), renderLines(block.type, section.lines));
+            const kind = section.name ? summarySectionKind(section.name) : 'plain';
+            const row = element('div', `bk-sum-sec is-${kind}`);
+            row.append(element('span', 'bk-sum-sec-label', section.name ? shortSectionName(block.type, section.name) : ''), renderLines(block.type, section.lines, kind));
             doc.append(row);
         }
         return doc;
@@ -331,11 +410,22 @@ export function createSummaryPreviewRenderer({
         tap.textContent = '';
         if (isStory) {
             const line1 = element('span', 'bk-sum-line1');
-            const where = parts.header.bits
-                .map(bit => bit.replace(/^(时间跨度|时间|跨度|楼层|来源)[：:]\s*/, '').replace(/\|/g, ' · ').trim())
-                .filter(bit => bit && !/^(未知|楼层\s*\d)/.test(bit));
+            // Time and place in the quiet colour, the people after “|” in the people colour.
+            const where = element('span', 'bk-sum-where');
+            parts.header.bits
+                .map(bit => bit.replace(/^(时间跨度|时间|跨度|楼层|来源)[：:]\s*/, '').trim())
+                .filter(bit => bit && !/^(未知|楼层\s*\d|第\s*\d+)/.test(bit))
+                .forEach(bit => {
+                    const [place, people] = bit.split('|');
+                    if (where.childElementCount) where.append(' · ');
+                    if (place?.trim()) where.append(element('span', '', place.trim()));
+                    if (people?.trim()) {
+                        if (place?.trim()) where.append(' · ');
+                        where.append(element('span', 'bk-sum-people', people.trim()));
+                    }
+                });
             const tag = !status.valid ? ['需重建', ' is-alert'] : parents.length ? ['已收入', ''] : ['待整理', ' is-new'];
-            line1.append(element('span', 'bk-sum-no', range.first !== null ? `#${range.first}` : '#?'), element('span', 'bk-sum-where', where.join(' · ')), element('span', `bk-sum-tag${tag[1]}`, tag[0]));
+            line1.append(element('span', 'bk-sum-no', range.first !== null ? `#${range.first}` : '#?'), where, element('span', `bk-sum-tag${tag[1]}`, tag[0]));
             if (!status.valid) line1.lastChild.title = status.reason;
             tap.append(line1, element('span', 'bk-sum-ttl', title), element('span', 'bk-sum-lead', firstBeat(parts)));
         } else {
