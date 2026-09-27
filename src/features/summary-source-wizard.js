@@ -37,14 +37,12 @@ export function describeSummarySource(choice, includeTags = 'bakemono') {
 }
 
 // The wizard only fills the form: the page save bar applies it, like any other settings page.
-export function createSummarySourceWizard({ documentRef, getState, defaultScanRules, openBackfill = () => {} }) {
+export function createSummarySourceWizard({ documentRef, getState, openBackfill = () => {} }) {
     const radios = () => [...documentRef.querySelectorAll(`input[name="${radioName}"]`)];
     const field = key => documentRef.getElementById(workflowFields[key]);
     const setText = (id, text) => { const el = documentRef.getElementById(id); if (el) el.textContent = text; };
 
-    function describe(choice, state = getState()) {
-        const tags = state.scanRules?.includeTags || defaultScanRules?.includeTags;
-        setText('bakemono-memory-summary-source-effect', choice ? describeSummarySource(choice, tags) : '选择一种方式后，这里会说明插件将如何读取和注入摘要。');
+    function describe(choice) {
         const expected = choice && workflowForSummarySource(choice);
         const custom = !!expected && Object.keys(workflowFields).some(key => field(key) && field(key).value !== expected[key]);
         const note = documentRef.getElementById('bakemono-memory-summary-source-custom');
@@ -52,8 +50,9 @@ export function createSummarySourceWizard({ documentRef, getState, defaultScanRu
         // Plugin-stored summaries are only injected with the matching strategy; say so plainly.
         const lost = ['independent', 'manual'].includes(choice) && field('memoryStrategy')?.value !== expected?.memoryStrategy;
         setText('bakemono-memory-summary-source-custom-text', lost
-            ? '当前搭配下，插件里保存的摘要不会注入上下文。点“恢复默认搭配”并保存即可修正。'
-            : '下方“高级”里的搭配已单独调整，与所选方式的默认搭配不同。');
+            ? '这样插件保存的摘要不会注入上下文。'
+            : '和所选方式的默认搭配不同。');
+        setText('bakemono-memory-summary-source-adv', lost ? '摘要不会注入' : custom ? '已单独调整' : '默认搭配');
     }
 
     // Called before the page save bar restores drafts, so checked state reflects the saved choice.
@@ -62,7 +61,7 @@ export function createSummarySourceWizard({ documentRef, getState, defaultScanRu
         for (const radio of radios()) radio.checked = radio.value === choice;
         const legacy = documentRef.getElementById('bakemono-memory-summary-source-legacy');
         if (legacy) legacy.hidden = choice !== 'legacy';
-        describe(radios().find(radio => radio.checked)?.value || '', state);
+        describe(radios().find(radio => radio.checked)?.value || '');
     }
 
     // Fill the advanced fields with the default combination; each change is a normal draft edit.

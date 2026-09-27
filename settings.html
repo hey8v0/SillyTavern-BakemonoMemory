@@ -260,49 +260,36 @@
         </section>
       </section>
 
-      <section class="bakemono-workbench-panel bakemono-memory-settings-panel" data-bakemono-panel="settings">
-        <fieldset class="bakemono-memory-source-wizard" aria-describedby="bakemono-memory-summary-source-effect">
-          <legend class="bakemono-memory-section-head"><h3>新回复的摘要从哪里来？</h3></legend>
-          <p id="bakemono-memory-summary-source-legacy" class="bakemono-memory-source-note" hidden>当前是旧版组合设置，保持不变也能继续工作；选择一种方式并保存后会替换它。</p>
-          <div class="bakemono-memory-source-options">
-            <label class="bakemono-memory-source-option">
-              <input type="radio" name="bakemono-memory-summary-source" id="bakemono-memory-summary-source-existing" value="existing">
-              <i class="fa-solid fa-book-open" aria-hidden="true"></i>
-              <span><strong>回复里已经自带摘要</strong><small>角色卡或预设让模型在回复里写摘要块，插件负责读取、汇总和收纳。不额外调用模型。</small></span>
-            </label>
-            <label class="bakemono-memory-source-option">
-              <input type="radio" name="bakemono-memory-summary-source" id="bakemono-memory-summary-source-inline" value="inline">
-              <i class="fa-solid fa-pen-nib" aria-hidden="true"></i>
-              <span><strong>让模型在回复里顺带写摘要</strong><small>插件在提示词里加入摘要要求，模型把摘要写进回复。不额外调用模型。</small></span>
-            </label>
-            <label class="bakemono-memory-source-option">
-              <input type="radio" name="bakemono-memory-summary-source" id="bakemono-memory-summary-source-independent" value="independent">
-              <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
-              <span><strong>每次回复后另外生成摘要</strong><small>回复结束后单独调用一次模型生成摘要。会增加用量。</small></span>
-            </label>
-            <label class="bakemono-memory-source-option">
-              <input type="radio" name="bakemono-memory-summary-source" id="bakemono-memory-summary-source-manual" value="manual">
-              <i class="fa-solid fa-hand-pointer" aria-hidden="true"></i>
-              <span><strong>需要时再手动生成</strong><small>只在“自动记忆”页点“记这一楼”时调用模型。</small></span>
-            </label>
-          </div>
-          <p id="bakemono-memory-summary-source-effect" class="bakemono-memory-source-effect" role="status" aria-live="polite"></p>
-          <p id="bakemono-memory-summary-source-custom" class="bakemono-memory-source-note" hidden>
-            <span id="bakemono-memory-summary-source-custom-text">下方“高级”里的搭配已单独调整，与所选方式的默认搭配不同。</span>
-            <button type="button" class="menu_button" data-bakemono-summary-source-reset>恢复默认搭配</button>
-          </p>
-          <div class="bakemono-memory-source-backfill">
-            <span>旧楼层还没有摘要？</span>
-            <button type="button" class="menu_button" data-bakemono-summary-backfill>去补写旧聊天</button>
-          </div>
+      <section class="bakemono-workbench-panel bakemono-memory-settings-panel bk-sum bk-auto bk-src" data-bakemono-panel="settings">
+        <section class="bk-auto-status">
+          <div class="bk-sum-kicker"><span>摘要方式</span></div>
+          <h3 id="bakemono-memory-summary-source-title">摘要方式</h3>
+          <div id="bakemono-memory-injection-stats" class="bk-sum-meta"></div>
+          <p id="bakemono-memory-memory-warning" class="bk-auto-note"></p>
+          <p id="bakemono-memory-summary-source-legacy" class="bk-auto-note" hidden>现在是旧版组合设置；选一种方式并保存后会替换它。</p>
+        </section>
+        <span class="bk-auto-label">新回复的摘要从哪里来</span>
+        <fieldset class="bk-src-choices">
+          <legend class="bk-src-legend">新回复的摘要从哪里来</legend>
+            <label class="bk-src-choice"><input type="radio" name="bakemono-memory-summary-source" id="bakemono-memory-summary-source-existing" value="existing"><span class="bk-auto-radio" aria-hidden="true"></span><span class="bk-src-name">回复里本来就有</span></label>
+            <label class="bk-src-choice"><input type="radio" name="bakemono-memory-summary-source" id="bakemono-memory-summary-source-inline" value="inline"><span class="bk-auto-radio" aria-hidden="true"></span><span class="bk-src-name">随正文写</span></label>
+            <label class="bk-src-choice"><input type="radio" name="bakemono-memory-summary-source" id="bakemono-memory-summary-source-independent" value="independent"><span class="bk-auto-radio" aria-hidden="true"></span><span class="bk-src-name">回复后单独写</span><small class="bk-tbl-cost">+1 次请求</small></label>
+            <label class="bk-src-choice"><input type="radio" name="bakemono-memory-summary-source" id="bakemono-memory-summary-source-manual" value="manual"><span class="bk-auto-radio" aria-hidden="true"></span><span class="bk-src-name">只手动</span></label>
         </fieldset>
-
-        <article class="bakemono-memory-workflow-status-hero">
-          <div><i class="fa-solid fa-route"></i><small id="bakemono-memory-workflow-label">摘要块手账 / 摘要总结模式</small></div>
-          <strong id="bakemono-memory-strategy-label">摘要块手账模式</strong>
-          <p id="bakemono-memory-memory-warning">等待扫描。</p>
-          <span id="bakemono-memory-injection-stats">注入：多次 0 / 阶段 0 / 普通 0</span>
-        </article>
+        <button type="button" class="bk-tbl-set bk-tbl-set-link" data-bakemono-summary-backfill><span class="bk-tbl-set-copy">补写旧聊天</span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></button>
+        <section class="bk-tbl-settings bk-auto-settings" aria-label="摘要方式设置">
+          <span class="bk-tbl-settings-label">设置</span>
+          <details class="bk-tbl-set">
+            <summary><span class="bk-tbl-set-copy">高级搭配</span><span class="bk-vec-set-val" id="bakemono-memory-summary-source-adv">默认搭配</span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+            <div class="bk-tbl-set-body">
+              <p id="bakemono-memory-summary-source-custom" class="bk-tbl-set-note" hidden><span id="bakemono-memory-summary-source-custom-text">已单独调整</span> <button type="button" class="bk-sum-link" data-bakemono-summary-source-reset>恢复默认搭配</button></p>
+              <label class="bk-vec-row"><span>记忆策略</span><select id="bakemono-memory-memory-strategy" data-bakemono-edit-group="bakemono-memory-summary-source"><option value="bakemono">摘要块手账</option><option value="generic">通用全文补课</option></select></label>
+              <label class="bk-vec-row"><span>工作流</span><select id="bakemono-memory-workflow-mode" data-bakemono-edit-group="bakemono-memory-summary-source"><option value="bakemono">摘要块手账</option><option value="generic">通用插件补课</option><option value="mixed">混合</option></select></label>
+              <label class="bk-vec-row"><span>阶段材料</span><select id="bakemono-memory-stage-source-mode" data-bakemono-edit-group="bakemono-memory-summary-source"><option value="summaries">正文标签 + 插件摘要</option><option value="backfill">仅插件已保存摘要</option><option value="raw">普通正文</option><option value="mixed">混合材料</option><option value="auto">自动选择</option></select></label>
+              <label class="bk-vec-row"><span>输出风格</span><select id="bakemono-memory-output-mode" data-bakemono-edit-group="bakemono-memory-summary-source"><option value="bakemono">摘要手账</option><option value="plain">纯文本</option><option value="custom">自定义模板</option></select></label>
+            </div>
+          </details>
+        </section>
 
         <details class="bakemono-memory-card-panel bakemono-memory-preset-panel bakemono-memory-settings-block" data-bakemono-owned-section="config">
           <summary><span><i class="fa-solid fa-box-archive"></i> 整套配置</span><small>保存、复制与导入导出</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看整套配置说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span id="bakemono-memory-active-config-status" class="bakemono-memory-help-content">这里保存/导出所有配置：工作流、扫描规则、自动总结、生成提示词和注入模板。</span></button></summary>
@@ -390,91 +377,6 @@
           </div>
         </details>
 
-        <details class="bakemono-memory-advanced-options bakemono-memory-settings-block">
-          <summary><span><i class="fa-solid fa-gear"></i> 高级：分别调整</span><small>选择上面的方式会自动填好这里</small></summary>
-        <div class="bakemono-memory-options">
-          <label class="bakemono-memory-field">
-            <span>记忆策略</span>
-            <select id="bakemono-memory-memory-strategy" class="text_pole" data-bakemono-edit-group="bakemono-memory-summary-source">
-              <option value="bakemono">摘要块手账模式</option>
-              <option value="generic">通用全文补课模式</option>
-            </select>
-          </label>
-          <label class="bakemono-memory-field">
-            <span>工作流模式</span>
-            <select id="bakemono-memory-workflow-mode" class="text_pole" data-bakemono-edit-group="bakemono-memory-summary-source">
-              <option value="bakemono">摘要块手账</option>
-              <option value="generic">通用插件补课</option>
-              <option value="mixed">混合工作流</option>
-            </select>
-          </label>
-          <label class="bakemono-memory-field">
-            <span>阶段材料</span>
-            <select id="bakemono-memory-stage-source-mode" class="text_pole" data-bakemono-edit-group="bakemono-memory-summary-source">
-              <option value="summaries">正文标签 + 插件摘要</option>
-              <option value="backfill">仅插件已保存摘要</option>
-              <option value="raw">普通正文总结</option>
-              <option value="mixed">混合材料</option>
-              <option value="auto">自动选择</option>
-            </select>
-          </label>
-          <label class="bakemono-memory-field">
-            <span>输出风格</span>
-            <select id="bakemono-memory-output-mode" class="text_pole" data-bakemono-edit-group="bakemono-memory-summary-source">
-              <option value="bakemono">摘要手账</option>
-              <option value="plain">通用纯文本</option>
-              <option value="custom">自定义模板</option>
-            </select>
-          </label>
-        </div>
-        </details>
-
-        <details class="bakemono-memory-card-panel bakemono-memory-range-panel" data-bakemono-owned-section="archive">
-          <summary>
-            <span class="bakemono-memory-summary-title"><i class="fa-solid fa-box-archive"></i><span>楼层收纳</span></span>
-            <button type="button" class="bakemono-memory-help-trigger" aria-label="查看楼层收纳说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">开启自动收纳后，插件会像隐藏助手一样持续只保留最近 N 楼正文；手动范围隐藏/恢复仍然可用。</span></button>
-          </summary>
-          <div class="bakemono-memory-auto-archive-main">
-            <label class="checkbox_label bakemono-memory-switch bakemono-memory-auto-archive-switch">
-              <input type="checkbox" id="bakemono-memory-auto-hide-enabled">
-              <span>启动自动收纳</span>
-            </label>
-            <div id="bakemono-memory-auto-hide-options" class="bakemono-memory-auto-hide-options" hidden>
-            <label class="bakemono-memory-field">
-              <span>只保留最近正文楼数</span>
-              <input id="bakemono-memory-preserve-recent-input" class="text_pole" type="number" min="0" step="1" value="5">
-            </label>
-            <button class="menu_button" data-bakemono-action="restore-auto-hidden">
-              <i class="fa-solid fa-eye"></i>
-              <span>恢复自动收纳楼层</span>
-            </button>
-            </div>
-          </div>
-          <div id="bakemono-memory-auto-hide-status" class="bakemono-memory-status-line">自动收纳未开启。</div>
-          <details class="bakemono-memory-manual-range-panel">
-            <summary><i class="fa-solid fa-sliders"></i><span>手动楼层范围</span></summary>
-            <label class="bakemono-memory-editor">
-              <span>楼层范围</span>
-              <textarea id="bakemono-memory-range-input" class="text_pole textarea_compact" rows="2" placeholder="例如：1-700, 720, 735-760" spellcheck="false"></textarea>
-            </label>
-          <div class="bakemono-memory-inline-actions">
-            <button class="menu_button" data-bakemono-action="preview-range">
-              <i class="fa-solid fa-list-check"></i>
-              <span>预览范围</span>
-            </button>
-            <button class="menu_button danger_button" data-bakemono-action="hide-range">
-              <i class="fa-solid fa-eye-slash"></i>
-              <span>隐藏范围</span>
-            </button>
-            <button class="menu_button" data-bakemono-action="restore-range">
-              <i class="fa-solid fa-eye"></i>
-              <span>恢复范围</span>
-            </button>
-          </div>
-          <div id="bakemono-memory-range-preview" class="bakemono-memory-status-line">输入范围后可先预览。</div>
-          </details>
-        </details>
-
         <div id="bakemono-memory-status-line" class="bakemono-memory-status-line">等待扫描。</div>
       </section>
 
@@ -486,8 +388,27 @@
         <div id="bakemono-memory-config-settings-slot" class="bakemono-memory-owned-section-slot bakemono-memory-owned-primary-slot"></div>
       </section>
 
-      <section class="bakemono-workbench-panel bakemono-memory-settings-panel" data-bakemono-panel="archive">
-        <div id="bakemono-memory-floor-archive-slot" class="bakemono-memory-owned-section-slot bakemono-memory-owned-primary-slot"></div>
+      <section class="bakemono-workbench-panel bakemono-memory-settings-panel bk-sum bk-auto bk-archive" data-bakemono-panel="archive">
+        <section class="bk-auto-status">
+          <div class="bk-sum-kicker"><span>楼层收纳</span></div>
+          <h3 id="bakemono-memory-archive-title">没有隐藏楼层</h3>
+          <div id="bakemono-memory-archive-reel" class="bk-archive-reel" aria-hidden="true"></div>
+          <div class="bk-archive-legend" aria-hidden="true"><span><i class="is-visible"></i>在上下文里</span><span><i class="is-hidden"></i>已隐藏</span></div>
+          <p id="bakemono-memory-auto-hide-status" class="bk-auto-note"></p>
+        </section>
+        <label class="bk-tbl-switch bk-auto-row"><span class="bk-tbl-switch-copy">自动收纳</span><input type="checkbox" id="bakemono-memory-auto-hide-enabled" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
+        <div id="bakemono-memory-auto-hide-options" class="bk-archive-options" hidden>
+          <label class="bk-vec-row bk-auto-row"><span>只保留最近几楼</span><input id="bakemono-memory-preserve-recent-input" type="number" min="0" step="1" value="5"></label>
+          <button type="button" class="bk-tbl-set bk-tbl-set-link" data-bakemono-action="restore-auto-hidden"><span class="bk-tbl-set-copy">恢复自动收纳的楼层</span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></button>
+        </div>
+        <span class="bk-auto-label">手动隐藏 / 恢复</span>
+        <div class="bk-archive-range">
+          <input id="bakemono-memory-range-input" type="text" autocomplete="off" spellcheck="false" placeholder="例如 10-20，或 3, 5, 8" aria-label="楼层范围">
+          <button type="button" class="bk-sum-link" data-bakemono-action="preview-range">预览</button>
+          <button type="button" class="bk-sum-link is-alert" data-bakemono-action="hide-range">隐藏</button>
+          <button type="button" class="bk-sum-link" data-bakemono-action="restore-range">恢复</button>
+        </div>
+        <p id="bakemono-memory-range-preview" class="bk-auto-note"></p>
       </section>
 
       <section class="bakemono-workbench-panel" data-bakemono-panel="turn-summary">
@@ -941,129 +862,63 @@
         </details>
       </section>
 
-      <section class="bakemono-workbench-panel" data-bakemono-panel="scan">
-        <article class="bakemono-memory-scan-status-hero">
-          <header>
-            <span class="bakemono-memory-scan-status-icon"><i class="fa-solid fa-check"></i></span>
-            <div><small>上次扫描</small><strong id="bakemono-memory-scan-runtime-title">尚未扫描</strong></div>
-            <em id="bakemono-memory-scan-runtime-count">0 条结果</em>
-          </header>
-          <p id="bakemono-memory-scan-runtime-description">扫描后会在这里显示普通摘要、阶段总结和多次总结的识别数量。</p>
-          <div class="bakemono-memory-scan-bars">
-            <span><i id="bakemono-memory-scan-story-bar"></i><b>剧情摘要</b><em id="bakemono-memory-scan-story-count">0</em></span>
-            <span><i id="bakemono-memory-scan-stage-bar"></i><b>阶段总结</b><em id="bakemono-memory-scan-stage-count">0</em></span>
-            <span><i id="bakemono-memory-scan-epic-bar"></i><b>多次总结</b><em id="bakemono-memory-scan-epic-count">0</em></span>
+      <section class="bakemono-workbench-panel bk-sum bk-auto bk-scan" data-bakemono-panel="scan">
+        <section class="bk-auto-status">
+          <div class="bk-sum-kicker"><span>扫描与识别</span><span id="bakemono-memory-scan-runtime-title">尚未扫描</span></div>
+          <h3 id="bakemono-memory-scan-runtime-count">还没有扫描</h3>
+          <div class="bk-scan-nums">
+            <span class="is-event"><b id="bakemono-memory-scan-story-count">0</b>剧情摘要</span>
+            <span class="is-people"><b id="bakemono-memory-scan-stage-count">0</b>阶段总结</span>
+            <span><b id="bakemono-memory-scan-epic-count">0</b>多次总结</span>
           </div>
-          <button class="menu_button bakemono-memory-scan-primary" data-bakemono-action="scan">
-            <i class="fa-solid fa-magnifying-glass"></i><span>扫描并查看识别结果</span>
-          </button>
-        </article>
-
-        <div class="bakemono-memory-section-head bakemono-memory-scan-section-head">
-          <div><span class="bakemono-memory-next-kicker">常用规则</span><h3>先决定扫描范围</h3></div>
-          <span id="bakemono-memory-scan-mode-badge">标签块</span>
-        </div>
-        <div class="bakemono-memory-scan-settings-list">
-          <label class="bakemono-memory-scan-setting-row">
-            <span><strong>识别方式</strong><small>有固定摘要标签时优先使用标签块</small></span>
-            <select id="bakemono-memory-scan-mode" class="text_pole">
-              <option value="tag">标签块模式</option>
-              <option value="full">全文管线模式</option>
-            </select>
-          </label>
-          <label class="bakemono-memory-scan-setting-row">
-            <span><strong>扫描已隐藏楼层</strong><small>长聊天补课和旧摘要识别需要开启</small></span>
-            <input type="checkbox" id="bakemono-memory-include-hidden">
-          </label>
-        </div>
-
-        <details class="bakemono-memory-scan-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-box-archive"></i> 扫描配置预设</span><small>切换、保存或删除</small></summary>
-          <div class="bakemono-memory-scan-disclosure-body">
-            <div class="bakemono-memory-preset-controls">
-              <label class="bakemono-memory-field">
-                <span>配置</span>
-                <select id="bakemono-memory-scan-preset-select" class="text_pole"></select>
-              </label>
-              <label class="bakemono-memory-field bakemono-memory-preset-name">
-                <span>名称</span>
-                <input id="bakemono-memory-scan-preset-name" class="text_pole" type="text" placeholder="我的扫描配置">
-              </label>
-              <button class="menu_button" id="bakemono-memory-save-scan-preset"><i class="fa-solid fa-floppy-disk"></i><span>另存为预设</span></button>
-              <button class="menu_button danger_button" id="bakemono-memory-delete-scan-preset"><i class="fa-solid fa-trash"></i><span>删除配置</span></button>
+          <div class="bk-sum-actions"><button type="button" class="menu_button bk-auto-redo" data-bakemono-action="scan"><span>重新扫描</span></button></div>
+        </section>
+        <label class="bk-vec-row bk-auto-row"><span>识别方式</span><select id="bakemono-memory-scan-mode"><option value="tag">标签块</option><option value="full">全文管线</option></select></label>
+        <label class="bk-tbl-switch bk-auto-row"><span class="bk-tbl-switch-copy">扫描隐藏楼层</span><input type="checkbox" id="bakemono-memory-include-hidden" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
+        <details class="bk-tbl-set bk-scan-pool">
+          <summary><span class="bk-tbl-set-copy">看这次扫到了什么</span><span class="bk-vec-set-val" id="bakemono-memory-scan-pool-count"></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+          <div id="bakemono-memory-scan-preview" class="bk-scan-list"></div>
+        </details>
+        <section class="bk-tbl-settings bk-auto-settings" aria-label="扫描设置">
+          <span class="bk-tbl-settings-label">设置</span>
+          <details class="bk-tbl-set" name="bk-scan-set">
+            <summary><span class="bk-tbl-set-copy">读取标签</span><span class="bk-vec-set-val" id="bakemono-memory-scan-tag-summary"></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+            <div class="bk-tbl-set-body">
+              <label class="bk-sum-field"><span>读取这些标签</span><textarea id="bakemono-memory-include-tags" rows="2" spellcheck="false"></textarea></label>
+              <label class="bk-sum-field"><span>去掉这些标签</span><textarea id="bakemono-memory-exclude-tags" rows="2" spellcheck="false"></textarea></label>
+              <label class="bk-vec-row"><span>全文最短长度<small>字</small></span><input id="bakemono-memory-full-min-length" type="number" min="0" step="1"></label>
             </div>
-          </div>
-        </details>
-
-        <details class="bakemono-memory-scan-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-tags"></i> 标签过滤</span><small id="bakemono-memory-scan-tag-summary">读取标签与排除内容</small></summary>
-          <div class="bakemono-memory-scan-disclosure-body">
-            <label class="bakemono-memory-editor">
-              <span>读取标签</span>
-              <textarea id="bakemono-memory-include-tags" class="text_pole textarea_compact" rows="3" spellcheck="false"></textarea>
-            </label>
-            <label class="bakemono-memory-editor">
-              <span>排除标签</span>
-              <textarea id="bakemono-memory-exclude-tags" class="text_pole textarea_compact" rows="3" spellcheck="false"></textarea>
-            </label>
-            <label class="bakemono-memory-field">
-              <span>全文最短长度</span>
-              <input id="bakemono-memory-full-min-length" class="text_pole" type="number" min="0" step="1">
-            </label>
-          </div>
-        </details>
-
-        <details class="bakemono-memory-scan-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-layer-group"></i> 摘要分类</span><small>普通、阶段与多次总结关键词</small></summary>
-          <div class="bakemono-memory-scan-disclosure-body">
-            <label class="bakemono-memory-editor">
-              <span>普通摘要关键词</span>
-              <textarea id="bakemono-memory-class-story" class="text_pole textarea_compact" rows="3" spellcheck="false"></textarea>
-            </label>
-            <label class="bakemono-memory-editor">
-              <span>阶段总结关键词</span>
-              <textarea id="bakemono-memory-class-stage" class="text_pole textarea_compact" rows="3" spellcheck="false"></textarea>
-            </label>
-            <label class="bakemono-memory-editor">
-              <span>多次总结关键词</span>
-              <textarea id="bakemono-memory-class-epic" class="text_pole textarea_compact" rows="3" spellcheck="false"></textarea>
-            </label>
-          </div>
-        </details>
-
-        <details class="bakemono-memory-scan-disclosure bakemono-memory-console-disclosure">
-          <summary><span><i class="fa-solid fa-notes-medical"></i> 手账分段</span><small>只影响摘要详情的展示结构</small><button type="button" class="bakemono-memory-help-trigger" aria-label="查看手账分段说明" aria-expanded="false"><i class="fa-solid fa-circle-info"></i><span class="bakemono-memory-help-content">格式：<code>标签名|正文标题关键词|样式</code>。样式可填 <code>normal</code>、<code>tag</code> 或 <code>bubble</code>。</span></button></summary>
-          <div class="bakemono-memory-scan-disclosure-body">
-            <div class="bakemono-memory-editor-grid bakemono-memory-layout-grid">
-            <label class="bakemono-memory-editor">
-              <span>普通摘要分段</span>
-              <textarea id="bakemono-memory-layout-story" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
-            </label>
-            <label class="bakemono-memory-editor">
-              <span>阶段总结分段</span>
-              <textarea id="bakemono-memory-layout-stage" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
-            </label>
-            <label class="bakemono-memory-editor">
-              <span>多次总结分段</span>
-              <textarea id="bakemono-memory-layout-epic" class="text_pole textarea_compact" rows="6" spellcheck="false"></textarea>
-            </label>
+          </details>
+          <details class="bk-tbl-set" name="bk-scan-set">
+            <summary><span class="bk-tbl-set-copy">摘要分类关键词</span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+            <div class="bk-tbl-set-body">
+              <label class="bk-sum-field"><span>剧情摘要</span><textarea id="bakemono-memory-class-story" rows="2" spellcheck="false"></textarea></label>
+              <label class="bk-sum-field"><span>阶段总结</span><textarea id="bakemono-memory-class-stage" rows="2" spellcheck="false"></textarea></label>
+              <label class="bk-sum-field"><span>多次总结</span><textarea id="bakemono-memory-class-epic" rows="2" spellcheck="false"></textarea></label>
             </div>
-          </div>
-        </details>
-
-        <div class="bakemono-memory-inline-actions bakemono-memory-scan-save-actions">
-          <button class="menu_button" id="bakemono-memory-reset-rules">
-            <i class="fa-solid fa-rotate-left"></i>
-              <span>恢复默认规则</span>
-          </button>
-        </div>
-
-        <details class="bakemono-memory-scan-disclosure bakemono-memory-console-disclosure bakemono-memory-scan-preview-disclosure">
-          <summary><span><i class="fa-solid fa-list-check"></i> 识别详情</span><small>查看本次命中的具体片段</small></summary>
-          <div class="bakemono-memory-scan-disclosure-body">
-            <div id="bakemono-memory-scan-preview" class="bakemono-memory-debug-list"></div>
-          </div>
-        </details>
+          </details>
+          <details class="bk-tbl-set" name="bk-scan-set">
+            <summary><span class="bk-tbl-set-copy">摘要分段显示</span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+            <div class="bk-tbl-set-body">
+              <p class="bk-tbl-set-note">一行一段：标签名|段名关键词|样式（normal、tag、bubble）</p>
+              <label class="bk-sum-field"><span>剧情摘要</span><textarea id="bakemono-memory-layout-story" rows="5" spellcheck="false"></textarea></label>
+              <label class="bk-sum-field"><span>阶段总结</span><textarea id="bakemono-memory-layout-stage" rows="5" spellcheck="false"></textarea></label>
+              <label class="bk-sum-field"><span>多次总结</span><textarea id="bakemono-memory-layout-epic" rows="5" spellcheck="false"></textarea></label>
+            </div>
+          </details>
+          <details class="bk-tbl-set" name="bk-scan-set">
+            <summary><span class="bk-tbl-set-copy">预设</span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
+            <div class="bk-tbl-set-body">
+              <label class="bk-sum-field"><span>预设</span><select id="bakemono-memory-scan-preset-select"></select></label>
+              <label class="bk-sum-field"><span>预设名称</span><input id="bakemono-memory-scan-preset-name" class="bakemono-memory-preset-name" type="text" placeholder="我的扫描设置"></label>
+              <div class="bk-tbl-set-actions">
+                <button type="button" class="bk-sum-link" id="bakemono-memory-save-scan-preset">另存为预设</button>
+                <button type="button" class="bk-sum-link is-alert" id="bakemono-memory-delete-scan-preset">删除预设…</button>
+                <button type="button" class="bk-sum-link" id="bakemono-memory-reset-rules">恢复默认规则</button>
+              </div>
+            </div>
+          </details>
+        </section>
       </section>
 
       <section class="bakemono-workbench-panel bk-sum bk-vec" data-bakemono-panel="vector">
@@ -1501,7 +1356,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.21.1 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.22.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

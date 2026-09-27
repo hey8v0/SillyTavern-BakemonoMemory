@@ -93,25 +93,19 @@ export function createWorkbenchPageOverviews({
             epic: blocks.filter(block => block.type === blockTypes.EPIC).length,
         };
         const total = Math.max(Number(state.lastScanMatchCount || 0), counts.story + counts.stage + counts.epic);
-        const maxCount = Math.max(1, counts.story, counts.stage, counts.epic);
         const hasScanned = !!state.lastScanAt;
-        const mode = state.scanRules.mode || defaultScanRules.mode;
         const includeTags = parseList(state.scanRules.includeTags || defaultScanRules.includeTags);
-        const tagSummary = includeTags.slice(0, 3).join('、') || '未设置读取标签';
-        query('#bakemono-memory-scan-runtime-title').text(hasScanned ? '识别正常' : '尚未扫描');
-        query('#bakemono-memory-scan-runtime-count').text(`${total.toLocaleString()} 条结果`);
-        query('#bakemono-memory-scan-runtime-description').text(hasScanned
-            ? `${mode === 'full' ? '全文管线' : '标签块'} · ${state.scanRules.includeHidden !== false ? '包含隐藏楼层' : '只看可见楼层'} · ${new Date(state.lastScanAt).toLocaleString()}`
-            : '扫描后会在这里显示普通摘要、阶段总结和多次总结的识别数量。');
+        const excludeCount = parseList(state.scanRules.excludeTags || '').length;
+        query('#bakemono-memory-scan-runtime-title').text(hasScanned ? new Date(state.lastScanAt).toLocaleString() : '尚未扫描');
+        query('#bakemono-memory-scan-runtime-count').text(hasScanned ? `扫出 ${total.toLocaleString()} 条摘要` : '还没有扫描');
         query('#bakemono-memory-scan-story-count').text(counts.story);
         query('#bakemono-memory-scan-stage-count').text(counts.stage);
         query('#bakemono-memory-scan-epic-count').text(counts.epic);
-        query('#bakemono-memory-scan-story-bar').css('width', `${Math.round((counts.story / maxCount) * 100)}%`);
-        query('#bakemono-memory-scan-stage-bar').css('width', `${Math.round((counts.stage / maxCount) * 100)}%`);
-        query('#bakemono-memory-scan-epic-bar').css('width', `${Math.round((counts.epic / maxCount) * 100)}%`);
-        query('#bakemono-memory-scan-mode-badge').text(mode === 'full' ? '全文管线' : '标签块');
-        query('#bakemono-memory-scan-tag-summary').text(includeTags.length > 3 ? `${tagSummary} 等 ${includeTags.length} 个` : tagSummary);
-        query('.bakemono-memory-scan-status-hero').toggleClass('is-healthy', hasScanned);
+        query('#bakemono-memory-scan-pool-count').text(`${total.toLocaleString()} 条`);
+        query('#bakemono-memory-scan-tag-summary').text([
+            includeTags.length > 2 ? `${includeTags.slice(0, 2).join('、')} 等 ${includeTags.length} 个` : includeTags.join('、') || '未设置',
+            excludeCount ? `去掉 ${excludeCount} 个` : '',
+        ].filter(Boolean).join(' · '));
     }
 
     function renderScanPreview(state = getState()) {
@@ -121,7 +115,7 @@ export function createWorkbenchPageOverviews({
         if (!state.scanPreview.length) {
             const empty = documentRef.createElement('div');
             empty.className = 'bakemono-memory-empty';
-            empty.textContent = '暂无扫描预览。点击“扫描预览”后会显示命中的片段。';
+            empty.textContent = '还没有扫描结果。';
             container.append(empty);
             return;
         }
@@ -135,22 +129,29 @@ export function createWorkbenchPageOverviews({
         if (omittedCount) {
             const notice = documentRef.createElement('div');
             notice.className = 'bakemono-memory-empty';
-            notice.textContent = `为降低手机内存占用，仅显示最近 ${visibleItems.length} 条扫描结果；其余 ${omittedCount} 条未创建预览节点。`;
+            notice.textContent = `只列出最近 ${visibleItems.length} 条，另有 ${omittedCount} 条没有列出。`;
             container.append(notice);
         }
 
+        const kinds = { [blockTypes.STORY]: ['剧情摘要', 'is-event'], [blockTypes.STAGE]: ['阶段总结', 'is-people'], [blockTypes.EPIC]: ['多次总结', ''] };
         const fragment = documentRef.createDocumentFragment();
-        visibleItems.forEach(item => {
-            const wrapper = documentRef.createElement('div');
-            wrapper.className = 'bakemono-memory-debug-item';
-            const meta = documentRef.createElement('div');
-            meta.className = 'bakemono-memory-debug-meta';
-            meta.textContent = `#${item.messageId}.${item.blockIndex + 1} · ${item.isHidden ? '隐藏' : '可见'} · ${item.scanMode} · <${item.matchedTag}> · ${item.type}`;
-            const text = documentRef.createElement('div');
-            text.className = 'bakemono-memory-debug-text';
-            text.textContent = item.preview;
-            wrapper.append(meta, text);
-            fragment.append(wrapper);
+        visibleItems.slice().reverse().forEach(item => {
+            const row = documentRef.createElement('div');
+            const [kind, tone] = kinds[item.type] || [String(item.type || ''), ''];
+            row.className = `bk-scan-row ${tone}`;
+            row.title = `<${item.matchedTag}> · ${item.scanMode}`;
+            const floor = documentRef.createElement('b');
+            floor.textContent = `#${item.messageId}${item.isHidden ? ' · 隐藏' : ''}`;
+            const label = documentRef.createElement('span');
+            label.className = 'bk-scan-kind';
+            label.textContent = kind;
+            const text = documentRef.createElement('span');
+            text.className = 'bk-scan-text';
+            // The summary's own title when it has one (『…』), otherwise its first words without the “📋 剧情摘要” lead.
+            const preview = String(item.preview || '');
+            text.textContent = preview.match(/『([^』]+)』/)?.[1] || preview.replace(/^[📋\s]*(剧情摘要|正文摘要|阶段总结|多次总结)?\s*/u, '');
+            row.append(floor, label, text);
+            fragment.append(row);
         });
         container.append(fragment);
     }

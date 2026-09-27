@@ -1,7 +1,6 @@
 const sectionOwnership = Object.freeze([
     ['config', 'bakemono-memory-config-settings-slot'],
     ['batch', 'bakemono-memory-batch-summary-slot'],
-    ['archive', 'bakemono-memory-floor-archive-slot'],
     ['generation', 'bakemono-memory-generation-settings-slot'],
 ]);
 

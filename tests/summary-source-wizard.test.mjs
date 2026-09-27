@@ -92,7 +92,6 @@ test('choosing a source fills the advanced fields, counts as one change and disc
     dom.radios[0].checked = false; dom.radios[2].checked = true; dom.fire(dom.radios[2]);
     assert.deepEqual(dom.selects.map(select => select.value), ['generic', 'generic', 'backfill', 'plain']);
     assert.match(dom.nodes['bakemono-memory-page-save-status'].textContent, /未保存 · 1 项修改/);
-    assert.match(dom.nodes['bakemono-memory-summary-source-effect'].textContent, /保存在插件里/);
 
     dom.selects[3].value = 'bakemono'; dom.fire(dom.selects[3]);
     assert.equal(dom.nodes['bakemono-memory-summary-source-custom'].hidden, false, 'a hand-tuned combination is called out');
@@ -115,7 +114,8 @@ test('choosing a source fills the advanced fields, counts as one change and disc
 
 test('workflow page asks one question; injection switch, depth and role live on the injection page', async () => {
     const html = await read('settings.html');
-    const panel = name => html.slice(html.indexOf(`data-bakemono-panel="${name}"`), html.indexOf('<section', html.indexOf(`data-bakemono-panel="${name}"`)));
+    // A panel runs until the next panel (pages now nest their own <section>s).
+    const panel = name => html.slice(html.indexOf(`data-bakemono-panel="${name}"`), html.indexOf('data-bakemono-panel=', html.indexOf(`data-bakemono-panel="${name}"`) + 1));
     const settingsPanel = panel('settings'), injectionPanel = panel('injection');
     for (const choice of choices) assert.match(settingsPanel, new RegExp(`id="bakemono-memory-summary-source-${choice}"`));
     assert.doesNotMatch(html, /data-bakemono-workflow-preset|id="bakemono-memory-turn-source"/);

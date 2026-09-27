@@ -1,4 +1,5 @@
 import { resolveSummaryGraph } from '../memory/summary-provenance.js';
+import { summarySourceChoice } from './turn-trigger-policy.js';
 
 export const workbenchRenderScopes = Object.freeze({
     VECTOR: 'vector',
@@ -55,8 +56,6 @@ export function createWorkbenchRenderer({
     memoryStrategies,
     workflowModes,
     getStageSourceMode,
-    getMemoryStrategyLabel,
-    getWorkflowModeLabel,
     getStageSourceModeLabel,
     getInjectionMemoryParts,
     getWorkflowStatusText,
@@ -118,11 +117,11 @@ export function createWorkbenchRenderer({
             query('#bakemono-memory-workflow-mode').val(state.workflowMode || workflowModes.BAKEMONO);
             query('#bakemono-memory-stage-source-mode').val(getStageSourceMode(state));
             query('#bakemono-memory-output-mode').val(state.outputMode || 'bakemono');
-            query('#bakemono-memory-strategy-label').text(getMemoryStrategyLabel(state.memoryStrategy));
-            query('#bakemono-memory-workflow-label').text(`${getWorkflowModeLabel(state.workflowMode)} / ${getStageSourceModeLabel(getStageSourceMode(state))}`);
+            const sourceName = { existing: '回复里本来就有', inline: '随正文写', independent: '回复后单独写', manual: '只手动' }[summarySourceChoice(state)];
+            query('#bakemono-memory-summary-source-title').text(sourceName ? `摘要：${sourceName}` : '旧版组合设置');
             const injectionParts = getInjectionMemoryParts(state);
             const uncoveredStory = state.storySummaries.filter(item => !resolveSummaryGraph(state).coveredStoryHashes.has(item.hash)).length;
-            query('#bakemono-memory-injection-stats').text(`注入：多次 ${injectionParts.stats.epic} / 阶段 ${injectionParts.stats.stage} / 普通 ${injectionParts.stats.story} / 表格 ${injectionParts.stats.table || 0} / 向量 ${injectionParts.stats.vector || 0}`);
+            query('#bakemono-memory-injection-stats').text(`注入 · 多次 ${injectionParts.stats.epic} · 阶段 ${injectionParts.stats.stage} · 普通 ${injectionParts.stats.story} · 表格 ${injectionParts.stats.table || 0} · 向量 ${injectionParts.stats.vector || 0}`);
             query('#bakemono-memory-memory-warning').text(getWorkflowStatusText(state, injectionParts.stats, uncoveredStory));
         } else if (activeTab === 'injection') {
             query('#bakemono-memory-injection-enabled').prop('checked', !!state.injection.enabled);
@@ -199,6 +198,7 @@ export function createWorkbenchRenderer({
         else if (tabName === 'generation') renderCustomModelOptions(state.automation.customApi?.models || []);
         else if (tabName === 'appearance') renderAppearanceSettings();
         else if (tabName === 'maintenance') { renderAutoHideRecentPanel(state); renderMaintenanceOverview(state); }
+        else if (tabName === 'archive') renderAutoHideRecentPanel(state);
         else if (tabName === 'help') renderHelp();
     }
 
@@ -266,6 +266,7 @@ export function createWorkbenchRenderer({
             else renderSummarySurface(activeTab, state);
         } else if (scope === workbenchRenderScopes.ARCHIVE) {
             if (activeTab === 'maintenance') { renderAutoHideRecentPanel(state); renderMaintenanceOverview(state); }
+            else if (activeTab === 'archive') renderAutoHideRecentPanel(state);
             else if (activeTab === 'overview') renderOverviewMemory(state);
             else if (activeTab === 'data-hub') renderDataHubMemory(state);
             else if (activeTab === 'vector') renderVectorMemoryPanel(state);

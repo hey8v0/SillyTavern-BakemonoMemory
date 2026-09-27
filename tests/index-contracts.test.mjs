@@ -148,13 +148,14 @@ test('settings center owns global preferences while feature settings stay with t
     assert.doesNotMatch(settingsSource, /data-bakemono-owned-section="database"/);
     assert.match(settingsSource, /class="bk-hub-numbers"[\s\S]*?id="bakemono-memory-count-story"/);
     assert.match(settingsSource, /data-bakemono-owned-section="batch"/);
-    assert.match(settingsSource, /data-bakemono-owned-section="archive"/);
+    // 楼层收纳 is its own page now, not a section moved in at startup.
+    assert.doesNotMatch(settingsSource, /data-bakemono-owned-section="archive"/);
+    assert.match(settingsSource, /data-bakemono-panel="archive"[\s\S]*?id="bakemono-memory-auto-hide-enabled"/);
     assert.match(settingsSource, /data-bakemono-owned-section="generation"/);
     assert.match(settingsSource, /data-bakemono-owned-section="config"/);
     assert.match(source, /organizeWorkbenchOwnedSections\(getSummaryGenerationMode\(\)\)/);
     assert.match(workbenchLayoutSource, /export function organizeWorkbenchOwnedSections\(/);
     assert.match(workbenchLayoutSource, /\['batch', 'bakemono-memory-batch-summary-slot'\]/);
-    assert.match(workbenchLayoutSource, /\['archive', 'bakemono-memory-floor-archive-slot'\]/);
     assert.match(workbenchLayoutSource, /\['generation', 'bakemono-memory-generation-settings-slot'\]/);
     assert.match(workbenchLayoutSource, /\['config', 'bakemono-memory-config-settings-slot'\]/);
     assert.doesNotMatch(settingsSource, /id="bakemono-memory-undo"|id="bakemono-memory-hide"|id="bakemono-memory-restore"/);
@@ -340,7 +341,7 @@ test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
 
 test('expanded disclosures expose anchored help and important operations expose live feedback', () => {
     // The 表格, 向量记忆 and 自动记忆 pages show their explanations as plain notes in their settings lists instead of help buttons.
-    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 6);
+    assert.equal((settingsSource.match(/class="bakemono-memory-help-trigger"/g) || []).length, 4);
     assert.match(settingsSource, /class="bakemono-memory-help-content"/);
     assert.match(source, /import \{ createHelpPopover \} from '\.\/src\/ui\/help-popover\.js';/);
     assert.match(source, /const helpPopover = createHelpPopover\(\)/);
@@ -959,7 +960,7 @@ test('frequent prompt and floor-archive tools live directly in the settings cent
     assert.match(settingsSource, /data-bakemono-nav="prompts"[^>]*>[\s\S]*?<strong>生成提示词<\/strong>/);
     assert.match(settingsSource, /data-bakemono-nav="archive"[^>]*>[\s\S]*?<strong>楼层收纳<\/strong>/);
     assert.match(settingsSource, /data-bakemono-panel="archive"/);
-    assert.match(settingsSource, /id="bakemono-memory-floor-archive-slot"/);
+    assert.match(settingsSource, /id="bakemono-memory-archive-reel"/);
     assert.match(workbenchLayoutSource, /archive: \{ target: 'settings-hub', label: '返回设置中心' \}/);
     assert.match(workbenchLayoutSource, /prompts: \{ target: 'settings-hub', label: '返回设置中心' \}/);
     assert.match(workbenchLayoutSource, /\['config', 'generation', 'archive'\]\.includes\(sectionName\)/);

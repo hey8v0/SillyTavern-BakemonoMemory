@@ -99,3 +99,18 @@ test('自动与数据 frames say each tool’s state and colour it', async () =>
     assert.deepEqual(['turn', 'auto', 'table', 'vector'].map(key => tones.get(`[data-hub-frame="${key}"]`)), ['ok', 'wait', 'wait', 'ok']);
     assert.equal(texts.get('#bakemono-memory-settings-hub-archive'), '自动 · 保留 3 楼');
 });
+
+test('楼层收纳 draws the chat as merged runs and counts floors the plugin hid', async () => {
+    const { createArchiveController } = await import('../src/features/archive-controller.js');
+    const texts = new Map(), htmls = new Map();
+    const query = selector => ({ text(value) { texts.set(selector, value); return this; }, html(value) { htmls.set(selector, value); return this; },
+        prop() { return this; }, val() { return this; } });
+    const chat = Array.from({ length: 300 }, (_, i) => ({ mes: `第${i}楼`, is_system: i < 200 }));
+    const state = { hiddenMessageIds: [250], customHiddenMessageIds: [], autoHideRecent: { enabled: true, preserveRecent: 100, managedMessageIds: [] } };
+    const archive = createArchiveController({ query, getChat: () => chat, getContext: () => ({ chat }), ensureState: () => state,
+        getFiniteMessageIds: ids => ids.map(Number).filter(Number.isFinite), defaultState: { autoHideRecent: { preserveRecent: 5 } } });
+    archive.renderAutoHideRecentPanel(state);
+    assert.equal(texts.get('#bakemono-memory-archive-title'), '只留最近 100 楼，已隐藏 201 楼');
+    assert.equal((htmls.get('#bakemono-memory-archive-reel').match(/<i /g) || []).length, 4);
+    assert.match(htmls.get('#bakemono-memory-archive-reel'), /is-hidden" style="flex-grow:200"/);
+});

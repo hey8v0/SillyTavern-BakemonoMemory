@@ -279,11 +279,26 @@ export function createArchiveController({
         query('#bakemono-memory-auto-hide-enabled').prop('checked', !!state.autoHideRecent.enabled);
         query('#bakemono-memory-preserve-recent-input').val(state.autoHideRecent.preserveRecent ?? defaultState.autoHideRecent.preserveRecent);
         query('#bakemono-memory-auto-hide-options').prop('hidden', !state.autoHideRecent.enabled);
+        // A floor counts as hidden when the host marks it or the plugin recorded hiding it.
+        const recorded = new Set(getFiniteMessageIds([...(state.hiddenMessageIds || []), ...(state.customHiddenMessageIds || []), ...(state.autoHideRecent.managedMessageIds || [])]));
+        const chat = (getContext()?.chat || getChat() || [])
+            .map((message, id) => message && String(message.mes || '').trim() ? { hidden: !!message.is_system || recorded.has(id) } : null)
+            .filter(Boolean);
+        const hiddenCount = chat.filter(message => message.hidden).length;
+        query('#bakemono-memory-archive-title').text(state.autoHideRecent.enabled
+            ? `只留最近 ${state.autoHideRecent.preserveRecent} 楼，已隐藏 ${hiddenCount} 楼`
+            : hiddenCount ? `已隐藏 ${hiddenCount} 楼` : '没有隐藏楼层');
+        // Consecutive floors merge into one run, so a long chat is a few segments, not hundreds of cells.
+        const runs = [];
+        for (const message of chat) {
+            const hidden = message.hidden;
+            if (runs.at(-1)?.hidden === hidden) runs.at(-1).count++;
+            else runs.push({ hidden, count: 1 });
+        }
+        query('#bakemono-memory-archive-reel').html(runs.map(run => `<i class="${run.hidden ? 'is-hidden' : 'is-visible'}" style="flex-grow:${run.count}"></i>`).join(''));
         const managedCount = getFiniteMessageIds(state.autoHideRecent.managedMessageIds || []).length;
-        const status = state.autoHideRecent.enabled
-            ? `自动收纳已开启：保留最近 ${state.autoHideRecent.preserveRecent} 楼正文，已管理 ${managedCount} 楼。${state.autoHideRecent.lastRunAt ? `上次整理：${new Date(state.autoHideRecent.lastRunAt).toLocaleString()}` : ''}`
-            : `自动收纳未开启。已管理 ${managedCount} 楼，可点击“恢复自动收纳楼层”恢复。`;
-        query('#bakemono-memory-auto-hide-status').text(status);
+        query('#bakemono-memory-auto-hide-status').text(state.autoHideRecent.lastRunAt
+            ? `自动收纳管着 ${managedCount} 楼 · 上次整理 ${new Date(state.autoHideRecent.lastRunAt).toLocaleString()}` : '');
     }
     
     function previewPreserveRecentMessages() {
