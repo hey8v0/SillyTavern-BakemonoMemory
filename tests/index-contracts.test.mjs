@@ -388,10 +388,8 @@ test('summary page has one row of levels, a next step, and the list with search'
     assert.match(summaryBrowserEventsSource, /bakemonoSummaryMenu/);
     assert.doesNotMatch(summaryBrowserEventsSource, /deleteSavedSummary/);
     assert.match(summaryBrowserEventsSource, /bakemono-memory-preview-filter/);
-    assert.match(summaryBrowserEventsSource, /bakemono-memory-record-filter/);
-    assert.match(summaryBrowserEventsSource, /bakemonoRecordQuickFilter/);
-    assert.doesNotMatch(source, /bakemonoPreviewType|bakemonoSummaryAction|bakemonoRecordQuickFilter/);
-    assert.doesNotMatch(source, /bakemono-memory-preview-filter|bakemono-memory-record-filter/);
+    assert.doesNotMatch(source, /bakemonoPreviewType|bakemonoSummaryAction/);
+    assert.doesNotMatch(source, /bakemono-memory-preview-filter/);
     assert.match(source, /createWorkbenchPageOverviews\(\{/);
     assert.match(workbenchPageOverviewsSource, /function renderPromptOverview\(/);
     assert.match(workbenchPageOverviewsSource, /function renderInjectionOverview\(/);
@@ -400,13 +398,11 @@ test('summary page has one row of levels, a next step, and the list with search'
     assert.match(styleSource, /Summary \(总结\): one row of levels/);
 });
 
-test('archive and timeline pages keep the demo hierarchy without dropping controls', () => {
-    assert.match(settingsSource, /class="bakemono-memory-record-search"/);
-    assert.match(settingsSource, /data-bakemono-record-status="all"/);
-    assert.match(settingsSource, /id="bakemono-memory-record-stat-total"/);
-    assert.match(settingsSource, /class="bakemono-memory-record-filter-disclosure/);
-    assert.match(settingsSource, /id="bakemono-memory-record-kind"/);
-    assert.match(settingsSource, /id="bakemono-memory-record-status"/);
+test('the 记忆库 page is gone and the summary tree keeps its hierarchy', () => {
+    // 记忆库 only browsed saved summaries, which 总结 already shows; its page, sidebar entry and list code are removed.
+    assert.doesNotMatch(settingsSource, /data-bakemono-(tab|panel|nav)="records"/);
+    assert.doesNotMatch(summaryBrowserEventsSource, /bakemono-memory-record-filter|bakemonoRecordQuickFilter/);
+    assert.doesNotMatch(settingsSource, /记忆库/);
     assert.match(settingsSource, /class="bakemono-workbench-panel bk-sum bk-tree" data-bakemono-panel="timeline"/);
     assert.match(settingsSource, /id="bakemono-memory-timeline-epic-count"/);
     assert.match(settingsSource, /id="bakemono-memory-timeline-strip"/);
@@ -678,7 +674,6 @@ test('all business mutations use scoped rendering and reserve renderAll for life
         assert.match(scopedRenderSource, new RegExp(`workbenchRenderScopes\\.${scope}`), `missing ${scope} render branch`);
     }
     assert.match(summarySurfaceSource, /activeTab === 'preview'/);
-    assert.match(summarySurfaceSource, /activeTab === 'records'/);
     assert.match(summarySurfaceSource, /activeTab === 'drafts'/);
     assert.match(actionScopeSource, /startsWith\('vector-'\)/);
     assert.match(actionScopeSource, /'generate-stage'/);

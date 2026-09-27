@@ -23,12 +23,6 @@ test('the memory body is read-only and has no no-op clear button', async () => {
     assert.doesNotMatch(html, /id="bakemono-memory-clear-injection"/);
 });
 
-test('record filter chips carry their counts instead of a duplicate stat strip', async () => {
-    const html = await read('settings.html');
-    assert.match(html, /data-bakemono-record-status="all">全部 <strong id="bakemono-memory-record-stat-total">/);
-    assert.match(html, /data-bakemono-record-status="injected">已选入 <strong id="bakemono-memory-record-stat-injected">/);
-    assert.doesNotMatch(html, /bakemono-memory-record-stat-strip/);
-});
 
 function summaryCardFixture({ totalCount = 0, story = [], stage = [], epic = [] } = {}) {
     const button = () => ({ hidden: false, disabled: false, dataset: {}, querySelector: () => null });

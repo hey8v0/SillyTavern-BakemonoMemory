@@ -10,9 +10,7 @@ export function createSummaryBrowserEvents({
     stabilizeMobilePreviewScroll,
     changeTimelinePage,
     renderTimeline,
-    memoryRecordState,
     memoryRecordStatuses,
-    renderMemoryRecordList,
     saveEditedSummary,
     focusSummaryRecord,
     toggleSummaryOpen,
@@ -38,17 +36,6 @@ export function createSummaryBrowserEvents({
             query('#bakemono-memory-preview-filter').val('');
             resetSummaryBrowserPages();
             renderPreviewSections();
-        });
-        query('#bakemono-memory-record-filter, #bakemono-memory-record-kind, #bakemono-memory-record-status').off('input change').on('input change', () => {
-            memoryRecordState.page = 0;
-            renderMemoryRecordList();
-        });
-        query('#bakemono-memory-clear-record-filter').off('click').on('click', () => {
-            query('#bakemono-memory-record-filter').val('');
-            query('#bakemono-memory-record-kind').val('all');
-            query('#bakemono-memory-record-status').val('all');
-            memoryRecordState.page = 0;
-            renderMemoryRecordList();
         });
         root.off('click.bakemonoPreviewType').on('click.bakemonoPreviewType', '[data-bakemono-preview-type]', function () {
             setSummaryBrowserActiveType(this.dataset.bakemonoPreviewType || 'story');
@@ -86,17 +73,6 @@ export function createSummaryBrowserEvents({
             if (this.dataset.bakemonoTreeFilter) setTimelineFilter?.(this.dataset.bakemonoTreeFilter);
             else toggleTimelineOrder?.();
             renderTimeline();
-        });
-        root.off('click.bakemonoRecordPage').on('click.bakemonoRecordPage', '[data-bakemono-record-page]', function () {
-            memoryRecordState.page = Math.max(0, (memoryRecordState.page || 0) + (this.dataset.bakemonoRecordPage === 'next' ? 1 : -1));
-            renderMemoryRecordList();
-        });
-        root.off('click.bakemonoRecordQuickFilter').on('click.bakemonoRecordQuickFilter', '[data-bakemono-record-status]', function () {
-            const status = String(this.dataset.bakemonoRecordStatus || 'all');
-            if (!['all', ...Object.values(memoryRecordStatuses)].includes(status)) return;
-            query('#bakemono-memory-record-status').val(status);
-            memoryRecordState.page = 0;
-            renderMemoryRecordList();
         });
         root.off('click.bakemonoSummaryAction').on('click.bakemonoSummaryAction', '[data-bakemono-summary-action]', async function () {
             const tools = this.closest('.bakemono-memory-summary-tools');

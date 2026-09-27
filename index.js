@@ -1202,12 +1202,9 @@ const memoryRecordsUi = createMemoryRecordsUi({
     blockTypes,
     normalizeSearchText,
     getKindLabel,
-    pageSize: 18,
 });
 const {
-    pageState: memoryRecordState,
     renderMemoryDatabaseSummary,
-    renderMemoryRecordList,
 } = memoryRecordsUi;
 
 const vectorMemoryService = createVectorMemoryService({
@@ -1961,9 +1958,7 @@ const summaryBrowserEvents = createSummaryBrowserEvents({
     stabilizeMobilePreviewScroll,
     changeTimelinePage,
     renderTimeline,
-    memoryRecordState,
     memoryRecordStatuses,
-    renderMemoryRecordList,
     saveEditedSummary,
     toggleSummaryOpen: item => summaryBrowserUi.toggleOpen(item),
     toggleTimeline: (kind, key) => summaryTimelineUi.toggle(kind, key),
@@ -2192,7 +2187,6 @@ workbenchRenderer = createWorkbenchRenderer({
     renderHubPanels: renderWorkbenchHubPanels,
     renderSummaryGenerationPanel,
     renderPreviewSections,
-    renderMemoryRecordList,
     renderTimeline,
     renderDrafts,
     renderHistory,

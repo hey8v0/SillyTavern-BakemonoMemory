@@ -16,7 +16,6 @@ export function createWorkbenchHeaderUi({
             'settings-hub': '设置中心',
             settings: '摘要方式',
             preview: '总结',
-            records: '记忆库',
             tables: '表格',
             'rp-state': '剧情状态',
             'turn-summary': '自动记忆',

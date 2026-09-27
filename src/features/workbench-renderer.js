@@ -31,7 +31,6 @@ export function createWorkbenchRenderer({
     renderHubPanels,
     renderSummaryGenerationPanel,
     renderPreviewSections,
-    renderMemoryRecordList,
     renderTimeline,
     renderDrafts,
     renderHistory,
@@ -191,8 +190,7 @@ export function createWorkbenchRenderer({
         else if (tabName === 'preview') {
             renderSummaryGenerationPanel(state, blocks);
             renderPreviewSections(blocks.story, blocks.stage, blocks.epic);
-        } else if (tabName === 'records') renderMemoryRecordList();
-        else if (tabName === 'timeline') renderTimeline();
+        } else if (tabName === 'timeline') renderTimeline();
         else if (tabName === 'drafts') {
             renderDrafts(); renderHistory(); renderTaskQueue();
         } else if (tabName === 'rp-state') renderRpState?.(state);
@@ -242,7 +240,6 @@ export function createWorkbenchRenderer({
             renderPreviewSections(blocks.story, blocks.stage, blocks.epic);
         } else if (activeTab === 'overview') renderOverviewMemory(state);
         else if (activeTab === 'data-hub') renderDataHubMemory(state);
-        else if (activeTab === 'records') { state.memoryRecords = buildMemoryRecords(state); renderMemoryRecordList(); }
         else if (activeTab === 'timeline') renderTimeline();
         else if (activeTab === 'drafts') { renderDrafts(); renderHistory(); renderTaskQueue(); }
         else if (activeTab === 'maintenance') renderMaintenanceOverview(state);
@@ -276,7 +273,6 @@ export function createWorkbenchRenderer({
             if (activeTab === 'maintenance') { renderAutoHideRecentPanel(state); renderMaintenanceOverview(state); }
             else if (activeTab === 'overview') renderOverviewMemory(state);
             else if (activeTab === 'data-hub') renderDataHubMemory(state);
-            else if (activeTab === 'records') { state.memoryRecords = buildMemoryRecords(state); renderMemoryRecordList(); }
             else if (activeTab === 'vector') renderVectorMemoryPanel(state);
         } else if (scope === workbenchRenderScopes.INJECTION) {
             if (activeTab === 'injection') { syncActiveFormFields(activeTab, state); renderActivePresetControls(activeTab); renderInjectionOverview(state); }
@@ -320,7 +316,7 @@ export function createWorkbenchRenderer({
         const state = getState();
         if (!isWorkbenchOpen()) return;
         const activeTab = getActiveTab();
-        if (activeTab === 'overview' || activeTab === 'records' || activeTab === 'data-hub') state.memoryRecords = buildMemoryRecords(state);
+        if (activeTab === 'overview' || activeTab === 'data-hub') state.memoryRecords = buildMemoryRecords(state);
         const blocks = activeTab === 'preview' || activeTab === 'data-hub' ? buildBlockBundle(state) : null;
         query('#bakemono-memory-count-drafts').text(state.drafts.length);
         query('#bakemono-memory-menu-draft-count').text(state.drafts.length.toLocaleString());
