@@ -79,7 +79,9 @@ export function createOverviewWorkbenchUi({
         const actions = [];
         if (recommendation?.buttonLabel) {
             const attribute = recommendation.kind === 'nav' ? 'data-bakemono-nav' : 'data-bakemono-action';
-            actions.push(`<button type="button" class="menu_button bk-home-primary" ${attribute}="${esc(recommendation.target)}">${esc(recommendation.buttonLabel)}</button>`);
+            // The only recommendation that opens 总结 is filling gaps, which lives under its 剧情摘要 level.
+            const level = recommendation.kind === 'nav' && recommendation.target === 'preview' ? ' data-bakemono-preview-type="story"' : '';
+            actions.push(`<button type="button" class="menu_button bk-home-primary" ${attribute}="${esc(recommendation.target)}"${level}>${esc(recommendation.buttonLabel)}</button>`);
         }
         if (floorStats.pendingDraftCount && recommendation?.target !== 'drafts') actions.push(`<button type="button" class="bk-home-more" data-bakemono-nav="drafts">待确认 ${floorStats.pendingDraftCount.toLocaleString()} 条 ›</button>`);
         if (floorStats.storySummaryCount || floorStats.stageSummaryCount) actions.push('<button type="button" class="bk-home-more" data-bakemono-nav="timeline">看摘要树 ›</button>');

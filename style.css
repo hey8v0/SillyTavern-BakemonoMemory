@@ -80,8 +80,6 @@
 .bakemono-memory-page-savebar > span { flex: 1 1 130px; min-width: 0; font-size: 0.85em; overflow-wrap: anywhere; }
 .bakemono-memory-page-savebar > div { display: flex; flex-wrap: wrap; gap: 8px; }
 .bakemono-memory-page-savebar .menu_button { min-height: 44px; margin: 0; }
-.bakemono-memory-summary-settings-link { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
-.bakemono-memory-summary-settings-link .menu_button { min-height: 44px; }
 
 .bakemono-memory-operation-toast {
   position: fixed;
@@ -161,20 +159,8 @@
 
 
 
-.bk-tabs-nav::-webkit-scrollbar,
-.bakemono-memory-preview-list::-webkit-scrollbar,
-.bk-tab-panel::-webkit-scrollbar {
-  height: 6px;
-  width: 6px;
-}
 
 
-.bk-tabs-nav::-webkit-scrollbar-thumb,
-.bakemono-memory-preview-list::-webkit-scrollbar-thumb,
-.bk-tab-panel::-webkit-scrollbar-thumb {
-  background: var(--bk-line);
-  border-radius: 999px;
-}
 
 
 
@@ -359,59 +345,13 @@
   display: none !important;
 }
 
-.bakemono-memory-scene-panel {
-  position: relative;
-  display: block;
-  overflow: hidden;
-  margin-top: 0;
-  border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 38%, var(--bk-line));
-}
 
-.bakemono-memory-scene-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
 
-.bakemono-memory-scene-code {
-  color: color-mix(in srgb, var(--SmartThemeBodyColor) 82%, var(--SmartThemeQuoteColor) 18%);
-  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
-  font-weight: 800;
-  white-space: nowrap;
-}
 
-.bakemono-memory-scene-progress {
-  height: 5px;
-}
 
-.bakemono-memory-scene-progress > span {
-  display: block;
-  width: 0;
-  height: 100%;
-  transition: width 220ms var(--bk-ease);
-}
 
-.bakemono-memory-hero-actions {
-  display: grid;
-  gap: 8px;
-}
 
-.bakemono-memory-scene-panel .bakemono-memory-hero-actions .menu_button {
-  width: 100%;
-  min-height: 46px;
-  justify-content: center;
-  border: 1px solid var(--bk-line);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--bk-paper) 92%, transparent);
-  box-shadow: none;
-  font-weight: 750;
-}
 
-.bakemono-memory-scene-panel .bakemono-memory-hero-actions .menu_button.is-workflow-primary {
-  color: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, white 8%);
-  box-shadow: 0 9px 20px color-mix(in srgb, var(--SmartThemeQuoteColor) 28%, transparent);
-}
 
 .bakemono-memory-workflow-selector > summary {
   display: flex;
@@ -598,10 +538,6 @@
   border-block: 1px solid var(--bk-line);
 }
 
-.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel {
-  display: block;
-  margin-top: 0;
-}
 
 .bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-stat {
   border: 0;
@@ -2320,34 +2256,10 @@
   opacity: 0.9;
 }
 
-.bakemono-memory-preview-grid {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-}
 
-.bakemono-memory-preview-type-tabs {
-  -webkit-overflow-scrolling: touch;
-}
 
-.bakemono-preview-type-button {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
 
-.bakemono-preview-type-button.is-active {
-  border-style: solid;
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 22%, transparent);
-}
 
-.bakemono-preview-type-button strong {
-  border-radius: 999px;
-  line-height: 1.4;
-}
 
 .bakemono-memory-preview-toolbar,
 .bakemono-memory-preset-controls {
@@ -2433,26 +2345,9 @@
   pointer-events: none;
 }
 
-.bakemono-memory-preview-column {
-  min-width: 0;
-  display: none;
-  flex-direction: column;
-}
 
-.bakemono-memory-preview-column.is-active {
-  display: flex;
-}
 
-.bakemono-memory-preview-column h4 {
-  gap: 7px;
-  align-items: center;
-  margin: 0;
-  font-size: 15px;
-}
 
-.bakemono-memory-preview-list {
-  min-height: 0;
-}
 
 .bakemono-memory-preview-pager {
   position: sticky;
@@ -2491,61 +2386,13 @@
   text-align: center;
 }
 
-.bakemono-memory-card {
-  margin-bottom: 10px;
-  border: 1px solid var(--SmartThemeBorderColor);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
-}
 
-.bakemono-memory-card summary {
-  cursor: pointer;
-  padding: 10px;
-  font-weight: 800;
-  overflow-wrap: anywhere;
-}
 
-.bakemono-memory-card-body {
-  padding: 0 10px 10px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-size: 12px;
-  line-height: 1.55;
-  opacity: 0.9;
-  max-height: min(52dvh, 460px);
-  overflow: auto;
-  scrollbar-width: thin;
-}
 
-.bakemono-memory-summary-tools {
-  display: grid;
-  gap: 10px;
-  padding: 10px 12px 12px;
-  border-top: 1px dashed var(--bk-line);
-}
 
-.bakemono-memory-summary-editor {
-  display: grid;
-  gap: 10px;
-}
 
-.bakemono-memory-summary-editor[hidden],
-.bakemono-memory-danger-zone[hidden] {
-  display: none;
-}
 
-.bakemono-memory-danger-zone {
-  border: 1px dashed color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent);
-  border-radius: 10px;
-  padding: 8px;
-}
 
-.bakemono-memory-danger-zone > summary {
-  cursor: pointer;
-  color: var(--bk-ink-soft);
-  font-size: 12px;
-  margin-bottom: 8px;
-}
 
 .bakemono-memory-auto-archive-main {
   display: grid;
@@ -2599,211 +2446,29 @@
   padding-bottom: 8px;
 }
 
-.bakemono-memory-notebook {
-  margin: 0 0 12px;
-}
 
-.bk-notebook-outer {
-  width: 100%;
-  font-family: var(--mainFontFamily, "Nunito", "PingFang SC", "Microsoft YaHei", sans-serif);
-  color: inherit;
-  position: relative;
-}
 
-.bk-notebook-outer > summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  padding: 9px 14px;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
-  border: 2px dashed var(--bk-line);
-  border-radius: 22px;
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 800;
-  list-style: none;
-  overflow-wrap: anywhere;
-  white-space: normal;
-  box-shadow: 3px 3px 0 color-mix(in srgb, var(--bk-shadow) 70%, transparent);
-  transition: transform 160ms ease, background 160ms ease, box-shadow 160ms ease;
-}
 
-.bk-notebook-outer:not([open]) > summary:hover {
-  transform: translate(-1px, -1px);
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 11%, transparent);
-}
 
-.bk-notebook-outer[open] > summary {
-  border-radius: 18px 18px 0 0;
-  border-bottom-color: transparent;
-  box-shadow: none;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 11%, transparent);
-}
 
-.bk-notebook-outer > summary::-webkit-details-marker {
-  display: none;
-}
 
-.bk-notebook-container {
-  position: relative;
-  padding: 12px 12px 16px;
-  margin-top: -2px;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
-  border: 2px dashed var(--bk-line);
-  border-radius: 0 18px 18px 18px;
-}
 
-.bk-notebook-container::before {
-  content: "";
-  position: absolute;
-  top: 16px;
-  right: -10px;
-  width: 48px;
-  height: 15px;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
-  border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
-  transform: rotate(8deg);
-  pointer-events: none;
-  border-radius: 2px;
-}
 
-.nh-wrap {
-  position: relative;
-  padding: 14px 12px 12px;
-  text-align: center;
-}
 
-.nh-chap-label {
-  display: inline-block;
-  margin-bottom: 9px;
-  padding: 4px 12px;
-  border: 1px dashed var(--bk-line);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 9%, transparent);
-  font-size: 12px;
-  font-weight: 800;
-}
 
-.nh-title {
-  display: inline-block;
-  position: relative;
-  max-width: 100%;
-  font-size: 24px;
-  font-weight: 900;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-  text-shadow: 2px 2px 0 color-mix(in srgb, var(--bk-shadow) 45%, transparent);
-}
 
-.nh-title::after {
-  content: "";
-  position: absolute;
-  left: -4%;
-  right: -4%;
-  bottom: -4px;
-  height: 8px;
-  border-bottom: 3px solid var(--bk-accent);
-  border-radius: 50%;
-  opacity: 0.42;
-  z-index: -1;
-}
 
-.nh-divider {
-  width: 160px;
-  max-width: 58%;
-  height: 1px;
-  margin: 12px auto 8px;
-  border-bottom: 2px dashed var(--bk-line);
-}
 
-.nh-meta {
-  color: var(--bk-ink-soft);
-  font-size: 12px;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-}
 
-.bk-tabs-layout {
-  display: flex;
-  flex-direction: column;
-  padding: 0 2px;
-}
 
-.bk-tabs-nav {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 4px 2px 12px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  scrollbar-color: var(--bk-line) transparent;
-}
 
-.bk-tab-label {
-  flex: 0 0 auto;
-  padding: 6px 12px;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
-  border: 2px dashed var(--bk-line);
-  color: inherit;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-  white-space: nowrap;
-  box-shadow: 2px 2px 0 color-mix(in srgb, var(--bk-shadow) 60%, transparent);
-}
 
-.bk-tab-label.is-active {
-  border-style: solid;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
-  box-shadow: none;
-  transform: translate(1px, 1px);
-}
 
-.bk-tabs-content-wrapper {
-  min-height: 190px;
-  border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 70%, transparent);
-  border-radius: 14px;
-  background:
-    radial-gradient(color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent) 1px, transparent 1px),
-    color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-  background-size: 15px 15px;
-}
 
-.bk-tab-panel {
-  display: none;
-  max-height: 350px;
-  overflow-y: auto;
-  padding: 16px;
-}
 
-.bk-tab-panel.is-active {
-  display: block;
-}
 
-.bk-inner-text {
-  font-size: 13px;
-  line-height: 1.75;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 
-.bk-bubble {
-  margin: 0;
-  padding: 12px;
-  border: 1px dashed var(--bk-line);
-  border-radius: 16px 16px 16px 5px;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
-}
 
-.bk-tag-line {
-  margin: 0;
-  padding: 10px 12px;
-  border-left: 4px solid var(--bk-line-strong);
-  border-radius: 0 12px 12px 0;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
-}
 
 
 .bakemono-mobile-json {
@@ -3068,10 +2733,9 @@
     max-height: 320px;
   }
 
-  .bakemono-workbench-root[data-active-tab="preview"] .bakemono-memory-preview-grid,
   .bakemono-workbench-root[data-active-tab="records"] .bakemono-memory-record-list,
-  .bakemono-workbench-root[data-active-tab="timeline"] .bakemono-memory-timeline,
-  .bakemono-workbench-root[data-active-tab="vector"] .bakemono-memory-vector-list {
+.bakemono-workbench-root[data-active-tab="timeline"] .bakemono-memory-timeline,
+.bakemono-workbench-root[data-active-tab="vector"] .bakemono-memory-vector-list {
     max-width: 980px;
   }
 }
@@ -3137,10 +2801,9 @@
   }
 
   .bakemono-memory-status-grid,
-  .bakemono-memory-editor-grid,
-  .bakemono-memory-preview-grid,
-  .bakemono-memory-layout-grid,
-  .bakemono-memory-mini-grid {
+.bakemono-memory-editor-grid,
+.bakemono-memory-layout-grid,
+.bakemono-memory-mini-grid {
     grid-template-columns: 1fr;
   }
 
@@ -3412,54 +3075,19 @@
     background: transparent;
   }
 
-  .bakemono-memory-preview-list {
+
+
+
+
+
+  .bakemono-workbench-main {
     touch-action: pan-y;
     overscroll-behavior: auto;
   }
 
-  .bakemono-workbench-root[data-active-tab="preview"] .bakemono-memory-card-body,
-  .bakemono-workbench-root[data-active-tab="preview"] .bk-tab-panel {
-    max-height: none;
-    overflow: visible;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
-    overscroll-behavior: auto;
-  }
-
-  .bakemono-workbench-root[data-active-tab="preview"] .bk-tabs-content-wrapper {
-    min-height: 0;
-  }
-
-  .nh-title {
-    font-size: 21px;
-  }
-
-  .bk-tab-panel {
-    max-height: none;
-    overflow: visible;
-    padding: 14px;
-  }
-
-  .bakemono-workbench-main,
-  .bakemono-memory-preview-grid,
-  .bakemono-memory-preview-column,
-  .bakemono-memory-notebook,
-  .bakemono-memory-card,
-  .bk-notebook-container,
-  .bk-tabs-content-wrapper,
-  .bakemono-memory-card-body {
-    touch-action: pan-y;
-    overscroll-behavior: auto;
-  }
-
-  .bk-tabs-nav {
-    touch-action: pan-x;
-  }
 
   .bakemono-workbench .menu_button,
-.bakemono-workbench .menu_button::after,
-.bk-notebook-outer > summary,
-.bk-tab-label {
+.bakemono-workbench .menu_button::after {
     transition: none !important;
     transform: none !important;
   }
@@ -3468,9 +3096,7 @@
     display: none;
   }
 
-  .bakemono-workbench .menu_button:hover,
-.bk-notebook-outer:not([open]) > summary:hover,
-.bk-tab-label:hover {
+  .bakemono-workbench .menu_button:hover {
     transform: none !important;
   }
 
@@ -4637,9 +4263,7 @@
 .bakemono-memory-page-intro h3,
 .bakemono-memory-card-panel > h4,
 .bakemono-memory-debug > h4,
-.bakemono-memory-section-head h3,
-.bakemono-memory-scene-panel h3,
-.nh-title {
+.bakemono-memory-section-head h3 {
   font-family: var(--bk-display);
 }
 
@@ -4770,15 +4394,7 @@
   transform: none;
 }
 
-.bakemono-memory-scene-panel {
-  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 36%, var(--bk-line));
-}
 
-.bakemono-memory-scene-panel .bakemono-memory-hero-actions .menu_button.is-workflow-primary {
-  border-color: transparent;
-  background: var(--bk-accent);
-  color: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, white 6%);
-}
 
 .bakemono-memory-status-strip {
   margin: 16px 0 26px;
@@ -4834,33 +4450,10 @@
   background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
 }
 
-.bakemono-preview-type-button.is-active {
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, var(--bk-paper-raised));
-  box-shadow: none;
-}
 
-.bakemono-memory-preview-column,
-.bakemono-memory-notebook,
-.bk-notebook-container {
-  border-color: var(--bk-line);
-  border-radius: var(--bk-radius-card);
-  background: var(--bk-paper-raised);
-  box-shadow: none;
-}
 
-.bk-tabs-nav {
-  border-color: var(--bk-line);
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-}
 
-.bk-tab-label {
-  border-radius: 10px;
-}
 
-.bk-tab-label.is-active,
-.bk-tab-label.active {
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, var(--bk-paper));
-}
 
 .bakemono-memory-record-item,
 .bakemono-memory-draft-card,
@@ -4990,9 +4583,6 @@
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, var(--bk-paper));
   }
 
-  .bakemono-memory-preview-type-tabs {
-    scrollbar-width: none;
-  }
 
 
 }
@@ -5291,48 +4881,16 @@
   width: min(100%, 520px);
 }
 
-.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel {
-  padding: 20px;
-  border-radius: 22px;
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, var(--bk-paper-raised)),
-    var(--bk-paper-raised)
-  );
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--bk-shadow) 18%, transparent);
-}
 
-.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel::before {
-  width: 112px;
-  height: 8px;
-  opacity: 0.64;
-}
 
 .bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-next-kicker {
   font-weight: 850;
   letter-spacing: 0.15em;
 }
 
-.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-code {
-  font-size: 10px;
-}
 
-.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel h3 {
-  font-size: 25px;
-  line-height: 1.3;
-  letter-spacing: -0.025em;
-}
 
-.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-progress {
-  margin: 17px 0 15px;
-}
 
-.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel .bakemono-memory-hero-actions .menu_button {
-  min-height: 48px;
-  border-radius: 14px;
-  font-size: 13px;
-  font-weight: 800;
-}
 
 .bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-status-strip {
   margin: 15px 0 21px;
@@ -5422,14 +4980,7 @@
 
 
 
-  .bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel {
-    padding: 20px;
-    border-radius: 22px;
-  }
 
-  .bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel h3 {
-    font-size: 25px;
-  }
 
 
 }
@@ -5458,7 +5009,6 @@
 
 .bakemono-memory-card-panel,
 .bakemono-memory-debug,
-.bakemono-memory-preview-column,
 .bakemono-memory-record-item,
 .bakemono-memory-draft-card,
 .bakemono-memory-history-item,
@@ -5470,364 +5020,9 @@
   );
 }
 
-/* Summary demo precision pass ------------------------------------------------ */
-
-.bakemono-memory-summary-mode-tabs {
-  display: flex;
-  gap: 7px;
-  margin: 0 0 15px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.bakemono-memory-summary-mode-tabs::-webkit-scrollbar {
-  display: none;
-}
-
-.bakemono-memory-summary-mode-tabs > button {
-  flex: 0 0 auto;
-  min-height: 34px;
-  padding: 6px 11px;
-  border: 1px solid var(--bk-line);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--bk-ink-soft);
-  cursor: pointer;
-}
-
-.bakemono-memory-summary-mode-tabs > button.is-active {
-  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 58%, var(--bk-line));
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, transparent);
-  color: var(--bk-accent);
-  font-weight: 800;
-}
-
-.bakemono-memory-summary-generation-panel {
-  padding: 18px;
-  border-radius: 20px;
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, var(--bk-paper-raised)),
-    var(--bk-paper-raised)
-  );
-  box-shadow: 0 10px 24px color-mix(in srgb, var(--bk-shadow) 16%, transparent);
-}
-
-.bakemono-memory-summary-generation-panel::before {
-  width: 94px;
-  height: 7px;
-  opacity: 0.5;
-}
-
-.bakemono-memory-summary-generation-panel .bakemono-memory-next-kicker {
-  font-weight: 850;
-  letter-spacing: 0.15em;
-}
-
-.bakemono-memory-summary-generation-panel .bakemono-memory-scene-code {
-  font-size: 10px;
-}
-
-.bakemono-memory-summary-generation-panel h3 {
-  margin: 9px 0 0;
-  font-size: 22px;
-  line-height: 1.3;
-  letter-spacing: -0.025em;
-}
-
-.bakemono-memory-summary-generation-panel p {
-  margin: 7px 0 0;
-  color: var(--bk-ink-soft);
-}
-
-.bakemono-memory-summary-generation-panel .bakemono-memory-scene-progress {
-  margin: 14px 0 13px;
-}
-
-.bakemono-memory-summary-generation-panel .bakemono-memory-hero-actions .menu_button {
-  min-height: 46px;
-  border-radius: 13px;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.bakemono-memory-summary-list-head {
-  margin: 19px 2px 10px;
-}
-
-.bakemono-memory-summary-list-head .bakemono-memory-next-kicker {
-  font-weight: 850;
-  letter-spacing: 0.15em;
-}
-
-.bakemono-memory-summary-list-head h3 {
-  margin-top: 3px;
-  font-size: 18px;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-preview-type-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 3px;
-  margin: 0 0 10px;
-  padding: 3px;
-  overflow: visible;
-  border: 0;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--bk-line) 42%, transparent);
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-preview-type-button {
-  min-width: 0;
-  min-height: 35px;
-  gap: 5px;
-  padding: 6px 7px;
-  border: 0;
-  border-radius: 11px;
-  background: transparent;
-  color: var(--bk-ink-soft);
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-preview-type-button i {
-  display: none;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-preview-type-button strong {
-  min-width: 18px;
-  padding: 1px 5px;
-  background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
-  font-size: 8px;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-preview-type-button.is-active {
-  background: var(--bk-paper-raised);
-  color: var(--bk-accent);
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--bk-shadow) 12%, transparent);
-  font-weight: 800;
-}
-
-.bakemono-memory-preview-filter-disclosure {
-  margin: 0 0 10px;
-  border-radius: 14px;
-}
-
-.bakemono-memory-preview-filter-disclosure > summary {
-  min-height: 44px;
-  padding: 8px 12px;
-}
-
-.bakemono-memory-preview-filter-disclosure .bakemono-memory-preview-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 120px auto;
-  gap: 8px;
-  margin: 0;
-  padding: 0 10px 10px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-preview-column {
-  gap: 8px;
-  border: 0;
-  background: transparent;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-preview-column > h4 {
-  display: none;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-preview-list {
-  max-height: none;
-  overflow: visible;
-  padding: 0;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-preview-pager {
-  position: static;
-  margin-bottom: 9px;
-  padding: 5px;
-  border: 1px solid var(--bk-line);
-  border-radius: 13px;
-  background: color-mix(in srgb, var(--bk-paper-raised) 86%, transparent);
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-preview-page-button {
-  min-height: 30px;
-  padding: 5px 8px;
-  font-size: 9px;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-preview-page-info {
-  font-size: 9px;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-notebook,
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card {
-  margin: 0 0 9px;
-  border: 0;
-  background: transparent;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-outer > summary,
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card > summary {
-  width: 100%;
-  min-height: 65px;
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 16px;
-  gap: 11px;
-  align-items: center;
-  padding: 10px 12px;
-  border: 1px solid var(--bk-line);
-  border-radius: 16px;
-  background: linear-gradient(150deg, var(--bk-paper-raised), color-mix(in srgb, var(--bk-paper) 96%, var(--SmartThemeBodyColor) 4%));
-  box-shadow: none;
-  color: inherit;
-  font-size: 11px;
-  line-height: 1.45;
-  text-align: left;
-  transform: none;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-outer > summary::before,
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card > summary::before {
-  content: "#";
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, transparent);
-  color: var(--bk-accent);
-  font-family: var(--bk-display);
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] [data-bakemono-preview-column="stage"] .bk-notebook-outer > summary::before,
-.bakemono-workbench-panel[data-bakemono-panel="preview"] [data-bakemono-preview-column="stage"] .bakemono-memory-card > summary::before {
-  content: "S";
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] [data-bakemono-preview-column="epic"] .bk-notebook-outer > summary::before,
-.bakemono-workbench-panel[data-bakemono-panel="preview"] [data-bakemono-preview-column="epic"] .bakemono-memory-card > summary::before {
-  content: "E";
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-outer > summary::after,
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card > summary::after {
-  content: "\f054";
-  color: var(--bk-ink-soft);
-  font: var(--fa-font-solid);
-  font-size: 9px;
-  transition: transform 160ms var(--bk-ease);
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-outer[open] > summary,
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card[open] > summary {
-  border-radius: 16px 16px 0 0;
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, var(--bk-paper-raised));
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-outer[open] > summary::after,
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card[open] > summary::after {
-  transform: rotate(90deg);
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-container,
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-card-body {
-  margin: -1px 0 9px;
-  padding: 12px;
-  border: 1px solid var(--bk-line);
-  border-radius: 0 0 16px 16px;
-  background: linear-gradient(160deg, color-mix(in srgb, var(--bk-paper-raised) 96%, var(--SmartThemeQuoteColor) 4%), var(--bk-paper));
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-notebook-container::before {
-  display: none;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .nh-wrap {
-  padding: 9px 8px 12px;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .nh-chap-label {
-  margin-bottom: 7px;
-  padding: 3px 9px;
-  border: 1px solid var(--bk-line);
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
-  font-size: 9px;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .nh-title {
-  font-size: 18px;
-  font-weight: 750;
-  text-shadow: none;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .nh-title::after {
-  height: 5px;
-  border-bottom-width: 2px;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .nh-divider {
-  margin: 10px auto 7px;
-  border-bottom: 1px solid var(--bk-line);
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .nh-meta {
-  font-size: 9px;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-tabs-nav {
-  gap: 6px;
-  padding: 3px 1px 9px;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-tab-label {
-  padding: 5px 9px;
-  border: 1px solid var(--bk-line);
-  border-radius: 999px;
-  background: transparent;
-  box-shadow: none;
-  font-size: 9px;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-tab-label.is-active {
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 13%, transparent);
-  color: var(--bk-accent);
-  transform: none;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-tabs-content-wrapper {
-  min-height: 150px;
-  border-color: var(--bk-line);
-  border-radius: 13px;
-  background: linear-gradient(160deg, color-mix(in srgb, var(--bk-paper) 94%, var(--SmartThemeQuoteColor) 6%), var(--bk-paper));
-  background-size: auto;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-tab-panel {
-  padding: 13px;
-}
-
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bk-inner-text {
-  font-size: 11px;
-  line-height: 1.7;
-}
-
 @media (max-width: 900px) {
-  .bakemono-memory-preview-filter-disclosure .bakemono-memory-preview-toolbar {
-    grid-template-columns: minmax(0, 1fr) 110px;
-  }
 
-  .bakemono-memory-preview-filter-disclosure .bakemono-memory-preview-toolbar .bakemono-memory-field:first-child {
-    grid-column: 1 / -1;
-  }
 
-  .bakemono-memory-preview-filter-disclosure .bakemono-memory-preview-toolbar .menu_button {
-    width: 100%;
-  }
 }
 
 /* Archive and timeline demo precision pass ---------------------------------- */
@@ -7911,13 +7106,12 @@
   line-height: 1.4;
 }
 
-.bakemono-workbench-root .bakemono-memory-page-intro p,
-.bakemono-workbench-root .bakemono-memory-scene-subtitle {
+.bakemono-workbench-root .bakemono-memory-page-intro p {
   font-size: var(--bk-type-label) !important;
   line-height: 1.65;
 }
 
-.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"]) small {
+.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"], [data-bakemono-panel="preview"]) small {
   font-size: var(--bk-type-meta) !important;
   line-height: 1.45;
 }
@@ -8083,10 +7277,10 @@
 
 /* Release typography sweep: legacy precision rules also used tiny text on
  * spans, ems, times and custom buttons, so they need semantic overrides too. */
-/* 剧情状态 and the home page set their own type scale. */
-.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"]) button:not(.bakemono-icon-button),
-.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"]) label,
-.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"]) .checkbox_label {
+/* 剧情状态, the home page and 总结 set their own type scale. */
+.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"], [data-bakemono-panel="preview"]) button:not(.bakemono-icon-button),
+.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"], [data-bakemono-panel="preview"]) label,
+.bakemono-workbench-root .bakemono-workbench-panel:not([data-bakemono-panel="rp-state"], [data-bakemono-panel="overview"], [data-bakemono-panel="preview"]) .checkbox_label {
   font-size: var(--bk-type-copy) !important;
 }
 
@@ -8103,7 +7297,6 @@
 .bakemono-workbench-root .bakemono-memory-task-main em,
 .bakemono-workbench-root .bakemono-memory-history-item time,
 .bakemono-workbench-root .bakemono-memory-preview-page-info,
-.bakemono-workbench-root .nh-meta,
 .bakemono-workbench-root .bakemono-memory-record-stat-strip span,
 .bakemono-workbench-root .bakemono-memory-record-section-head > span,
 .bakemono-workbench-root .bakemono-memory-record-chip,
@@ -8125,7 +7318,6 @@
 .bakemono-workbench-root .bakemono-memory-turn-status-hero > p,
 .bakemono-workbench-root .bakemono-memory-table-diff-item p,
 .bakemono-workbench-root .bakemono-memory-draft-body p,
-.bakemono-workbench-root .bakemono-memory-summary-generation-panel p,
 .bakemono-workbench-root .bakemono-memory-record-copy p,
 .bakemono-workbench-root .bakemono-memory-workflow-status-hero > p,
 .bakemono-workbench-root .bakemono-memory-scan-status-hero > p,
@@ -8460,36 +7652,34 @@ details[open] > summary > .bakemono-memory-help-trigger {
 
 
   .bakemono-workbench-root .bakemono-memory-page-intro p,
-  .bakemono-workbench-root .bakemono-memory-scene-subtitle,
-  .bakemono-workbench-root .bakemono-memory-vector-status-hero > p,
-  .bakemono-workbench-root .bakemono-memory-automation-hero > p,
-  .bakemono-workbench-root .bakemono-memory-turn-status-hero > p,
-  .bakemono-workbench-root .bakemono-memory-workflow-status-hero > p,
-  .bakemono-workbench-root .bakemono-memory-scan-status-hero > p,
-  .bakemono-workbench-root .bakemono-memory-injection-status-hero > p,
-  .bakemono-workbench-root .bakemono-memory-prompts-preview-card > p,
-  .bakemono-workbench-root .bakemono-memory-empty,
-  .bakemono-workbench-root .bakemono-memory-vector-result-empty span {
+.bakemono-workbench-root .bakemono-memory-vector-status-hero > p,
+.bakemono-workbench-root .bakemono-memory-automation-hero > p,
+.bakemono-workbench-root .bakemono-memory-turn-status-hero > p,
+.bakemono-workbench-root .bakemono-memory-workflow-status-hero > p,
+.bakemono-workbench-root .bakemono-memory-scan-status-hero > p,
+.bakemono-workbench-root .bakemono-memory-injection-status-hero > p,
+.bakemono-workbench-root .bakemono-memory-prompts-preview-card > p,
+.bakemono-workbench-root .bakemono-memory-empty,
+.bakemono-workbench-root .bakemono-memory-vector-result-empty span {
     font-size: 13px !important;
     line-height: 1.55;
   }
 
   .bakemono-workbench-root .bakemono-memory-stat span,
-  .bakemono-workbench-root .bakemono-memory-action-copy small,
-  .bakemono-workbench-root .bakemono-memory-preview-page-info,
-  .bakemono-workbench-root .bakemono-memory-preview-result-count,
-  .bakemono-workbench-root .bakemono-memory-record-result-count,
-  .bakemono-workbench-root .bakemono-memory-record-main span,
-  .bakemono-workbench-root .bakemono-memory-record-chip,
-  .bakemono-workbench-root .bakemono-memory-draft-meta > span,
-  .bakemono-workbench-root .bakemono-memory-history-main span,
-  .bakemono-workbench-root .bakemono-memory-timeline-meta,
-  .bakemono-workbench-root .bakemono-memory-timeline-counts span,
-  .bakemono-workbench-root .bakemono-memory-table-draft-meta,
-  .bakemono-workbench-root .bakemono-memory-table-overview-strip span,
-  .bakemono-workbench-root .bakemono-memory-record-stat-strip span,
-  .bakemono-workbench-root .nh-meta,
-  .bakemono-workbench-root time {
+.bakemono-workbench-root .bakemono-memory-action-copy small,
+.bakemono-workbench-root .bakemono-memory-preview-page-info,
+.bakemono-workbench-root .bakemono-memory-preview-result-count,
+.bakemono-workbench-root .bakemono-memory-record-result-count,
+.bakemono-workbench-root .bakemono-memory-record-main span,
+.bakemono-workbench-root .bakemono-memory-record-chip,
+.bakemono-workbench-root .bakemono-memory-draft-meta > span,
+.bakemono-workbench-root .bakemono-memory-history-main span,
+.bakemono-workbench-root .bakemono-memory-timeline-meta,
+.bakemono-workbench-root .bakemono-memory-timeline-counts span,
+.bakemono-workbench-root .bakemono-memory-table-draft-meta,
+.bakemono-workbench-root .bakemono-memory-table-overview-strip span,
+.bakemono-workbench-root .bakemono-memory-record-stat-strip span,
+.bakemono-workbench-root time {
     font-size: 12px !important;
     line-height: 1.4;
   }
@@ -8505,10 +7695,9 @@ details[open] > summary > .bakemono-memory-help-trigger {
     line-height: 1.45;
   }
 
-  .bakemono-workbench-root .bk-inner-text,
   .bakemono-workbench-root .bakemono-memory-draft-preview,
-  .bakemono-workbench-root .bakemono-memory-prompts-preview-card > pre,
-  .bakemono-workbench-root .bakemono-memory-injection-preview-card > textarea {
+.bakemono-workbench-root .bakemono-memory-prompts-preview-card > pre,
+.bakemono-workbench-root .bakemono-memory-injection-preview-card > textarea {
     font-size: 14px !important;
     line-height: 1.68;
   }
@@ -8754,31 +7943,9 @@ details[open] > summary > .bakemono-memory-help-trigger {
 }
 
 
-.bakemono-memory-scene-state {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
 
-.bakemono-memory-scene-state-label {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
 
-.bakemono-memory-scene-state-label > strong {
-  overflow: hidden;
-  color: var(--bk-accent);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-.bakemono-memory-scene-state-label > .bakemono-memory-help-trigger,
 .bakemono-memory-builtin-table-preset > .bakemono-memory-help-trigger {
   position: static;
   display: inline-flex;
@@ -8786,13 +7953,6 @@ details[open] > summary > .bakemono-memory-help-trigger {
   flex: 0 0 auto;
 }
 
-.bakemono-memory-scene-state > .bakemono-memory-scene-code {
-  color: var(--bk-ink-soft);
-  font-family: inherit;
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-}
 
 .bakemono-memory-overview-status {
   flex: 0 0 auto;
@@ -8832,13 +7992,7 @@ details[open] > summary > .bakemono-memory-help-trigger {
   line-height: 1.55;
 }
 
-.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-panel h3 {
-  margin-top: 11px;
-}
 
-.bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-scene-progress {
-  margin-top: 14px;
-}
 
 .bakemono-workbench-panel[data-bakemono-panel="overview"] .bakemono-memory-control-deck .bakemono-memory-action-row.menu_button {
   min-height: 60px;
@@ -9511,9 +8665,6 @@ details[open] > summary > .bakemono-memory-help-trigger {
     padding-top: 13px;
   }
 
-  .bakemono-memory-scene-panel {
-    padding: 18px;
-  }
 
   .bakemono-memory-overview-status {
     max-width: 52%;
@@ -9616,18 +8767,8 @@ details[open] > summary > .bakemono-memory-help-trigger {
   margin-top: 16px;
 }
 
-.bakemono-workbench-panel[data-bakemono-panel="preview"] #bakemono-memory-batch-summary-slot {
-  margin: -1px 0 16px;
-}
 
-.bakemono-workbench-panel[data-bakemono-panel="preview"] #bakemono-memory-batch-summary-slot > details {
-  margin-top: 0;
-}
 
-.bakemono-workbench-panel[data-bakemono-panel="preview"] .bakemono-memory-summary-generation-panel [hidden],
-.bakemono-workbench-panel[data-bakemono-panel="preview"] #bakemono-memory-batch-summary-slot > [hidden] {
-  display: none !important;
-}
 
 .bakemono-workbench-panel[data-bakemono-panel="maintenance"] #bakemono-memory-floor-archive-slot {
   margin-top: 18px;
@@ -11400,4 +10541,179 @@ details[open] > summary > .bakemono-memory-help-trigger {
   .bakemono-memory-unsaved-actions {
     grid-template-columns: 1fr;
   }
+}
+
+/* Summary (总结): one row of levels, a next step, then a timeline. Chapters get sticky headers; each summary reads
+   as the sections its prompt asked for. The one place for actions is “⋯” beside an open item. */
+#bakemono-workbench-root[data-active-tab="preview"] .bakemono-workbench-main { background: var(--bk-paper); }
+#bakemono-workbench-root .bk-sum { max-width: 52rem; color: var(--ns-text); font-size: clamp(14px, .95em, 17px); line-height: 1.7; }
+#bakemono-workbench-root .bk-sum button:not(.bk-sum-primary):not(.bk-sum-danger) { margin: 0; padding: 0; min-height: 0; min-width: 0; width: auto; border: 0; border-radius: 0; background: none; box-shadow: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+#bakemono-workbench-root .bk-sum :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--ns-accent); outline-offset: 2px; }
+#bakemono-workbench-root .bk-sum-link { color: var(--ns-accent) !important; font-size: .9em !important; white-space: nowrap; border-bottom: 1px solid transparent !important; transition: border-color .2s; }
+#bakemono-workbench-root .bk-sum-link:hover { border-bottom-color: currentColor !important; }
+#bakemono-workbench-root .bk-sum-link:disabled { opacity: .4; cursor: default; }
+#bakemono-workbench-root .bk-sum :is(.bk-sum-primary, .bk-sum-danger) { display: inline-flex; align-items: center; gap: 8px; width: auto; min-height: 40px; margin: 0; padding: 8px 16px; border: 0; border-radius: 4px; background: var(--ns-accent); box-shadow: none; color: var(--ns-surface); font-size: .95em; font-weight: 600; line-height: 1.3; white-space: nowrap; }
+#bakemono-workbench-root .bk-sum-danger { background: var(--ns-alert) !important; }
+#bakemono-workbench-root .bk-sum :is(.bk-sum-primary, .bk-sum-danger):disabled { opacity: .45; cursor: not-allowed; }
+
+/* levels: three equal columns, the count on its own line so a large number never pushes a tab off-screen */
+#bakemono-workbench-root .bk-sum-levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--ns-rule); }
+#bakemono-workbench-root .bk-sum-levels button { padding: 10px 2px 9px !important; text-align: center !important; color: var(--ns-faint) !important; transition: color .2s, box-shadow .25s; }
+#bakemono-workbench-root .bk-sum-levels button > span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 1.02em; line-height: 1.35; }
+#bakemono-workbench-root .bk-sum-levels b { display: block; margin-top: 1px; font: 500 11px/1.3 var(--ns-mono); color: var(--ns-faint); font-variant-numeric: tabular-nums; }
+#bakemono-workbench-root .bk-sum-levels button:hover { color: var(--ns-muted) !important; }
+#bakemono-workbench-root .bk-sum-levels button[aria-selected="true"] { color: var(--ns-text) !important; box-shadow: inset 0 -2px 0 var(--ns-accent) !important; }
+#bakemono-workbench-root .bk-sum-levels button[aria-selected="true"] b { color: var(--ns-accent); }
+
+/* next step */
+#bakemono-workbench-root .bk-sum-next { padding: 22px 0; border-bottom: 1px solid var(--ns-rule); }
+#bakemono-workbench-root .bk-sum-kicker { display: flex; flex-wrap: wrap; gap: 2px 14px; font: 500 10.5px/1.4 var(--ns-mono); letter-spacing: .14em; color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-next h3 { margin: 6px 0; font: 600 clamp(1.35em, 5vw, 1.75em)/1.3 var(--ns-serif); letter-spacing: .01em; text-wrap: balance; color: var(--ns-text); }
+#bakemono-workbench-root .bk-sum-next > p { margin: 0; max-width: 40em; color: var(--ns-muted); }
+#bakemono-workbench-root .bk-sum-progress { height: 3px; max-width: 24rem; margin-top: 14px; border-radius: 2px; background: color-mix(in srgb, var(--ns-accent) 20%, transparent); overflow: hidden; }
+#bakemono-workbench-root .bk-sum-progress > span { display: block; height: 100%; width: 0; background: var(--ns-accent); transition: width .5s; }
+#bakemono-workbench-root .bk-sum-progress[hidden] { display: none; }
+#bakemono-workbench-root .bk-sum-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-top: 16px; }
+#bakemono-workbench-root .bk-sum-auto { margin: 14px 0 0 !important; font-size: .87em; color: var(--ns-faint) !important; }
+
+/* 补写旧聊天 (the batch form, shown under 剧情摘要) sits flat under the next step */
+#bakemono-workbench-root .bk-sum-batch > details { margin: 0; padding: 4px 0 18px; border: 0; border-bottom: 1px solid var(--ns-rule); border-radius: 0; background: none; box-shadow: none; }
+#bakemono-workbench-root .bk-sum-batch > details[hidden] { display: none; }
+#bakemono-workbench-root .bk-sum-batch > details > summary { display: none; }
+#bakemono-workbench-root .bk-sum-batch :is(.bakemono-memory-batch-panel, .bakemono-memory-batch-fields, .bakemono-memory-batch-mode, .bakemono-memory-batch-range, .bakemono-memory-batch-size, .bakemono-memory-batch-actions) { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+#bakemono-workbench-root .bk-sum-batch .bakemono-memory-batch-panel { display: grid; gap: 14px; padding: 14px 0 0; }
+#bakemono-workbench-root .bk-sum-batch .bakemono-memory-batch-fields { display: grid; gap: 12px; }
+@media (min-width: 640px) { #bakemono-workbench-root .bk-sum-batch .bakemono-memory-batch-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 7em; align-items: start; } }
+#bakemono-workbench-root .bk-sum-batch label { display: grid; gap: 4px; margin: 0; }
+#bakemono-workbench-root .bk-sum-batch label > span { font: 500 10.5px/1.4 var(--ns-mono) !important; letter-spacing: .14em; color: var(--ns-faint) !important; }
+#bakemono-workbench-root .bk-sum-batch label > small { font-size: .82em !important; color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-batch :is(select, textarea, input) { width: 100%; margin: 0; padding: 7px 0; border: 0; border-bottom: 1px solid var(--ns-rule-strong); border-radius: 0; background: transparent; box-shadow: none; color: var(--ns-text); font: inherit; }
+#bakemono-workbench-root .bk-sum-batch :is(select, textarea, input):focus { outline: none; border-bottom-color: var(--ns-accent); }
+#bakemono-workbench-root .bk-sum-batch select option { background: var(--bk-paper); color: var(--ns-text); }
+#bakemono-workbench-root .bk-sum-batch .bakemono-memory-batch-flow { display: flex; flex-wrap: wrap; gap: 4px 0; font-size: .85em; color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-batch .bakemono-memory-batch-flow span { display: inline; padding: 0; border: 0; background: none; }
+#bakemono-workbench-root .bk-sum-batch .bakemono-memory-batch-flow span + span::before { content: "→"; margin: 0 8px; color: var(--ns-rule-strong); }
+#bakemono-workbench-root .bk-sum-batch .bakemono-memory-batch-flow i { display: none; }
+#bakemono-workbench-root .bk-sum .bk-sum-batch .bakemono-memory-batch-actions .menu_button { display: inline-flex; align-items: center; gap: 8px; width: auto; min-height: 40px; margin: 0; padding: 8px 16px; border: 0; border-radius: 4px; background: var(--ns-accent); box-shadow: none; color: var(--ns-surface); font-weight: 600; }
+
+/* search and order */
+#bakemono-workbench-root .bk-sum-tools { display: flex; align-items: center; gap: 16px; padding: 16px 0 4px; }
+#bakemono-workbench-root .bk-sum-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; margin: 0; padding: 2px 0 6px; border-bottom: 1px solid var(--ns-rule-strong); }
+#bakemono-workbench-root .bk-sum-search > span { font: 500 10.5px/1.3 var(--ns-mono); letter-spacing: .14em; color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-search input { flex: 1; min-width: 0; margin: 0; padding: 3px 0; border: 0; background: none; box-shadow: none; color: var(--ns-text); font: 400 1.05em var(--ns-serif); outline: none; }
+#bakemono-workbench-root .bk-sum-search input::placeholder { color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-search:focus-within { border-bottom-color: var(--ns-text); }
+#bakemono-workbench-root .bk-sum-order select { width: auto; margin: 0; padding: 4px 2px; border: 0; background: none; box-shadow: none; color: var(--ns-muted); font: inherit; font-size: .87em; cursor: pointer; }
+#bakemono-workbench-root .bk-sum-order select option { background: var(--bk-paper); color: var(--ns-text); }
+
+/* timeline */
+#bakemono-workbench-root .bk-sum .bakemono-memory-preview-grid { display: block; }
+#bakemono-workbench-root .bk-sum .bakemono-memory-preview-column[hidden] { display: none; }
+#bakemono-workbench-root .bk-sum-timeline { position: relative; margin-top: 8px; padding-left: 24px; }
+#bakemono-workbench-root .bk-sum-timeline::before { content: ""; position: absolute; left: 7px; top: 12px; bottom: 12px; width: 1px; background: var(--ns-rule-strong); }
+#bakemono-workbench-root :is(.bk-sum-chapter, .bk-sum-group) { position: relative; padding-bottom: 20px; }
+#bakemono-workbench-root :is(.bk-sum-chapter-h, .bk-sum-group-h) { position: sticky; top: 0; z-index: 2; display: flex; align-items: flex-start; gap: 8px; padding: 10px 0 8px; background: var(--bk-paper); }
+#bakemono-workbench-root :is(.bk-sum-chapter-h, .bk-sum-group-h)::before { content: ""; position: absolute; left: -22px; top: 18px; width: 9px; height: 9px; border: 1.5px solid var(--ns-accent); border-radius: 50%; background: var(--bk-paper); box-sizing: border-box; }
+#bakemono-workbench-root :is(.bk-sum-group.is-pending, .bk-sum-chapter.is-stale) > :is(.bk-sum-group-h, .bk-sum-chapter-h)::before { border-color: var(--ns-alert); }
+#bakemono-workbench-root .bk-sum-head { flex: 1; min-width: 0; display: block; }
+#bakemono-workbench-root :is(.bk-sum-chapter-h, .bk-sum-group-h) h4 { margin: 0; font: 600 1.15em/1.4 var(--ns-serif); letter-spacing: .02em; color: var(--ns-text); }
+#bakemono-workbench-root .bk-sum-head:hover h4 { text-decoration: underline; text-decoration-color: var(--ns-rule-strong); text-underline-offset: 5px; }
+#bakemono-workbench-root .bk-sum-group-h { flex-direction: column; gap: 0; }
+#bakemono-workbench-root .bk-sum-group-h > span { font: 12px/1.5 var(--ns-mono); color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-group.is-pending .bk-sum-group-h > span { color: var(--ns-alert); }
+#bakemono-workbench-root .bk-sum-meta { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 1px; font: 12px/1.55 var(--ns-mono); color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-meta b { font-weight: 500; color: var(--ns-accent); }
+#bakemono-workbench-root .bk-sum-meta .is-alert { color: var(--ns-alert); }
+#bakemono-workbench-root .bk-sum-dots { flex: none; display: grid !important; place-items: center; width: 40px !important; height: 36px; margin: -4px -8px 0 0 !important; border-radius: 4px !important; color: var(--ns-muted) !important; font: 700 17px/1 var(--ns-mono) !important; letter-spacing: .06em; text-align: center !important; }
+#bakemono-workbench-root .bk-sum-dots[hidden] { display: none !important; }
+#bakemono-workbench-root .bk-sum-dots:hover { background: var(--ns-hover) !important; color: var(--ns-text) !important; }
+#bakemono-workbench-root .bk-sum-preview { color: var(--ns-muted); font: 400 1.03em/1.85 var(--ns-serif); }
+#bakemono-workbench-root .bk-sum-clamp { display: -webkit-box; margin: 0 0 6px; overflow: hidden; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+#bakemono-workbench-root .bk-sum-fold { display: block; margin-top: 14px; }
+
+/* story summaries: floor and scene, the title, the first beat */
+#bakemono-workbench-root .bk-sum-story { border-bottom: 1px dashed var(--ns-rule); }
+#bakemono-workbench-root .bk-sum-story.is-open { padding-bottom: 16px; }
+#bakemono-workbench-root .bk-sum-story-h { display: flex; align-items: flex-start; gap: 8px; }
+#bakemono-workbench-root .bk-sum-story-tap { flex: 1; min-width: 0; display: block !important; padding: 12px 0 11px !important; }
+#bakemono-workbench-root .bk-sum-story-h .bk-sum-dots { margin-top: 8px !important; }
+#bakemono-workbench-root .bk-sum-line1 { display: flex; align-items: baseline; gap: 10px; font: 12px/1.5 var(--ns-mono); color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-where { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: inherit; }
+#bakemono-workbench-root .bk-sum-tag { flex: none; font-weight: 500; }
+#bakemono-workbench-root .bk-sum-tag.is-new { color: var(--ns-accent); }
+#bakemono-workbench-root .bk-sum-tag.is-alert { color: var(--ns-alert); }
+#bakemono-workbench-root .bk-sum-ttl { display: block; margin-top: 2px; font: 600 1.07em/1.45 var(--ns-serif); color: var(--ns-text); }
+#bakemono-workbench-root .bk-sum-lead { display: -webkit-box; margin-top: 2px; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: .94em; line-height: 1.65; color: var(--ns-muted); }
+#bakemono-workbench-root .bk-sum-story.is-open .bk-sum-lead { display: none; }
+
+/* a summary read as a document: short label, then the section */
+#bakemono-workbench-root .bk-sum-doc { margin-top: 4px; }
+#bakemono-workbench-root .bk-sum-sec { display: grid; grid-template-columns: minmax(0, 1fr); padding: 12px 0; border-top: 1px dashed var(--ns-rule); }
+#bakemono-workbench-root .bk-sum-sec:first-child { padding-top: 4px; border-top: 0; }
+#bakemono-workbench-root .bk-sum-sec-label { padding-bottom: 4px; font: 500 10.5px/1.4 var(--ns-mono); letter-spacing: .1em; color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-sec-label:empty { display: none; }
+@media (min-width: 560px) {
+  #bakemono-workbench-root .bk-sum-sec { grid-template-columns: 3.6em minmax(0, 1fr); gap: 0 14px; }
+  #bakemono-workbench-root .bk-sum-sec-label { padding: 6px 0 0; }
+  #bakemono-workbench-root .bk-sum-sec-label:empty { display: block; }
+}
+#bakemono-workbench-root .bk-sum-sec-body { min-width: 0; font: 400 1em/1.8 var(--ns-serif); color: var(--ns-muted); overflow-wrap: anywhere; }
+#bakemono-workbench-root .bk-sum-sec-body :is(p, ul, blockquote) { margin: 0; }
+#bakemono-workbench-root .bk-sum-sec-body > * + * { margin-top: 8px; }
+#bakemono-workbench-root .bk-sum-sec-body ul { padding: 0; list-style: none; }
+#bakemono-workbench-root .bk-sum-sec-body li { position: relative; padding-left: 14px; }
+#bakemono-workbench-root .bk-sum-sec-body li::before { content: ""; position: absolute; left: 1px; top: .9em; width: 5px; height: 1px; background: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-sec-body li + li { margin-top: 4px; }
+#bakemono-workbench-root .bk-sum-quote { padding-left: 12px; border-left: 1px solid var(--ns-rule-strong); color: var(--ns-text); }
+#bakemono-workbench-root .bk-sum-quote cite { display: block; font: 12px/1.5 var(--ns-mono); font-style: normal; color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-quote cite::before { content: "— "; }
+#bakemono-workbench-root .bk-sum-kv + .bk-sum-kv { margin-top: 4px; }
+#bakemono-workbench-root .bk-sum-k { margin-right: 8px; font-size: .87em; color: var(--ns-faint); white-space: nowrap; }
+#bakemono-workbench-root .bk-sum-k.is-done { color: var(--ns-accent); }
+#bakemono-workbench-root .bk-sum-aside { font-style: italic; }
+#bakemono-workbench-root .bk-sum-none { color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-event-h { font-weight: 600; color: var(--ns-text); }
+#bakemono-workbench-root .bk-sum-event-h small { display: block; font: 400 12px/1.5 var(--ns-mono); color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-event .bk-sum-kv { margin-top: 2px; }
+
+/* editing a saved summary in place */
+#bakemono-workbench-root .bk-sum-editor { display: grid; gap: 12px; margin-top: 6px; }
+#bakemono-workbench-root .bk-sum-editor[hidden], #bakemono-workbench-root .bk-sum .is-editing > :is(.bk-sum-full, .bk-sum-preview) { display: none; }
+#bakemono-workbench-root .bk-sum-field { display: grid; gap: 4px; margin: 0; }
+#bakemono-workbench-root .bk-sum-field > span { font: 500 10.5px/1.4 var(--ns-mono); letter-spacing: .14em; color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-field :is(input, textarea) { width: 100%; margin: 0; padding: 10px 12px; border: 1px solid var(--ns-rule-strong); border-radius: 4px; background: color-mix(in srgb, var(--ns-text) 4%, var(--bk-paper)); box-shadow: none; color: var(--ns-text); font: 13.5px/1.7 var(--ns-mono); }
+#bakemono-workbench-root .bk-sum-field textarea { min-height: 320px; resize: vertical; }
+#bakemono-workbench-root .bk-sum-field :is(input, textarea):focus { outline: none; border-color: var(--ns-accent); }
+#bakemono-workbench-root .bk-sum-editor-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+
+#bakemono-workbench-root .bk-sum .bk-sum-empty { margin: 18px 0 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--ns-faint); text-align: left; }
+#bakemono-workbench-root .bk-sum-pager { display: flex; justify-content: center; align-items: center; gap: 18px; margin: 14px 0 0; padding: 0; border: 0; background: none; font: 12px var(--ns-mono); color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-pager .bakemono-memory-preview-page-info { font: inherit; color: inherit; }
+
+/* action sheet: bottom sheet on phones, centred on wide screens */
+#bakemono-workbench-root .bk-sum-sheet-wrap { position: absolute; inset: 0; z-index: 40; display: flex; align-items: flex-end; justify-content: center; }
+#bakemono-workbench-root .bk-sum-sheet-wrap[hidden] { display: none; }
+#bakemono-workbench-root .bk-sum-sheet-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, .5); }
+#bakemono-workbench-root .bk-sum-sheet { position: relative; width: min(520px, 100%); max-height: 85%; overflow-y: auto; padding: 18px 16px calc(20px + env(safe-area-inset-bottom, 0px)); border: 1px solid var(--ns-rule-strong); border-bottom: 0; border-radius: 8px 8px 0 0; background: var(--bk-paper); color: var(--ns-text); box-shadow: 0 -12px 32px rgba(0, 0, 0, .25); font-size: clamp(14px, .95em, 17px); line-height: 1.6; }
+@media (min-width: 700px) {
+  #bakemono-workbench-root .bk-sum-sheet-wrap { align-items: center; }
+  #bakemono-workbench-root .bk-sum-sheet { border-bottom: 1px solid var(--ns-rule-strong); border-radius: 8px; }
+}
+#bakemono-workbench-root .bk-sum-sheet button { margin: 0; padding: 0; min-height: 0; width: auto; border: 0; border-radius: 0; background: none; box-shadow: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+#bakemono-workbench-root .bk-sum-sheet :is(button):focus-visible { outline: 2px solid var(--ns-accent); outline-offset: 2px; }
+#bakemono-workbench-root .bk-sum-sheet-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--ns-rule); }
+#bakemono-workbench-root .bk-sum-sheet-h strong { display: block; font: 600 1.15em/1.35 var(--ns-serif); }
+#bakemono-workbench-root .bk-sum-sheet-h small { display: block; font: 12px/1.5 var(--ns-mono); color: var(--ns-faint); }
+#bakemono-workbench-root .bk-sum-sheet .bk-sum-act { display: flex; align-items: baseline; gap: 12px; width: 100%; min-height: 52px; padding: 13px 2px; border-bottom: 1px solid var(--ns-rule); }
+#bakemono-workbench-root .bk-sum-act > span { flex: 1; }
+#bakemono-workbench-root .bk-sum-act > small { font-size: .85em; color: var(--ns-faint); text-align: right; }
+#bakemono-workbench-root .bk-sum-act:hover:not(:disabled) { background: var(--ns-hover); }
+#bakemono-workbench-root .bk-sum-sheet .bk-sum-act.is-danger { margin-top: 14px; border-top: 1px solid var(--ns-rule); color: var(--ns-alert); }
+#bakemono-workbench-root .bk-sum-act:disabled { opacity: .55; cursor: not-allowed; }
+#bakemono-workbench-root .bk-sum-sheet-note { margin: 12px 0 0; font-size: .9em; color: var(--ns-muted); }
+#bakemono-workbench-root .bk-sum-confirm p { margin: 14px 0 0; color: var(--ns-muted); }
+#bakemono-workbench-root .bk-sum-confirm-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 20px; }
+#bakemono-workbench-root .bk-sum-sheet .bk-sum-danger { display: inline-flex; align-items: center; min-height: 40px; padding: 8px 18px; border-radius: 4px; background: var(--ns-alert); color: var(--ns-surface); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) {
+  #bakemono-workbench-root .bk-sum :is(.bk-sum-progress > span, .bk-sum-levels button) { transition: none !important; }
 }

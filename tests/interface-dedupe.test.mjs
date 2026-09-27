@@ -51,7 +51,7 @@ test('summary card has one generate action and disables it without material', ()
     const empty = summaryCardFixture();
     empty.render('stage');
     assert.equal(empty.primary.disabled, true);
-    assert.match(empty.text['#bakemono-memory-summary-generation-description'], /还没有剧情摘要/);
+    assert.match(empty.text['#bakemono-memory-summary-generation-title'], /还没有剧情摘要/);
 
     const ready = summaryCardFixture({ totalCount: 3, story: [{}, {}, {}] });
     ready.render('stage');

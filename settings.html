@@ -993,95 +993,44 @@
       <section class="bakemono-workbench-panel" data-bakemono-panel="rp-state">
         <div id="bakemono-rp-root" class="rp-core-ui"></div>
       </section>
-      <section class="bakemono-workbench-panel" data-bakemono-panel="preview">
-        <div class="bakemono-memory-summary-settings-link">
-          <span id="bakemono-memory-summary-auto-status">自动总结：未开启</span>
-          <button type="button" class="menu_button" data-bakemono-nav="automation">调整自动总结</button>
-        </div>
+      <section class="bakemono-workbench-panel bk-sum" data-bakemono-panel="preview">
+        <nav class="bk-sum-levels" role="tablist" aria-label="总结层级">
+          <button type="button" role="tab" aria-selected="false" data-bakemono-preview-type="story"><span>剧情摘要</span><b><span id="bakemono-memory-tab-count-story">0</span> 条</b></button>
+          <button type="button" role="tab" aria-selected="true" class="is-active" data-bakemono-preview-type="stage"><span>阶段总结</span><b><span id="bakemono-memory-tab-count-stage">0</span> 条</b></button>
+          <button type="button" role="tab" aria-selected="false" data-bakemono-preview-type="epic"><span>多次总结</span><b><span id="bakemono-memory-tab-count-epic">0</span> 条</b></button>
+        </nav>
 
-        <div class="bakemono-memory-summary-mode-tabs" aria-label="总结生成方式">
-          <button type="button" class="is-active" data-bakemono-summary-mode="stage">阶段总结</button>
-          <button type="button" data-bakemono-summary-mode="epic">多次总结</button>
-          <button type="button" data-bakemono-summary-mode="batch">补写旧聊天</button>
-        </div>
-
-        <article class="bakemono-memory-scene-panel bakemono-memory-summary-generation-panel">
-          <div class="bakemono-memory-scene-meta">
-            <span class="bakemono-memory-next-kicker">当前可生成</span>
-            <span id="bakemono-memory-summary-generation-code" class="bakemono-memory-scene-code">0 条材料</span>
-          </div>
+        <section class="bk-sum-next" aria-live="polite">
+          <div class="bk-sum-kicker"><span id="bakemono-memory-summary-generation-kicker">阶段总结 · 下一步</span><span id="bakemono-memory-summary-generation-code">0 条待整理</span></div>
           <h3 id="bakemono-memory-summary-generation-title">整理下一段长期记忆</h3>
           <p id="bakemono-memory-summary-generation-description">扫描后会在这里显示可用于生成阶段总结的摘要。</p>
-          <div class="bakemono-memory-scene-progress" aria-hidden="true">
-            <span id="bakemono-memory-summary-generation-progress"></span>
+          <div class="bk-sum-progress" aria-hidden="true"><span id="bakemono-memory-summary-generation-progress"></span></div>
+          <div class="bk-sum-actions">
+            <button type="button" class="menu_button bk-sum-primary" id="bakemono-memory-summary-primary-action" data-bakemono-action="generate-stage"><span>生成阶段总结</span></button>
+            <button type="button" class="bk-sum-link" data-bakemono-nav="timeline">看摘要树 ›</button>
           </div>
-          <div class="bakemono-memory-hero-actions">
-            <button class="menu_button is-workflow-primary" id="bakemono-memory-summary-primary-action" data-bakemono-action="generate-stage">
-              <i class="fa-solid fa-wand-magic-sparkles"></i>
-              <span>生成阶段总结</span>
-            </button>
-          </div>
-        </article>
+          <p class="bk-sum-auto"><span id="bakemono-memory-summary-auto-status">自动总结：未开启</span> · <button type="button" class="bk-sum-link" data-bakemono-nav="automation">调整 ›</button></p>
+        </section>
 
-        <div id="bakemono-memory-batch-summary-slot" class="bakemono-memory-owned-section-slot"></div>
+        <div id="bakemono-memory-batch-summary-slot" class="bakemono-memory-owned-section-slot bk-sum-batch"></div>
 
-        <div class="bakemono-memory-section-head bakemono-memory-summary-list-head">
-          <div>
-            <span class="bakemono-memory-next-kicker">最近完成</span>
-            <h3>可回看的总结</h3>
-          </div>
-          <button type="button" data-bakemono-nav="timeline">摘要树</button>
+        <div class="bk-sum-tools">
+          <label class="bk-sum-search"><span>搜索</span><input id="bakemono-memory-preview-filter" type="search" placeholder="章名、人物、地点……" autocomplete="off"></label>
+          <label class="bk-sum-order">
+            <select id="bakemono-memory-preview-order" aria-label="排序">
+              <option value="desc">最新在前</option>
+              <option value="asc">最早在前</option>
+            </select>
+          </label>
         </div>
-
-        <div class="bakemono-memory-preview-type-tabs" aria-label="总结类别">
-          <button type="button" class="bakemono-preview-type-button is-active" data-bakemono-preview-type="story">
-            <i class="fa-solid fa-scroll"></i>
-            <span>剧情摘要</span>
-            <strong id="bakemono-memory-tab-count-story">0</strong>
-          </button>
-          <button type="button" class="bakemono-preview-type-button" data-bakemono-preview-type="stage">
-            <i class="fa-solid fa-film"></i>
-            <span>阶段总结</span>
-            <strong id="bakemono-memory-tab-count-stage">0</strong>
-          </button>
-          <button type="button" class="bakemono-preview-type-button" data-bakemono-preview-type="epic">
-            <i class="fa-solid fa-layer-group"></i>
-            <span>多次总结</span>
-            <strong id="bakemono-memory-tab-count-epic">0</strong>
-          </button>
-        </div>
-
-        <details class="bakemono-memory-console-disclosure bakemono-memory-preview-filter-disclosure">
-          <summary><span><i class="fa-solid fa-magnifying-glass"></i> 搜索与排序</span><small>按章节、标题或正文筛选</small></summary>
-          <div class="bakemono-memory-preview-toolbar">
-            <label class="bakemono-memory-field">
-              <span>筛选</span>
-              <input id="bakemono-memory-preview-filter" class="text_pole" type="search" placeholder="可搜第1章、标题、正文">
-            </label>
-            <label class="bakemono-memory-field">
-              <span>排序</span>
-              <select id="bakemono-memory-preview-order" class="text_pole">
-                <option value="desc">最新在前</option>
-                <option value="asc">旧的在前</option>
-              </select>
-            </label>
-            <button class="menu_button" id="bakemono-memory-clear-preview-filter">
-              <i class="fa-solid fa-xmark"></i>
-              <span>清空筛选</span>
-            </button>
-          </div>
-        </details>
-        <div class="bakemono-memory-preview-grid" data-bakemono-active-preview="story">
-          <section class="bakemono-memory-preview-column is-active" data-bakemono-preview-column="story">
-            <h4><i class="fa-solid fa-scroll"></i> 剧情摘要</h4>
+        <div class="bakemono-memory-preview-grid" data-bakemono-active-preview="stage">
+          <section class="bakemono-memory-preview-column" data-bakemono-preview-column="story" aria-label="剧情摘要" hidden>
             <div id="bakemono-memory-preview-story" class="bakemono-memory-preview-list"></div>
           </section>
-          <section class="bakemono-memory-preview-column" data-bakemono-preview-column="stage">
-            <h4><i class="fa-solid fa-film"></i> 阶段总结</h4>
+          <section class="bakemono-memory-preview-column is-active" data-bakemono-preview-column="stage" aria-label="阶段总结">
             <div id="bakemono-memory-preview-stage" class="bakemono-memory-preview-list"></div>
           </section>
-          <section class="bakemono-memory-preview-column" data-bakemono-preview-column="epic">
-            <h4><i class="fa-solid fa-layer-group"></i> 多次总结</h4>
+          <section class="bakemono-memory-preview-column" data-bakemono-preview-column="epic" aria-label="多次总结" hidden>
             <div id="bakemono-memory-preview-epic" class="bakemono-memory-preview-list"></div>
           </section>
         </div>
@@ -2065,7 +2014,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.12.1 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.13.0 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

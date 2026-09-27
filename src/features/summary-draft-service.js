@@ -825,7 +825,10 @@ export function createSummaryDraftService({
         toastr.success('摘要已更新。');
     }
     
-    async function deleteSavedSummary(hash) {
+    // The last deletion, kept so the toast can put it back.
+    let lastDeletion = null;
+
+    async function deleteSavedSummary(hash, { confirmed: preconfirmed = false } = {}) {
         const found = findSavedSummaryByHash(hash);
         if (!found) {
             toastr.warning('没有找到这个已保存摘要。');
@@ -836,7 +839,7 @@ export function createSummaryDraftService({
             toastr.warning(`这个摘要已被 ${dependents.length} 个上层总结引用，请先删除上层总结。`);
             return;
         }
-        const confirmed = confirm([
+        const confirmed = preconfirmed || confirm([
             `删除已保存的「${found.summary.title || getKindLabel(found.kind)}」？`,
             '这不会删除聊天正文，但会更新摘要树和注入内容。',
             '',
@@ -848,6 +851,11 @@ export function createSummaryDraftService({
 
         const state = ensureState();
         const stateSnapshot = captureSummaryState(state);
+        const deletion = {
+            kind: found.kind, index: found.index, summary: found.summary,
+            blocks: state.blocks.filter(block => block.hash === hash),
+            history: state.history.filter(item => item.summaryHash === hash),
+        };
         removeSummaryByHash(found.kind, hash);
         recomputeCoveredHashes(state);
         state.blocks = state.blocks.filter(block => block.hash !== hash);
@@ -860,8 +868,36 @@ export function createSummaryDraftService({
             showDurableSaveFailure(error);
             return;
         }
+        lastDeletion = { ...deletion, state };
         renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '摘要已删除。');
-        toastr.success('摘要已删除。');
+        toastr.success('摘要已删除。点这里撤回。', '', { timeOut: 8000, extendedTimeOut: 4000, onclick: () => serial(restoreDeletedSummary)().catch(() => {}) });
+    }
+
+    async function restoreDeletedSummary() {
+        const deletion = lastDeletion;
+        lastDeletion = null;
+        const state = ensureState();
+        if (!deletion || deletion.state !== state || findSavedSummaryByHash(deletion.summary.hash)) {
+            toastr.info('这条摘要已经无法撤回。');
+            return false;
+        }
+        const stateSnapshot = captureSummaryState(state);
+        const list = deletion.kind === blockTypes.STORY ? state.storySummaries : deletion.kind === blockTypes.EPIC ? state.epicSummaries : state.stageSummaries;
+        list.splice(Math.min(deletion.index, list.length), 0, deletion.summary);
+        state.blocks = [...state.blocks, ...deletion.blocks];
+        state.history = [...state.history, ...deletion.history];
+        recomputeCoveredHashes(state);
+        updateInjectionFromSummaries();
+        try {
+            await persistSummaryStateDurably();
+        } catch (error) {
+            restoreSummaryState(stateSnapshot, state);
+            showDurableSaveFailure(error);
+            return false;
+        }
+        renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已撤回删除。');
+        toastr.success('已撤回删除。');
+        return true;
     }
 
     function canRemoveScannedSummaryBlock(block) {
@@ -962,6 +998,7 @@ export function createSummaryDraftService({
         regenerateDraft,
         removeMissingSummaryDraftsAndTasks,
         removeScannedSummaryBlock: serial(removeScannedSummaryBlock),
+        restoreDeletedSummary: serial(restoreDeletedSummary),
         removeSummaryByHash,
         rollbackAutoSummaryTransaction: serial(rollbackAutoSummaryTransaction),
         saveEditedSummary: serial(saveEditedSummary),

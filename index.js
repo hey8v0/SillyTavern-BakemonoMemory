@@ -88,6 +88,7 @@ import { createTurnSummaryUi, syncSummarySourceControls } from './src/features/t
 import { createHubAutomationUi } from './src/features/hub-automation-ui.js';
 import { createSummaryBrowserUi } from './src/features/summary-browser-ui.js';
 import { createSummaryBrowserEvents } from './src/features/summary-browser-events.js';
+import { createSummaryActionSheet } from './src/features/summary-action-sheet.js';
 import { createWorkbenchPageOverviews } from './src/features/workbench-page-overviews.js';
 import { createReviewQueueUi } from './src/features/review-queue-ui.js';
 import { createReviewQueueEvents } from './src/features/review-queue-events.js';
@@ -590,7 +591,9 @@ const summaryPreviewRenderer = createSummaryPreviewRenderer({
 const {
     createBakemonoNotebook,
     getPreviewSummaryText,
+    getSummaryGroup,
     parsePreviewMeta,
+    setSummaryOpen,
 } = summaryPreviewRenderer;
 
 const summarySources = createSummarySourceService({getState:ensureState,getChat:()=>chat,getChatIdentity:()=>getSummaryRecoveryChatIdentity()});
@@ -1097,7 +1100,9 @@ const summarySourceWizard = createSummarySourceWizard({
     openBackfill: async batchMode => {
         if (!await switchWorkbenchTab('preview')) return;
         summaryGenerationUi.setMode('batch');
+        setSummaryBrowserActiveType('story');
         renderSummaryGenerationPanel();
+        renderPreviewSections();
         $('#bakemono-memory-batch-summary-mode').val(batchMode);
     },
 });
@@ -1639,6 +1644,7 @@ const summaryGenerationUi = createSummaryGenerationUi({
     getState: ensureState,
     getStageMaterialOverview,
     getStageSourceModeLabel,
+    getCurrentFloorMemoryIndex,
 });
 const {
     bindEvents: bindSummaryGenerationEvents,
@@ -1703,6 +1709,8 @@ const summaryBrowserUi = createSummaryBrowserUi({
     stripHtml,
     getBlockSortKey,
     createNotebook: createBakemonoNotebook,
+    getSummaryGroup,
+    setSummaryOpen,
 });
 const {
     changePage: changeSummaryBrowserPage,
@@ -1929,7 +1937,26 @@ const summaryBrowserEvents = createSummaryBrowserEvents({
     memoryRecordStatuses,
     renderMemoryRecordList,
     saveEditedSummary,
-    deleteSavedSummary,
+    toggleSummaryOpen: item => summaryBrowserUi.toggleOpen(item),
+    openSummaryActions: (item, trigger) => summaryActionSheet.open(item, trigger),
+});
+
+const summaryActionSheet = createSummaryActionSheet({
+    documentRef: document,
+    escapeHtml,
+    findSavedSummaryByHash,
+    getSummaryDependents,
+    startEdit: item => summaryBrowserUi.startEdit(item),
+    locateFloor: floor => {
+        const message = document.querySelector(`#chat .mes[mesid="${floor}"]`);
+        if (!message) {
+            toastr.info(`第 ${floor} 楼还没在聊天里载入，请先在聊天里往上翻到那一楼。`);
+            return;
+        }
+        closeWorkbench();
+        message.scrollIntoView({ block: 'center', behavior: 'auto' });
+    },
+    deleteSummary: hash => deleteSavedSummary(hash, { confirmed: true }),
 });
 
 const turnProcessingController = createTurnProcessingController({

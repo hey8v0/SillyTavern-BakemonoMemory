@@ -48,6 +48,18 @@ const rpEvents = [
  { track: 'observations', data: { speaker: '旅人', subject: '格伦', description: '格伦似乎知道矿坑坍塌的内情' } },
 ];
 if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('rp')) lines.at(-1)[2] += '\n<rpEvents>' + JSON.stringify({ version: 2, events: rpEvents }) + '</rpEvents>';
+// Open the harness with ?sum for a longer chat whose replies carry full-format story summaries (总结 review).
+const beats = [
+ ['北境地图', '深夜', '铁匠铺', '旅人、格伦', ['格伦把北境地图摊在铁砧上，用炭笔沿着通往矿坑的旧路描了一遍。', '他问旅人这张图从哪里来，旅人只说是路上捡的。'], '> “这条路三年前就没人走了。” —— [格伦]', '[渡鸦酒馆]：莉娜在清点后门钥匙，发现少了一把。', '地图上矿坑的位置被人用炭笔圈过。', '*格伦认得那道炭笔印。*'],
+ ['一封信的价钱', '深夜', '铁匠铺', '旅人、格伦', ['旅人问通行证的价钱，格伦说不要钱，要旅人替他把一封信送到北方矿坑的看守所。', '格伦从柜子深处取出信封，封口盖着火漆。'], '> “钱我不缺，缺的是一个不会拆信的人。” —— [格伦]', '无', '信的内容；收信人是谁。', '*看守所三天前已经随矿坑一起被封了。*'],
+ ['半张通行证', '深夜', '钟楼下', '旅人、格伦', ['格伦把通行证撕成两半，只给了旅人一半。', '旅人不满，但没有争，把半张通行证和信一起收进内袋。'], '> “半张够你过镇口的哨卡，剩下的路看你自己。” —— [格伦]', '[镇口哨卡]：领主的卫兵换了班。', '另一半通行证在格伦手里。', '*撕开的那一半上印着领主的纹章。*'],
+];
+const fullSummary = ([title, time, place, cast, events, quote, side, hook, wall]) => ['', '<bakemono>', '<details>', '<summary>📋 剧情摘要</summary>',
+ `【☆『${title}』★时间：${time}★${place}|${cast}☆】`, '', '➤ 🎬 【场记打板】', ...events.map(e => '- ' + e), '', '➤ 🎙️ 【高光收音】', quote, '',
+ '➤ 🌍 【副镜监视器】', side, '', '➤ 🪢 【剧本暗线】', `[未回收伏笔]：${hook}`, '[✅ 本回合回收]：无', '', '➤ 💡 【第四面墙】', wall, '</details>', '</bakemono>'].join('\n');
+if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('sum')) {
+ for (let i = 0; i < 24; i++) lines.push(['旅人', true, `（第 ${i + 1} 段）我继续追问。`], ['格伦', false, `格伦沉默片刻，回答了一部分。${fullSummary(beats[i % beats.length])}`]);
+}
 export const chat = lines.map(([name,is_user,mes],i)=>({ name, is_user, is_system:false, mes, send_date: new Date(now - (lines.length-i)*600000).toISOString(), swipe_id:0, swipes:[mes], extra:{} }));
 export const itemizedPrompts = [];
 export const itemizedParams = {};

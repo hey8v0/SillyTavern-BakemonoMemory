@@ -12,8 +12,9 @@ export function createSummaryBrowserEvents({
     memoryRecordStatuses,
     renderMemoryRecordList,
     saveEditedSummary,
-    deleteSavedSummary,
     focusSummaryRecord,
+    toggleSummaryOpen,
+    openSummaryActions,
 } = {}) {
     function bind(rootSelector = '#bakemono-workbench-root') {
         const root = query(rootSelector);
@@ -54,7 +55,18 @@ export function createSummaryBrowserEvents({
             renderPreviewSections();
             stabilizeMobilePreviewScroll();
         });
-        root.off('click.bakemonoPreviewNotebookScroll').on('click.bakemonoPreviewNotebookScroll', '.bakemono-memory-notebook > summary, .bakemono-memory-card > summary', stabilizeMobilePreviewScroll);
+        root.off('click.bakemonoSummaryToggle').on('click.bakemonoSummaryToggle', '[data-bakemono-summary-toggle]', function () {
+            const item = this.closest('[data-bakemono-summary-key]');
+            if (!item || item.classList.contains('is-editing')) return;
+            const open = toggleSummaryOpen?.(item);
+            // Folding a long item from its end would leave the reader far below it.
+            if (!open) item.scrollIntoView?.({ block: 'nearest' });
+            stabilizeMobilePreviewScroll?.();
+        });
+        root.off('click.bakemonoSummaryMenu').on('click.bakemonoSummaryMenu', '[data-bakemono-summary-menu]', function () {
+            const item = this.closest('[data-bakemono-summary-key]');
+            if (item) openSummaryActions?.(item, this);
+        });
         root.off('click.bakemonoTimelinePage').on('click.bakemonoTimelinePage', '[data-bakemono-timeline-page]', function () {
             changeTimelinePage(this.dataset.bakemonoTimelinePage === 'next' ? 1 : -1);
             renderTimeline();
@@ -70,30 +82,21 @@ export function createSummaryBrowserEvents({
             memoryRecordState.page = 0;
             renderMemoryRecordList();
         });
-        root.off('click.bakemonoNotebook').on('click.bakemonoNotebook', '.bk-tab-label', function () {
-            const layout = this.closest('.bk-tabs-layout');
-            if (!layout) return;
-            const panelId = this.dataset.bakemonoPanel;
-            layout.querySelectorAll('.bk-tab-label').forEach(tab => tab.classList.toggle('is-active', tab === this));
-            layout.querySelectorAll('.bk-tab-panel').forEach(panel => panel.classList.toggle('is-active', panel.dataset.bakemonoPanel === panelId));
-        });
         root.off('click.bakemonoSummaryAction').on('click.bakemonoSummaryAction', '[data-bakemono-summary-action]', async function () {
             const tools = this.closest('.bakemono-memory-summary-tools');
             const hash = tools?.dataset.summaryHash;
             if (!tools || !hash) return;
             const action = this.dataset.bakemonoSummaryAction;
-            const editor = tools.querySelector('.bakemono-memory-summary-editor');
-            const danger = tools.querySelector('.bakemono-memory-danger-zone');
-            if (action === 'edit') editor.hidden = false;
-            else if (action === 'more') danger.hidden = !danger.hidden;
-            else if (action === 'cancel') editor.hidden = true;
-            else if (action === 'save') {
+            if (action === 'cancel') {
+                tools.hidden = true;
+                tools.closest('[data-bakemono-summary-key]')?.classList.remove('is-editing');
+            } else if (action === 'save') {
                 await saveEditedSummary(
                     hash,
                     tools.querySelector('.bakemono-summary-title')?.value || '',
                     tools.querySelector('.bakemono-summary-content')?.value || '',
                 );
-            } else if (action === 'delete') await deleteSavedSummary(hash);
+            }
         });
     }
 

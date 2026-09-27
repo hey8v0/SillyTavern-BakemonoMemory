@@ -367,11 +367,13 @@ test('floor memory orchestration stays derived and the base ledger remains optio
     assert.doesNotMatch(source, /floorMemoryIndex\s*:/);
 });
 
-test('summary page keeps generation, review, and filtering in the demo hierarchy', () => {
-    assert.equal((settingsSource.match(/data-bakemono-summary-mode=/g) || []).length, 3);
+test('summary page has one row of levels, a next step, and the list with search', () => {
+    assert.doesNotMatch(settingsSource, /data-bakemono-summary-mode=/);
+    assert.equal((settingsSource.match(/role="tab"[^>]*data-bakemono-preview-type=/g) || []).length, 3);
     assert.match(settingsSource, /id="bakemono-memory-summary-primary-action"[^>]*data-bakemono-action="generate-stage"/);
-    assert.match(settingsSource, /class="bakemono-memory-section-head bakemono-memory-summary-list-head"/);
-    assert.match(settingsSource, /class="bakemono-memory-console-disclosure bakemono-memory-preview-filter-disclosure"/);
+    assert.match(settingsSource, /class="bk-sum-next"/);
+    assert.match(settingsSource, /id="bakemono-memory-preview-filter" type="search"/);
+    assert.match(summaryGenerationUiSource, /const modeByLevel = \{ story: 'batch', stage: 'stage', epic: 'epic' \}/);
     assert.match(summaryGenerationUiSource, /function render\(state = getState\(\), blocks = null\)/);
     assert.match(summaryGenerationUiSource, /function bindEvents\(rootSelector/);
     assert.match(workbenchRendererSource, /renderSummaryGenerationPanel\(state, blocks\)/);
@@ -381,6 +383,9 @@ test('summary page keeps generation, review, and filtering in the demo hierarchy
     assert.match(summaryBrowserUiSource, /function changePage\(/);
     assert.match(summaryBrowserEventsSource, /bakemonoPreviewType/);
     assert.match(summaryBrowserEventsSource, /bakemonoSummaryAction/);
+    assert.match(summaryBrowserEventsSource, /bakemonoSummaryToggle/);
+    assert.match(summaryBrowserEventsSource, /bakemonoSummaryMenu/);
+    assert.doesNotMatch(summaryBrowserEventsSource, /deleteSavedSummary/);
     assert.match(summaryBrowserEventsSource, /bakemono-memory-preview-filter/);
     assert.match(summaryBrowserEventsSource, /bakemono-memory-record-filter/);
     assert.match(summaryBrowserEventsSource, /bakemonoRecordQuickFilter/);
@@ -391,7 +396,7 @@ test('summary page keeps generation, review, and filtering in the demo hierarchy
     assert.match(workbenchPageOverviewsSource, /function renderInjectionOverview\(/);
     assert.match(workbenchPageOverviewsSource, /function renderScanPreview\(/);
     assert.match(workbenchPageOverviewsSource, /function bindPromptEvents\(rootSelector/);
-    assert.match(styleSource, /Summary demo precision pass/);
+    assert.match(styleSource, /Summary \(总结\): one row of levels/);
 });
 
 test('archive and timeline pages keep the demo hierarchy without dropping controls', () => {

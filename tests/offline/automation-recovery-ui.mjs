@@ -110,7 +110,7 @@ const browser = createSummaryBrowserUi({ documentRef: document, query, getState:
     dedupeByHash: values => values, summaryToBlock: value => value, normalizeSearchText: value => String(value).toLowerCase(),
     getPreviewSummaryText: block => block.title, parsePreviewMeta: () => ({}), stripHtml: text => text,
     getBlockSortKey: block => block.messageId,
-    createNotebook: block => { const node = document.createElement('details'); node.textContent = block.title; return node; } });
+    createNotebook: (block, index, open) => { const node = document.createElement('details'); node.textContent = block.title; node.open = open; return node; } });
 globalThis.document = document;
 globalThis.window = window;
 globalThis.requestAnimationFrame = callback => callback();
@@ -137,7 +137,7 @@ assert.equal(query('#bakemono-memory-preview-filter').val(), '');
 assert.equal(browser.getActiveType(), 'story');
 const focused = [...document.querySelectorAll('[data-bakemono-summary-key]')].find(node => node.dataset.bakemonoSummaryKey === unsafeKey);
 assert.equal(focused.open, true);
-assert.match(document.querySelector('#bakemono-memory-preview-story').textContent, /17-20 \/ 20/);
+assert.match(document.querySelector('#bakemono-memory-preview-story').textContent, /11-20 \/ 20/);
 assert.equal(browser.focusRecord('removed'), false);
 for (const status of [
     stageAutomationStatus({ automation: { enabled: true } }, { targets: [], invalid: ['来源变化'] }),

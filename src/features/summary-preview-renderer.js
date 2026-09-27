@@ -1,4 +1,42 @@
-import {getSummaryStatus} from '../memory/summary-provenance.js';
+import {getSummaryStatus, resolveSummaryGraph, summarySourceFloors} from '../memory/summary-provenance.js';
+
+const sectionLine = /^\s*➤.*?【([^】]+)】/;
+const genericTitles = new Set(['剧情摘要', '📋 剧情摘要', '正文摘要', '剧集终了·点击回看', '多次总结·长期总览', '纪元回溯·史诗简史']);
+
+// Split a summary the way the prompts ask the model to write it: a 【…】 header line, then “➤ … 【段名】” sections.
+export function splitSummarySections(text) {
+    const intro = [], sections = [];
+    for (const line of String(text || '').split('\n')) {
+        const match = line.match(sectionLine);
+        if (match) { sections.push({ name: match[1].trim(), lines: [] }); continue; }
+        if (!line.trim()) continue;
+        (sections.length ? sections.at(-1).lines : intro).push(line);
+    }
+    return { intro, sections };
+}
+
+// 【☆『第4章：北境地图』★时间：深夜★铁匠铺|旅人、格伦☆】 → { title: '第4章：北境地图', bits: ['时间：深夜', '铁匠铺|旅人、格伦'] }
+export function parseSummaryHeader(line) {
+    const text = String(line || '').trim();
+    const title = (text.match(/『([^』]+)』/) || [, ''])[1].trim();
+    const rest = text.replace(/^【[^『]*『[^』]*』/, '').replace(/^【/, '').replace(/[☆】\s]+$/, '');
+    return { title, bits: rest.split('★').map(bit => bit.replace(/^[☆\s]+|[☆\s]+$/g, '')).filter(Boolean) };
+}
+
+// One line of summary text → the kind of line it is. Leading marks decide: “-” list, “>” quote, “[名]：” label, “*…*” aside.
+export function classifySummaryLine(raw, inEvent = false) {
+    const text = String(raw || '').trim();
+    let match;
+    if ((match = text.match(/^(?:\d+[.、]\s*)?>\s*(.+?)\s*(?:——|--|—)\s*[[【](.+?)[\]】]$/))) return { kind: 'quote', text: match[1], who: match[2] };
+    if ((match = text.match(/^(?:\d+[.、]\s*)?>\s*(.+)$/))) return { kind: 'quote', text: match[1], who: '' };
+    if ((match = text.match(/^[-*•]\s*\[([^\]]+)\]\s*[(（]([^)）]+)[)）]$/))) return { kind: 'event', text: match[1], meta: match[2] };
+    if (inEvent && /^\s{2,}[-*•]/.test(raw) && (match = text.match(/^[-*•]\s*([^：:]{1,6})[：:]\s*(.+)$/))) return { kind: 'detail', key: match[1], text: match[2] };
+    if ((match = text.match(/^[-*•]?\s*\[([^\]]+)\][：:]\s*(.+)$/)) || (match = text.match(/^[*•]\s*([^：:*]{1,8})[：:]\s*(.+)$/))) return { kind: 'label', key: match[1], text: match[2] };
+    if ((match = text.match(/^\*(.+)\*$/))) return { kind: 'aside', text: match[1] };
+    if ((match = text.match(/^(?:[-*•]|\d+[.、])\s*(.+)$/))) return { kind: 'item', text: match[1] };
+    return { kind: 'text', text };
+}
+
 export function createSummaryPreviewRenderer({
     documentRef,
     getState,
@@ -61,7 +99,6 @@ export function createSummaryPreviewRenderer({
     }
 
     function getPreferredSummaryTitle(block) {
-        const genericTitles = new Set(['剧情摘要', '📋 剧情摘要', '剧集终了·点击回看', '多次总结·长期总览', '纪元回溯·史诗简史']);
         const manualTitle = String(block?.metadata?.userTitle || '').trim();
         if (manualTitle) {
             return manualTitle;
@@ -99,7 +136,7 @@ export function createSummaryPreviewRenderer({
     function getPreviewTabs(type) {
         const state = getState();
         const layoutKey = type === blockTypes.EPIC ? 'epic' : type === blockTypes.STAGE ? 'stage' : 'story';
-        return parsePreviewLayout(state.previewLayouts[layoutKey] || defaultPreviewLayouts[layoutKey]);
+        return parsePreviewLayout(state.previewLayouts?.[layoutKey] || defaultPreviewLayouts[layoutKey]);
     }
 
     function extractSectionText(text, label) {
@@ -122,143 +159,241 @@ export function createSummaryPreviewRenderer({
         return text.slice(start, end).replace(/<\/?[^>]+>/g, '').trim();
     }
 
-    function createTextNodeElement(tagName, className, text) {
-        const element = documentRef.createElement(tagName);
-        if (className) {
-            element.className = className;
-        }
-        element.textContent = text;
-        return element;
+    const element = (tagName, className, text) => {
+        const node = documentRef.createElement(tagName);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+    };
+    const plain = text => stripHtml(String(text || '')).trim();
+
+    // The short name of a section comes from the 预览分段 setting (label|section|style), else the section's own name.
+    function shortSectionName(type, name) {
+        const tab = getPreviewTabs(type).find(([, section]) => section.split(/[，,]/).map(item => item.trim()).filter(Boolean).some(item => name.includes(item)));
+        return tab ? tab[0] : name;
     }
 
-    function createSavedSummaryControls(block) {
-        const saved = findSavedSummaryByHash(block.hash);
-        if (!saved) return documentRef.createDocumentFragment();
-        const wrapper = documentRef.createElement('div');
-        wrapper.className = 'bakemono-memory-summary-tools';
-        wrapper.dataset.summaryHash = block.hash;
-        wrapper.innerHTML = `
-            <div class="bakemono-memory-inline-actions">
-                <button class="menu_button" data-bakemono-summary-action="edit"><i class="fa-solid fa-pen"></i><span>编辑摘要</span></button>
-                <button class="menu_button" data-bakemono-summary-action="more"><i class="fa-solid fa-ellipsis"></i><span>更多</span></button>
-            </div>
-            <div class="bakemono-memory-summary-editor" hidden>
-                <label class="bakemono-memory-field"><span>标题</span><input class="text_pole bakemono-summary-title" type="text"></label>
-                <label class="bakemono-memory-editor"><span>正文</span><textarea class="text_pole textarea_compact bakemono-summary-content" rows="8" spellcheck="false"></textarea></label>
-                <div class="bakemono-memory-inline-actions">
-                    <button class="menu_button" data-bakemono-summary-action="save"><i class="fa-solid fa-check"></i><span>保存修改</span></button>
-                    <button class="menu_button" data-bakemono-summary-action="cancel"><i class="fa-solid fa-xmark"></i><span>取消</span></button>
-                </div>
-            </div>
-            <details class="bakemono-memory-danger-zone">
-                <summary>危险操作</summary>
-                <button class="menu_button danger_button" data-bakemono-summary-action="delete"><i class="fa-solid fa-trash"></i><span>删除摘要</span></button>
-            </details>
-        `;
-        wrapper.querySelector('.bakemono-summary-title').value = saved.summary.title || '';
-        wrapper.querySelector('.bakemono-summary-content').value = saved.summary.content || '';
-        wrapper.querySelector('.bakemono-memory-danger-zone').hidden = true;
-        const status=getSummaryStatus(getState(),{...saved.summary,type:saved.kind});
-        if(!status.valid || status.coveredBy.length){
-            const notice=documentRef.createElement('p');
-            notice.className='bakemono-memory-prompt-hint';
-            notice.textContent=(!status.valid?'需重建：':'')+status.reason;
-            wrapper.prepend(notice);
-        }
-        return wrapper;
-    }
-
-    function createFallbackPreview(block) {
-        const details = documentRef.createElement('details');
-        details.className = 'bakemono-memory-card';
-
-        const summary = documentRef.createElement('summary');
-        summary.textContent = getPreviewSummaryText(block);
-
-        const body = documentRef.createElement('div');
-        body.className = 'bakemono-memory-card-body';
-        body.textContent = stripHtml(block.content).trim();
-
-        details.append(summary, body, createSavedSummaryControls(block));
-        return details;
-    }
-
-    function createBakemonoNotebook(block, index) {
+    function summaryParts(block) {
         const text = getBlockPlainText(block.content);
-        const meta = parsePreviewMeta(block);
-        const tabs = getPreviewTabs(block.type).map(([label, section, modifier]) => ({
-            label,
-            modifier,
-            content: extractSectionText(text, section),
-        }));
-        const hasSectionContent = tabs.some(tab => tab.content);
-        if (!hasSectionContent) {
-            return createFallbackPreview(block);
+        const { intro, sections } = splitSummarySections(text);
+        const header = parseSummaryHeader(getBracketMetaLine(text));
+        const introLines = intro.filter(line => !/^【[\s\S]+】$/.test(line.trim()));
+        return { text, header, sections, introLines };
+    }
+
+    // “第4章：北境地图” → “第 4 章 · 北境地图”
+    const chapterTitle = title => String(title || '').replace(/^第\s*([^章卷：:]+?)\s*([章卷])\s*[：:]\s*/, '第 $1 $2 · ').trim();
+
+    function displayTitle(block, parts = summaryParts(block)) {
+        const preferred = getPreferredSummaryTitle(block);
+        if (preferred) return preferred;
+        const headerTitle = parts.header.title.replace(/^(长期总览|正文摘要)\s*[：:]\s*/, '');
+        if (headerTitle && !genericTitles.has(headerTitle)) return block.type === blockTypes.STORY ? headerTitle.replace(/^第\s*[^章：:]+章\s*[：:]\s*/, '') : chapterTitle(headerTitle);
+        const title = String(block.title || '').replace(/[📋【】]/g, '').trim();
+        return title && !genericTitles.has(title) ? title : '';
+    }
+
+    function firstBeat(parts) {
+        const lines = parts.sections[0]?.lines || parts.introLines;
+        const detail = lines.map(line => classifySummaryLine(line, true)).find(line => line.kind === 'detail');
+        const first = detail || lines.map(line => classifySummaryLine(line)).find(line => line.text && !/^无[。.]?$/.test(line.text));
+        return plain(first?.text || parts.text.split('\n').find(line => line.trim() && !/^【/.test(line.trim())) || '');
+    }
+
+    function floorRange(block) {
+        const floors = summarySourceFloors(getState(), block);
+        if (!floors.length) {
+            const own = Number(block.messageId);
+            return Number.isFinite(own) && own < Number.MAX_SAFE_INTEGER ? { first: own, text: `第 ${own} 楼` } : { first: null, text: '' };
         }
+        const [first, last] = [floors[0], floors.at(-1)];
+        return { first, text: first === last ? `第 ${first} 楼` : `第 ${first}–${last} 楼` };
+    }
 
-        const outer = documentRef.createElement('details');
-        outer.className = 'bk-notebook-outer bakemono-memory-notebook';
+    // Which upper summaries include this one, by their readable names.
+    function coverage(block) {
+        const state = getState();
+        const graph = resolveSummaryGraph(state);
+        const status = getSummaryStatus(state, block, graph);
+        const parents = status.coveredBy.map(key => graph.byKey.get(key)).filter(Boolean);
+        return { status, parents: parents.map(node => ({ key: node.key, name: displayTitle(node) || (node.type === 'epic' ? '多次总结' : '阶段总结') })) };
+    }
 
-        const summary = documentRef.createElement('summary');
-        summary.textContent = getPreviewSummaryText(block);
+    function getSummaryGroup(block) {
+        const parent = coverage(block).parents[0];
+        return parent ? { key: parent.key, name: parent.name, pending: false } : { key: 'pending', name: '待整理', pending: true };
+    }
 
-        const container = documentRef.createElement('div');
-        container.className = 'bk-notebook-container';
+    function renderLines(type, lines) {
+        const body = element('div', 'bk-sum-sec-body');
+        if (lines.length === 1 && /^无[。.]?$/.test(lines[0].trim())) {
+            body.append(element('p', 'bk-sum-none', '无'));
+            return body;
+        }
+        let list = null, event = null;
+        for (const raw of lines) {
+            const line = classifySummaryLine(raw, !!event);
+            if (line.kind === 'detail' && event) {
+                const row = element('p', 'bk-sum-kv');
+                row.append(element('span', 'bk-sum-k', line.key), plain(line.text));
+                event.append(row);
+                continue;
+            }
+            if (line.kind !== 'item') list = null;
+            if (line.kind !== 'detail') event = null;
+            if (line.kind === 'item') {
+                if (!list) body.append(list = element('ul'));
+                list.append(element('li', '', plain(line.text)));
+            } else if (line.kind === 'quote') {
+                const quote = element('blockquote', 'bk-sum-quote', plain(line.text));
+                if (line.who) quote.append(element('cite', '', line.who));
+                body.append(quote);
+            } else if (line.kind === 'event') {
+                event = element('div', 'bk-sum-event');
+                const head = element('div', 'bk-sum-event-h', plain(line.text));
+                head.append(element('small', '', line.meta));
+                event.append(head);
+                body.append(event);
+            } else if (line.kind === 'label') {
+                const row = element('p', 'bk-sum-kv');
+                const key = line.key.replace(/^✅\s*/, '');
+                row.append(element('span', `bk-sum-k${key !== line.key || /^(本回合|已)回收/.test(key) ? ' is-done' : ''}`, key), plain(line.text));
+                body.append(row);
+            } else if (line.kind === 'aside') {
+                body.append(element('p', 'bk-sum-aside', plain(line.text)));
+            } else {
+                body.append(element('p', '', plain(line.text)));
+            }
+        }
+        return body;
+    }
 
-        const header = documentRef.createElement('div');
-        header.className = 'nh-wrap';
-        header.append(
-            createTextNodeElement('div', 'nh-chap-label', meta.label),
-            createTextNodeElement('div', 'nh-title', meta.title),
-            createTextNodeElement('div', 'nh-divider', ''),
-            createTextNodeElement('div', 'nh-meta', [meta.meta, meta.submeta].filter(Boolean).join('\n')),
-        );
+    function renderDocument(block, parts) {
+        const doc = element('div', 'bk-sum-doc');
+        const sections = parts.sections.length ? parts.sections : [{ name: '', lines: parts.introLines.length ? parts.introLines : parts.text.split('\n').filter(Boolean) }];
+        if (parts.sections.length && parts.introLines.length) sections.unshift({ name: '', lines: parts.introLines });
+        for (const section of sections) {
+            const row = element('div', 'bk-sum-sec');
+            row.append(element('span', 'bk-sum-sec-label', section.name ? shortSectionName(block.type, section.name) : ''), renderLines(block.type, section.lines));
+            doc.append(row);
+        }
+        return doc;
+    }
 
-        const layout = documentRef.createElement('div');
-        layout.className = 'bk-tabs-layout';
+    // The editor is only offered for summaries the plugin saved; tags in chat text are edited in the chat itself.
+    function createEditor(block) {
+        const saved = findSavedSummaryByHash(block.hash);
+        if (!saved) return null;
+        const tools = element('div', 'bakemono-memory-summary-tools bk-sum-editor');
+        tools.dataset.summaryHash = block.hash;
+        tools.hidden = true;
+        tools.innerHTML = `
+            <label class="bk-sum-field"><span>标题</span><input class="text_pole bakemono-summary-title" type="text"></label>
+            <label class="bk-sum-field"><span>原文</span><textarea class="text_pole bakemono-summary-content" rows="14" spellcheck="false"></textarea></label>
+            <div class="bk-sum-editor-actions">
+                <button type="button" class="menu_button bk-sum-primary" data-bakemono-summary-action="save">保存</button>
+                <button type="button" class="bk-sum-link" data-bakemono-summary-action="cancel">取消</button>
+            </div>`;
+        tools.querySelector('.bakemono-summary-title').value = saved.summary.title || '';
+        tools.querySelector('.bakemono-summary-content').value = saved.summary.content || '';
+        return tools;
+    }
 
-        const nav = documentRef.createElement('nav');
-        nav.className = 'bk-tabs-nav';
-        nav.setAttribute('aria-label', '摘要分段');
+    function toggleButton(label, className = 'bk-sum-link') {
+        const button = element('button', className, label);
+        button.type = 'button';
+        button.dataset.bakemonoSummaryToggle = '';
+        return button;
+    }
 
-        const content = documentRef.createElement('div');
-        content.className = 'bk-tabs-content-wrapper';
+    function menuButton(name) {
+        const button = element('button', 'bk-sum-dots', '⋯');
+        button.type = 'button';
+        button.dataset.bakemonoSummaryMenu = '';
+        button.setAttribute('aria-label', `${name} 的操作`);
+        return button;
+    }
 
-        tabs.forEach((tab, tabIndex) => {
-            const panelId = `bk-panel-${block.hash}-${index}-${tabIndex}`;
-            const button = documentRef.createElement('button');
-            button.type = 'button';
-            button.className = `bk-tab-label${tabIndex === 0 ? ' is-active' : ''}`;
-            button.dataset.bakemonoPanel = panelId;
-            button.textContent = tab.label;
+    function createBakemonoNotebook(block, index, open = false) {
+        const parts = summaryParts(block);
+        const isStory = block.type === blockTypes.STORY || !block.type;
+        const range = floorRange(block);
+        const { status, parents } = coverage(block);
+        const title = displayTitle(block, parts) || (isStory ? firstBeat(parts).slice(0, 24) : getPreviewSummaryText(block));
+        const name = isStory ? `第 ${range.first ?? '?'} 楼的剧情摘要` : title;
 
-            const panel = documentRef.createElement('div');
-            panel.className = `bk-tab-panel${tabIndex === 0 ? ' is-active' : ''}`;
-            panel.dataset.bakemonoPanel = panelId;
+        const item = element(isStory ? 'div' : 'section', isStory ? 'bk-sum-story' : 'bk-sum-chapter');
+        Object.assign(item.dataset, { summaryHash: block.hash || '', summaryType: block.type || 'story', summaryName: name, summaryRange: range.text, summaryFloor: range.first ?? '' });
+        if (!status.valid) item.classList.add('is-stale');
 
-            const innerClass = ['bk-inner-text', tab.modifier].filter(Boolean).join(' ');
-            panel.append(createTextNodeElement('div', innerClass, tab.content || '本段暂无内容。'));
+        const head = element('div', isStory ? 'bk-sum-story-h' : 'bk-sum-chapter-h');
+        const tap = toggleButton('', isStory ? 'bk-sum-story-tap' : 'bk-sum-head');
+        tap.textContent = '';
+        if (isStory) {
+            const line1 = element('span', 'bk-sum-line1');
+            const where = parts.header.bits
+                .map(bit => bit.replace(/^(时间跨度|时间|跨度|楼层|来源)[：:]\s*/, '').replace(/\|/g, ' · ').trim())
+                .filter(bit => bit && !/^(未知|楼层\s*\d)/.test(bit));
+            const tag = !status.valid ? ['需重建', ' is-alert'] : parents.length ? ['已收入', ''] : ['待整理', ' is-new'];
+            line1.append(element('span', 'bk-sum-no', range.first !== null ? `#${range.first}` : '#?'), element('span', 'bk-sum-where', where.join(' · ')), element('span', `bk-sum-tag${tag[1]}`, tag[0]));
+            if (!status.valid) line1.lastChild.title = status.reason;
+            tap.append(line1, element('span', 'bk-sum-ttl', title), element('span', 'bk-sum-lead', firstBeat(parts)));
+        } else {
+            const meta = element('span', 'bk-sum-meta');
+            const time = parts.header.bits.map(bit => bit.match(/^(?:时间跨度|当前时间点)[：:]\s*(.+)$/)?.[1]).find(Boolean);
+            const count = block.type === blockTypes.EPIC
+                ? (block.sourceStageHashes?.length ? `收录 ${block.sourceStageHashes.length} 章` : '')
+                : (block.sourceHashes?.length ? `收录 ${block.sourceHashes.length} 条摘要` : '');
+            [range.text, count, time].filter(Boolean).forEach(text => meta.append(element('span', '', text)));
+            if (parents.length) {
+                const into = element('span', '', '已收进 ');
+                into.append(element('b', '', parents.map(parent => parent.name).join('、')));
+                meta.append(into);
+            }
+            if (!status.valid) meta.append(element('span', 'is-alert', '需重建：' + status.reason));
+            tap.append(element('h4', '', title), meta);
+        }
+        head.append(tap, menuButton(name));
 
-            nav.append(button);
-            content.append(panel);
-        });
+        const preview = element('div', 'bk-sum-preview');
+        if (!isStory) preview.append(element('p', 'bk-sum-clamp', firstBeat(parts)), toggleButton('展开全文 ›'));
+        const full = element('div', 'bk-sum-full');
+        full.append(renderDocument(block, parts), toggleButton('收起 ↑', 'bk-sum-link bk-sum-fold'));
+        const editor = createEditor(block);
 
-        layout.append(nav, content);
-        container.append(header, layout, createSavedSummaryControls(block));
-        outer.append(summary, container);
-        return outer;
+        item.append(head, preview, full);
+        if (editor) item.append(editor);
+        setSummaryOpen(item, open);
+        return item;
+    }
+
+    function setSummaryOpen(item, open) {
+        item.classList.toggle('is-open', !!open);
+        item.querySelectorAll(':scope > .bk-sum-story-h [data-bakemono-summary-toggle], :scope > .bk-sum-chapter-h [data-bakemono-summary-toggle]')
+            .forEach(button => button.setAttribute('aria-expanded', String(!!open)));
+        const menu = item.querySelector(':scope > * > [data-bakemono-summary-menu]');
+        if (menu) menu.hidden = !open;
+        const preview = item.querySelector(':scope > .bk-sum-preview');
+        if (preview) preview.hidden = !!open || !preview.childElementCount;
+        const full = item.querySelector(':scope > .bk-sum-full');
+        if (full) full.hidden = !open;
+        if (!open) {
+            item.classList.remove('is-editing');
+            const editor = item.querySelector(':scope > .bk-sum-editor');
+            if (editor) editor.hidden = true;
+        }
     }
 
     return {
         createBakemonoNotebook,
-        createFallbackPreview,
-        createSavedSummaryControls,
         extractSectionText,
         getBracketMetaLine,
         getPreferredSummaryTitle,
         getPreviewSummaryText,
         getPreviewTabs,
+        getSummaryGroup,
         parsePreviewLayout,
         parsePreviewMeta,
+        setSummaryOpen,
     };
 }

@@ -1,4 +1,15 @@
-export function createSummaryGenerationUi({ documentRef, query, getState, getStageMaterialOverview, getStageSourceModeLabel }) {
+// The 总结 page has one row of levels; each level's “next step” is one of these generation modes.
+const modeByLevel = { story: 'batch', stage: 'stage', epic: 'epic' };
+const levelNames = { batch: '剧情摘要', stage: '阶段总结', epic: '多次总结' };
+
+function floorSpan(blocks) {
+    const floors = blocks.map(block => Number(block?.messageId)).filter(id => Number.isFinite(id) && id < Number.MAX_SAFE_INTEGER);
+    if (!floors.length) return '';
+    const [first, last] = [Math.min(...floors), Math.max(...floors)];
+    return first === last ? `第 ${first} 楼` : `第 ${first}–${last} 楼`;
+}
+
+export function createSummaryGenerationUi({ documentRef, query, getState, getStageMaterialOverview, getStageSourceModeLabel, getCurrentFloorMemoryIndex }) {
     let mode = 'stage';
     let snapshot = { story: [], stage: [], epic: [] };
 
@@ -7,8 +18,17 @@ export function createSummaryGenerationUi({ documentRef, query, getState, getSta
     }
 
     function setMode(nextMode) {
-        if (['stage', 'epic', 'batch'].includes(nextMode)) mode = nextMode;
+        const target = modeByLevel[nextMode] || nextMode;
+        if (['stage', 'epic', 'batch'].includes(target)) mode = target;
         return mode;
+    }
+
+    function missingFloors(state) {
+        try {
+            return getCurrentFloorMemoryIndex?.(state)?.aggregates || null;
+        } catch {
+            return null;
+        }
     }
 
     function render(state = getState(), blocks = null) {
@@ -30,16 +50,19 @@ export function createSummaryGenerationUi({ documentRef, query, getState, getSta
         const coveredStoryCount = materials.coveredCount;
         const uncoveredStoryCount = materials.targets.length;
         const upperLevelMaterialCount = stageBlocks.length + epicBlocks.length;
+        const floorStats = mode === 'batch' ? missingFloors(state) : null;
+        const missing = Number(floorStats?.missing) || 0;
+        const firstMissing = Number.isInteger(Number(floorStats?.firstMissingFloor)) ? `最早是第 ${Number(floorStats.firstMissingFloor).toLocaleString()} 楼。` : '';
         const modes = {
             stage: {
                 action: 'generate-stage',
                 empty: !materials.totalCount,
-                emptyHint: '还没有剧情摘要。先在“自动记忆”里开启摘要，或用“补写旧聊天”整理旧楼层。',
-                icon: 'fa-wand-magic-sparkles',
-                title: '整理下一段长期记忆',
+                emptyTitle: '还没有剧情摘要',
+                emptyHint: '先在“自动记忆”里开启摘要，或在“剧情摘要”里补写旧聊天。',
+                title: uncoveredStoryCount ? `${uncoveredStoryCount} 条剧情摘要还没整理成阶段总结` : '剧情摘要都已整理进阶段总结',
                 button: '生成阶段总结',
                 code: `${uncoveredStoryCount} 条待整理`,
-                description: `${getStageSourceModeLabel(materials.sourceMode)} · ${materials.totalCount} 条材料 · ${coveredStoryCount} 条已收录`
+                description: [floorSpan(materials.targets), `${getStageSourceModeLabel(materials.sourceMode)} · ${materials.totalCount} 条材料 · ${coveredStoryCount} 条已收录`].filter(Boolean).join(' · ')
                     + (materials.invalid?.length ? ' · ' + materials.invalid.length + ' 条材料无效：' + materials.invalid.slice(0, 3).join('；') : '')
                     + (materials.excludedCount ? ` · ${materials.excludedCount} 条因来源设置未纳入` : ''),
                 progress: materials.totalCount ? Math.round((coveredStoryCount / materials.totalCount) * 100) : 0,
@@ -47,9 +70,9 @@ export function createSummaryGenerationUi({ documentRef, query, getState, getSta
             epic: {
                 action: 'generate-epic',
                 empty: !(storyBlocks.length + upperLevelMaterialCount),
-                emptyHint: '还没有可压缩的总结。先生成阶段总结，或积累剧情摘要。',
-                icon: 'fa-layer-group',
-                title: '把多个阶段连成时间线',
+                emptyTitle: '还没有可以串成一卷的总结',
+                emptyHint: '先生成阶段总结，或积累剧情摘要。',
+                title: stageBlocks.length ? `${stageBlocks.length} 条阶段总结可以串成一卷` : '可以直接用剧情摘要整理一卷',
                 button: '生成多次总结',
                 code: `${upperLevelMaterialCount} 条材料`,
                 description: `${stageBlocks.length} 条阶段总结与 ${epicBlocks.length} 条上层总结可继续压缩，适合整理一卷或一条长期剧情线。`,
@@ -57,31 +80,31 @@ export function createSummaryGenerationUi({ documentRef, query, getState, getSta
             },
             batch: {
                 action: 'batch-summary',
-                icon: 'fa-list-check',
-                title: '把旧聊天分批整理',
-                button: '打开批量生成',
+                title: missing ? `有 ${missing.toLocaleString()} 楼还没有摘要` : '补写旧聊天的剧情摘要',
+                button: '开始批量摘要',
                 code: `${storyBlocks.length} 条已识别`,
-                description: '按楼层范围补写缺失摘要或整理旧正文；任务会分批运行，并统一进入待确认。',
+                description: missing
+                    ? `${firstMissing}在下面选范围补写，摘要会写回原楼层并进入待确认。`
+                    : '按楼层范围补写缺失摘要或整理旧正文；任务会分批运行，并统一进入待确认。',
                 progress: 0,
             },
         };
         const current = modes[mode];
 
-        documentRef.querySelectorAll('[data-bakemono-summary-mode]').forEach(button => {
-            button.classList.toggle('is-active', button.dataset.bakemonoSummaryMode === mode);
-        });
-        query('#bakemono-memory-summary-generation-title').text(current.title);
+        query('#bakemono-memory-summary-generation-kicker').text(`${levelNames[mode]} · 下一步`);
+        query('#bakemono-memory-summary-generation-title').text(current.empty ? current.emptyTitle : current.title);
         query('#bakemono-memory-summary-generation-code').text(current.code);
         query('#bakemono-memory-summary-generation-description').text(current.empty ? current.emptyHint : current.description);
         query('#bakemono-memory-summary-generation-progress').css('width', `${current.progress}%`);
+        // 补写旧聊天 has no progress of its own; the form below says what will happen.
+        const progressBar = documentRef.querySelector('.bk-sum-progress');
+        if (progressBar) progressBar.hidden = mode === 'batch';
         const primary = documentRef.getElementById('bakemono-memory-summary-primary-action');
         if (primary) {
             primary.hidden = mode === 'batch';
             // Empty material has nothing to generate; the hint above says where to start instead.
             primary.disabled = !!current.empty;
             primary.dataset.bakemonoAction = current.action;
-            const icon = primary.querySelector('i');
-            if (icon) icon.className = `fa-solid ${current.icon}`;
             const label = primary.querySelector('span');
             if (label) label.textContent = current.button;
         }
@@ -93,8 +116,9 @@ export function createSummaryGenerationUi({ documentRef, query, getState, getSta
     }
 
     function bindEvents(rootSelector = '#bakemono-workbench-root') {
-        query(rootSelector).off('click.bakemonoSummaryMode').on('click.bakemonoSummaryMode', '[data-bakemono-summary-mode]', function () {
-            setMode(this.dataset.bakemonoSummaryMode || 'stage');
+        query(rootSelector).off('click.bakemonoSummaryMode').on('click.bakemonoSummaryMode', '[data-bakemono-summary-mode], [data-bakemono-preview-type]', function () {
+            if (this.hasAttribute('data-bakemono-preview-page')) return;
+            setMode(this.dataset.bakemonoSummaryMode || this.dataset.bakemonoPreviewType || 'stage');
             render();
         });
     }
