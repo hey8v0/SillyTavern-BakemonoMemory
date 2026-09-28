@@ -1,4 +1,4 @@
-import { assertLedgerVersion, appendRecord, retractFact, replayLedger } from './ledger.js';
+import { assertLedgerVersion, appendRecord, retractFact, replayLedger, createReplayCache } from './ledger.js';
 import { applyDomainFact } from './domain.js';
 import { locateEvidence, evidenceHash, normalizeEvidenceText, locateEventEvidence, evidenceSource, sourceStamp } from './source.js';
 import { expandStatePayload, resolveStateEvents } from './state-update.js';
@@ -8,6 +8,29 @@ import { classifyCandidate } from './validation.js';
 import { atomicCandidateGroups, createdId, referencedIds } from './groups.js';
 import { normalizeProtocolEvents } from './protocol.js';
 import { resolveModelReferences } from './model-references.js';
+
+// What one fact changed, for the history view. A whole entity only when it appears or disappears; otherwise the fields
+// that differ, and in lists of identified items (a person's states) only the items added, removed or changed. Storing
+// whole entities made every record carry the person's full past, so the ledger grew with the square of the story.
+export function compactChange(before, after) {
+    if (!before || !after || typeof before !== 'object' || typeof after !== 'object' || Array.isArray(before) || Array.isArray(after)) return { before, after };
+    const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+    const identified = list => Array.isArray(list) && list.every(item => item && typeof item === 'object' && item.id != null);
+    const was = {}, now = {};
+    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        const x = before[key], y = after[key];
+        if (same(x, y)) continue;
+        if (identified(x) && identified(y)) {
+            const oldById = new Map(x.map(item => [item.id, item])), newById = new Map(y.map(item => [item.id, item]));
+            was[key] = x.filter(item => !newById.has(item.id) || !same(item, newById.get(item.id)));
+            now[key] = y.filter(item => !oldById.has(item.id) || !same(item, oldById.get(item.id)));
+        } else {
+            was[key] = x ?? null; now[key] = y ?? null;
+        }
+    }
+    for (const key of ['id', 'name', 'title']) if (before[key] != null || after[key] != null) { was[key] ??= before[key] ?? null; now[key] ??= after[key] ?? null; }
+    return { before: was, after: now };
+}
 
 function canonical(value) {
     if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
@@ -82,10 +105,11 @@ function normalizeCandidate(event, source, modelOwned = false) {
     return candidate;
 }
 
-export function prepareExtraction(original, raw, source, { floor, order = floor, autoApply = false, automaticRegistration = false, allowNewOnRepeat = false, modelOwned = false, applyFact = applyDomainFact } = {}) {
+export function prepareExtraction(original, raw, source, { floor, order = floor, autoApply = false, automaticRegistration = false, allowNewOnRepeat = false, modelOwned = false, applyFact = applyDomainFact, replay: sharedReplay = null } = {}) {
     assertLedgerVersion(original);
     if (!Number.isSafeInteger(floor) || floor < original.baseline.floor || !Number.isFinite(order)) throw new Error('提取记录位置无效');
-    const projection = replayLedger(original, applyFact).projection;
+    const replay = sharedReplay || createReplayCache(applyFact);
+    const projection = replay(original).projection;
     const payload = parsePayload(raw);
     const protocol = normalizeProtocolEvents(payload, { preserveOccurrences: original.ruleVersion >= 3 });
     const referenced = resolveModelReferences(protocol.events, projection);
@@ -159,12 +183,12 @@ export function prepareExtraction(original, raw, source, { floor, order = floor,
             if (repeat && group.candidates.some(candidate => candidate.change !== 'added' || candidate.previousIds.length)) continue;
             const separable = modelOwned && !group.cyclic && !group.candidates.some(candidate => candidate.group);
             if (group.cyclic || group.candidates.some(candidate => candidate.status !== 'pending' || candidate.blockedReason || !candidate.evidence && !candidate.origin || classifyCandidate(candidate).status !== 'valid')) {
-                if (separable) core = acceptIndividually(core, group.candidates, source, { floor, applyFact });
+                if (separable) core = acceptIndividually(core, group.candidates, source, { floor, applyFact, replay });
                 continue;
             }
-            try { core = decideCandidate(core, group.candidates[0].id, 'accept', source, { floor, applyFact }); }
+            try { core = decideCandidate(core, group.candidates[0].id, 'accept', source, { floor, applyFact, replay }); }
             catch (error) {
-                if (separable) core = acceptIndividually(core, group.candidates, source, { floor, applyFact });
+                if (separable) core = acceptIndividually(core, group.candidates, source, { floor, applyFact, replay });
                 else for (const candidate of group.candidates) core.candidates.find(item => item.id === candidate.id).reason = String(error?.message || error);
             }
         }
@@ -181,7 +205,7 @@ export function prepareExtraction(original, raw, source, { floor, order = floor,
         floor, baseRevision: original.revision, candidateIds: items.filter(item => item.change !== 'not_detected').map(item => item.candidate.id),
         protocolIssues: protocol.issues, protocolRepairs: protocol.repairs, ...(modelOwned ? { recordingPolicy: 'model' } : {}) });
     return { core, baseRevision: original.revision, sourceRevision: source.revision, repeat, items,
-        projection: replayLedger(core, applyFact) };
+        projection: replay(core) };
 }
 
 // A group formed only by same-batch references is not a promise from the model; when it fails as a whole,
@@ -217,10 +241,13 @@ export function decideCandidate(original, candidateId, decision, source, options
     return next;
 }
 
-function decideSingleCandidate(original, candidateId, decision, source, { floor, replaceFactId = null, applyFact = applyDomainFact } = {}) {
+function decideSingleCandidate(original, candidateId, decision, source, { floor, replaceFactId = null, applyFact = applyDomainFact, replay = null } = {}) {
     assertLedgerVersion(original);
     if (!Number.isSafeInteger(floor) || floor < original.baseline.floor) throw new Error('审核记录位置无效');
-    const core = structuredClone(original);
+    // Copy on write: this step changes only the decided candidate and appends to the record lists, so `original`
+    // stays untouched if it throws without copying the whole ledger for every candidate.
+    const core = { ...original, candidates: original.candidates.map(item => item.id === candidateId ? structuredClone(item) : item),
+        facts: [...original.facts], claims: [...original.claims], observations: [...original.observations], decisions: [...original.decisions] };
     const candidate = core.candidates.find(item => item.id === candidateId);
     if (!candidate || candidate.status !== 'pending') throw new Error('候选已处理或不存在');
     if (decision === 'ignore') {
@@ -246,16 +273,17 @@ function decideSingleCandidate(original, candidateId, decision, source, { floor,
         if (!previousFacts.includes(replaceFactId)) throw new Error('替代目标不匹配');
         retractFact(core, replaceFactId, { floor, reason: '重新提取后确认替代' });
     }
-    const before = candidate.ruleVersion >= 3 && candidate.track === 'facts' ? replayLedger(core, applyFact).projection : null;
+    const project = ledger => replay ? replay(ledger) : replayLedger(ledger, applyFact);
+    const before = candidate.ruleVersion >= 3 && candidate.track === 'facts' ? project(core).projection : null;
     const record = appendRecord(core, candidate, { floor, order: candidate.order });
     if (candidate.track === 'facts') {
-        const view = replayLedger(core, applyFact);
+        const view = project(core);
         const failure = view.pending.find(item => item.factId === record.id);
         if (failure) throw new Error(failure.reason);
         if (before) {
             const kind = candidate.data.collection || ({ person: 'people', relationship: 'relationships', item: 'items', location: 'locations', plan: 'plans', promise: 'plans', clock: 'clock', scene: 'scene' })[candidate.action.split('_')[0]];
             const read = projection => Array.isArray(projection[kind]) ? projection[kind].find(item => item.id === candidate.data.id) ?? null : projection[kind] ?? null;
-            core.facts.find(item => item.id === record.id).change = { collection: kind, before: read(before), after: read(view.projection) };
+            core.facts.find(item => item.id === record.id).change = { collection: kind, ...compactChange(read(before), read(view.projection)) };
         }
     }
     candidate.status = 'accepted';

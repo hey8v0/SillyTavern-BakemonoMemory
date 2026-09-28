@@ -50,7 +50,22 @@ export function hydrateVectorRecords(vectorMemory) {
     }
 }
 
+// Identifies one set of index records; the chat file's pointer to the index file carries it.
+// Self-contained on purpose (this module is also loaded on its own); same FNV-1a as shared/text.js getHash.
+function hashText(text) {
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index++) { hash ^= text.charCodeAt(index); hash = Math.imul(hash, 16777619); }
+    return (hash >>> 0).toString(16).padStart(8, '0');
+}
+export function vectorRecordsSignature(records = []) {
+    return hashText((records || []).map(record => `${record.id}:${record.hash || ''}:${record.embedding?.length || 0}`).join('|'));
+}
+
 export function serializeVectorMemory(vectorMemory) {
+    // Records already written to the index file stay out of the chat file.
+    if (vectorMemory.sidecar?.signature && (!vectorMemory.records?.length || vectorMemory.sidecar.signature === vectorRecordsSignature(vectorMemory.records))) {
+        return { ...vectorMemory, embeddingCache: {}, records: [] };
+    }
     return { ...vectorMemory, embeddingCache: {},
         records: (vectorMemory.records || []).map(record => ({
             ...record, embedding: typeof record.embedding === 'string' ? record.embedding : encodeEmbedding(record.embedding),

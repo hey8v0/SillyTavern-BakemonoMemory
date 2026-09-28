@@ -1,4 +1,4 @@
-import { sourceSnapshot } from './source.js';
+import { sourceSnapshot, sourceRevision } from './source.js';
 import { readSummarySources } from './summary-source.js';
 import { sourcePolicy } from './policy.js';
 
@@ -21,7 +21,8 @@ export function sourceOptions(state, policy = null) {
     };
 }
 
-export function readChatSource(message, state, { allocate = false, makeId = newIdentity, policy = null } = {}) {
+// light: identity and revision only (no character spans), for checks that do not locate evidence.
+export function readChatSource(message, state, { allocate = false, makeId = newIdentity, policy = null, light = false } = {}) {
     if (!message || message.is_user) return null;
     const swipe = String(Number.isSafeInteger(message.swipe_id) && message.swipe_id >= 0 ? message.swipe_id : 0);
     const info = message.swipe_info?.[Number(swipe)];
@@ -59,7 +60,7 @@ export function readChatSource(message, state, { allocate = false, makeId = newI
             message.bakemonoRpVariants[swipe] = structuredClone(identity);
         }
     }
-    const source = sourceSnapshot(message.mes || '', {
+    const source = (light ? sourceRevision : sourceSnapshot)(message.mes || '', {
         messageId: identity.messageId, variantId,
     }, sourceOptions(state, policy));
     const bodyOnly = policy?.version === 2 || !policy && state.rpCore?.ruleVersion >= 3;
@@ -71,18 +72,22 @@ export function readChatSource(message, state, { allocate = false, makeId = newI
 export function findChatSource(chat, state, key, policy = null) {
     const matches = [];
     for (let floor = 0; floor < chat.length; floor++) {
-        const source = readChatSource(chat[floor], state, { policy });
+        const source = readChatSource(chat[floor], state, { policy, light: true });
         for (const item of source ? [source, ...(source.supplements || [])] : []) {
-            if (item.messageId + '|' + item.variantId === key) matches.push({ ...item, floor });
+            if (item.messageId + '|' + item.variantId === key) matches.push(floor);
         }
     }
-    return matches.length === 1 ? matches[0] : null;
+    if (matches.length !== 1) return null;
+    // Only the one match is read in full, with the spans that evidence checks need.
+    const full = readChatSource(chat[matches[0]], state, { policy });
+    const item = full && [full, ...(full.supplements || [])].find(entry => entry.messageId + '|' + entry.variantId === key);
+    return item ? { ...item, floor: matches[0] } : null;
 }
 
 export function currentChatSources(chat, state, policy = null) {
     const sources = new Map();
     for (let floor = 0; floor < chat.length; floor++) {
-        const source = readChatSource(chat[floor], state, { policy });
+        const source = readChatSource(chat[floor], state, { policy, light: true });
         if (!source) continue;
         for (const item of [source, ...(source.supplements || [])]) {
             const key = item.messageId + '|' + item.variantId;

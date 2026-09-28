@@ -1,8 +1,8 @@
-import { createLedger, replayLedger, assertLedgerVersion, appendRecord } from './ledger.js';
+import { createLedger, replayLedger, assertLedgerVersion, appendRecord, createReplayCache, foldLedger, RP_DETAIL_FLOORS, RP_FOLD_STEP } from './ledger.js';
 import { RP_SETTINGS, migrateRpCore } from './policy.js';
 import { exportRpBackup, importRpBackup } from './backup.js';
 import { createProjection, applyDomainFact } from './domain.js';
-import { prepareExtraction, decideCandidate, refreshCandidateFingerprint } from './extraction.js';
+import { prepareExtraction, decideCandidate, refreshCandidateFingerprint, compactChange } from './extraction.js';
 import { readChatSource, findChatSource, currentChatSources } from './chat-sources.js';
 import { createRpTransactions } from './transaction.js';
 import { locateEvidence, suggestEvidenceRepair, sourceStamp } from './source.js';
@@ -15,9 +15,9 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
     const transactions = createRpTransactions({ getState, saveState, saveChat });
     const lastFloor = () => Math.max(0, getChat().length - 1);
 
-    function factReducer(state, currentSources = null) {
+    function factReducer(state, currentSources = null, sharedSources = null) {
         const activeSources = currentSources || currentChatSources(getChat(), state);
-        const policySources = new Map();
+        const policySources = sharedSources || new Map();
         let invalidFrom = Infinity;
         const sources = new Map();
         return (projection, fact) => {
@@ -31,7 +31,11 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
             } else if (fact.evidence && fact.origin?.kind !== 'user') {
                 const key = fact.evidence.messageId + '|' + fact.evidence.variantId;
                 if (!policySources.has('legacy')) policySources.set('legacy', currentChatSources(getChat(), state, { version: 1 }));
-                if (!sources.has(key)) sources.set(key, policySources.get('legacy').get(key));
+                // Evidence is located against the full text of that one floor.
+                if (!sources.has(key)) {
+                    const light = policySources.get('legacy').get(key);
+                    sources.set(key, light ? findChatSource(getChat(), state, key, { version: 1 }) : light);
+                }
                 const source = sources.get(key);
                 if (!source || source.revision !== fact.evidence.revision) throw new Error('事实来源已变化，需要重新确认');
                 const anchor = locateEvidence(source, fact.evidence.excerpt, fact.evidence).anchor;
@@ -108,6 +112,29 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         next.settings = { ...core.settings, enabled: false, automatic: false };
         await transactions.commit(state, core.revision, next, () => true, { clearCache: true });
     }
+    // One replay per chat, carried from reply to reply: a new reply only adds facts at the end, so replaying the whole
+    // story each time (which grows with the square of its length) is avoided. It is thrown away as soon as any floor
+    // it read has changed; the ledger cache itself replays in full on retractions or facts placed earlier.
+    const extractionReplays = new WeakMap();
+    function extractionReplay(state) {
+        const previous = extractionReplays.get(state);
+        if (previous) {
+            const read = new Map([...previous.sources.keys()].map(key => [key, currentChatSources(getChat(), state, key === 'legacy' ? { version: 1 } : JSON.parse(key))]));
+            const unchanged = [...previous.sources].every(([policy, old]) => [...old].every(([key, item]) => {
+                const now = read.get(policy).get(key);
+                return !item ? !now : !!now && sourceStamp(now) === sourceStamp(item) && now.floor === item.floor;
+            }));
+            if (unchanged) {
+                previous.sources.clear();
+                for (const [policy, map] of read) previous.sources.set(policy, map);
+                return previous.replay;
+            }
+        }
+        const sources = new Map();
+        const replay = createReplayCache(factReducer(state, null, sources));
+        extractionReplays.set(state, { sources, replay });
+        return replay;
+    }
     async function ingest(raw, sourceFloor, { manual = false, expectedSource = null, channel = null, inputHash = '', protocolStatus = null, taskId = '' } = {}) {
         const state = getState(), core = state.rpCore;
         if (!core?.settings?.enabled || (channel !== null && core.settings.mode !== channel)) return null;
@@ -117,7 +144,14 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
         const source = readChatSource(message, state, { allocate: true, makeId: makeSourceId });
         if (expectedSource && (expectedSource.messageId !== source.messageId || expectedSource.variantId !== source.variantId
             || sourceStamp(expectedSource) !== sourceStamp(source))) throw new Error('生成期间正文来源已变化');
-        const original = structuredClone(core), key = source.messageId + '|' + source.variantId;
+        let original = structuredClone(core);
+        const key = source.messageId + '|' + source.variantId;
+        // Ledgers written before 1.25.1 stored whole before/after entities in every change record; shrink them once.
+        if (!original.compactChanges) {
+            for (const fact of original.facts) if (fact.change && typeof fact.change.before === 'object' && typeof fact.change.after === 'object')
+                fact.change = { collection: fact.change.collection, ...compactChange(fact.change.before, fact.change.after) };
+            original.compactChanges = 1;
+        }
         if (core.ruleVersion >= 3) {
             const oldBatches = original.batches.filter(batch => batch.sourceKey === key && !batch.superseded);
             if (!manual && oldBatches.some(batch => batch.sourceStamp === sourceStamp(source))) return { core, unchanged: true };
@@ -135,12 +169,18 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
                 }
             }
         }
+        // Keep the latest floors in detail; fold older ones into the starting state every RP_FOLD_STEP replies.
+        const cutoff = sourceFloor - RP_DETAIL_FLOORS;
+        if (original.ruleVersion >= 3 && cutoff - original.baseline.floor >= RP_FOLD_STEP) {
+            original = foldLedger(original, cutoff, factReducer(state));
+            extractionReplays.delete(state);
+        }
         const prepared = prepareExtraction(original, raw, source, {
             floor: lastFloor(), order: sourceFloor,
             autoApply: true, modelOwned: true,
             automaticRegistration: true,
             allowNewOnRepeat: true,
-            applyFact: factReducer(state),
+            replay: extractionReplay(state),
         });
         if (inputHash) prepared.core.batches.at(-1).inputHash = String(inputHash);
         prepared.core.batches.at(-1).sourceStamp = sourceStamp(source);
@@ -381,7 +421,7 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
             const processed = key && sources.get(key) && core.batches.some(batch => !batch.superseded && batch.sourceKey === key && batch.sourceStamp === sourceStamp(source));
             if (processed) latest = floor; else missing.push(floor);
         });
-        return { start: core.baseline.floor, latest, missingCount: missing.length, missingFrom: missing[0], missingTo: missing.at(-1), opening };
+        return { start: core.baseline.startFloor ?? core.baseline.floor, folded: core.baseline.startFloor != null ? core.baseline.floor : null, latest, missingCount: missing.length, missingFrom: missing[0], missingTo: missing.at(-1), opening };
     }
     return { enable, migrate, backup, validateRestore, restore, clear, progress, ingest, editEntity, mergePeople, editTemporary, lifecycle, editInformation, reconcilePending, review, previewReview, previewEvidenceRepair, evidenceChoices, evidenceSuggestion, referenceIssues, previewReferenceRepair, configure, setExtractionJob, view, memoryView };
 }

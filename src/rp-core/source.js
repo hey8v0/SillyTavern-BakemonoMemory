@@ -70,6 +70,23 @@ export function normalizeEvidenceText(value, { excludeTags = [], includeTags = [
     return { text: units.map(unit => unit.char).join(''), spans: units.map(({ start, end }) => ({ start, end })) };
 }
 
+// Checking every floor's revision is the common case and needs only the normalised text, not per-character spans.
+// Keep that per text and options, so long chats are not re-normalised floor by floor on every check.
+const lightCache = new Map();
+export function sourceRevision(raw, identity, options) {
+    if (!identity?.messageId || !identity?.variantId) throw new Error('正文来源缺少稳定身份');
+    const key = JSON.stringify(options || null) + '\u0000' + raw;
+    let entry = lightCache.get(key);
+    if (!entry) {
+        if (lightCache.size > 20000) lightCache.clear();
+        const text = normalizeEvidenceText(raw, options).text;
+        entry = { text, revision: evidenceHash(text) };
+        lightCache.set(key, entry);
+    }
+    return { messageId: String(identity.messageId), variantId: String(identity.variantId),
+        normalizationVersion: NORMALIZATION_VERSION, revision: entry.revision, text: entry.text, light: true };
+}
+
 export function sourceSnapshot(raw, identity, options) {
     if (!identity?.messageId || !identity?.variantId) throw new Error('正文来源缺少稳定身份');
     const normalized = normalizeEvidenceText(raw, options);

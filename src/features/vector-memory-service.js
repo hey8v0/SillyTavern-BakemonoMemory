@@ -55,6 +55,7 @@ export function createVectorMemoryService({
     fetchImpl = globalThis.fetch,
     formatApiFailure = response => `嵌入向量接口请求失败：${response.status} ${response.statusText}`,
     setTimer = globalThis.setTimeout,
+    vectorSidecar = null,
     clearTimer = globalThis.clearTimeout,
     embeddingCache = createEmbeddingCache(),
     yieldToUi = () => new Promise(resolve => setTimeout(resolve, 0)),
@@ -522,7 +523,34 @@ export function createVectorMemoryService({
         return sources;
     }
     
+    // The index may still be on its way from its own file; nothing decides "missing" before that has been tried once.
+    const sidecarTried = new WeakSet();
+    const waitsForSidecar = state => !!vectorSidecar && !state.vectorMemory.records?.length && !!state.vectorMemory.sidecar?.path;
+    async function whenRecordsReady(state = ensureState()) {
+        if (!vectorSidecar) return false;
+        sidecarTried.add(state.vectorMemory);
+        return await vectorSidecar.load(state.vectorMemory);
+    }
+    let sidecarSaveTimer = null;
+    function scheduleSidecarSave(state) {
+        if (!vectorSidecar) return;
+        clearTimer(sidecarSaveTimer);
+        sidecarSaveTimer = setTimer(async () => {
+            if (ensureState() !== state) return;
+            try {
+                if (await vectorSidecar.save(state.vectorMemory) && ensureState() === state) saveState();
+            } catch (error) {
+                // The records stay in the chat file until a later index can be written.
+                console.warn('[BakemonoMemory] vector index file could not be written', error);
+            }
+        }, 2000);
+    }
+
     function markVectorIndexDirty(reason = 'changed', state = ensureState()) {
+        if (waitsForSidecar(state) && !sidecarTried.has(state.vectorMemory)) {
+            void whenRecordsReady(state).then(() => { if (ensureState() === state) markVectorIndexDirty(reason, state); });
+            return;
+        }
         if (state.vectorMemory.records?.length && state.vectorMemory.lastIndexedSignature === getVectorSourceSignature(state)) {
             if (state.vectorMemory.dirty) {
                 state.vectorMemory.dirty = false;
@@ -639,6 +667,10 @@ export function createVectorMemoryService({
     
     async function buildVectorMemoryIndex({ silent = false } = {}) {
         const state = ensureState();
+        if (waitsForSidecar(state)) {
+            await whenRecordsReady(state);
+            if (ensureState() !== state) return state.vectorMemory.records || [];
+        }
         removeRpVectorCache(state.vectorMemory);
         if (silent && (pausedIndexStates.has(state) || state.vectorMemory.lastIndexError)) return state.vectorMemory.records || [];
         if (!silent) {
@@ -809,6 +841,7 @@ export function createVectorMemoryService({
         if (String(state.vectorMemory.lastRecallSkippedReason || '').startsWith('索引待刷新：')
             || state.vectorMemory.lastRecallSkippedReason === sourceUpdatingMessage) state.vectorMemory.lastRecallSkippedReason = '';
         saveState();
+        scheduleSidecarSave(state);
         syncInjection();
         renderWorkbenchScope(workbenchRenderScopes.VECTOR, silent ? '' : `向量索引完成：${records.length} 个片段，复用 ${reused} 个。`);
         if (!silent) {
@@ -818,6 +851,7 @@ export function createVectorMemoryService({
     }
     
     async function retrieveVectorMemoryHits(explicitQuery = '', state = ensureState(), options = {}) {
+        if (waitsForSidecar(state)) await whenRecordsReady(state);
         removeRpVectorCache(state.vectorMemory);
         cancelVectorRecall();
         const requestRevision = recallRevision, configKey = recallConfigKey(state);
@@ -1025,6 +1059,7 @@ export function createVectorMemoryService({
     }
 
     return {
+        whenRecordsReady,
         cancelVectorRecall,
         pruneVectorRuntimeCache,
         splitTextIntoChunks,

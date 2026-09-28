@@ -10,6 +10,7 @@ import { createStoryToolsUi } from './src/features/story-tools-ui.js';
 import { createAutomationBehaviorConfig, createSharedInlineGenerationConfig, createSharedVectorConfig, isStateConfigNewerThanActive, markActiveConfigApplied, mergeAutomationBehaviorConfig, mergeSharedInlineGenerationConfig, mergeSharedVectorConfig, readActiveConfig, sharedConfigVersion, shouldBootstrapSharedConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
 import { persistChatState, persistGlobalSettings } from './src/core/persistence.js';
 import { installCompactStateSerializer } from './src/core/persisted-chat-state.js';
+import { createVectorSidecar } from './src/vector/sidecar.js';
 import { createSummaryRecoveryJournal } from './src/core/summary-recovery-journal.js';
 import { migrateGenerationPrompts, migrateInlineSummaryPrompt, migratePromptPresetTimelines, migrateTurnSummaryPrompt, migrateVectorQueryRewritePrompt } from './src/core/prompt-migrations.js';
 import { ensureObjectField, fillMissingDefaults, normalizeArrayFields } from './src/core/state-shape.js';
@@ -1194,6 +1195,8 @@ const {
 } = configurationController;
 
 const vectorMemoryService = createVectorMemoryService({
+    vectorSidecar: createVectorSidecar({ getHeaders: () => tavernHost.getRequestHeaders(), getChatKey: () => getSummaryRecoveryChatIdentity(), getHash,
+        warn: (...args) => console.warn(...args) }),
     formatApiFailure,
     defaultVectorMemory,
     getState: ensureState,

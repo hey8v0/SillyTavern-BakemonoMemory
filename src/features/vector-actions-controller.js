@@ -255,6 +255,8 @@ export function createVectorActionsController({
             return;
         }
         state.vectorMemory.records = [];
+        // The index file stays on the server but is no longer this chat's index.
+        delete state.vectorMemory.sidecar;
         cancelVectorRecall();
         clearVectorRecall('', state);
         state.vectorMemory.lastHits = [];
