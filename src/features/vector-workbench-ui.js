@@ -32,6 +32,7 @@ export function createVectorWorkbenchUi({
     canKeepVectorForm,
     getVectorSourceMessages = () => [],
     isVectorIndexing = () => false,
+    getVectorIndexProgress = () => null,
 } = {}) {
     // What the reader has opened in the last-recall list; cleared when a new recall arrives.
     const view = { recallAt: null, open: new Set(), queries: false, pool: false };
@@ -102,8 +103,11 @@ export function createVectorWorkbenchUi({
         const summaries = records.filter(r => r.kind === 'summary' && !r.isSavedSummary).length;
         const saved = records.filter(r => r.isSavedSummary).length;
         const running = isVectorIndexing();
+        const progress = running ? getVectorIndexProgress() : null;
         const waiting = Math.max(0, eligible - indexedFloors.size);
         const title = config.lastIndexError ? '自动索引已暂停'
+            // Texts, not floors: a floor with a summary is two texts. The index is written only when all are done.
+            : running && progress?.total ? `正在建索引：${progress.done.toLocaleString()} / ${progress.total.toLocaleString()} 段`
             : !records.length ? (running ? '正在建索引…' : '还没有建索引')
             : running ? `正在更新索引：${indexedFloors.size} / ${eligible} 楼`
             : waiting ? `${indexedFloors.size} / ${eligible} 楼已建索引，还有 ${waiting} 楼等待`

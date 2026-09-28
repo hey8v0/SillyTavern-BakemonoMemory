@@ -8,6 +8,7 @@ import { isRpVectorRecord, removeRpVectorCache } from '../vector/source-policy.j
 
 const sourceUpdatingMessage = '正文仍在更新，待稳定后自动刷新索引。';
 class VectorSourceChanged extends Error {}
+class BatchUnsupported extends Error {}
 
 export function createVectorMemoryService({
     defaultVectorMemory,
@@ -660,11 +661,53 @@ export function createVectorMemoryService({
             },
             body: JSON.stringify({ model, input: text }),
         } });
-        const embedding = data?.data?.[0]?.embedding;
+        if (Array.isArray(text)) {
+            // Rows may come back out of order; `index` says which input each belongs to.
+            const rows = Array.isArray(data?.data) ? [...data.data].sort((a, b) => (a?.index ?? 0) - (b?.index ?? 0)) : [];
+            if (rows.length !== text.length) throw new BatchUnsupported();
+            return rows.map(row => validEmbedding(row?.embedding));
+        }
+        return validEmbedding(data?.data?.[0]?.embedding);
+    }
+
+    function validEmbedding(embedding) {
         if (!Array.isArray(embedding) || !embedding.length || embedding.length > 16384 || !embedding.some(value => value !== 0) || !embedding.every(value => typeof value === 'number' && Number.isFinite(value))) {
             throw new Error('嵌入向量接口没有返回有效数值向量，请确认模型支持 embeddings。');
         }
         return embedding.map(Number);
+    }
+
+    // Building an index used to send one request per text, one after another: thousands of floors took most of
+    // an hour. Texts now go EMBED_BATCH at a time (the OpenAI embeddings API takes a list). An endpoint that
+    // answers a list with the wrong number of rows, or refuses it, gets single texts for the rest of the session.
+    const EMBED_BATCH = 16, EMBED_BATCH_CHARS = 24000;
+    const singleOnlyEndpoints = new Set();
+    async function embedMissing(items, state, { signal, onBatch, check }) {
+        const config = state.vectorMemory;
+        const endpoint = String(config.customApi?.baseUrl || '') + '|' + (config.customApi?.model || '');
+        const dimensions = Math.max(32, Number(config.embeddingDimensions || defaultVectorMemory.embeddingDimensions));
+        for (let start = 0; start < items.length;) {
+            let end = start + 1, chars = items[start].text.length;
+            while (end < items.length && end - start < EMBED_BATCH && chars + items[end].text.length <= EMBED_BATCH_CHARS) chars += items[end++].text.length;
+            const batch = items.slice(start, end);
+            let vectors = null;
+            if (batch.length > 1 && !singleOnlyEndpoints.has(endpoint)) {
+                try { vectors = await fetchCustomEmbedding(batch.map(item => item.text), state, { signal }); }
+                catch (error) { if (signal?.aborted) throw error; singleOnlyEndpoints.add(endpoint); }
+            }
+            if (!vectors) {
+                vectors = [];
+                for (const item of batch) vectors.push(await fetchCustomEmbedding(item.text, state, { signal }));
+            }
+            // A reply for a model or chat that is no longer current must not reach the cache.
+            check();
+            for (let i = 0; i < batch.length; i++) {
+                batch[i].embedding = compactEmbedding(vectors[i], dimensions);
+                try { await embeddingCache.put(batch[i].key, batch[i].embedding); } catch {}
+            }
+            start = end;
+            await onBatch(batch.length);
+        }
     }
     
     async function buildVectorMemoryIndex({ silent = false } = {}) {
@@ -745,24 +788,17 @@ export function createVectorMemoryService({
         for (const [key, embedding] of (state.vectorMemory.records || [])
             .filter(record => record.embeddingFormat === 'native-v1' && record.embeddingKey && Array.isArray(record.embedding) && record.embedding.length)
             .map(record => [record.embeddingKey, record.embedding])) reusable.set(key, embedding);
-        let processed = 0, reused = 0, checkedDimensions = 0;
-        const embeddingForRecord = async text => {
-            if (signal.aborted || ensureState() !== state || space !== getEmbeddingSpaceKey(state)) throw new Error('索引已暂停或聊天配置已切换，已完成片段会在继续时复用。');
-            const key = await getEmbeddingCacheKey(space, String(text || ''));
-            if (signal.aborted || ensureState() !== state || space !== getEmbeddingSpaceKey(state)) throw new Error('聊天或向量配置已变化，本次索引未替换原数据。');
-            const existing = reusable.get(key);
-            const embedding = existing || await getEmbeddingForText(text, state, { key, signal, space });
-            if (checkedDimensions && checkedDimensions !== embedding.length) throw new Error('接口返回的向量维度发生变化，本次未替换原索引。');
-            checkedDimensions = embedding.length;
-            if (existing) reused++;
-            reusable.set(key, embedding);
-            processed++;
-            if (processed % 10 === 0) {
-                renderWorkbenchScope(workbenchRenderScopes.VECTOR, `索引处理中：已处理 ${processed} 个片段，复用 ${reused} 个。`);
-                await yieldToUi();
-            }
-            return { embedding, embeddingKey: key, embeddingFormat: 'native-v1' };
+        let reused = 0;
+        const progress = { done: 0, total: 0 };
+        if (indexRun?.state === state) indexRun.progress = progress;
+        const current = message => { if (signal.aborted || ensureState() !== state || space !== getEmbeddingSpaceKey(state)) throw new Error(message); };
+        const report = async count => {
+            progress.done += count;
+            renderWorkbenchScope(workbenchRenderScopes.VECTOR, `索引处理中：${progress.done} / ${progress.total} 段，复用 ${reused} 段。`);
+            await yieldToUi();
         };
+        // Every record names its text first; the embeddings are filled in together below.
+        const embeddingForRecord = text => ({ embedText: String(text || '') });
 
         for (const { message, messageId, cleanedText, summaryText } of getVectorSourceMessages(state)) {
             const fullText = String(cleanedText || '').trim();
@@ -829,6 +865,39 @@ export function createVectorMemoryService({
             });
         }
     
+        current('索引已暂停或聊天配置已切换，已完成片段会在继续时复用。');
+        const keys = new Map();
+        for (const record of records) {
+            if (!keys.has(record.embedText)) keys.set(record.embedText, await getEmbeddingCacheKey(space, record.embedText));
+            current('聊天或向量配置已变化，本次索引未替换原数据。');
+        }
+        const found = new Map(), missing = [];
+        for (const [text, key] of keys) {
+            let embedding = reusable.get(key);
+            if (embedding) { reused++; found.set(key, embedding); continue; }
+            embedding = vectorEmbeddingRuntimeCache.get(key);
+            if (!Array.isArray(embedding) && state.vectorMemory.embeddingProvider === 'custom-openai') { try { embedding = await embeddingCache.get(key); } catch {} }
+            if (Array.isArray(embedding)) found.set(key, embedding);
+            else if (state.vectorMemory.embeddingProvider === 'custom-openai') missing.push({ key, text });
+            else found.set(key, await getEmbeddingForText(text, state, { key, signal, space }));
+        }
+        progress.total = keys.size;
+        progress.done = keys.size - missing.length;
+        await embedMissing(missing, state, { signal, onBatch: report,
+            check: () => current('聊天或向量配置已变化，本次索引未替换原数据。') });
+        for (const item of missing) found.set(item.key, item.embedding);
+        let dimensions = 0;
+        for (const record of records) {
+            const key = keys.get(record.embedText), embedding = found.get(key);
+            if (dimensions && dimensions !== embedding.length) throw new Error('接口返回的向量维度发生变化，本次未替换原索引。');
+            dimensions = embedding.length;
+            reusable.set(key, embedding);
+            vectorEmbeddingRuntimeCache.set(key, embedding);
+            delete record.embedText;
+            Object.assign(record, { embedding, embeddingKey: key, embeddingFormat: 'native-v1' });
+        }
+        pruneVectorRuntimeCache();
+
         if (signal.aborted || ensureState() !== state || configuration !== indexConfigurationKey(state)) {
             throw new Error('聊天或向量配置已变化，本次索引未覆盖原索引。');
         }
@@ -1095,6 +1164,7 @@ export function createVectorMemoryService({
         buildVectorMemoryIndex,
         pauseVectorIndex,
         isVectorIndexing: () => !!indexRun && !indexRun.finished && indexRun.state === ensureState(),
+        getVectorIndexProgress: () => (indexRun && !indexRun.finished && indexRun.state === ensureState() ? indexRun.progress : null) || null,
         retrieveVectorMemoryHits,
         renderVectorMemorySection,
     };

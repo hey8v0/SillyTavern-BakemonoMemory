@@ -38,7 +38,9 @@ function vectorFixture(count = 150, overrides = {}) {
         renderWorkbenchScope: noop, workbenchRenderScopes: {}, saveState: noop, toastr,
         embeddingCache: { get: async key => cache.get(key), put: async (key, value) => cache.set(key, value) },
         yieldToUi: async () => { yields++; }, waitForSourceSettle: async () => {},
-        fetchImpl: async () => { calls++; return new Response(JSON.stringify({ data: [{ embedding: [0.2, 0.8, 0.4] }] })); },
+        // Like a real embeddings API: one row per input, whether `input` is a string or a list.
+        fetchImpl: async (url, init) => { calls++; const input = JSON.parse(init.body).input;
+            return new Response(JSON.stringify({ data: [input].flat().map((_, index) => ({ index, embedding: [0.2, 0.8, 0.4] })) })); },
         ...overrides,
     };
     return { state, chat, cache, dependencies, service: createVectorMemoryService(dependencies),
@@ -73,7 +75,7 @@ test('excluded trailing widget leaves index current; retrieval refreshes changed
     assert.equal(f.state.vectorMemory.lastIndexedSignature, f.service.getVectorSourceSignature());
     assert.equal(f.state.vectorMemory.dirty, false);
     assert.match(f.state.vectorMemory.lastRecallSkippedReason, /少于 99/);
-    assert.equal(f.calls(), 3);
+    assert.equal(f.calls(), 2, 'both floors in one batch, then only the changed floor');
 });
 
 test('recall does not restart an explicitly paused index', async () => {
@@ -153,10 +155,11 @@ test('source retry keeps all completed embeddings even beyond the short runtime 
     let first = true;
     const service = createVectorMemoryService({ ...f.dependencies,
         embeddingCache: { get: async () => null, put: async () => {} },
-        yieldToUi: async () => { if (first && f.calls() === 140) { first = false; f.chat[139].mes += '尾部追加'; } },
+        // 140 texts are 9 batches of up to 16; the tail changes after the last one.
+        yieldToUi: async () => { if (first && f.calls() === 9) { first = false; f.chat[139].mes += '尾部追加'; } },
     });
     await service.buildVectorMemoryIndex();
-    assert.equal(f.calls(), 141);
+    assert.equal(f.calls(), 10, 'the retry asks only for the changed text');
     assert.equal(f.state.vectorMemory.records.length, 140);
 });
 
@@ -223,23 +226,23 @@ test('a late append during query embedding schedules refresh without injecting s
 test('150 indexed fragments are reused across scans and reload; one appended fragment costs one request', async () => {
     const f = vectorFixture();
     await f.service.buildVectorMemoryIndex();
-    assert.equal(f.calls(), 150);
-    assert.equal(f.yields(), 15);
+    assert.equal(f.calls(), 10, '150 texts go in batches of 16');
+    assert.equal(f.yields(), 10);
     const cleaned = f.cleaned();
     await f.service.buildVectorMemoryIndex();
-    assert.equal(f.calls(), 150); assert.equal(f.cleaned(), cleaned);
+    assert.equal(f.calls(), 10); assert.equal(f.cleaned(), cleaned);
     f.chat.push({ mes: '新增的约定' });
     await f.service.buildVectorMemoryIndex();
-    assert.equal(f.calls(), 151); assert.equal(f.cleaned(), cleaned + 1);
+    assert.equal(f.calls(), 11); assert.equal(f.cleaned(), cleaned + 1);
     f.state.vectorMemory = JSON.parse(JSON.stringify(serializeVectorMemory(f.state.vectorMemory)));
     assert.equal(typeof f.state.vectorMemory.records[0].embedding, 'string');
     hydrateVectorRecords(f.state.vectorMemory);
     f.cache.clear();
     await createVectorMemoryService(f.dependencies).buildVectorMemoryIndex();
-    assert.equal(f.calls(), 151);
+    assert.equal(f.calls(), 11);
     f.chat.splice(0, 1);
     await f.service.buildVectorMemoryIndex();
-    assert.equal(f.calls(), 151);
+    assert.equal(f.calls(), 11);
     assert.equal(f.state.vectorMemory.records.length, 150);
     assert.equal(f.state.vectorMemory.records[0].messageId, 0);
 });
@@ -263,19 +266,20 @@ test('paused index keeps completed cache checkpoints and resumes without repeati
     let yields = 0;
     const service = createVectorMemoryService({ ...f.dependencies,
         yieldToUi: async () => { if (++yields === 1) service.pauseVectorIndex(); } });
+    // Paused after the first batch of 16; the other 14 go in one more request on resume.
     assert.equal(await service.buildVectorMemoryIndex(), false);
-    assert.equal(f.calls(), 10);
+    assert.equal(f.calls(), 1);
     assert.equal(f.state.vectorMemory.records.length, 0);
     await service.buildVectorMemoryIndex({ silent: true });
-    assert.equal(f.calls(), 10);
+    assert.equal(f.calls(), 1);
     await service.buildVectorMemoryIndex();
-    assert.equal(f.calls(), 30);
+    assert.equal(f.calls(), 2);
     assert.equal(f.state.vectorMemory.records.length, 30);
 });
 
 test('a failed optional cache does not block indexing and keys isolate both space and content', async () => {
     const f = vectorFixture(2, { embeddingCache: { get: async () => { throw Error('unavailable'); }, put: async () => { throw Error('quota'); } } });
-    await f.service.buildVectorMemoryIndex(); assert.equal(f.calls(), 2);
+    await f.service.buildVectorMemoryIndex(); assert.equal(f.calls(), 1);
     const disabled = createEmbeddingCache({ indexedDB: { open() { throw Error('denied'); } } });
     assert.equal(await disabled.get('key'), null);
     assert.equal(await disabled.put('key', [1]), false);
@@ -498,4 +502,36 @@ test('timeout and cancellation stop waiting without retrying an uncertain reques
     const controller = new AbortController(); controller.abort();
     await assert.rejects(runApiRequest({ signal: controller.signal, fetchImpl: () => { calls++; } }), /取消/);
     assert.equal(calls, 1);
+});
+
+test('an endpoint that ignores lists falls back to one text per request, and rows are matched by index', async () => {
+    let requests = 0;
+    const single = vectorFixture(20, { fetchImpl: async (url, init) => {
+        requests++;
+        return new Response(JSON.stringify({ data: [{ embedding: [0.2, 0.8, 0.4] }] }));
+    } });
+    await single.service.buildVectorMemoryIndex();
+    assert.equal(single.state.vectorMemory.records.length, 20);
+    assert.equal(requests, 1 + 20, 'one refused batch, then single texts for the rest of the session');
+
+    const shuffled = vectorFixture(3, { fetchImpl: async (url, init) => {
+        const input = JSON.parse(init.body).input;
+        const rows = input.map((text, index) => ({ index, embedding: [index + 1, 1, 0] }));
+        return new Response(JSON.stringify({ data: rows.reverse() }));
+    } });
+    await shuffled.service.buildVectorMemoryIndex();
+    const first = shuffled.state.vectorMemory.records.find(record => record.messageId === 0).embedding;
+    const third = shuffled.state.vectorMemory.records.find(record => record.messageId === 2).embedding;
+    assert.ok(first[0] < third[0], 'each text keeps its own vector even when the rows come back reversed');
+});
+
+test('a running build reports how many texts are done out of how many', async () => {
+    const seen = [];
+    let service;
+    const f = vectorFixture(40, { yieldToUi: async () => { seen.push({ ...service.getVectorIndexProgress() }); } });
+    service = createVectorMemoryService({ ...f.dependencies, yieldToUi: async () => { seen.push({ ...service.getVectorIndexProgress() }); } });
+    await service.buildVectorMemoryIndex();
+    assert.deepEqual(seen.map(item => item.done), [16, 32, 40]);
+    assert.ok(seen.every(item => item.total === 40));
+    assert.equal(service.getVectorIndexProgress(), null);
 });

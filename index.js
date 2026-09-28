@@ -1295,6 +1295,7 @@ const vectorWorkbenchUi = createVectorWorkbenchUi({
     formatSourceRange,
     getVectorSourceMessages: (...args) => vectorMemoryService.getVectorSourceMessages(...args),
     isVectorIndexing: () => vectorMemoryService.isVectorIndexing(),
+    getVectorIndexProgress: () => vectorMemoryService.getVectorIndexProgress(),
 });
 const {
     renderVectorMemoryPanel,
