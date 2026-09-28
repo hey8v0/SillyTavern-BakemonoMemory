@@ -963,12 +963,21 @@
                   </div>
                 </div>
                 <label class="bk-sum-field"><span>接口密钥</span><input id="bakemono-memory-vector-api-key" type="password" autocomplete="off"></label>
+                <label class="bk-vec-row"><span>存多少维</span>
+                  <select id="bakemono-memory-vector-max-dimensions">
+                    <option value="0">模型原本的维度</option>
+                    <option value="2048">2048</option>
+                    <option value="1024">1024</option>
+                    <option value="512">512</option>
+                  </select>
+                </label>
+                <p class="bk-tbl-set-note">只对能截短的模型有效，如 Qwen3-Embedding、text-embedding-3；其他模型保持原本的维度。维度减半，手机内存和索引文件也减半。</p>
                 <div class="bk-tbl-set-actions">
                   <button type="button" class="bk-sum-link" data-bakemono-action="vector-fetch-models">拉取模型</button>
                   <button type="button" class="bk-sum-link" data-bakemono-action="vector-test-embedding" title="发送一条固定短文本，不会发送聊天正文">测试接口</button>
                 </div>
               </div>
-              <p class="bk-tbl-set-note">换来源后要重建索引。</p>
+              <p class="bk-tbl-set-note">换来源、模型或维度后要重建索引。</p>
             </div>
           </details>
 
@@ -1220,7 +1229,7 @@
         <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
           <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
           <h3>使用说明</h3>
-          <p>v1.25.7 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
+          <p>v1.25.8 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
         </header>
 
         <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">

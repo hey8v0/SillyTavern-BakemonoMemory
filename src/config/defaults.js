@@ -639,6 +639,9 @@ export function createDefaultConfiguration({
         maxIndexedMessages: 0,
         maxStoredTextChars: 1200,
         embeddingDimensions: 128,
+        // Custom embeddings keep the model's own size unless capped. Models trained for it (Qwen3-Embedding,
+        // text-embedding-3) keep most of their quality when cut to their first N values; others do not.
+        embeddingMaxDimensions: 0,
         topK: 20,
         rerankCandidateCount: 20,
         finalRecallCount: 5,

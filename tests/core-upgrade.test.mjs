@@ -535,3 +535,25 @@ test('a running build reports how many texts are done out of how many', async ()
     assert.ok(seen.every(item => item.total === 40));
     assert.equal(service.getVectorIndexProgress(), null);
 });
+
+test('a dimension cap asks for shorter vectors, cuts them when the API ignores it, and is its own index space', async () => {
+    const bodies = [];
+    const long = Array.from({ length: 4096 }, (_, i) => ((i % 7) + 1) / 10);
+    const f = vectorFixture(3, { fetchImpl: async (url, init) => {
+        const body = JSON.parse(init.body); bodies.push(body);
+        if (body.dimensions) return new Response('unknown parameter: dimensions', { status: 400 });
+        return new Response(JSON.stringify({ data: [body.input].flat().map((_, index) => ({ index, embedding: long })) }));
+    } });
+    const uncapped = f.service.getVectorSourceSignature();
+    f.state.vectorMemory.embeddingMaxDimensions = 1024;
+    await f.service.buildVectorMemoryIndex();
+    assert.equal(bodies[0].dimensions, 1024, 'the API is asked for the shorter vector first');
+    assert.ok(bodies.slice(1).every(body => !('dimensions' in body)), 'then asked without the parameter it refused');
+    const vector = f.state.vectorMemory.records[0].embedding;
+    assert.equal(vector.length, 1024);
+    assert.ok(Math.abs(Math.hypot(...vector) - 1) < 1e-4, 'the cut vector is normalised again');
+    assert.notEqual(f.service.getVectorSourceSignature(), uncapped, 'a new cap makes the old index stale');
+    f.state.vectorMemory.embeddingMaxDimensions = 0;
+    await f.service.buildVectorMemoryIndex();
+    assert.equal(f.state.vectorMemory.records[0].embedding.length, 4096, 'removing the cap rebuilds at the full size');
+});

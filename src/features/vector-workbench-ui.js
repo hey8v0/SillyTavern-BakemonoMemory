@@ -73,6 +73,7 @@ export function createVectorWorkbenchUi({
         query('#bakemono-memory-vector-base-url').val(config.customApi?.baseUrl || '');
         query('#bakemono-memory-vector-api-key').val(config.customApi?.apiKey || '');
         query('#bakemono-memory-vector-model').val(config.customApi?.model || '');
+        query('#bakemono-memory-vector-max-dimensions').val(String(config.embeddingMaxDimensions || 0));
         renderVectorModelOptions(config.customApi?.models || []);
         markVectorFormRendered?.(state);
     }
@@ -88,7 +89,8 @@ export function createVectorWorkbenchUi({
         query('#bakemono-memory-vector-set-amount').text(`摘要 ${val('#bakemono-memory-vector-max-summary-recall') ?? ''} · 正文 ${val('#bakemono-memory-vector-full-recall-count') ?? ''}`);
         query('#bakemono-memory-vector-set-query').text(queryMode === 'local' ? '本地改写' : queryMode === 'off' ? '不改写' : '模型改写');
         query('#bakemono-memory-vector-set-index').text(checked('#bakemono-memory-vector-auto-index') ? '自动更新' : '手动更新');
-        query('#bakemono-memory-vector-set-embed').text(embedCustom ? '自定义接口' : '本地哈希向量');
+        const cap = Number(val('#bakemono-memory-vector-max-dimensions')) || 0;
+        query('#bakemono-memory-vector-set-embed').text(embedCustom ? '自定义接口' + (cap ? ` · ${cap} 维` : '') : '本地哈希向量');
         query('[data-bk-vec-when="query-model"]').prop('hidden', queryMode !== 'model-required');
         query('[data-bk-vec-when="query-custom"]').prop('hidden', queryMode !== 'model-required' || queryProvider !== 'custom');
         query('[data-bk-vec-when="embed-custom"]').prop('hidden', !embedCustom);

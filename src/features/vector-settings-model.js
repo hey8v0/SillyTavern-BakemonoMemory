@@ -21,6 +21,7 @@ export function createVectorSettingsModel({
         'summary-tags': ['summaryTags'], 'query-mode': ['queryMode'], 'query-provider': ['queryRewriteProvider'],
         'query-prompt': ['queryRewritePrompt'], 'start-after-ai': ['startAfterAiMessages'], 'skip-context': ['skipIfAllInContext'],
         'context-window': ['contextWindowMessages'], 'rerank-mode': ['rerankMode'], provider: ['embeddingProvider'],
+        'max-dimensions': ['embeddingMaxDimensions'],
     };
     const numeric = new Set(['max-indexed-messages', 'max-stored-text-chars', 'chunk-size', 'overlap',
         'long-message-threshold', 'top-k', 'max-recall-messages', 'full-recall-count', 'max-per-message',
@@ -103,6 +104,7 @@ export function createVectorSettingsModel({
             contextWindowMessages: Math.max(0, Number(query('#bakemono-memory-vector-context-window').val() ?? defaultVectorMemory.contextWindowMessages)),
             rerankMode: String(query('#bakemono-memory-vector-rerank-mode').val() ?? defaultVectorMemory.rerankMode),
             embeddingProvider: String(query('#bakemono-memory-vector-provider').val() ?? defaultVectorMemory.embeddingProvider),
+            embeddingMaxDimensions: Math.max(0, Math.floor(Number(query('#bakemono-memory-vector-max-dimensions').val() ?? defaultVectorMemory.embeddingMaxDimensions) || 0)),
             customApi: {
                 baseUrl: String(query('#bakemono-memory-vector-base-url').val() || '').trim(),
                 apiKey: String(query('#bakemono-memory-vector-api-key').val() || '').trim(),

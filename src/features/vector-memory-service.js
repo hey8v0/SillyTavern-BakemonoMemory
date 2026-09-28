@@ -606,7 +606,15 @@ export function createVectorMemoryService({
         const config = state.vectorMemory;
         return JSON.stringify(['embedding-native-v1', config.embeddingProvider || 'local',
             config.embeddingProvider === 'custom-openai' ? getCustomEmbeddingsUrl(config.customApi?.baseUrl || 'http://unconfigured.invalid') : '',
-            config.customApi?.model || '', config.embeddingProvider === 'custom-openai' ? 'native' : config.embeddingDimensions || defaultVectorMemory.embeddingDimensions]);
+            config.customApi?.model || '', config.embeddingProvider === 'custom-openai' ? 'native' + (maxDimensions(config) ? ':' + maxDimensions(config) : '') : config.embeddingDimensions || defaultVectorMemory.embeddingDimensions]);
+    }
+
+    const maxDimensions = config => Math.max(0, Math.floor(Number(config?.embeddingMaxDimensions) || 0));
+    // Keeps the first N values (the model's own shorter vector for Matryoshka-trained models); compactEmbedding
+    // then normalises it again.
+    function capDimensions(vector, config) {
+        const cap = maxDimensions(config);
+        return cap && vector.length > cap ? vector.slice(0, cap) : vector;
     }
 
     async function getEmbeddingForText(text, state = ensureState(), options = {}) {
@@ -627,7 +635,7 @@ export function createVectorMemoryService({
             try { embedding = await embeddingCache.get(cacheKey); } catch {}
             assertCurrent();
             if (!embedding) {
-                embedding = compactEmbedding(await fetchCustomEmbedding(source, state, options), dimensions);
+                embedding = compactEmbedding(capDimensions(await fetchCustomEmbedding(source, state, options), state.vectorMemory), dimensions);
                 assertCurrent();
                 try { await embeddingCache.put(cacheKey, embedding); } catch {}
             }
@@ -650,7 +658,8 @@ export function createVectorMemoryService({
         if (!baseUrl || !model) {
             throw new Error('嵌入向量接口需要填写接口地址和模型。');
         }
-        const data = await runApiRequest({ url: getCustomEmbeddingsUrl(baseUrl), fetchImpl,
+        const cap = maxDimensions(state.vectorMemory), endpoint = baseUrl + '|' + model;
+        const request = dimensions => runApiRequest({ url: getCustomEmbeddingsUrl(baseUrl), fetchImpl,
             signal: options.signal, timeoutMs: 120000,
             formatError: response => formatApiFailure(response, '嵌入向量接口请求失败'),
             init: {
@@ -659,8 +668,18 @@ export function createVectorMemoryService({
                 'Content-Type': 'application/json',
                 ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
             },
-            body: JSON.stringify({ model, input: text }),
+            body: JSON.stringify({ model, input: text, ...(dimensions ? { dimensions } : {}) }),
         } });
+        let data;
+        if (cap && !noDimensionsParameter.has(endpoint)) {
+            try { data = await request(cap); }
+            catch (error) {
+                if (options.signal?.aborted) throw error;
+                // Many endpoints do not know `dimensions`; the vector is then cut here instead.
+                noDimensionsParameter.add(endpoint);
+            }
+        }
+        data ??= await request(0);
         if (Array.isArray(text)) {
             // Rows may come back out of order; `index` says which input each belongs to.
             const rows = Array.isArray(data?.data) ? [...data.data].sort((a, b) => (a?.index ?? 0) - (b?.index ?? 0)) : [];
@@ -681,7 +700,7 @@ export function createVectorMemoryService({
     // an hour. Texts now go EMBED_BATCH at a time (the OpenAI embeddings API takes a list). An endpoint that
     // answers a list with the wrong number of rows, or refuses it, gets single texts for the rest of the session.
     const EMBED_BATCH = 16, EMBED_BATCH_CHARS = 24000;
-    const singleOnlyEndpoints = new Set();
+    const singleOnlyEndpoints = new Set(), noDimensionsParameter = new Set();
     async function embedMissing(items, state, { signal, onBatch, check }) {
         const config = state.vectorMemory;
         const endpoint = String(config.customApi?.baseUrl || '') + '|' + (config.customApi?.model || '');
@@ -702,7 +721,7 @@ export function createVectorMemoryService({
             // A reply for a model or chat that is no longer current must not reach the cache.
             check();
             for (let i = 0; i < batch.length; i++) {
-                batch[i].embedding = compactEmbedding(vectors[i], dimensions);
+                batch[i].embedding = compactEmbedding(capDimensions(vectors[i], config), dimensions);
                 try { await embeddingCache.put(batch[i].key, batch[i].embedding); } catch {}
             }
             start = end;
