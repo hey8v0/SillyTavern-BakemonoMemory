@@ -5,9 +5,9 @@ import { searchHelpArticles } from '../src/features/help-guide.js';
 import { createOperationFeedback } from '../src/ui/operation-feedback.js';
 
 test('manual search includes detailed body text, supports multiple terms and ignores case', () => {
-    assert.ok(searchHelpArticles('401').includes('manual-api'));
-    assert.deepEqual(searchHelpArticles('embedding'), searchHelpArticles('EMBEDDING'));
-    assert.ok(searchHelpArticles('自动 标签').includes('manual-auto'));
+    assert.ok(searchHelpArticles('401').includes('error-codes'));
+    assert.deepEqual(searchHelpArticles('qwen3'), searchHelpArticles('QWEN3'));
+    assert.ok(searchHelpArticles('自动记忆 标签').includes('page-data-hub'));
     assert.deepEqual(searchHelpArticles('绝对不存在的关键词123456'), []);
     assert.deepEqual(searchHelpArticles('   '), []);
     assert.deepEqual(searchHelpArticles('<img onerror=alert(1)>'), []);

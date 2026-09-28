@@ -132,8 +132,7 @@ test('overview dashboard keeps the mobile hierarchy compact and read-only', () =
     assert.match(hubAutomationUiSource, /function renderAutomationOverview\(/);
     assert.doesNotMatch(settingsSource, /<nav class="bakemono-mobile-actions"/);
     assert.match(styleSource, /\.bakemono-workbench-tabs\s*\{[^}]*scrollbar-width:\s*none;/s);
-    assert.equal((settingsSource.match(/class="bakemono-memory-page-intro/g) || []).length, 1);
-    assert.match(settingsSource, /class="bakemono-memory-page-intro bakemono-memory-help-intro"/);
+    assert.doesNotMatch(settingsSource, /class="bakemono-memory-page-intro/);
     assert.match(styleSource, /Scene workbench aesthetic/);
     assert.match(styleSource, /--bk-display:/);
 });
@@ -229,7 +228,7 @@ test('help guide owns its content, reader state, and delegated events outside th
     assert.match(source, /import \{ createHelpGuide \} from '\.\/src\/features\/help-guide\.js';/);
     assert.match(source, /const helpGuide = createHelpGuide\(\{ escapeHtml \}\)/);
     assert.match(workbenchShellEventsSource, /helpGuide\.bind\(rootElement\)/);
-    assert.match(helpGuideContentSource, /export const helpGuideCategories =/);
+    assert.match(helpGuideContentSource, /export const helpGuideSections =/);
     assert.match(helpGuideContentSource, /export const helpGuideArticles =/);
     assert.match(helpGuideSource, /function renderArticle\(/);
     assert.match(helpGuideSource, /function openArticle\(/);
@@ -339,7 +338,6 @@ test('phone typography restores a semantic 12, 13, and 14px hierarchy', () => {
     assert.match(styleSource, /--bk-type-label:\s*14px/);
     // A never-matching @media (max-width: 0px) block used to hold a disabled copy of this scale.
     assert.doesNotMatch(styleSource, /@media \(max-width: 0px\)/);
-    assert.match(styleSource, /\.bakemono-memory-page-intro p,[\s\S]*?font-size:\s*13px\s*!important;/s);
 });
 
 test('expanded disclosures expose anchored help and important operations expose live feedback', () => {

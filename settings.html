@@ -1225,78 +1225,27 @@
         </section>
       </section>
 
-      <section class="bakemono-workbench-panel bakemono-memory-help-panel" data-bakemono-panel="help">
-        <header class="bakemono-memory-page-intro bakemono-memory-help-intro">
-          <span class="bakemono-memory-next-kicker">剧情剪辑台手册</span>
-          <h3>使用说明</h3>
-          <p>v1.25.8 · 先看快速开始，也可以搜索功能、问题或错误代码。</p>
-        </header>
-
-        <div class="bakemono-memory-help-hub" data-bakemono-help-view="hub">
-          <div class="bakemono-memory-help-search-box">
-            <label for="bakemono-memory-help-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span>搜索使用说明</span></label>
-            <div>
-              <input id="bakemono-memory-help-search" type="search" placeholder="例如：标签、阶段总结、401" autocomplete="off" aria-describedby="bakemono-memory-help-search-status">
-              <button id="bakemono-memory-help-search-clear" type="button" aria-label="清空搜索" hidden>清空</button>
-            </div>
-            <small id="bakemono-memory-help-search-status" role="status" aria-live="polite">可以搜索问题、功能名或错误代码</small>
-          </div>
-          <nav class="bakemono-memory-help-tabs" aria-label="说明分类">
-            <button type="button" class="is-active" data-bakemono-help-category="start">快速开始</button>
-            <button type="button" data-bakemono-help-category="manual">详细手册</button>
-            <button type="button" data-bakemono-help-category="flow">推荐流程</button>
-            <button type="button" data-bakemono-help-category="feature">功能说明</button>
-            <button type="button" data-bakemono-help-category="faq">常见问题</button>
-          </nav>
-
-          <article class="bakemono-memory-help-cover">
-            <span class="bakemono-memory-help-spine"><b>01</b><i aria-hidden="true"></i></span>
-            <div class="bakemono-memory-help-cover-copy">
-              <small>从这里开始</small>
-              <h4>三分钟，整理好第一段剧情</h4>
-              <span><i class="fa-regular fa-clock"></i> 阅读约 3 分钟</span>
-            </div>
-            <button type="button" data-bakemono-help-article="quick-start" aria-label="阅读三分钟快速开始">
-              <i class="fa-solid fa-arrow-right"></i>
-            </button>
-          </article>
-
-          <div id="bakemono-memory-help-list" class="bakemono-memory-help-list" aria-live="polite">
-            <button type="button" data-bakemono-help-article="workflow-choice">
-              <span>02</span><strong>我应该选择哪种摘要方式？</strong><em>基础</em><i class="fa-solid fa-arrow-right"></i>
-            </button>
-            <button type="button" data-bakemono-help-article="memory-levels">
-              <span>03</span><strong>摘要、阶段总结和长期记忆</strong><em>概念</em><i class="fa-solid fa-arrow-right"></i>
-            </button>
-            <button type="button" data-bakemono-help-article="backfill">
-              <span>04</span><strong>怎样给几百楼的旧聊天补课？</strong><em>进阶</em><i class="fa-solid fa-arrow-right"></i>
-            </button>
-          </div>
+      <section class="bakemono-workbench-panel bk-sum bk-help" data-bakemono-panel="help">
+        <div data-bakemono-help-view="hub">
+          <label class="bk-sum-search bk-help-search">
+            <input id="bakemono-memory-help-search" type="search" placeholder="搜功能、问题或报错代码，例如 401" autocomplete="off" aria-label="搜索使用说明" aria-controls="bakemono-memory-help-list">
+            <button id="bakemono-memory-help-search-clear" type="button" class="bk-sum-link" hidden>清空</button>
+          </label>
+          <div id="bakemono-memory-help-list" class="bk-help-groups" aria-live="polite"></div>
+          <p class="bk-help-foot">v1.26.0 · 反馈问题时带上这个版本号</p>
         </div>
 
-        <div class="bakemono-memory-help-reader" data-bakemono-help-view="article" hidden>
-          <button type="button" class="bakemono-memory-help-back" data-bakemono-help-back>
-            <i class="fa-solid fa-chevron-left"></i><span>返回使用说明</span>
-          </button>
-          <article class="bakemono-memory-help-article">
-            <header>
-              <span id="bakemono-memory-help-article-number">01 / 快速开始</span>
-              <h4 id="bakemono-memory-help-article-title">整理好第一段剧情</h4>
-              <div id="bakemono-memory-help-article-meta"><span>适合第一次使用</span><span>约 3 分钟</span></div>
+        <div data-bakemono-help-view="article" hidden>
+          <button type="button" class="bk-help-back" data-bakemono-help-back>‹ 使用说明</button>
+          <article class="bk-help-article">
+            <header class="bk-help-article-h">
+              <div class="bk-sum-kicker" id="bakemono-memory-help-article-kicker"></div>
+              <h3 id="bakemono-memory-help-article-title"></h3>
+              <p id="bakemono-memory-help-article-lead" class="bk-help-lead"></p>
+              <button type="button" id="bakemono-memory-help-article-goto" class="bk-sum-link" hidden></button>
             </header>
-            <p id="bakemono-memory-help-article-lead" class="bakemono-memory-help-article-lead">正文已有摘要就扫描；没有摘要就先生成。扫描本身不会调用模型补写摘要。</p>
-            <ol id="bakemono-memory-help-article-steps" class="bakemono-memory-help-steps">
-              <li><span>01</span><div><h5>扫描最新剧情</h5><p>从左上角菜单进入“设置中心 → 扫描与识别”，扫描并查看识别结果。</p></div></li>
-              <li><span>02</span><div><h5>生成阶段总结</h5><p>积累一段剧情后，到“总结”页把摘要整理成长期记忆。</p></div></li>
-              <li><span>03</span><div><h5>先确认，再保存</h5><p>手动生成后进入“待确认”检查并保存。若启用了自动保存，请到“总结”核对结果。</p></div></li>
-            </ol>
-            <aside id="bakemono-memory-help-article-note" class="bakemono-memory-help-note">
-              <i class="fa-solid fa-clapperboard"></i>
-              <p><strong>已有几百楼聊天？</strong>从工作流设置选择“补课旧聊天”，不需要从第一楼手工整理。</p>
-            </aside>
-            <button type="button" id="bakemono-memory-help-next" class="bakemono-memory-help-next" data-bakemono-help-article="workflow-choice">
-              <span><small>下一篇</small><strong>选择适合你的工作方式</strong></span><i class="fa-solid fa-arrow-right"></i>
-            </button>
+            <ol id="bakemono-memory-help-article-steps" class="bk-help-steps"></ol>
+            <nav id="bakemono-memory-help-pager" class="bk-help-pager" aria-label="上一篇和下一篇"></nav>
           </article>
         </div>
       </section>

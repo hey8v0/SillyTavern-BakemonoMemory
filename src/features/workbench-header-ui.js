@@ -1,4 +1,7 @@
 import { themeChoiceLabel } from '../theme/theme-schema.js';
+import { helpGuideSections } from './help-guide-content.js';
+
+const helpArticleCount = helpGuideSections.reduce((count, section) => count + section.articles.length, 0);
 export function createWorkbenchHeaderUi({
     documentRef,
     getState,
@@ -64,7 +67,7 @@ export function createWorkbenchHeaderUi({
             config: '配置预设 · 跨聊天复用',
             appearance: `外观主题 · ${themeChoiceLabel(getAppearanceSettings())}`,
             maintenance: `安全维护 · ${(state.autoSummaryTransactions?.length || 0).toLocaleString()} 条事务`,
-            help: '帮助中心 · 随时可查',
+            help: `使用说明 · ${helpArticleCount} 篇`,
         };
         return contexts[tabName] || '剧情剪辑台 · 长期记忆';
     }
@@ -97,7 +100,7 @@ export function createWorkbenchHeaderUi({
             config: '整套配置',
             appearance: '外观主题',
             maintenance: `安全维护 · ${(state.autoSummaryTransactions?.length || 0).toLocaleString()}条`,
-            help: '帮助中心',
+            help: `使用说明 · ${helpArticleCount}篇`,
         };
         return contexts[tabName] || '剧情剪辑台';
     }

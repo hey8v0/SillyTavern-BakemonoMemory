@@ -1,34 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { helpGuideArticles, helpGuideCategories } from '../src/features/help-guide-content.js';
+import { helpGuideArticles, helpGuideSections, helpPageTargets } from '../src/features/help-guide-content.js';
 import { createHelpGuide } from '../src/features/help-guide.js';
 import { createVectorActionsController } from '../src/features/vector-actions-controller.js';
 import { createVectorMemoryService } from '../src/features/vector-memory-service.js';
 
 const noop = () => {};
-test('detailed manual is complete, separately navigable, and retains the brief guides', () => {
-    assert.ok(helpGuideArticles['quick-start']);
-    assert.ok(helpGuideCategories.manual?.length >= 9);
-    for (const id of helpGuideCategories.manual) {
-        const article = helpGuideArticles[id];
-        assert.equal(article.category, '详细手册');
-        assert.ok(article.steps.length >= 5, id);
-        assert.ok(article.steps.every(([title, copy]) => title && copy));
-    }
-    const ids = Object.values(helpGuideCategories).flat();
+test('help is three groups; “按页面” follows the sidebar and every article is complete', async () => {
+    assert.deepEqual(helpGuideSections.map(section => section.title), ['从这里开始', '按页面', '遇到问题']);
+    const ids = helpGuideSections.flatMap(section => section.articles);
     assert.equal(new Set(ids).size, ids.length);
-    assert.ok(ids.every(id => helpGuideArticles[id]));
-});
-
-test('detailed entry lives inside the help panel and sample markup is escaped in the reader', async () => {
+    assert.deepEqual(Object.keys(helpGuideArticles).sort(), [...ids].sort());
+    for (const id of ids) {
+        const article = helpGuideArticles[id];
+        assert.ok(article.title && article.lead && article.minutes, id);
+        assert.ok(article.steps.length && article.steps.every(([title, copy]) => title && copy), id);
+        assert.doesNotMatch(JSON.stringify(article), /旧版|v1\.\d|记忆档案|剧情回看|工作流设置/, id + ' describes the current screens, not history');
+    }
     const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
-    const helpStart = html.indexOf('data-bakemono-panel="help"');
-    const entry = html.indexOf('data-bakemono-help-category="manual"');
-    assert.ok(entry > helpStart);
-    assert.equal(html.match(/data-bakemono-help-category="manual"/g)?.length, 1);
-    const source = await readFile(new URL('../src/features/help-guide.js', import.meta.url), 'utf8');
-    assert.match(source, /escapeHtml\(copy\)/);
+    const sidebar = [...html.slice(html.indexOf('bakemono-workbench-tabs'), html.indexOf('data-bakemono-tab="help"')).matchAll(/data-bakemono-tab="([a-z-]+)"/g)].map(m => m[1]);
+    const pages = helpGuideSections[1].articles.map(id => helpPageTargets[helpGuideArticles[id].label.split(' · ')[0]]);
+    assert.deepEqual([...new Set(pages)], sidebar, 'the pages group lists the sidebar in order');
+    const nav = new Set([...html.matchAll(/data-bakemono-(?:nav|panel|tab)="([a-z-]+)"/g)].map(m => m[1]));
+    assert.ok(Object.values(helpPageTargets).every(target => nav.has(target)), 'every page link leads to a real page');
 });
 
 function vectorActions(vm, overrides = {}) {
@@ -95,41 +90,40 @@ test('index configuration changes invalidate the index and schedule a refresh', 
     assert.ok(calls.includes('timer'));
 });
 
-test('manual reader escapes tag examples and returns to the detailed chapter list', () => {
+test('the reader escapes tag examples, links page names and pages through the articles', () => {
     const nodes = new Map();
     function node(key) {
         if (!nodes.has(key)) nodes.set(key, {
             dataset: {}, hidden: false, attrs: {}, textContent: '', innerHTML: '',
-            classList: { toggle: noop }, setAttribute(name, value) { this.attrs[name] = value; },
-            querySelector: selector => node(`${key}:${selector}`), focus: noop, scrollTo: noop,
+            setAttribute(name, value) { this.attrs[name] = value; }, focus: noop, scrollTo: noop,
         });
         return nodes.get(key);
     }
-    const categories = Object.keys(helpGuideCategories).map(category => {
-        const button = node(`[data-bakemono-help-category="${category}"]`);
-        button.dataset.bakemonoHelpCategory = category;
-        return button;
-    });
-    const documentRef = { getElementById: node, querySelector: node, querySelectorAll: () => categories };
+    const documentRef = { getElementById: node, querySelector: node, querySelectorAll: () => [] };
     node('bakemono-workbench-root').dataset.activeTab = 'help';
     const escapeHtml = text => String(text).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
     const guide = createHelpGuide({ escapeHtml, documentRef });
-    guide.openArticle('manual-tags');
-    assert.equal(node('bakemono-memory-help-article-title').textContent, helpGuideArticles['manual-tags'].title);
+    guide.render();
+    assert.match(node('bakemono-memory-help-list').innerHTML, /从这里开始[\s\S]*按页面[\s\S]*遇到问题/);
+    assert.equal(node('bakemono-workbench-section-title').textContent, '使用说明 · 19 篇');
+    guide.openArticle('not-recognized');
+    assert.equal(node('bakemono-memory-help-article-title').textContent, helpGuideArticles['not-recognized'].title);
     assert.match(node('bakemono-memory-help-article-steps').innerHTML, /&lt;bakemono&gt;/);
     assert.doesNotMatch(node('bakemono-memory-help-article-steps').innerHTML, /<bakemono>/);
-    assert.equal(node('bakemono-memory-help-next').dataset.bakemonoHelpArticle, 'manual-auto');
+    assert.equal(node('[data-bakemono-help-view="article"]').hidden, false);
+    assert.equal(node('bakemono-workbench-section-title').textContent, '使用说明 · 遇到问题');
+    assert.match(node('bakemono-memory-help-pager').innerHTML, /data-bakemono-help-article="injection-empty"[\s\S]*data-bakemono-help-article="recall-empty"/);
+    guide.openArticle('first-steps');
+    const steps = node('bakemono-memory-help-article-steps').innerHTML;
+    assert.match(steps, /<button type="button" class="bk-help-ref" data-bakemono-nav="settings">设置中心 → 摘要方式<\/button>/);
+    assert.match(steps, /“回复里本来就有”/, 'a button name stays quoted text, not a link');
+    assert.equal(node('bakemono-memory-help-article-goto').dataset.bakemonoNav, 'settings');
+    assert.doesNotMatch(node('bakemono-memory-help-pager').innerHTML, /上一篇/);
+    guide.openArticle('feedback');
+    assert.doesNotMatch(node('bakemono-memory-help-pager').innerHTML, /下一篇/);
     guide.closeArticle();
     assert.equal(node('[data-bakemono-help-view="hub"]').hidden, false);
     assert.equal(node('[data-bakemono-help-view="article"]').hidden, true);
-    assert.equal(node('[data-bakemono-help-category="manual"]').attrs['aria-pressed'], 'true');
-    assert.match(node('bakemono-memory-help-list').innerHTML, /manual-troubleshooting/);
-    guide.openArticle('manual-troubleshooting');
-    assert.equal(node('bakemono-memory-help-next').dataset.bakemonoHelpArticle, 'manual-story-state');
-    guide.openArticle('manual-story-state');
-    assert.equal(node('bakemono-memory-help-next').hidden, true);
-    guide.openArticle('main-model');
-    assert.equal(node('bakemono-memory-help-next').hidden, true);
 });
 
 test('help and README version labels match the release manifest', async () => {
