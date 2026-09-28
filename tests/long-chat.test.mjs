@@ -40,6 +40,21 @@ test('the vector index goes to its own file and leaves the chat file', async () 
     memory.records.push({ id: 'r2', hash: 'h2', text: '新', embedding: [1, 0, 0] });
     assert.equal(serializeVectorMemory(memory).records.length, 2, 'a changed index is kept in the chat until its file is rewritten');
 
+    // Split by floor range: a new reply rewrites only its own part.
+    const uploads = [];
+    const counting = async (url, init) => { if (url === '/api/files/upload') uploads.push(JSON.parse(init.body).name); return fetchImpl(url, init); };
+    const parted = createVectorSidecar({ fetchImpl: counting, getChatKey: () => 'long', getHash });
+    const long = { records: Array.from({ length: 900 }, (_, i) => ({ id: 'v' + i, hash: 'h' + i, messageId: i * 2 + 1, embedding: [i, 1, 0] })) };
+    await parted.save(long);
+    assert.equal(uploads.length, 9, '1,800 floors are 9 files of 200 floors');
+    uploads.length = 0;
+    long.records.push({ id: 'v900', hash: 'h900', messageId: 1801, embedding: [1, 1, 1] });
+    await parted.save(long);
+    assert.deepEqual(uploads.length, 1, 'the next reply rewrites one file');
+    const back = { ...JSON.parse(JSON.stringify(serializeVectorMemory(long))), records: [] };
+    assert.equal(await parted.load(back), true);
+    assert.equal(back.records.length, 901);
+
     const lost = { sidecar: { path: 'user/files/missing.json', signature: 'x' }, records: [] };
     assert.equal(await createVectorSidecar({ fetchImpl, getHash }).load(lost), false);
     assert.equal(lost.dirty, true, 'an unreadable file means the index is rebuilt');

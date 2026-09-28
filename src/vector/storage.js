@@ -58,7 +58,8 @@ function hashText(text) {
     return (hash >>> 0).toString(16).padStart(8, '0');
 }
 export function vectorRecordsSignature(records = []) {
-    return hashText((records || []).map(record => `${record.id}:${record.hash || ''}:${record.embedding?.length || 0}`).join('|'));
+    // Order-free, so records read back from several files still match the chat's pointer.
+    return hashText((records || []).map(record => `${record.id}:${record.hash || ''}:${record.embedding?.length || 0}`).sort().join('|'));
 }
 
 export function serializeVectorMemory(vectorMemory) {

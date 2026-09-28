@@ -4,7 +4,7 @@
 
 ## 1. 接手约定
 
-- 当前版本 **1.25.2**，分支 `main`，远端 `hey8v0/SillyTavern-BakemonoMemory`。先看 `git status` / `git log`，不要从旧对话推断现状。
+- 当前版本 **1.25.3**，分支 `main`，远端 `hey8v0/SillyTavern-BakemonoMemory`。先看 `git status` / `git log`，不要从旧对话推断现状。
 - 源码就在本仓库。任务工作区、酒馆安装目录都不是源码；不要默认同步本机酒馆、调用模型。
 - 不覆盖用户未提交的修改，不强推。提交与推送以当次授权为准。
 - **用户的测试方式**：用户在手机上的酒馆里更新插件来实测，所以每完成一批改动，经用户同意后发布一个小版本并推送（见第 8 节）。一次一批，便于定位问题。
@@ -98,7 +98,7 @@
 - **最后三页**（v1.24.0）：`appearance`、`config`、`maintenance` 面板是 `bk-sum bk-auto`。外观：顶部色卡是六个 `--ns-c-*` 在当前主题下的样子；四个主题按钮仍是 `.bakemono-memory-theme-mode [data-bakemono-theme-mode]`（`theme-controller` 另外写 `aria-checked`、标题和每个主题的三块色片：跟随酒馆读宿主变量，夜/日读内置预设，自定义读当前或用户自己存的主题）；自定义编辑器不再分“色板 / 质感 / JSON”三个标签，色板和质感直接排着，配置库、导入导出、恢复模板收进设置行。整套配置：不再是从摘要方式页移进来的块（删了 `data-bakemono-owned-section="config"` 和插槽），`#bakemono-memory-preset-select` 隐藏着，由 `renderConfigOverview` 画成单选行，点一行就设值并触发它原来的 change（会先确认）；上面的“通告单”由 `configSheet` 从当前设置算出，每行 `data-bakemono-nav` 跳到对应页。撤回与事务：`maintenance-ui` 重写了渲染，自动保存事务一行一条（仍带 `.bakemono-memory-auto-tx-item` 和 `data-transaction-id` 供回滚处理），最近记录是细线时间线，点的颜色按类型；备份与来源检查直接写在 `#bakemono-story-backup` 里（story-tools-ui 看到已有内容就不再插旧卡片）。生成提示词页的复制按钮改用 `data-bakemono-gen-prompt-copy`，因为提示词检查器已经用了 `data-bakemono-prompt-copy`。
 - **提示词检查器**（v1.25.0）：面板是 `bk-sum bk-auto bk-insp`，默认“按来源”。顶部是上一轮 Token 总数、分段条和图例（来源用 `buildPromptSourceEntries` 算，任何看法下都画），虚线下一句剧情剪辑台占多少：`getPluginInjection`（index.js）给出插件注入的全文、每段的第一行（`markers`）和 `found(promptText)`（沿用首页的 `doesLastPromptMatchCurrentInjection`）。每个来源一个 `data-tone`（角色卡青绿、人设台词色、世界书紫、聊天蓝、扩展注入琥珀），条、图例、行首小方块同色；按消息时插件加的消息（含任一 marker）标琥珀并写“· 剧情剪辑台”，用户消息青绿、助手蓝。行里只有名称和 Token（用户要求不放开头预览），搜索时 Token 换成“N 处”。搜索、跳转、复制仍是原来的函数和 id，JS 用的 `.bakemono-memory-prompt-inspector-item / -item-toggle / -item-body` 类名保留，旧样式全部删掉重写。模拟页面加 `?prompt` 会造一条上一轮记录（带插件当时的注入）。
 - **长聊天**（v1.25.1，用户反馈 2,000 多楼时在待确认点保存把 Termux 卡掉）：聊天文件每次保存都整份写回服务器，所以插件放进聊天文件的东西必须有上限。
-  - 向量索引不再放在聊天文件里：`src/vector/sidecar.js` 把记录写成酒馆用户文件（`/api/files/upload`，文件名 `bakemono-vectors-<聊天哈希>.json`），聊天里只留 `vectorMemory.sidecar = { path, signature, count }`；`serializeVectorMemory` 在签名一致时输出空的 records。索引建好 2 秒后写文件（`scheduleSidecarSave`），写失败就照旧留在聊天里；`markVectorIndexDirty`（打开 / 切换聊天和每次消息变化都会调用）也会排一次，所以旧聊天里的向量不必等索引刷新就会搬出去（v1.25.2）。打开聊天时 `whenRecordsReady` 先读文件（建索引、召回、标记待刷新前都会等它），读不到就标记需要重建。清空索引时删掉指针。
+  - 向量索引不再放在聊天文件里：`src/vector/sidecar.js` 把记录写成酒馆用户文件（`/api/files/upload`，文件名 `bakemono-vectors-<聊天哈希>.json`），聊天里只留 `vectorMemory.sidecar = { signature, count, parts }`。v1.25.3 起按楼层每 200 楼一个文件（`SIDECAR_FLOORS`，文件名末尾带段号），只重写签名变了的段，所以新回复只重写最新一段；签名与记录顺序无关，1.25.1 的单文件指针仍能读；`serializeVectorMemory` 在签名一致时输出空的 records。索引建好 2 秒后写文件（`scheduleSidecarSave`），写失败就照旧留在聊天里；`markVectorIndexDirty`（打开 / 切换聊天和每次消息变化都会调用）也会排一次，所以旧聊天里的向量不必等索引刷新就会搬出去（v1.25.2）。打开聊天时 `whenRecordsReady` 先读文件（建索引、召回、标记待刷新前都会等它），读不到就标记需要重建。清空索引时删掉指针。
   - 剧情状态三处平方级增长：① 每条事实的 `change` 以前存整个前后实体（人物的全部临时状态），现在 `compactChange` 只存变了的字段、列表里只存增删改的项，旧账本在下一次提取时压缩一次（`compactChanges` 标记）；② 每接受一条候选都完整重放两次账本，现在 `createReplayCache` 在只追加的情况下接着上次结果算，`service.extractionReplay` 把它跨回复保留（先核对它读过的每楼来源戳，有变化或有撤回就整段重放）；③ 读来源时每次都把整段聊天逐字规范化，现在 `readChatSource({ light: true })` 用按文本缓存的版本号，只有需要定位证据的那一楼才读全文。`decideSingleCandidate` 改为写时复制，不再每条候选复制整本账。
   - 剧情状态只保留最近 `RP_DETAIL_FLOORS`（300）楼的明细，每多 100 楼把更早的折进起点（`foldLedger`：起点投影、已结束的临时状态丢掉、说法和推测保留并把楼层抬到新起点，`baseline.startFloor` 记原起点，变化页写一句“之前的变化已经并入起点”）。折进起点的楼层之后再改不会影响状态。
   - 测量（`tests/long-chat.test.mjs` 之外用临时脚本）：每回复 4 个事件，第 120 次回复的处理时间 3.2 秒 → 约 0.06 秒，账本每回复 48.8 KB 且越来越大 → 约 12 KB 且只保留 300 楼；1,100 条 1536 维向量约 9.8 MB 不再进聊天文件。
@@ -182,7 +182,7 @@ node scripts/ui-harness/server.mjs
 
 ## 9. 后续工作
 
-- 手机实测：v1.8.8 – v1.25.2 的改动都只在模拟页面验证过，需要用户在真实酒馆（尤其手机、iOS Safari）确认；宿主保存、后台冻结、重 roll、流式协议隐藏同样需要实机。
+- 手机实测：v1.8.8 – v1.25.3 的改动都只在模拟页面验证过，需要用户在真实酒馆（尤其手机、iOS Safari）确认；宿主保存、后台冻结、重 roll、流式协议隐藏同样需要实机。
 - 新样式推广到其他页面（见第 5 节“新样式”）。已完成：剧情状态（v1.10.0）、首页（v1.11.0）、顶栏与侧栏（v1.12.0：电脑上 264px 细线侧栏，手机 ≤900px 为左侧抽屉 + 遮罩 `[data-bakemono-menu-close]`，布局尺寸与旧版一致，顶栏由 82px 收到 70px）、总结页（v1.13.0）、待确认（v1.14.0）、摘要树（v1.15.0）、表格（v1.16.0）、向量记忆（v1.17.0）、自动记忆（v1.18.0）、自动总结（v1.20.0）、自动与数据和设置中心（v1.21.0）。设置中心第一组子页（摘要方式、扫描与识别、楼层收纳，v1.22.0）、第二组（生成模型、生成提示词、注入内容，v1.23.0）、第三组（外观、整套配置、撤回与事务，v1.24.0）和提示词检查器（v1.25.0）。所有页面都已换成新样式。用户给的每页参考：首页 Magic Bento + 编辑式仪表盘；总结 时间线 + 卡片堆叠；摘要树 嵌套时间线；待确认 审阅队列；提示词检查器 文档阅读器；设置中心 系统设置列表；电脑导航 细线侧栏；手机导航 抽屉 + 分段标签。React 组件库（React Bits、Aceternity）不能直接用，只借效果、用 CSS 和原生 JS 实现。
 - RP P1：历史范围重建、精细依赖纠错、丰富人物/历法、大账本增量缓存（RP 目前仍完整重放，大档有主线程耗时风险）。
 - 固定模型输出的测试不证明真实模型语义准确率。
