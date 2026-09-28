@@ -164,11 +164,13 @@ export function createTableManagementEvents({
                 toastr.warning('请先填写表格提示词预设名称。');
                 return;
             }
-            let preset = getTablePromptPresets().find(item => item.id === getSelectedTablePromptPresetId());
-            if (preset && preset.id !== 'default-table-prompt') {
-                preset.name = name;
+            // A new name is a new preset; the same name replaces that one after asking (never the default).
+            let preset = getTablePromptPresets().find(item => item.id !== 'default-table-prompt' && String(item.name || '').trim() === name);
+            if (preset && !confirmDanger(`已有同名预设「${name}」，覆盖它？`, ['想另外保存一份，请换一个名字。'])) return;
+            if (preset) {
                 preset.prompt = String(query('#bakemono-memory-table-prompt').val() || defaultTableEditPrompt);
                 preset.updatedAt = new Date().toISOString();
+                setSelectedTablePromptPresetId(preset.id);
             } else {
                 preset = makeTablePromptPreset(name, query('#bakemono-memory-table-prompt').val());
                 getTablePromptPresets().push(preset);

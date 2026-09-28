@@ -57,6 +57,8 @@ export function createPresetEventsController({
         query(nameSelector).val(selected?.name || '');
     }
 
+    const findPresetByName = (presets, name) => presets.find(item => String(item.name || '').trim() === name) || null;
+
     function bindAreaPresetControls(scope, ids) {
         query(ids.select).off('change').on('change', function () {
             const previousId = getSelectedAreaPresetId(scope);
@@ -90,15 +92,18 @@ export function createPresetEventsController({
             );
             if (confirmed) applyAreaPresetToState(scope, preset);
         });
+        // “另存为预设” keeps every preset: a new name is a new preset; only the same name replaces one, after asking.
+        // It used to replace whichever preset was selected, and the one just saved is selected, so a second
+        // save overwrote the first.
         query(ids.save).off('click').on('click', () => {
             const name = String(query(ids.name).val() || '').trim();
             if (!name) {
                 toastr.warning('请先填写配置名称。');
                 return;
             }
-            const selectedId = getSelectedAreaPresetId(scope);
-            const selected = getAreaPresets(scope).find(item => item.id === selectedId);
-            saveAreaPreset(scope, name, selected ? { replaceId: selectedId } : undefined);
+            const same = findPresetByName(getAreaPresets(scope), name);
+            if (same && !confirmDanger(`已有同名预设「${name}」，覆盖它？`, ['想另外保存一份，请换一个名字。'])) return;
+            saveAreaPreset(scope, name, same ? { replaceId: same.id } : undefined);
         });
         query(ids.update).off('click').on('click', () => {
             const selectedId = getSelectedAreaPresetId(scope);
@@ -185,11 +190,12 @@ export function createPresetEventsController({
                 toastr.warning('请先填写预设名称。');
                 return;
             }
-            let preset = getInlinePromptPresets(type).find(item => item.id === getSelectedInlinePromptPresetId(type));
-            if (preset && preset.id !== defaultId) {
-                preset.name = name;
+            let preset = findPresetByName(getInlinePromptPresets(type).filter(item => item.id !== defaultId), name);
+            if (preset && !confirmDanger(`已有同名预设「${name}」，覆盖它？`, ['想另外保存一份，请换一个名字。'])) return;
+            if (preset) {
                 preset.prompt = String(query(promptSelector).val() || defaultPrompt);
                 preset.updatedAt = new Date().toISOString();
+                setSelectedInlinePromptPresetId(type, preset.id);
             } else {
                 preset = makeInlinePromptPreset(type, name, query(promptSelector).val());
                 extensionSettings[storageKey].inlinePromptPresets.push(preset);
