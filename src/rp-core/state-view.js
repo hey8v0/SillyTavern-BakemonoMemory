@@ -31,7 +31,7 @@ export function describeRecord(record, projection) {
         const title = values.name || values.title || (collection === 'clock' ? values.date || values.description : collection === 'scene' ? entityName(projection, values.location) : collection === 'relationships' ? values.kind : entityName(projection, id));
         return (record.origin?.kind === 'user' ? '修改' : '记录') + label + (title ? ' · ' + title : '');
     }
-    const data = record.data || {}, relation = projection.relationships?.find(item => item.id === data.id);
+    const data = record.data || {}, relation = projection.relationships?.find(item => item.id === data.id) || projection.relationships?.find(item => item.aliases?.includes(data.id));
     const subject = relation ? relationshipName(projection, relation) : data.name || data.title
         || (data.id ? entityName(projection, data.id) : record.action === 'scene_recorded' ? entityName(projection, data.location) : '');
     const speaker = ['claims', 'observations'].includes(record.track) && data.speaker ? informationName(projection, data.speaker) : '';

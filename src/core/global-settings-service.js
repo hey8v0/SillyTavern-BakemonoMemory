@@ -1,4 +1,5 @@
 import { refreshBuiltInThemePresets, retireBuiltInThemePresets } from '../theme/theme-schema.js';
+import { migrateLegacyRuleDefaults } from '../config/legacy-rule-defaults.js';
 
 export function createGlobalSettingsService({
     extensionSettings,
@@ -138,6 +139,10 @@ export function createGlobalSettingsService({
         }
         for (const preset of extensionSettings[storageKey].areaPresets[areaPresetScopes.INJECTION]) {
             migrateBuiltInInjectionDefaults(preset.injection, legacyInjectionTemplate, defaultInjectionTemplate);
+        }
+        const ruleDefaults = { classification: defaultPromptPreset.classificationRules, layouts: defaultPromptPreset.previewLayouts };
+        for (const config of [settings.activeConfig, ...extensionSettings[storageKey].promptPresets, ...(extensionSettings[storageKey].areaPresets[areaPresetScopes.SCAN] || [])]) {
+            migrateLegacyRuleDefaults(config, ruleDefaults);
         }
         if (!extensionSettings[storageKey].selectedAreaPresetIds || typeof extensionSettings[storageKey].selectedAreaPresetIds !== 'object') {
             extensionSettings[storageKey].selectedAreaPresetIds = {};

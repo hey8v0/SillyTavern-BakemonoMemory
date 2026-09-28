@@ -1,5 +1,6 @@
 import { describeRecord, describeStateValues, entityName, relationshipName, stateLabels, trackLabels, isCurrentRpRecord } from './state-view.js';
 import { compileRpContext } from './context.js';
+import { findRelationship } from './domain.js';
 import { evidenceHash } from './source.js';
 import { removeRpVectorCache } from '../vector/source-policy.js';
 
@@ -7,7 +8,7 @@ function historicalValidity(record, projection) {
     const data = record.data;
     if (record.action === 'item_lent' && projection.items.find(item => item.id === data.id)?.loan?.id !== data.loanId) return '借用已结束的历史经历，不代表仍在借用';
     if (record.action === 'person_state_started' && projection.people.find(item => item.id === data.id)?.states?.find(item => item.id === data.stateId)?.active === false) return '已结束的历史状态，不是当前状态';
-    if (record.action.startsWith('relationship_') && projection.relationships.find(item => item.id === data.id)?.status === 'ended') return '关系已结束的历史经历，不是当前关系';
+    if (record.action.startsWith('relationship_') && findRelationship(projection.relationships, data.id)?.status === 'ended') return '关系已结束的历史经历，不是当前关系';
     if (record.action.startsWith('item_') && record.action !== 'item_destroyed' && projection.items.find(item => item.id === data.id)?.status === 'destroyed') return '物品已销毁的历史经历，不代表仍可使用';
     return '历史事实，当前状态以剧情状态视图为准';
 }

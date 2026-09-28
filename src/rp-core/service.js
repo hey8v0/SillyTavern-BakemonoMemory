@@ -1,7 +1,7 @@
 import { createLedger, replayLedger, assertLedgerVersion, appendRecord, createReplayCache, foldLedger, RP_DETAIL_FLOORS, RP_FOLD_STEP } from './ledger.js';
 import { RP_SETTINGS, migrateRpCore } from './policy.js';
 import { exportRpBackup, importRpBackup } from './backup.js';
-import { createProjection, applyDomainFact } from './domain.js';
+import { createProjection, applyDomainFact, collapseRelationships } from './domain.js';
 import { prepareExtraction, decideCandidate, refreshCandidateFingerprint, compactChange } from './extraction.js';
 import { readChatSource, findChatSource, currentChatSources } from './chat-sources.js';
 import { createRpTransactions } from './transaction.js';
@@ -151,6 +151,12 @@ export function createRpCoreService({ getState, getChat, saveState, saveChat, ma
             for (const fact of original.facts) if (fact.change && typeof fact.change.before === 'object' && typeof fact.change.after === 'object')
                 fact.change = { collection: fact.change.collection, ...compactChange(fact.change.before, fact.change.after) };
             original.compactChanges = 1;
+        }
+        // Before 1.25.5 every re-described relationship was added as a new one; fold them per pair once.
+        if (!original.relationsCollapsed) {
+            collapseRelationships(original.baseline.projection);
+            original.relationsCollapsed = 1;
+            extractionReplays.delete(state);
         }
         if (core.ruleVersion >= 3) {
             const oldBatches = original.batches.filter(batch => batch.sourceKey === key && !batch.superseded);

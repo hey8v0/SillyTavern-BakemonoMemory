@@ -69,7 +69,8 @@ export function createContentBlockService({
     function classifyBlock(block) {
         const state = getState();
         const text = stripHtml(block);
-        if (matchesAnyKeyword(text, parseList(state.classificationRules.epic))) {
+        // 纪元回溯·史诗简史 is the title 多次总结 had in the first prompt; old chats still contain it.
+        if (matchesAnyKeyword(text, parseList(state.classificationRules.epic)) || /纪元回溯|史诗简史/.test(text)) {
             return blockTypes.EPIC;
         }
         if (matchesAnyKeyword(text, parseList(state.classificationRules.stage))) {

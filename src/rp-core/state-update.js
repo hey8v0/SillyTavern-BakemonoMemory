@@ -144,7 +144,8 @@ export function resolveStateEvents(events, projection) {
         let matches = known(collection, id).length ? known(collection, id) : known(collection, values.name || values.title);
         if (!matches.length && collection === 'relationships') {
             const personId = token => known('people', token)[0]?.id || aliases.get(key('people', token)) || token;
-            matches = projection.relationships.filter(item => item.from === personId(values.from) && item.to === personId(values.to) && item.kind === values.kind);
+            // One current relationship per pair: a new kind updates it instead of adding another.
+            matches = projection.relationships.filter(item => item.status === 'active' && item.from === personId(values.from) && item.to === personId(values.to));
         }
         if (matches.length > 1) { event.resolutionIssue = '同名对象无法区分，本次未采用'; continue; }
         const resolved = matches[0]?.id || stableId(collection, id);

@@ -24,6 +24,41 @@ function insert(list, value) {
     requireValue(!list.some(item => item.id === value.id), '对象身份已存在');
     list.push(value);
 }
+// A relationship keeps the ids it was re-described under, so later events naming any of them still find it.
+export function findRelationship(list, id) {
+    return (list || []).find(item => item.id === id) || (list || []).find(item => item.aliases?.includes(id));
+}
+function relationOf(state, id) {
+    const result = findRelationship(state.relationships, id);
+    requireValue(result, '对象尚未确定：' + String(id));
+    return result;
+}
+const samePair = (relation, from, to, mutual) => relation.status === 'active'
+    && ((relation.from === from && relation.to === to) || ((relation.mutual || mutual) && relation.from === to && relation.to === from));
+// The model re-describes a relationship almost every turn (饲主与小猫 → 看戏执事与幼猫 …). There is one current
+// relationship per pair and direction; a new description replaces the old kind, which moves to `history`.
+function redescribe(current, { id, kind, mutual, milestones = [], conflicts = [] }, date) {
+    current.history = [...(current.history || []), { kind: current.kind, until: date ?? null }].slice(-20);
+    current.kind = kind;
+    current.mutual = mutual;
+    if (id && id !== current.id) current.aliases = [...new Set([...(current.aliases || []), id])];
+    current.milestones = [...current.milestones, ...milestones];
+    current.conflicts = [...current.conflicts, ...conflicts];
+}
+// Folds relationships that describe the same pair into the first one (older records, merged people).
+export function collapseRelationships(state) {
+    const kept = [];
+    for (const item of state.relationships || []) {
+        if (item.from === item.to) continue;
+        const earlier = item.status === 'active' && kept.find(other => samePair(other, item.from, item.to, item.mutual));
+        if (!earlier) { kept.push(item); continue; }
+        if (earlier.kind !== item.kind || earlier.mutual !== item.mutual) redescribe(earlier, item, item.since);
+        else earlier.milestones = [...earlier.milestones, ...(item.milestones || [])], earlier.conflicts = [...earlier.conflicts, ...(item.conflicts || [])];
+        earlier.aliases = [...new Set([...(earlier.aliases || []), item.id, ...(item.aliases || [])])].filter(id => id !== earlier.id);
+    }
+    state.relationships = kept;
+    return state;
+}
 function optionalPerson(state, id) {
     if (id != null) find(state.people, id);
     return id ?? null;
@@ -65,15 +100,8 @@ function mergePerson(state, fromId, intoId) {
     into.ageEvidence ??= from.ageEvidence;
     state.people = state.people.filter(person => person.id !== fromId);
     for (const person of state.people) for (const item of person.states) if (item.target != null) item.target = swap(item.target);
-    const kept = [];
-    for (const relation of state.relationships) {
-        relation.from = swap(relation.from); relation.to = swap(relation.to);
-        if (relation.from === relation.to) continue;
-        if (relation.status === 'active' && kept.some(other => other.status === 'active' && other.from === relation.from
-            && other.to === relation.to && other.kind === relation.kind)) continue;
-        kept.push(relation);
-    }
-    state.relationships = kept;
+    for (const relation of state.relationships) { relation.from = swap(relation.from); relation.to = swap(relation.to); }
+    collapseRelationships(state);
     for (const plan of state.plans) plan.participants = [...new Set(plan.participants.map(swap))];
     for (const item of state.items) {
         item.owner = swap(item.owner); item.holder = swap(item.holder);
@@ -129,16 +157,21 @@ export function applyDomainFact(projection, event) {
         find(state.people, data.from); find(state.people, data.to);
         const kind = text(data.kind, '关系类型');
         requireValue(local || !['romantic', 'partner', 'married'].includes(kind) || data.mutual === true, '关系尚缺双方确认');
-        requireValue(!state.relationships.some(item => item.from === data.from && item.to === data.to
-            && item.kind === kind && item.status === 'active'), '关系已经建立');
-        insert(state.relationships, { id: data.id, from: data.from, to: data.to, kind,
-            mutual: data.mutual === true, status: 'active', since: action === 'relationship_recorded' ? null : state.clock.date, milestones: [], conflicts: [], recordedExisting: action === 'relationship_recorded' });
+        const current = state.relationships.find(item => samePair(item, data.from, data.to, data.mutual === true));
+        if (current) {
+            const mutual = data.mutual == null ? current.mutual : data.mutual === true;
+            requireValue(current.kind !== kind || current.mutual !== mutual, '关系已经建立');
+            redescribe(current, { id: data.id, kind, mutual }, state.clock.date);
+        } else {
+            insert(state.relationships, { id: data.id, from: data.from, to: data.to, kind,
+                mutual: data.mutual === true, status: 'active', since: action === 'relationship_recorded' ? null : state.clock.date, milestones: [], conflicts: [], recordedExisting: action === 'relationship_recorded' });
+        }
     } else if (action === 'relationship_ended') {
-        const relation = find(state.relationships, data.id);
+        const relation = relationOf(state, data.id);
         requireValue(relation.status === 'active', '关系并未处于持续状态');
         relation.status = 'ended'; relation.endedAt = state.clock.date;
     } else if (action === 'relationship_conflict' || action === 'relationship_milestone') {
-        const relation = find(state.relationships, data.id);
+        const relation = relationOf(state, data.id);
         relation[action === 'relationship_conflict' ? 'conflicts' : 'milestones']
             .push({ description: text(data.description, '关系事件'), date: state.clock.date, factId: event.id || null });
     } else if (action === 'plan_proposed' || action === 'promise_created') {

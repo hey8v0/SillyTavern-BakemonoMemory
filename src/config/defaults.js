@@ -238,7 +238,7 @@ export function createDefaultConfiguration({
     const defaultClassificationRules = {
         story: '📋 剧情摘要, 场记打板, 高光收音',
         stage: '剧集终了, 点击回看, 剧情长焦, 角色进化录',
-        epic: '多次总结, 长期总览, 篇章总结, 纪元回溯, 史诗简史, 事件断代史, 命运锚点',
+        epic: '多次总结, 长期总览, 时间线总览, 关键锚点',
     };
     
     const defaultPreviewLayouts = {
@@ -252,11 +252,11 @@ export function createDefaultConfiguration({
     金句|金句名人堂|bubble
     谜题|未解之谜|tag
     墙外|第四面墙·终极笔记|bubble`,
-        epic: `时间线|时间线总览,事件断代史|normal
-    锚点|关键锚点,命运锚点|tag
-    角色|角色状态,灵魂蝶变|normal
+        epic: `时间线|时间线总览|normal
+    锚点|关键锚点|tag
+    角色|角色状态|normal
     未解|未解事项|tag
-    长期笔记|第四面墙·长期笔记,第四面墙·高维观测|bubble`,
+    长期笔记|第四面墙·长期笔记|bubble`,
     };
     
     const defaultStageGenerationPrompt = `# 👾总结模式！

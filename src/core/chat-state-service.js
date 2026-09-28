@@ -1,5 +1,6 @@
 import { ensureChronicle } from '../memory/story-state.js';
 import { removeRpVectorCache } from '../vector/source-policy.js';
+import { migrateLegacyRuleDefaults } from '../config/legacy-rule-defaults.js';
 
 export function ensureCurrentChatStateSlot({
     getChatMetadata,
@@ -138,6 +139,7 @@ export function createChatStateService({
             }
             fillMissingDefaults(state[key], defaultState[key]);
         }
+        migrateLegacyRuleDefaults(state, { classification: defaultState.classificationRules, layouts: defaultState.previewLayouts });
     
         normalizeArrayFields(state, ['blocks', 'storySummaries', 'stageSummaries', 'epicSummaries']);
         state.storySummaries.forEach(summary => { summary.level = getSummaryLevel({ ...summary, type: blockTypes.STORY }); });
