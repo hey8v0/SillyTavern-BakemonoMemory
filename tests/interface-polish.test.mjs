@@ -38,8 +38,8 @@ test('error notice stays readable until dismissed and uses text nodes for remote
     feedback.set('error', '<img src=x onerror=alert(1)>', 2600);
     assert.equal(timers.size, 0);
     assert.equal(toast().children[1].textContent, '<img src=x onerror=alert(1)>');
-    assert.equal(toast().children[2].attrs['aria-label'], '关闭提示');
-    toast().children[2].onclick();
+    assert.equal(toast().children.length, 2, 'a dot and the text; tapping the notice closes it');
+    toast().onclick();
     assert.equal(toast(), undefined);
 });
 

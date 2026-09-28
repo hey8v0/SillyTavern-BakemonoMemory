@@ -62,7 +62,7 @@ test('summary card has one generate action and disables it without material', ()
 
 test('single or batch generation is chosen inside the range dialog', async () => {
     assert.doesNotMatch(await read('settings.html'), /bakemono-memory-summary-batch-action/);
-    assert.match(await read('src/features/summary-target-controller.js'), /data-bakemono-target-output[\s\S]*?<option value="batch">分批生成/);
+    assert.match(await read('src/features/summary-target-controller.js'), /radio\('bk-gen-batch', 'batch'/);
     const generation = await read('src/features/summary-generation-controller.js');
     assert.match(generation, /if \(targetConfig\.batch\) return generateStageBatchTasks\(\{ targetConfig \}\);/);
     assert.match(generation, /if \(!targetConfig\.batch\) return generateStageDraft\(\{ targetConfig \}\);/);

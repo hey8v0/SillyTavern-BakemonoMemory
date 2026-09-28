@@ -64,6 +64,29 @@ export function createSummaryGenerationController({
     confirm,
 }) {
     const checkOnce = fn => summarySources?.once ? summarySources.once(fn) : fn();
+    // What a selection in the generation panel will send: shown before anything is asked of the model.
+    const plainText = text => String(text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    function describeBatches(batches, { gaps = false } = {}) {
+        const blocks = batches.flat();
+        const report = inspectSummaryMaterials(blocks);
+        const ids = getSourceMessageIdsFromBlocks(blocks);
+        return {
+            count: blocks.length,
+            textLength: report.textLength,
+            range: ids.length ? formatSourceRange(ids) : '',
+            gaps: gaps && blocks.length ? findTargetContinuityGaps(blocks, getFloorMemoryIndex(getState())?.records || [], { includeLeading: true }).map(record => Number(record.id)) : [],
+            samples: blocks.slice(0, 2).map(block => ({ where: formatSourceRange(getSourceMessageIdsFromBlocks([block])), text: plainText(block.content).slice(0, 160) })),
+            requests: batches.filter(batch => batch.length).length,
+        };
+    }
+    const describeStage = pool => config => {
+        const blocks = filterCovered(pool, config);
+        return describeBatches(config.batch ? partitionGenerationTargets(blocks, 'stage', config) : [selectGenerationTargets(blocks, config)], { gaps: true });
+    };
+    const describeEpic = pools => config => {
+        const blocks = filterCovered(selectEpicSourcePool(pools, config.sourceMode), config);
+        return describeBatches(config.batch ? partitionGenerationTargets(blocks, 'epic', config) : [selectGenerationTargets(blocks, config)]);
+    };
     function filterCovered(blocks, config = {}) {
         const state=getState(), graph=resolveSummaryGraph(state);
         return blocks.filter(block => {
@@ -106,7 +129,7 @@ export function createSummaryGenerationController({
         toastr.info(message);
     }
 
-    function confirmStageContinuity(targets, { automatic = false } = {}) {
+    async function confirmStageContinuity(targets, { automatic = false } = {}) {
         const gaps = findTargetContinuityGaps(targets, getFloorMemoryIndex(getState())?.records || [], { includeLeading: !automatic });
         if (!gaps.length) {
             return true;
@@ -119,7 +142,7 @@ export function createSummaryGenerationController({
             toastr.warning('阶段总结已暂停：请先补齐缺失摘要。');
             return false;
         }
-        return confirmDanger(
+        return await confirmDanger(
             '阶段材料中间存在记忆缺口，仍要继续吗？',
             [
                 status,
@@ -155,7 +178,7 @@ export function createSummaryGenerationController({
         let targetConfig = state.generationTargets.stage;
         if (!options.automatic) {
             readGenerationTargetSettings();
-            targetConfig = options.targetConfig || await promptGenerationTargetSelection('stage', allTargets.length);
+            targetConfig = options.targetConfig || await promptGenerationTargetSelection('stage', allTargets.length, { describe: describeStage(allTargets) });
             if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
             if (!targetConfig) {
                 renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消阶段总结生成。');
@@ -187,12 +210,14 @@ export function createSummaryGenerationController({
                 return;
             }
         }
-        if (!confirmStageContinuity(targets, { automatic: !!options.automatic })) {
+        // A selection made in the generation panel has already shown the gaps and the material.
+        const reviewed = !options.automatic && !!targetConfig?.reviewed;
+        if (!reviewed && !await confirmStageContinuity(targets, { automatic: !!options.automatic })) {
             return;
         }
         validateSummaryMaterials(targets);
         summarySources?.assertMaterials(targets);
-        if (!options.automatic && !confirmGenerationTargets('stage', targets, allTargets.length)) {
+        if (!options.automatic && !reviewed && !await confirmGenerationTargets('stage', targets, allTargets.length)) {
             return;
         }
 
@@ -235,7 +260,7 @@ export function createSummaryGenerationController({
             return;
         }
 
-        const targetConfig = options.targetConfig || await promptGenerationTargetSelection('stage', allTargets.length, { batch: true });
+        const targetConfig = options.targetConfig || await promptGenerationTargetSelection('stage', allTargets.length, { batch: true, describe: describeStage(allTargets) });
         if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
         if (!targetConfig) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量阶段总结。');
@@ -251,7 +276,7 @@ export function createSummaryGenerationController({
             return;
         }
 
-        if (!confirmStageContinuity(batches.flat())) {
+        if (!targetConfig.reviewed && !await confirmStageContinuity(batches.flat())) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量阶段总结，请先补齐缺失摘要。');
             return;
         }
@@ -259,7 +284,7 @@ export function createSummaryGenerationController({
         summarySources?.assertMaterials(batches.flat(), state);
         const materialReport = validateSummaryMaterials(batches.flat());
         const totalTargets = batches.reduce((sum, batch) => sum + batch.length, 0);
-        const confirmed = confirmDanger(
+        const confirmed = targetConfig.reviewed || await confirmDanger(
             `加入 ${batches.length} 个阶段总结批次任务？`,
             [
                 `将覆盖 ${totalTargets}/${allTargets.length} 个普通摘要。`,
@@ -326,7 +351,8 @@ export function createSummaryGenerationController({
         let targetConfig = state.generationTargets.epic;
         if (!options.automatic) {
             readGenerationTargetSettings();
-            targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length, { sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length } });
+            targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length, { sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length },
+                describe: describeEpic({ stage: allStageTargets, epic: allMultiTargets }) });
             if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
             if (!targetConfig) {
                 renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消多次总结生成。');
@@ -346,9 +372,9 @@ export function createSummaryGenerationController({
         }
 
         validateSummaryMaterials(targets);
-        if (!options.automatic) {
+        if (!options.automatic && !targetConfig.reviewed) {
             const latestEpicAt = state.epicSummaries.at(-1)?.createdAt;
-            const confirmed = confirm([
+            const confirmed = await confirm([
                 `即将生成【${getMultiSummaryLabel(nextLevel)}】草稿。`,
                 '',
                 `本次材料：${pool === allStageTargets ? '阶段总结 → 多次总结' : '已有多次总结 → 继续压缩'}，${targets.length}/${sourcePoolSize} 个`,
@@ -405,7 +431,8 @@ export function createSummaryGenerationController({
             return;
         }
 
-        const targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', sourceBlocks.length, { batch: true, sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length } });
+        const targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', sourceBlocks.length, { batch: true, sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length },
+            describe: describeEpic({ stage: allStageTargets, epic: allMultiTargets }) });
         if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
         if (!targetConfig) {
             renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '已取消批量多次总结。');
@@ -425,7 +452,7 @@ export function createSummaryGenerationController({
         summarySources?.assertMaterials(batches.flat(), state);
         const materialReport = validateSummaryMaterials(batches.flat());
         const totalTargets = batches.reduce((sum, batch) => sum + batch.length, 0);
-        const confirmed = confirmDanger(
+        const confirmed = targetConfig.reviewed || await confirmDanger(
             `加入 ${batches.length} 个多次总结批次任务？`,
             [
                 `将覆盖 ${totalTargets}/${sourceBlocks.length} 个阶段/多次材料。`,

@@ -348,11 +348,11 @@ export function createSummaryTaskQueue({
         }
     }
     
-    function removeQueueTask(taskId) {
+    async function removeQueueTask(taskId) {
         const state = ensureState();
         const task = state.taskQueue.find(item => item.id === taskId);
         const isRunningTask = task?.status === 'running';
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `${isRunningTask ? '强制移除卡住任务' : '移除任务'}「${task?.label || '未命名任务'}」？`,
             [
                 '任务移除后不会删除已保存摘要，但这个队列项无法从队列中恢复。',
@@ -378,14 +378,14 @@ export function createSummaryTaskQueue({
         processTaskQueue();
     }
     
-    function clearFinishedQueueTasks() {
+    async function clearFinishedQueueTasks() {
         const state = ensureState();
         const count = state.taskQueue.filter(task => ['done', 'failed'].includes(task.status)).length;
         if (!count) {
             toastr.info('没有可清理的完成/失败队列记录。');
             return;
         }
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `清理 ${count} 条完成/失败队列记录？`,
             ['只会清理队列记录，不会删除已保存摘要。'],
         );
@@ -397,13 +397,13 @@ export function createSummaryTaskQueue({
         renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '已清理完成/失败的队列记录。');
     }
     
-    function clearHistoryRecords() {
+    async function clearHistoryRecords() {
         const state = ensureState();
         if (!state.history.length) {
             toastr.info('暂无保存记录可清理。');
             return;
         }
-        const confirmed = window.confirm('只清理保存记录列表，不删除已保存的总结和注入记忆。确定继续吗？');
+        const confirmed = await confirmDanger('清理保存记录？', ['只清理保存记录列表，已保存的总结和注入的记忆不受影响。']);
         if (!confirmed) {
             return;
         }

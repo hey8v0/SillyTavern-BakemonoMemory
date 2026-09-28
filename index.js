@@ -107,7 +107,7 @@ import { createOperationFeedback } from './src/ui/operation-feedback.js';
 import { installWorkbenchParentNavigation, organizeWorkbenchOwnedSections } from './src/ui/workbench-layout.js';
 import { createWorkbenchNavigation } from './src/ui/workbench-navigation.js';
 import { createPageSettings } from './src/ui/page-settings.js';
-import { createUnsavedChangesDialog } from './src/ui/unsaved-changes-dialog.js';
+import { createDialogs } from './src/ui/dialogs.js';
 import { createWorkbenchShellEvents } from './src/ui/workbench-shell-events.js';
 import { createSillyTavernEntry } from './src/ui/sillytavern-entry.js';
 import { createDefaultConfiguration } from './src/config/defaults.js';
@@ -287,13 +287,15 @@ function escapeHtml(value) {
     return div.innerHTML;
 }
 
-function confirmDanger(title, lines = [], confirmText = '确认继续吗？') {
-    return window.confirm([
-        title,
-        ...lines.filter(Boolean),
-        '',
-        confirmText,
-    ].join('\n'));
+const dialogs = createDialogs({ documentRef: document });
+// Resolves true or false. Every caller awaits it: the panel does not block the page the way confirm() did.
+function confirmDanger(title, lines = [], confirmText = '') {
+    return dialogs.confirm(title, lines, { confirmText });
+}
+// Modules written for confirm(message): the first line is the question, the rest are the consequences.
+function confirmMessage(message) {
+    const [title, ...lines] = String(message || '').split('\n');
+    return dialogs.confirm(title, lines);
 }
 
 
@@ -697,7 +699,7 @@ const summaryGenerationController = createSummaryGenerationController({
     workbenchRenderScopes,
     toastr,
     confirmDanger,
-    confirm: message => window.confirm(message),
+    confirm: confirmMessage,
 });
 const {
     buildEpicSystemPrompt,
@@ -740,7 +742,7 @@ const summaryBackfillController = createSummaryBackfillController({
     workbenchRenderScopes,
     toastr,
     confirmDanger,
-    confirm: message => window.confirm(message),
+    confirm: confirmMessage,
 });
 const {
     createMissingSummaryDraftFromBatchItem,
@@ -1110,17 +1112,19 @@ const {
     readTurnSummaryFieldsFromUi,
     readWorkflowFieldsFromUi,
 } = configurationService;
+// 总结 → 剧情摘要 with the 补写旧聊天 form open on the given mode (missing or backfill).
+async function openBackfillForm(batchMode) {
+    if (!await switchWorkbenchTab('preview')) return;
+    summaryGenerationUi.setMode('batch');
+    summaryGenerationUi.setBatchOpen(true);
+    setSummaryBrowserActiveType('story');
+    renderSummaryGenerationPanel();
+    renderPreviewSections();
+    $('#bakemono-memory-batch-summary-mode').val(batchMode);
+}
 const summarySourceWizard = createSummarySourceWizard({
     documentRef: document, getState: ensureState, defaultScanRules,
-    openBackfill: async batchMode => {
-        if (!await switchWorkbenchTab('preview')) return;
-        summaryGenerationUi.setMode('batch');
-        summaryGenerationUi.setBatchOpen(true);
-        setSummaryBrowserActiveType('story');
-        renderSummaryGenerationPanel();
-        renderPreviewSections();
-        $('#bakemono-memory-batch-summary-mode').val(batchMode);
-    },
+    openBackfill: openBackfillForm,
 });
 
 const configurationController = createConfigurationController({
@@ -1363,7 +1367,7 @@ const archiveController = createArchiveController({
     saveState,
     defaultState,
     memoryStrategies,
-    confirm: message => window.confirm(message),
+    confirm: confirmMessage,
     logError: (...args) => console.error(...args),
 });
 const {
@@ -1585,9 +1589,9 @@ const overviewTokenManifest = createOverviewTokenManifest({
 });
 const { renderOverviewTokenManifest } = overviewTokenManifest;
 const injectionPreview = createInjectionPreview({
-    documentRef: document,
     getSources: () => overviewTokenManifest.getOverviewInjectionSources(),
     beforeOpen: () => helpPopover.close(),
+    openDialog: options => dialogs.open(options),
 });
 
 const workflowOverviewModel = createWorkflowOverviewModel({
@@ -1826,7 +1830,7 @@ const summaryDraftService = createSummaryDraftService({
     parseList,
     extractConfiguredSegments,
     removeExactTextBlock,
-    confirm: message => window.confirm(message),
+    confirm: confirmMessage,
 });
 const {
     clearStuckMissingSummaryTasks,
@@ -1904,7 +1908,7 @@ const rpStateUi = createRpStateUi({
     getContextPreview: state => getInjectionMemoryParts(state).rpContext,
     promptLibrary: rpPromptLibrary,
     documentRef: document, getState: ensureState, service: rpCoreService, flow: rpExtractionFlow,
-    escapeHtml, navigate: switchWorkbenchTab,
+    escapeHtml, navigate: switchWorkbenchTab, confirm: confirmMessage,
     refresh: () => updateInjectionFromSummaries(),
     locateSource: evidence => {
         const source = evidence && findChatSource(chat, ensureState(), evidence.messageId + '|' + evidence.variantId);
@@ -1925,7 +1929,7 @@ const storyToolsUi = createStoryToolsUi({
         renderWorkbenchScope(workbenchRenderScopes.ARCHIVE);
     },
     isBusy: () => isBusy, escapeHtml, notify: (message, error) => error ? toastr.error(message) : toastr.success(message),
-    confirm: message => window.confirm(message),
+    confirm: confirmMessage,
 });
 
 const summaryTimelineUi = createSummaryTimelineUi({
@@ -2094,6 +2098,8 @@ const summaryTargetController = createSummaryTargetController({
     formatSourceRange,
     renderWorkbenchScope,
     workbenchRenderScopes,
+    openDialog: options => dialogs.open(options),
+    openMissingBackfill: () => openBackfillForm('missing'),
 });
 const {
     confirmGenerationTargets,
@@ -2293,10 +2299,16 @@ pageSettings = createPageSettings({
         }[getActiveWorkbenchTab()] || workbenchRenderScopes.SUMMARY);
     },
     notify: message => toastr.warning(message),
-    askLeave: createUnsavedChangesDialog({
-        documentRef: document,
-        getHost: () => document.getElementById('bakemono-workbench-root'),
-    }).ask,
+    askLeave: ({ label, count, closing }) => dialogs.choose({
+        title: `${label}还有 ${count} 项没保存`,
+        choices: [
+            { value: 'save', label: closing ? '保存再关闭' : '保存再离开' },
+            { value: 'discard', label: closing ? '不保存，直接关闭' : '不保存，直接离开', note: '修改会丢掉' },
+            { value: 'stay', label: '留在这一页' },
+        ],
+        dismiss: 'stay',
+        closeLabel: '留在这一页',
+    }),
     async savePage(tab, state) {
         if (ensureState() !== state) throw new Error('聊天已切换，请在当前聊天重新保存。');
         if (tab === 'vector') return applyVectorMemorySettings();

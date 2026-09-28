@@ -22,8 +22,8 @@ export function createContentConfigurationEvents({
             await navigatorRef.clipboard.writeText(content);
             toastr.success('注入内容已复制。');
         });
-        query('#bakemono-memory-reset-template').off('click').on('click', () => {
-            const confirmed = confirmDanger(
+        query('#bakemono-memory-reset-template').off('click').on('click', async () => {
+            const confirmed = await confirmDanger(
                 '恢复默认注入模板？',
                 ['当前注入模板会被默认模板覆盖，记忆正文会保留。'],
             );
@@ -56,8 +56,8 @@ export function createContentConfigurationEvents({
 
     function bindPromptEvents() {
         const resetPrompt = ({ selector, title, warning, key, value, status }) => {
-            query(selector).off('click').on('click', () => {
-                if (!confirmDanger(title, [warning])) return;
+            query(selector).off('click').on('click', async () => {
+                if (!await confirmDanger(title, [warning])) return;
                 const state = getState();
                 state.generationPrompts[key] = value;
                 persistSharedConfigurationFromState(state);

@@ -194,7 +194,7 @@ test('removing a running task does not let its late finally clear the next task 
         normalizeGeneratedBakemono: x => x, createDraft: () => { created++; return {}; }, switchWorkbenchTab: noop,
     });
     const old = queue.processTaskQueue();
-    queue.removeQueueTask('a');
+    await queue.removeQueueTask('a');
     assert.equal(pending.length, 2);
     pending[0]('discarded');
     await old;

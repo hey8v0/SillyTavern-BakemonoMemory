@@ -285,7 +285,7 @@ export function createSummaryDraftService({
             return;
         }
     
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `一键应用 ${ready.length} 个缺失摘要草稿？`,
             [
                 '插件会把摘要追加到对应助手正文末尾，然后重新扫描登记。',
@@ -353,7 +353,7 @@ export function createSummaryDraftService({
         toastr.success(`已补写 ${applied} 个缺失摘要。`);
     }
     
-    function removeMissingSummaryDraftsAndTasks() {
+    async function removeMissingSummaryDraftsAndTasks() {
         const state = ensureState();
         const draftCount = state.drafts.filter(draft => draft.metadata?.appendMode === 'missing_summary').length;
         const removableTaskStatuses = new Set(['queued', 'failed', 'partial', 'done']);
@@ -362,7 +362,7 @@ export function createSummaryDraftService({
             toastr.info('没有可移除的缺失摘要草稿或批次任务。');
             return;
         }
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `移除 ${draftCount} 个缺失摘要草稿和 ${taskCount} 个批次任务？`,
             [
                 '这只会清理插件里的待确认内容和未运行/失败/完成的补写任务。',
@@ -380,14 +380,14 @@ export function createSummaryDraftService({
         toastr.success('缺失摘要待处理内容已移除。');
     }
     
-    function clearStuckQueueTasks(predicate = () => true, label = '任务') {
+    async function clearStuckQueueTasks(predicate = () => true, label = '任务') {
         const state = ensureState();
         const stuckTasks = state.taskQueue.filter(task => task.status === 'running' && predicate(task));
         if (!stuckTasks.length) {
             toastr.info(`没有卡住的${label}。`);
             return;
         }
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `解除 ${stuckTasks.length} 个生成中的${label}？`,
             [
                 '这只会清理显示“生成中”的队列项，不会删除已经生成的草稿或保存记录。',
@@ -547,11 +547,11 @@ export function createSummaryDraftService({
         return state.stageSummaries.length;
     }
     
-    function discardDraft(draftId, { confirmed: preconfirmed = false } = {}) {
+    async function discardDraft(draftId, { confirmed: preconfirmed = false } = {}) {
         const state = ensureState();
         const index = state.drafts.findIndex(item => item.id === draftId);
         const draft = state.drafts[index];
-        const confirmed = preconfirmed || confirmDanger(
+        const confirmed = preconfirmed || await confirmDanger(
             `丢弃草稿「${draft?.title || getKindLabel(draft?.kind) || '未命名草稿'}」？`,
             ['草稿丢弃后不会写入长期记忆。'],
         );
@@ -606,7 +606,7 @@ export function createSummaryDraftService({
             toastr.info('这次保存之后又有新的保存，请到“待确认 → 记录”里撤回。');
             return;
         }
-        const confirmed = preconfirmed || confirmDanger(
+        const confirmed = preconfirmed || await confirmDanger(
             `撤回上次保存「${commit.summary?.title || getKindLabel(commit.kind)}」？`,
             ['已保存摘要会从长期记忆中移除，原草稿会放回草稿箱。'],
         );
@@ -721,7 +721,7 @@ export function createSummaryDraftService({
             return;
         }
         const hiddenIds = unique(getFiniteMessageIds(transaction.hiddenMessageIds || []).filter(id => getChat()[id]));
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `回滚自动总结「${transaction.summaryTitle || transaction.summaryHash}」？`,
             [
                 saved ? '会移除这条自动保存的阶段总结，并同步更新长期记忆。' : '这条总结已不存在，本次只会处理隐藏楼层记录。',
@@ -850,7 +850,7 @@ export function createSummaryDraftService({
             toastr.warning(`这个摘要已被 ${dependents.length} 个上层总结引用，请先删除上层总结。`);
             return;
         }
-        const confirmed = preconfirmed || confirm([
+        const confirmed = preconfirmed || await confirm([
             `删除已保存的「${found.summary.title || getKindLabel(found.kind)}」？`,
             '这不会删除聊天正文，但会更新摘要树和注入内容。',
             '',
@@ -934,7 +934,7 @@ export function createSummaryDraftService({
             toastr.warning('原楼层中的摘要标签已经变化，请重新扫描后再试。');
             return false;
         }
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `从第 ${messageId} 楼正文移除「${block.title || `#${messageId}.${Number(block.blockIndex || 0) + 1}`}」？`,
             [
                 '这条摘要由“扫描与识别”从聊天正文标签读取。',

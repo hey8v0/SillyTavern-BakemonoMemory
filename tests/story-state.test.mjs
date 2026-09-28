@@ -11,7 +11,7 @@ import { createSummaryRecoveryJournal } from '../src/core/summary-recovery-journ
 import { parseTableEditOperations } from '../src/tables/operation-parser.js';
 import { createTableStateService } from '../src/features/table-state-service.js';
 
-test('table undo and redo include the associated AI clock and entity state', () => {
+test('table undo and redo include the associated AI clock and entity state', async () => {
     const { state, chat } = fixture();
     state.tableDatabase.chatProfiles = [{id:'p', tables:[]}];
     const service = createTableStateService({ getState: () => state, getHash, getFiniteMessageIds: ids => ids,
@@ -25,10 +25,10 @@ test('table undo and redo include the associated AI clock and entity state', () 
     captureChronicle(state, chat);
     const entities = structuredClone(state.chronicle.entities);
     assert.ok(entities.length);
-    service.undoLastTableOperation(state);
+    await service.undoLastTableOperation(state);
     assert.equal(state.chronicle.clock.date, '');
     assert.deepEqual(state.chronicle.entities, []);
-    service.redoLastTableOperation(state);
+    await service.redoLastTableOperation(state);
     assert.equal(state.chronicle.clock.date, '1889-10-15');
     assert.deepEqual(state.chronicle.entities, entities);
 });

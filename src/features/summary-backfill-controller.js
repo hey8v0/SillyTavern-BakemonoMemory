@@ -337,7 +337,7 @@ export function createSummaryBackfillController({
 
         const batchSize = Math.max(1, Number(state.automation.backfillBatchSize || defaultAutomation.backfillBatchSize));
         const batches = buildMissingSummaryBatches(targets, batchSize);
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `补写 ${targets.length} 个缺失摘要？`,
             [
                 `将按每批 ${batchSize} 楼加入 ${batches.length} 个批次任务。`,
@@ -390,7 +390,7 @@ export function createSummaryBackfillController({
             return;
         }
 
-        const confirmed = confirm([
+        const confirmed = await confirm([
             `将按 ${batches.length} 批加入旧正文摘要任务。`,
             '队列会逐个生成草稿，生成后仍需要你确认保存。',
             '继续吗？',

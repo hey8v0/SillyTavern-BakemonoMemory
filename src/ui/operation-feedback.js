@@ -56,26 +56,19 @@ export function createOperationFeedback({
             toast.setAttribute('aria-atomic', 'true');
             root.appendChild(toast);
         }
-        const icon = documentRef.createElement('i');
-        icon.className = state === 'running' ? 'bakemono-memory-operation-spinner'
-            : `fa-solid ${state === 'success' ? 'fa-check' : 'fa-triangle-exclamation'}`;
-        icon.setAttribute('aria-hidden', 'true');
+        // A short line at the bottom of the workbench: a dot (spinning while running) and the text.
+        // Tapping it closes it; an error stays until tapped or replaced.
+        const dot = documentRef.createElement('i');
+        dot.className = 'bakemono-memory-operation-dot';
+        dot.setAttribute('aria-hidden', 'true');
         const copy = documentRef.createElement('span');
         copy.className = 'bakemono-memory-operation-copy';
         copy.textContent = text;
         toast.className = `bakemono-memory-operation-toast is-${state}`;
         toast.textContent = '';
-        toast.appendChild(icon);
+        toast.appendChild(dot);
         toast.appendChild(copy);
-        if (state !== 'running') {
-            const dismiss = documentRef.createElement('button');
-            dismiss.type = 'button';
-            dismiss.className = 'bakemono-memory-operation-dismiss';
-            dismiss.setAttribute('aria-label', '关闭提示');
-            dismiss.textContent = '×';
-            dismiss.onclick = clear;
-            toast.appendChild(dismiss);
-        }
+        toast.onclick = state === 'running' ? null : clear;
         root.classList.toggle('is-operation-running', state === 'running');
         if (timeout > 0 && state !== 'error') timer = windowRef.setTimeout(clear, timeout);
     }

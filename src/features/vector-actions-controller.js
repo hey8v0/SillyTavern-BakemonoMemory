@@ -241,13 +241,13 @@ export function createVectorActionsController({
         return hits.length > 0 || !state.vectorMemory.lastRecallSkippedReason;
     }
     
-    function clearVectorMemoryIndex() {
+    async function clearVectorMemoryIndex() {
         const state = ensureState();
         if (!state.vectorMemory.records.length && !state.vectorMemory.lastHits.length) {
             toastr.info('向量索引已经是空的。');
             return;
         }
-        if (!confirmDanger(
+        if (!await confirmDanger(
             '清空向量索引？',
             ['这只会删除本聊天保存的向量片段和最近召回，不会删除聊天正文。'],
             '确认清空吗？',

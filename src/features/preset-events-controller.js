@@ -60,7 +60,7 @@ export function createPresetEventsController({
     const findPresetByName = (presets, name) => presets.find(item => String(item.name || '').trim() === name) || null;
 
     function bindAreaPresetControls(scope, ids) {
-        query(ids.select).off('change').on('change', function () {
+        query(ids.select).off('change').on('change', async function () {
             const previousId = getSelectedAreaPresetId(scope);
             const selectedId = String(this.value || '');
             setSelectedAreaPresetId(scope, selectedId);
@@ -68,7 +68,7 @@ export function createPresetEventsController({
             if (!selectedId) return;
             const preset = getAreaPresets(scope).find(item => item.id === selectedId);
             if (!preset) return;
-            const confirmed = confirmDanger(
+            const confirmed = await confirmDanger(
                 `使用配置「${preset.name || '未命名配置'}」？`,
                 ['会立即应用这个区域，并作为所有角色卡共用的设置。'],
             );
@@ -79,14 +79,14 @@ export function createPresetEventsController({
             }
             applyAreaPresetToState(scope, preset);
         });
-        query(ids.load).off('click').on('click', () => {
+        query(ids.load).off('click').on('click', async () => {
             const selectedId = getSelectedAreaPresetId(scope);
             const preset = getAreaPresets(scope).find(item => item.id === selectedId);
             if (!preset) {
                 toastr.warning('请先选择已保存的配置。');
                 return;
             }
-            const confirmed = confirmDanger(
+            const confirmed = await confirmDanger(
                 `载入配置「${preset.name || '未命名配置'}」？`,
                 ['只覆盖当前区域的设置，并同步到所有角色卡；其他区域保持不变。'],
             );
@@ -95,17 +95,17 @@ export function createPresetEventsController({
         // “另存为预设” keeps every preset: a new name is a new preset; only the same name replaces one, after asking.
         // It used to replace whichever preset was selected, and the one just saved is selected, so a second
         // save overwrote the first.
-        query(ids.save).off('click').on('click', () => {
+        query(ids.save).off('click').on('click', async () => {
             const name = String(query(ids.name).val() || '').trim();
             if (!name) {
                 toastr.warning('请先填写配置名称。');
                 return;
             }
             const same = findPresetByName(getAreaPresets(scope), name);
-            if (same && !confirmDanger(`已有同名预设「${name}」，覆盖它？`, ['想另外保存一份，请换一个名字。'])) return;
+            if (same && !await confirmDanger(`已有同名预设「${name}」，覆盖它？`, ['想另外保存一份，请换一个名字。'])) return;
             saveAreaPreset(scope, name, same ? { replaceId: same.id } : undefined);
         });
-        query(ids.update).off('click').on('click', () => {
+        query(ids.update).off('click').on('click', async () => {
             const selectedId = getSelectedAreaPresetId(scope);
             const selected = getAreaPresets(scope).find(item => item.id === selectedId);
             if (!selected) {
@@ -117,17 +117,17 @@ export function createPresetEventsController({
                 toastr.warning('请先填写配置名称。');
                 return;
             }
-            const confirmed = confirmDanger(`覆盖配置「${selected.name || '未命名配置'}」？`, ['会用当前区域界面里的设置覆盖它。']);
+            const confirmed = await confirmDanger(`覆盖配置「${selected.name || '未命名配置'}」？`, ['会用当前区域界面里的设置覆盖它。']);
             if (confirmed) saveAreaPreset(scope, name, { replaceId: selectedId });
         });
-        query(ids.delete).off('click').on('click', () => {
+        query(ids.delete).off('click').on('click', async () => {
             const selectedId = getSelectedAreaPresetId(scope);
             const selected = getAreaPresets(scope).find(item => item.id === selectedId);
             if (!selected) {
                 toastr.warning('请先选择要删除的配置。');
                 return;
             }
-            const confirmed = confirmDanger(
+            const confirmed = await confirmDanger(
                 `删除配置「${selected.name || '未命名配置'}」？`,
                 ['删除后无法从列表里恢复，但不会影响当前聊天已经应用的设置。'],
             );
@@ -149,14 +149,14 @@ export function createPresetEventsController({
         const defaultPrompt = type === 'summary' ? defaultInlineSummaryPrompt : defaultInlineTablePrompt;
         const label = type === 'summary' ? '随正文摘要提示词' : '随正文填表提示词';
 
-        query(ids.select).off('change').on('change', function () {
+        query(ids.select).off('change').on('change', async function () {
             const previousId = getSelectedInlinePromptPresetId(type);
             const selectedId = String(this.value || '');
             setSelectedInlinePromptPresetId(type, selectedId);
             renderInlinePromptPresetControls(type, ids.select, ids.name);
             const preset = getInlinePromptPresets(type).find(item => item.id === selectedId);
             if (!preset) return;
-            const confirmed = confirmDanger(`使用「${preset.name || '未命名'}」？`, ['当前编辑框里的提示词会被覆盖。']);
+            const confirmed = await confirmDanger(`使用「${preset.name || '未命名'}」？`, ['当前编辑框里的提示词会被覆盖。']);
             if (!confirmed) {
                 setSelectedInlinePromptPresetId(type, previousId);
                 renderInlinePromptPresetControls(type, ids.select, ids.name);
@@ -169,13 +169,13 @@ export function createPresetEventsController({
             persistSharedConfigurationFromState(state);
             renderInlinePromptPresetChange(`已使用并同步到所有角色卡的${label}：${preset.name}`);
         });
-        query(ids.load).off('click').on('click', () => {
+        query(ids.load).off('click').on('click', async () => {
             const preset = getInlinePromptPresets(type).find(item => item.id === getSelectedInlinePromptPresetId(type));
             if (!preset) {
                 toastr.warning(`请先选择${label}预设。`);
                 return;
             }
-            const confirmed = confirmDanger(`载入「${preset.name || '未命名'}」？`, ['当前编辑框里的提示词会被覆盖。']);
+            const confirmed = await confirmDanger(`载入「${preset.name || '未命名'}」？`, ['当前编辑框里的提示词会被覆盖。']);
             if (!confirmed) return;
             const state = getState();
             if (type === 'summary') state.inlineGeneration.summaryPrompt = preset.prompt || defaultPrompt;
@@ -184,14 +184,14 @@ export function createPresetEventsController({
             persistSharedConfigurationFromState(state);
             renderInlinePromptPresetChange(`已载入并同步到所有角色卡的${label}：${preset.name}`);
         });
-        query(ids.save).off('click').on('click', () => {
+        query(ids.save).off('click').on('click', async () => {
             const name = String(query(ids.name).val() || '').trim();
             if (!name) {
                 toastr.warning('请先填写预设名称。');
                 return;
             }
             let preset = findPresetByName(getInlinePromptPresets(type).filter(item => item.id !== defaultId), name);
-            if (preset && !confirmDanger(`已有同名预设「${name}」，覆盖它？`, ['想另外保存一份，请换一个名字。'])) return;
+            if (preset && !await confirmDanger(`已有同名预设「${name}」，覆盖它？`, ['想另外保存一份，请换一个名字。'])) return;
             if (preset) {
                 preset.prompt = String(query(promptSelector).val() || defaultPrompt);
                 preset.updatedAt = new Date().toISOString();
@@ -204,7 +204,7 @@ export function createPresetEventsController({
             saveGlobalSettings();
             renderInlinePromptPresetChange(`已保存${label}：${preset.name}`);
         });
-        query(ids.update).off('click').on('click', () => {
+        query(ids.update).off('click').on('click', async () => {
             const preset = getInlinePromptPresets(type).find(item => item.id === getSelectedInlinePromptPresetId(type));
             if (!preset) {
                 toastr.warning(`请先选择${label}预设。`);
@@ -214,7 +214,7 @@ export function createPresetEventsController({
                 toastr.warning('默认预设不能覆盖，请另存为新预设。');
                 return;
             }
-            const confirmed = confirmDanger(`覆盖「${preset.name || '未命名'}」？`, ['覆盖后无法自动恢复旧版本。']);
+            const confirmed = await confirmDanger(`覆盖「${preset.name || '未命名'}」？`, ['覆盖后无法自动恢复旧版本。']);
             if (!confirmed) return;
             preset.name = String(query(ids.name).val() || preset.name || '').trim() || preset.name;
             preset.prompt = String(query(promptSelector).val() || defaultPrompt);
@@ -222,7 +222,7 @@ export function createPresetEventsController({
             saveGlobalSettings();
             renderInlinePromptPresetChange(`已覆盖${label}：${preset.name}`);
         });
-        query(ids.delete).off('click').on('click', () => {
+        query(ids.delete).off('click').on('click', async () => {
             const preset = getInlinePromptPresets(type).find(item => item.id === getSelectedInlinePromptPresetId(type));
             if (!preset) {
                 toastr.warning(`请先选择${label}预设。`);
@@ -232,7 +232,7 @@ export function createPresetEventsController({
                 toastr.warning('默认预设不能删除。');
                 return;
             }
-            const confirmed = confirmDanger(`删除「${preset.name || '未命名'}」？`, ['删除后不能从预设列表恢复。']);
+            const confirmed = await confirmDanger(`删除「${preset.name || '未命名'}」？`, ['删除后不能从预设列表恢复。']);
             if (!confirmed) return;
             extensionSettings[storageKey].inlinePromptPresets = (extensionSettings[storageKey].inlinePromptPresets || []).filter(item => item.id !== preset.id);
             setSelectedInlinePromptPresetId(type, getInlinePromptPresets(type)[0]?.id || '');
@@ -242,14 +242,14 @@ export function createPresetEventsController({
     }
 
     function bindGlobalPresetControls() {
-        query('#bakemono-memory-preset-select').off('change').on('change', function () {
+        query('#bakemono-memory-preset-select').off('change').on('change', async function () {
             const previousId = getSelectedPromptPresetId();
             const selectedId = String(this.value || defaultPromptPreset.id);
             setSelectedPromptPresetId(selectedId);
             renderPromptPresetControls();
             const preset = getPromptPresets().find(item => item.id === selectedId);
             if (!preset) return;
-            const confirmed = confirmDanger(
+            const confirmed = await confirmDanger(
                 `使用配置「${preset.name || '未命名配置'}」？`,
                 ['会覆盖工作流、扫描、自动、提示词、注入和向量等设置，并同步到所有角色卡。', '摘要、草稿、表格行与向量索引不会跨聊天复制。'],
             );
@@ -260,13 +260,13 @@ export function createPresetEventsController({
             }
             usePromptPresetAsGlobalDefault(preset);
         });
-        query('#bakemono-memory-load-preset').off('click').on('click', () => {
+        query('#bakemono-memory-load-preset').off('click').on('click', async () => {
             const preset = getPromptPresets().find(item => item.id === getSelectedPromptPresetId());
             if (!preset) {
                 toastr.warning('没有找到选中的预设。');
                 return;
             }
-            const confirmed = confirmDanger(
+            const confirmed = await confirmDanger(
                 `使用并设为全局默认「${preset.name || '未命名预设'}」？`,
                 ['会覆盖当前设置，并让所有角色卡在打开或切换时自动使用这套配置。'],
             );
@@ -300,14 +300,14 @@ export function createPresetEventsController({
             saveState();
             renderWorkbenchScope(workbenchRenderScopes.CONFIG, `已另存并设为全局默认：${preset.name}`);
         });
-        query('#bakemono-memory-delete-preset').off('click').on('click', () => {
+        query('#bakemono-memory-delete-preset').off('click').on('click', async () => {
             const selectedId = getSelectedPromptPresetId();
             if (isBuiltInPresetId(selectedId)) {
                 toastr.warning('默认预设不能删除。');
                 return;
             }
             const selected = getPromptPresets().find(preset => preset.id === selectedId);
-            const confirmed = confirmDanger(
+            const confirmed = await confirmDanger(
                 `删除预设「${selected?.name || '未命名预设'}」？`,
                 ['删除后不会影响已保存摘要，但这个预设无法从列表里恢复。'],
             );

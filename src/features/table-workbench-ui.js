@@ -370,7 +370,7 @@ export function createTableWorkbenchUi({
         return table;
     }
 
-    function importTablesFromText(raw, sourceLabel = '表格数据') {
+    async function importTablesFromText(raw, sourceLabel = '表格数据') {
         const text = String(raw || '').trim();
         if (!text) {
             toastr.warning('请先选择或粘贴表格数据。');
@@ -387,7 +387,7 @@ export function createTableWorkbenchUi({
             toastr.warning('没有在导入内容中找到可用表格。');
             return false;
         }
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `导入 ${tables.length} 张表格？`,
             [`来源：${sourceLabel}`, '这会覆盖当前聊天里剧情剪辑台保存的表格数据库，但不会删除摘要。'],
         );

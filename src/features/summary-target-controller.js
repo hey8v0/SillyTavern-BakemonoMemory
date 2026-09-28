@@ -13,6 +13,8 @@ export function createSummaryTargetController({
     getSummaryMaterialPreview = () => '',
     renderWorkbenchScope,
     workbenchRenderScopes,
+    openDialog,
+    openMissingBackfill = null,
 } = {}) {
     function readGenerationTargetSettings() {
         const state = ensureState();
@@ -98,168 +100,130 @@ export function createSummaryTargetController({
         return null;
     }
     
+    // The generation panel: which material, one chapter or batches, and what that selection will send — the
+    // count, floors, length, floors with no summary and the start of the material — all in one place. It used to
+    // be this dialog plus two confirm() boxes; the controller skips those when the result says `reviewed`.
+    // options.describe(config) → { count, textLength, range, gaps: [floor], samples: [{ where, text }], requests }.
     function promptGenerationTargetSelection(kind, totalLength, options = {}) {
         const state = ensureState();
         const defaults = defaultGenerationTargets[kind] || defaultGenerationTargets.stage;
-        const current = {
-            ...defaults,
-            ...(state.generationTargets?.[kind] || {}),
-        };
-        // One dialog for both: "生成一条" or "分批生成"; the last choice is remembered per kind.
-        const initialBatch = options.batch ?? !!current.batch;
+        const current = { ...defaults, ...(state.generationTargets?.[kind] || {}) };
         const kindLabel = kind === 'epic' ? '多次总结' : '阶段总结';
+        const unit = kind === 'epic' ? '条' : '章';
+        const sources = kind === 'epic' && options.sourceCounts ? options.sourceCounts : null;
         const suggestedRange = current.mode === targetSelectionModes.RANGE
             ? (inferNextRange(current.range) || current.range || defaults.range)
-            : (current.range || defaults.range);
-        return new Promise(resolve => {
-            document.querySelector('.bakemono-memory-target-dialog')?.remove();
-    
-            const overlay = document.createElement('div');
-            overlay.className = 'bakemono-memory-target-dialog';
-            overlay.innerHTML = `
-                <section class="bakemono-memory-target-box" role="dialog" aria-modal="true">
-                    <header>
-                        <div>
-                            <span>生成范围</span>
-                            <h3>${kindLabel}</h3>
-                        </div>
-                        <button type="button" class="menu_button" data-bakemono-target-cancel><i class="fa-solid fa-xmark"></i></button>
-                    </header>
-                    <div class="bakemono-memory-target-body">
-                        <p data-bakemono-target-summary></p>
-                        <label class="bakemono-memory-field">
-                            <span>生成方式</span>
-                            <select class="text_pole" data-bakemono-target-output>
-                                <option value="single">生成一条${kindLabel}</option>
-                                <option value="batch">分批生成（大量材料分批入队）</option>
-                            </select>
-                        </label>
-                        ${kind === 'epic' && options.sourceCounts ? `<label class="bakemono-memory-field"><span>本次总结材料</span><select class="text_pole" data-bakemono-target-source>${Object.entries({stage: '阶段总结 → 多次总结', epic: '已有多次总结 → 继续压缩'}).map(([key, label]) => `<option value="${key}" ${options.sourceCounts[key] ? '' : 'disabled'}>${label}（${options.sourceCounts[key] || 0} 条）</option>`).join('')}</select></label>` : ''}
-                        <label class="bakemono-memory-field">
-                            <span>读取范围</span>
-                            <select class="text_pole" data-bakemono-target-mode>
-                                <option value="all">全部未总结内容</option>
-                                <option value="oldest">最早 N 个</option>
-                                <option value="range">指定来源楼层</option>
-                            </select>
-                        </label>
-                        <div class="bakemono-memory-editor-grid bakemono-memory-mini-grid">
-                            <label class="bakemono-memory-field">
-                                <span data-bakemono-target-count-label>N 个</span>
-                                <input class="text_pole" data-bakemono-target-count type="number" min="1" step="1">
-                            </label>
-                            <label class="bakemono-memory-field">
-                                <span>来源楼层</span>
-                                <input class="text_pole" data-bakemono-target-range type="text" placeholder="例如 0-20, 80-120">
-                            </label>
-                        </div>
-                        <label><input type="checkbox" data-bakemono-target-covered>包括已覆盖材料（重新整理）</label>
-                        <label><input type="checkbox" data-bakemono-target-valid>只使用有效材料（不覆盖失效部分）</label>
-                        <div class="bakemono-memory-prompt-hint" data-bakemono-target-hint></div>
-                    </div>
-                    <footer class="bakemono-memory-inline-actions">
-                        <button type="button" class="menu_button" data-bakemono-target-cancel><i class="fa-solid fa-ban"></i><span>取消</span></button>
-                        <button type="button" class="menu_button" data-bakemono-target-confirm><i class="fa-solid fa-check"></i><span>使用这个范围</span></button>
-                    </footer>
-                </section>
-            `;
-    
-            const modeInput = overlay.querySelector('[data-bakemono-target-mode]');
-            const countInput = overlay.querySelector('[data-bakemono-target-count]');
-            const rangeInput = overlay.querySelector('[data-bakemono-target-range]');
-            const hint = overlay.querySelector('[data-bakemono-target-hint]');
-            const sourceInput = overlay.querySelector('[data-bakemono-target-source]');
-            const outputInput = overlay.querySelector('[data-bakemono-target-output]');
-            outputInput.value = initialBatch ? 'batch' : 'single';
-            const isBatch = () => outputInput.value === 'batch';
-            const available = () => sourceInput ? options.sourceCounts[sourceInput.value] || 0 : totalLength;
-            const syncSummary = () => {
-                overlay.querySelector('[data-bakemono-target-summary]').textContent = isBatch()
-                    ? `本次可用材料：${available()} 个。设置每批数量后会分批加入队列。`
-                    : `本次可用材料：${available()} 个。你可以只合并一部分，避免一次压得太简洁。`;
-                overlay.querySelector('[data-bakemono-target-count-label]').textContent = isBatch() ? '每批数量' : 'N 个';
-            };
-            if (sourceInput) sourceInput.value = options.sourceCounts[current.sourceMode] ? current.sourceMode : Object.keys(options.sourceCounts).find(key => options.sourceCounts[key] > 0);
-    
-            modeInput.value = current.mode || targetSelectionModes.ALL;
-            countInput.value = current.count || defaults.count;
-            rangeInput.value = current.mode === targetSelectionModes.RANGE
-                ? (suggestedRange || current.range || '0-20')
-                : (current.range || '');
-    
-            const close = value => {
-                overlay.remove();
-                resolve(value);
-            };
-            const syncHint = () => {
-                const mode = modeInput.value;
-                syncSummary();
-                countInput.disabled = !isBatch() && mode !== targetSelectionModes.OLDEST;
-                rangeInput.disabled = mode !== targetSelectionModes.RANGE;
-                if (mode === targetSelectionModes.RANGE && !rangeInput.value.trim()) {
-                    rangeInput.value = suggestedRange || '0-20';
-                }
-                if (isBatch()) {
-                    hint.textContent = mode === targetSelectionModes.RANGE
-                        ? `只处理指定楼层范围，并按每批 ${countInput.value || current.count || defaults.count} 个材料入队。`
-                        : `会按来源楼层从早到晚分批；每批 ${countInput.value || current.count || defaults.count} 个材料。`;
-                    return;
-                }
-                hint.textContent = mode === targetSelectionModes.RANGE && current.range
-                    ? `上次范围：${current.range}。已为你推导到：${rangeInput.value || suggestedRange}，可以直接修改。`
-                    : mode === targetSelectionModes.OLDEST
-                        ? '会按来源楼层从早到晚取前 N 个。'
-                        : '会合并当前所有尚未进入上层总结的内容。';
-            };
-    
-            overlay.querySelectorAll('[data-bakemono-target-cancel]').forEach(button => {
-                button.addEventListener('click', () => close(null));
-            });
-            overlay.querySelector('[data-bakemono-target-confirm]').addEventListener('click', () => {
-                const parsed = {
+            : (current.range || defaults.range || '');
+        const initialBatch = options.batch ?? !!current.batch;
+        const initialSource = sources ? (sources[current.sourceMode] ? current.sourceMode : Object.keys(sources).find(key => sources[key] > 0) || 'stage') : '';
+        const initialMode = Object.values(targetSelectionModes).includes(current.mode) ? current.mode : targetSelectionModes.ALL;
+        const radio = (name, value, checked, label, extra = '') => `<label class="bk-dlg-choice"><input type="radio" name="${name}" value="${value}"${checked ? ' checked' : ''}><span class="bk-dlg-choice-t">${label}</span>${extra}</label>`;
+        const sourceRows = sources ? `<div class="bk-dlg-section"><span class="bk-dlg-label">用什么整理</span>`
+            + radio('bk-gen-source', 'stage', initialSource === 'stage', '阶段总结', `<span class="bk-dlg-n">${Number(sources.stage || 0)} 条</span>`)
+            + radio('bk-gen-source', 'epic', initialSource === 'epic', '已有的多次总结，再合一次', `<span class="bk-dlg-n">${Number(sources.epic || 0)} 条</span>`)
+            + '</div>' : '';
+        const html = `<div class="bk-dlg-h"><div><span class="bk-dlg-label">${kindLabel} · 生成</span><h3 data-dlg-title>整理成${kindLabel}</h3>
+                <div class="bk-dlg-meta" data-gen-meta></div></div>
+                <button type="button" class="bk-dlg-x" data-dlg-value="" aria-label="取消">×</button></div>
+            <p class="bk-dlg-gap" data-gen-gap hidden></p>
+            ${sourceRows}
+            <div class="bk-dlg-section"><span class="bk-dlg-label">用哪些</span>
+                ${radio('bk-gen-mode', targetSelectionModes.ALL, initialMode === targetSelectionModes.ALL, '全部没整理的', '<span class="bk-dlg-n" data-gen-total></span>')}
+                ${radio('bk-gen-mode', targetSelectionModes.OLDEST, initialMode === targetSelectionModes.OLDEST, '最早的几条', `<input class="bk-dlg-num" data-gen-oldest type="number" min="1" step="1" inputmode="numeric" aria-label="条数" value="${Math.max(1, Number(!current.batch && current.mode === targetSelectionModes.OLDEST ? current.count : defaults.count) || 1)}">`)}
+                ${radio('bk-gen-mode', targetSelectionModes.RANGE, initialMode === targetSelectionModes.RANGE, '指定楼层', `<input class="bk-dlg-num is-wide" data-gen-range type="text" aria-label="楼层范围" placeholder="0-20, 35-50" value="${String(suggestedRange || '').replace(/"/g, '&quot;')}">`)}
+            </div>
+            <div class="bk-dlg-section"><span class="bk-dlg-label">生成几${unit}</span>
+                ${radio('bk-gen-batch', 'single', !initialBatch, `合成一${unit}`)}
+                ${radio('bk-gen-batch', 'batch', initialBatch, `分批，每${unit}用`, `<input class="bk-dlg-num" data-gen-size type="number" min="1" step="1" inputmode="numeric" aria-label="每批条数" value="${Math.max(1, Number(current.batch ? current.count : defaults.count) || 1)}"><span class="bk-dlg-n">条</span>`)}
+            </div>
+            <details class="bk-dlg-fold" data-gen-samples-box><summary>看材料开头<small data-gen-samples-count></small></summary><div data-gen-samples></div></details>
+            <details class="bk-dlg-fold"><summary>更多<small>重新整理 · 有效材料</small></summary>
+                <label class="bk-dlg-check"><input type="checkbox" data-gen-covered${current.includeCovered ? ' checked' : ''}><span>包括已经整理过的（重新整理）</span></label>
+                <label class="bk-dlg-check"><input type="checkbox" data-gen-valid${current.validOnly ? ' checked' : ''}><span>只用有效材料，跳过来源改过的</span></label>
+            </details>
+            <div class="bk-dlg-foot"><span class="bk-dlg-note">结果先放进待确认，看过再保存。</span>
+                <button type="button" class="bk-dlg-text" data-dlg-value="">取消</button>
+                <button type="button" class="bk-dlg-btn" data-gen-go>生成</button></div>`;
+        let result = null;
+        return openDialog({ className: 'bk-dlg-gen', html, dismiss: '', onReady(dialog, finish) {
+            const field = selector => dialog.querySelector(selector);
+            const read = () => {
+                const mode = field('input[name="bk-gen-mode"]:checked')?.value || targetSelectionModes.ALL;
+                const batch = field('input[name="bk-gen-batch"]:checked')?.value === 'batch';
+                const count = batch ? Number(field('[data-gen-size]').value) : mode === targetSelectionModes.OLDEST ? Number(field('[data-gen-oldest]').value) : Number(current.count || defaults.count);
+                return {
                     ...current,
-                    includeCovered: overlay.querySelector('[data-bakemono-target-covered]').checked,
-                    validOnly: overlay.querySelector('[data-bakemono-target-valid]').checked,
-                    ...(sourceInput ? { sourceMode: sourceInput.value } : {}),
-                    mode: Object.values(targetSelectionModes).includes(modeInput.value) ? modeInput.value : targetSelectionModes.ALL,
-                    count: Math.max(1, Number(countInput.value || current.count || defaults.count)),
-                    range: String(rangeInput.value || '').trim(),
-                    batch: isBatch(),
+                    ...(sources ? { sourceMode: field('input[name="bk-gen-source"]:checked')?.value || initialSource } : {}),
+                    mode, batch,
+                    count: Math.max(1, Math.floor(count) || Number(defaults.count) || 1),
+                    range: String(field('[data-gen-range]').value || '').trim(),
+                    includeCovered: field('[data-gen-covered]').checked,
+                    validOnly: field('[data-gen-valid]').checked,
                 };
-                if (parsed.mode === targetSelectionModes.RANGE && !parseLooseNumberRange(parsed.range).ids.size) {
-                    toastr.warning('请填写可识别的楼层范围，例如 0-20 或 0-20, 35-50。');
-                    return;
+            };
+            const sync = () => {
+                const config = read();
+                // One batch of “the oldest N” is just one chapter; batches only make sense over all or a range.
+                const oldest = field(`input[name="bk-gen-mode"][value="${targetSelectionModes.OLDEST}"]`);
+                oldest.disabled = config.batch;
+                field('[data-gen-oldest]').disabled = config.batch;
+                if (config.batch && config.mode === targetSelectionModes.OLDEST) {
+                    field(`input[name="bk-gen-mode"][value="${targetSelectionModes.ALL}"]`).checked = true;
+                    return sync();
                 }
-                if (ensureState() !== state) { close(null); return; }
+                field('[data-gen-size]').disabled = !config.batch;
+                field('[data-gen-range]').disabled = config.mode !== targetSelectionModes.RANGE;
+                const total = sources ? Number(sources[config.sourceMode] || 0) : totalLength;
+                field('[data-gen-total]').textContent = `${total} 条`;
+                const rangeInvalid = config.mode === targetSelectionModes.RANGE && !parseLooseNumberRange(config.range).ids.size;
+                const info = rangeInvalid ? null : options.describe?.(config);
+                const count = info ? info.count : total;
+                field('[data-gen-meta]').innerHTML = rangeInvalid ? '<span class="is-alert">楼层范围没看懂，写成 0-20 或 0-20, 35-50</span>'
+                    : [`<span><b>${count}</b> 条材料</span>`, info?.range ? `<span>${info.range.replace(/[<>&]/g, '')}</span>` : '',
+                        info?.textLength ? `<span>约 ${Number(info.textLength).toLocaleString()} 字</span>` : ''].filter(Boolean).join('');
+                const gaps = info?.gaps || [];
+                const gap = field('[data-gen-gap]');
+                gap.hidden = !gaps.length;
+                if (gaps.length) {
+                    const floors = `第 ${gaps.slice(0, 8).join('、')}${gaps.length > 8 ? ` 等 ${gaps.length}` : ''} 楼`;
+                    gap.innerHTML = `<b>${floors}还没有摘要。</b>现在生成的话，这些楼之后不会再进${kindLabel}。`
+                        + (openMissingBackfill ? ' <button type="button" class="bk-dlg-link" data-dlg-value="backfill">先去补写 ›</button>' : '');
+                }
+                const samples = info?.samples || [];
+                field('[data-gen-samples-box]').hidden = !samples.length;
+                field('[data-gen-samples-count]').textContent = samples.length ? `前 ${samples.length} 条` : '';
+                field('[data-gen-samples]').innerHTML = samples.map(sample => `<p class="bk-dlg-sample"><span>${String(sample.where || '').replace(/[<>&]/g, '')}</span>${String(sample.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p>`).join('');
+                const requests = info ? info.requests : (count ? 1 : 0);
+                const go = field('[data-gen-go]');
+                go.disabled = rangeInvalid || !count;
+                go.innerHTML = count ? `生成<span class="bk-dlg-cost">${requests} 次请求</span>` : '这里没有可用的材料';
+            };
+            dialog.addEventListener('input', sync);
+            dialog.addEventListener('change', sync);
+            field('[data-gen-go]').addEventListener('click', () => {
+                const parsed = read();
+                if (parsed.mode === targetSelectionModes.RANGE && !parseLooseNumberRange(parsed.range).ids.size) return;
+                if (ensureState() !== state) { finish(''); return; }
                 state.generationTargets[kind] = parsed;
                 query(`#bakemono-memory-${kind}-target-mode`).val(parsed.mode);
                 query(`#bakemono-memory-${kind}-target-count`).val(parsed.count);
                 query(`#bakemono-memory-${kind}-target-range`).val(parsed.range);
                 saveState();
-                close(parsed);
+                result = { ...parsed, reviewed: true };
+                finish('go');
             });
-            const syncSourceCount = () => {
-                if (!sourceInput) return;
-                syncHint();
-            };
-            sourceInput?.addEventListener('change', syncSourceCount);
-            syncSourceCount();
-            modeInput.addEventListener('change', syncHint);
-            outputInput.addEventListener('change', syncHint);
-            countInput.addEventListener('input', syncHint);
-            syncHint();
-    
-            const host = document.getElementById('bakemono-workbench-root') || document.body;
-            host.append(overlay);
-            outputInput.focus();
+            sync();
+        } }).then(value => {
+            if (value === 'backfill') openMissingBackfill?.();
+            return value === 'go' ? result : null;
         });
     }
-    
-    function confirmGenerationTargets(kind, targets, totalLength) {
+
+    async function confirmGenerationTargets(kind, targets, totalLength) {
         const state = ensureState();
         const kindLabel = kind === 'epic' ? '多次总结' : '阶段总结';
         const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `生成【${kindLabel}】草稿？`,
             [
                 `本次范围：${getTargetSelectionLabel(kind, targets.length, totalLength)}`,

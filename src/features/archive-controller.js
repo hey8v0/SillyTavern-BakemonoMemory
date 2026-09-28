@@ -44,7 +44,7 @@ export function createArchiveController({
         }
     
         if (options.confirm !== false) {
-            const confirmed = confirmDanger(
+            const confirmed = await confirmDanger(
                 `隐藏 ${messageIds.length} 个已总结楼层？`,
                 [
                     '这些楼层不会被删除，可以用“恢复插件隐藏楼层”找回。',
@@ -118,7 +118,7 @@ export function createArchiveController({
             return;
         }
     
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `恢复 ${messageIds.length} 个插件隐藏楼层？`,
             ['恢复后这些楼层会重新进入聊天上下文，可能增加 token。'],
         );
@@ -331,7 +331,7 @@ export function createArchiveController({
             return;
         }
         if (confirm) {
-            const confirmed = confirm([
+            const confirmed = await confirm([
                 `自动收纳将保留最近 ${preserve} 楼正文。`,
                 `本次会隐藏 ${hideIds.length} 楼，恢复 ${restoreIds.length} 楼。`,
                 '',
@@ -392,7 +392,7 @@ export function createArchiveController({
         }
         const coveredIds = getSummaryCoveredMessageIds();
         const uncovered = ids.filter(id => !coveredIds.has(id));
-        const confirmed = fromAuto || confirm([
+        const confirmed = fromAuto || await confirm([
             `只保留最近 ${preserve} 楼正文？`,
             `将隐藏更早的 ${ids.length} 楼，范围约 ${ids[0]}-${ids.at(-1)}。`,
             uncovered.length ? `其中 ${uncovered.length} 楼没有已保存摘要覆盖，可能导致模型遗忘。` : '这些楼层已有摘要覆盖。',
@@ -460,7 +460,7 @@ export function createArchiveController({
             toastr.info('没有由自动收纳隐藏的楼层。');
             return;
         }
-        const confirmed = confirm([
+        const confirmed = await confirm([
             `恢复自动收纳隐藏的 ${ids.length} 楼？`,
             `范围约 ${ids[0]}-${ids.at(-1)}。`,
             '',
@@ -503,7 +503,7 @@ export function createArchiveController({
         const warning = uncovered.length
             ? `其中 ${uncovered.length} 楼没有任何已保存摘要覆盖，隐藏后可能导致模型遗忘。`
             : '这些楼层已有摘要覆盖。';
-        const confirmed = confirm([
+        const confirmed = await confirm([
             `${unhide ? '恢复' : '隐藏'} ${ids.length} 个楼层？`,
             getRangePreviewText(ids, invalid),
             warning,

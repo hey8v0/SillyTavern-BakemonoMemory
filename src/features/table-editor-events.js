@@ -78,7 +78,7 @@ export function createTableEditorEvents({
 
     function bind(rootSelector = '#bakemono-workbench-root') {
         const root = query(rootSelector);
-        root.off('click.bakemonoTableDraftAction').on('click.bakemonoTableDraftAction', '[data-bakemono-table-draft-action]', function (event) {
+        root.off('click.bakemonoTableDraftAction').on('click.bakemonoTableDraftAction', '[data-bakemono-table-draft-action]', async function (event) {
             event.preventDefault();
             event.stopPropagation();
             const card = this.closest('.bakemono-memory-table-draft-card');
@@ -91,7 +91,7 @@ export function createTableEditorEvents({
             }
             const action = this.dataset.bakemonoTableDraftAction;
             if (action === 'discard') {
-                if (!confirmDanger('丢弃表格修改草稿？', ['草稿丢弃后不会修改表格。'])) return;
+                if (!await confirmDanger('丢弃表格修改草稿？', ['草稿丢弃后不会修改表格。'])) return;
                 state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draftId);
                 persistCurrentTableDatabase(state);
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格草稿已丢弃。');
@@ -133,7 +133,7 @@ export function createTableEditorEvents({
             }
         });
 
-        root.off('click.bakemonoTableAction').on('click.bakemonoTableAction', '[data-bakemono-table-action]', function (event) {
+        root.off('click.bakemonoTableAction').on('click.bakemonoTableAction', '[data-bakemono-table-action]', async function (event) {
             event.preventDefault();
             event.stopPropagation();
             const details = this.closest('.bakemono-memory-table-item');
@@ -190,7 +190,7 @@ export function createTableEditorEvents({
                 tableUiState.openSection = 'fields';
                 const colIndex = Number(this.dataset.tableCol);
                 const colName = table.columns[colIndex] || `字段 ${colIndex}`;
-                if (!confirmDanger(`删除字段「${colName}」？`, ['这会同时删除该字段下所有数据。'])) {
+                if (!await confirmDanger(`删除字段「${colName}」？`, ['这会同时删除该字段下所有数据。'])) {
                     renderWorkbenchScope(workbenchRenderScopes.TABLES);
                     return;
                 }
@@ -211,7 +211,7 @@ export function createTableEditorEvents({
                 if (!Number.isInteger(rowIndex) || !table) return;
                 const rowData = table.rows?.[rowIndex] || [];
                 const preview = rowData.map(value => String(value || '').trim()).filter(Boolean).slice(0, 3).join(' / ') || `第 ${rowIndex + 1} 行`;
-                if (!confirmDanger(`删除「${table.name || table.tableIndex}」的第 ${rowIndex + 1} 行？`, [
+                if (!await confirmDanger(`删除「${table.name || table.tableIndex}」的第 ${rowIndex + 1} 行？`, [
                     `内容预览：${preview}`,
                     '删除后可以用“撤销表格操作”恢复上一版表格。',
                 ])) {
@@ -231,7 +231,7 @@ export function createTableEditorEvents({
                 toastr.success('表格已保存。');
             } else if (action === 'delete-table') {
                 const table = findTable(getState(), details.dataset.tableIndex);
-                if (!confirmDanger(`删除表格「${table?.name || details.dataset.tableIndex}」？`, ['这会删除整张表和其中所有数据行。之后可以用“撤销表格操作”恢复。'])) return;
+                if (!await confirmDanger(`删除表格「${table?.name || details.dataset.tableIndex}」？`, ['这会删除整张表和其中所有数据行。之后可以用“撤销表格操作”恢复。'])) return;
                 deleteTable(details.dataset.tableIndex);
             }
         });
@@ -279,8 +279,8 @@ export function createTableEditorEvents({
         query('#bakemono-memory-undo-table-operation').off('click').on('click', () => undoLastTableOperation(getState()));
         query('#bakemono-memory-redo-table-operation').off('click').on('click', () => redoLastTableOperation(getState()));
         query('#bakemono-memory-create-table').off('click').on('click', () => createCustomTableFromUi());
-        query('#bakemono-memory-create-base-ledger').off('click').on('click', () => {
-            const profile = createBaseStoryLedgerProfile(getState());
+        query('#bakemono-memory-create-base-ledger').off('click').on('click', async () => {
+            const profile = await createBaseStoryLedgerProfile(getState());
             if (!profile) return;
             renderWorkbenchScope(workbenchRenderScopes.TABLES, `已创建并启用：${profile.name}`);
             toastr.success('基础表格已创建。');

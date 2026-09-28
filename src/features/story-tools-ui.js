@@ -96,9 +96,9 @@ export function createStoryToolsUi({ documentRef: document, getState, getChat, g
         if (getState() !== state || JSON.stringify(state) !== beforeRead || isBusy()) throw new Error('读取文件期间聊天或记忆已变化，请重新导入');
         const preview = previewMemoryBackup(data, { chatKey: getChatKey(), chat: getChat() });
         if (!preview.sameChat) throw new Error('恢复包不属于当前聊天，已停止；请打开原聊天再导入');
-        if (!confirm(`恢复 ${preview.summaries} 条摘要、${preview.drafts} 个草稿、${preview.tableRows} 行表格和 ${preview.events} 笔历史？\n${preview.matchingSources ? '' : '来源正文已变化，恢复的记忆可能需要重新核对。\n'}将替换当前记忆；先下载恢复前副本，确认下载完成后再继续。`)) return;
+        if (!await confirm(`恢复 ${preview.summaries} 条摘要、${preview.drafts} 个草稿、${preview.tableRows} 行表格和 ${preview.events} 笔历史？\n${preview.matchingSources ? '' : '来源正文已变化，恢复的记忆可能需要重新核对。\n'}将替换当前记忆；先下载恢复前副本，确认下载完成后再继续。`)) return;
         download(backup(state), 'bakemono-before-restore');
-        if (!confirm('请确认恢复前副本已下载。现在替换当前聊天记忆吗？')) return;
+        if (!await confirm('请确认恢复前副本已下载。现在替换当前聊天记忆吗？')) return;
         if (getState() !== state || isBusy()) throw new Error('聊天或任务状态变化，恢复已取消');
         const original = JSON.parse(JSON.stringify(state));
         try {
@@ -142,7 +142,7 @@ export function createStoryToolsUi({ documentRef: document, getState, getChat, g
         if (action === 'summary-repair') {
             if(isBusy() || state.taskQueue?.some(task=>task.status==='running'))throw Error('请等待当前任务结束');
             const plan=sourcePlans.get(state); if(!plan)throw Error('请先预览来源修复');
-            if(!confirm(`迁移 ${plan.changes.length} 条来源身份？将先下载当前记忆恢复包；正文和摘要内容不变，失效来源不会被强制激活。`))return;
+            if(!await confirm(`迁移 ${plan.changes.length} 条来源身份？将先下载当前记忆恢复包；正文和摘要内容不变，失效来源不会被强制激活。`))return;
             download(backup(state),'bakemono-before-summary-repair');
             const fields=['storySummaries','stageSummaries','epicSummaries'];
             const before=Object.fromEntries(fields.map(key=>[key,structuredClone(state[key])]));

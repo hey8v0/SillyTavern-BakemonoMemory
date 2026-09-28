@@ -4,7 +4,7 @@
 
 ## 1. 接手约定
 
-- 当前版本 **1.26.1**，分支 `main`，远端 `hey8v0/SillyTavern-BakemonoMemory`。先看 `git status` / `git log`，不要从旧对话推断现状。
+- 当前版本 **1.27.0**，分支 `main`，远端 `hey8v0/SillyTavern-BakemonoMemory`。先看 `git status` / `git log`，不要从旧对话推断现状。
 - 源码就在本仓库。任务工作区、酒馆安装目录都不是源码；不要默认同步本机酒馆、调用模型。
 - 不覆盖用户未提交的修改，不强推。提交与推送以当次授权为准。
 - **用户的测试方式**：用户在手机上的酒馆里更新插件来实测，所以每完成一批改动，经用户同意后发布一个小版本并推送（见第 8 节）。一次一批，便于定位问题。
@@ -50,8 +50,9 @@
 | 聊天恢复/备份 | `core/summary-recovery-journal.js`；`rp-core/backup.js`；`memory/backup-package.js` |
 | 摘要/表格/召回 | `features/summary-*.js`、`table-*.js`、`vector-*.js`；`src/vector` |
 | 填表校验/错误 | `tables/operation-parser.js`、`operation-feedback.js`；`table-memory-model` 预检与应用共用暂存校验；草稿应用须传 raw，失败保留原文 |
-| 本轮注入预览 | `features/overview-token-manifest.js`、`injection-preview.js`；只读当前配置；body 顶层 dialog |
-| 设置页保存 | `ui/page-settings.js`（保存栏、草稿、离开提醒）；`ui/unsaved-changes-dialog.js` |
+| 本轮注入预览 | `features/overview-token-manifest.js`、`injection-preview.js`；只读当前配置；用 `ui/dialogs.js` 的面板 |
+| 设置页保存 | `ui/page-settings.js`（保存栏、草稿、离开提醒）；离开提醒用 `dialogs.choose` |
+| 弹窗 | `ui/dialogs.js`：`confirm(title, lines)` → Promise<boolean>、`choose({ title, choices })`、`open({ html, onReady })`；`index.js` 的 `confirmDanger` 和注入给各模块的 `confirm: confirmMessage` 都走它 |
 | 摘要方式向导 | `features/summary-source-wizard.js`；映射在 `features/turn-trigger-policy.js` 的 `workflowForSummarySource` |
 | 总结生成 | `features/summary-generation-ui.js`（卡片）、`summary-target-controller.js`（范围对话框）、`summary-generation-controller.js`（生成） |
 | 页面切换 | `ui/workbench-navigation.js`（切页滚回顶部、离开确认） |
@@ -103,6 +104,9 @@
   - 剧情状态只保留最近 `RP_DETAIL_FLOORS`（300）楼的明细，每多 100 楼把更早的折进起点（`foldLedger`：起点投影、已结束的临时状态丢掉、说法和推测保留并把楼层抬到新起点，`baseline.startFloor` 记原起点，变化页写一句“之前的变化已经并入起点”）。折进起点的楼层之后再改不会影响状态。
   - 测量（`tests/long-chat.test.mjs` 之外用临时脚本）：每回复 4 个事件，第 120 次回复的处理时间 3.2 秒 → 约 0.06 秒，账本每回复 48.8 KB 且越来越大 → 约 12 KB 且只保留 300 楼；1,100 条 1536 维向量约 9.8 MB 不再进聊天文件。
 - **向量批量建索引**（v1.25.7，用户反馈换 Embedding-8B 重建后十分钟还在“正在建索引”）：以前每段文字单独请求、一个接一个，2,000 多楼（摘要 + 正文约 4,000 段）要半小时以上，而且记录要全部算完才写入，标题一直是“正在建索引…”。现在 `performIndexBuild` 先收集所有文字，查本次复用、运行缓存和 IndexedDB 缓存，剩下的由 `embedMissing` 每 16 段（不超过 24,000 字）一次发给接口（`input` 为数组，按返回行的 `index` 对应）；接口返回行数不对或拒绝数组时，本次会话里对这个接口改回逐条请求。每批回来先核对聊天和向量配置没变，才写缓存。进度在 `indexRun.progress`（`getVectorIndexProgress`），向量页标题显示“正在建索引：已算 / 总段数”。
+- **弹窗**（v1.27.0）：插件不再用浏览器的 `confirm()`。所有确认、离开提醒、生成面板、注入预览都是 `ui/dialogs.js` 的 `<dialog class="bk-dlg">`：手机上从底部弹出，700px 以上居中；工作台开着时挂在 `#bakemono-workbench-root` 里，关着时挂在 `<body>` 上的 `#bakemono-dialog-host`，并从工作台复制 `--ns-*` 颜色变量（新增要用的变量记得加进 `colourTokens`）。样式选择器写成 `:is(#bakemono-workbench-root, #bakemono-dialog-host) …`，两处都带一个 id 的优先级。**`confirmDanger` 现在返回 Promise，每一处都必须 `await`**，所在的函数随之变成 async，用到这些函数返回值的地方也要 await（`tests/dialogs.test.mjs` 会扫源码拦住漏掉的）。按钮文字由标题开头的动词推出（“删除…”→删除），删除、清空、覆盖、恢复默认、导入这类用红色。
+- **生成面板**（v1.27.0）：`summary-target-controller.promptGenerationTargetSelection` 把以前的范围弹窗、缺口确认和材料确认合成一个面板。生成控制器传入 `describe(config)`，面板按当前选择实时显示条数、楼层、字数、缺摘要的楼层和材料开头，按钮写请求次数；确认后返回的配置带 `reviewed: true`（不写进 `generationTargets`），控制器看到它就跳过 `confirmStageContinuity`、`confirmGenerationTargets` 和批量确认。自动总结不经过面板，缺口检查照旧。分批时“最早的几条”不可选（它只会成一批）。“先去补写”调用 `openBackfillForm('missing')`。
+- **保存栏、操作提示**（v1.27.0）：保存栏是页头下一条细线（左边强调色竖线、文字按钮“撤销”、主按钮“保存”）；操作提示是底部居中的一小条，点一下关闭，错误不会自动消失。
 - **另存为预设**（v1.26.1，用户反馈生成模型只能存一个预设）：各区域的“另存为预设”、随正文摘要 / 填表的“保存为预设”和填表提示词的“保存为预设”以前会覆盖下拉框里选中的那个，而刚存的那个会自动被选中，所以第二次保存总是覆盖第一次。现在按名字：名字没有用过就新建，和已有预设同名才覆盖，而且先确认；默认预设不会被覆盖。整套配置另有“保存到这套配置 / 另存副本”两个按钮，不受影响。
 - **使用说明**（v1.26.0）：一页三组——“从这里开始”（按顺序，带编号）、“按页面”（和侧栏同一顺序，测试会核对）、“遇到问题”。内容在 `src/features/help-guide-content.js`：`helpGuideSections` 定分组，`helpGuideArticles` 每篇 `title / label（按页面组的行名）/ keys / codes / minutes / goto / lead / steps / note / noteAfter`，`helpPageTargets` 把正文里“页面”或“页面 → 部分”变成跳转按钮（`data-bakemono-nav`，由工作台自己的导航处理），按钮名、字段名照旧只加引号。只写现在的界面，版本历史留在 CHANGELOG（测试会拦“旧版”“v1.x”和已经没有的页面名）。界面改名或挪位置时记得同步这里。
 - **维度上限**（v1.25.8，`vectorMemory.embeddingMaxDimensions`，0 = 模型原本的维度，默认 0）：向量设置 →“向量从哪来 → 存多少维”。设了上限时先带 `dimensions` 参数请求；接口报错就记下这个接口（本次会话）不再带，改为本地截取前 N 个值，再由 `compactEmbedding` 重新归一化。只对按 Matryoshka 方式训练的模型（Qwen3-Embedding、text-embedding-3）有意义，其他模型截短会明显变差，所以默认不开。上限写进向量空间键（`native:1024`），改了之后旧索引和缓存都不复用、需要重建；不设上限时空间键仍是 `native`，已有索引不受影响。4096 维的模型在 2,000 楼时约 4,000 条，手机内存约 130 MB、索引文件约 80 MB；截到 1024 维都降到四分之一。
@@ -165,12 +169,12 @@ node scripts/ui-harness/server.mjs
 - 剧情状态：打开 `http://127.0.0.1:8765/?rp`，最后一楼会带一段 27 条的示例 `rpEvents`（其中 1 条故意多余，用来检查“没记上”提示）；启用剧情状态后点“读取最新回复”。
 - 插件会把聊天状态备份到 `localStorage`，刷新页面后旧状态会被恢复；要从头开始，先在控制台执行 `localStorage.clear()` 再刷新。
 - 手机宽度（< 768px）在浏览器模拟时会自动刷新一次页面，脚本要等刷新完成再运行。
-- 一次拍全：`node scripts/ui-harness/tools/snap-all.mjs 名字`（模拟页面要先开着；无头 Chrome，默认 1280、800、375 三个宽度 × 日、夜、跟随酒馆三种外观，先给模拟聊天加摘要树并启用剧情状态），再用 snapdiff 逐个比较。帮助页第 21 节里的一个小标签偶尔上下差 1 像素，同一份样式连拍也会出现，是时序问题，不算差异。
+- 一次拍全：`node scripts/ui-harness/tools/snap-all.mjs 名字`（模拟页面要先开着；无头 Chrome，默认 1280、800、375 三个宽度 × 日、夜、跟随酒馆三种外观，先给模拟聊天加摘要树并启用剧情状态），再用 snapdiff 逐个比较。帮助页第 21 节里的一个小标签偶尔上下差 1 像素，同一份样式连拍也会出现，是时序问题，不算差异。拍“改动前”的基准时不要用 `git stash`：本机 `core.autocrlf=true`，stash pop 会把改过的文件换成 CRLF，读源码的测试会失败；用 `git worktree` 或先拍基准再改。
 - 快照：在页面控制台执行 `(await import('/snap.js')).run('名字')`，结果写到 `scripts/ui-harness/.output/名字.json`；比较两次：`node scripts/ui-harness/tools/snapdiff.mjs a.json b.json`。它会逐页打开全部折叠栏，记录所有元素的位置与 40 余项计算样式，并关闭动画以保证可重复（同一版本连续两次应为 0 差异）。
 
 ## 7. 样式表现状与整理方法
 
-- 现状（v1.26.0）约 5,100 行、225 KB、`!important` 73 处（重做界面前 12,074 行、329 KB、`!important` 135 处）。剩下的基本都在用：约 820 条规则作用于脚本生成的内容；旧的 `bakemono-memory-*` / `bakemono-workbench-*` 底层除工作台外壳外，主要给还没重做的部分用——批量范围弹窗、未保存提醒、操作提示、注入预览浮层、酒馆扩展设置里的入口。帮助页 v1.26.0 已重写，旧规则约 13 KB 已删。再缩减要按组件重写这些部分（外观会变，先做样板给用户确认），重写时整段删掉它们的旧规则。
+- 现状（v1.27.0）约 4,750 行、226 KB（重做界面前 12,074 行、329 KB、`!important` 135 处）。剩下的基本都在用：约 820 条规则作用于脚本生成的内容；旧的 `bakemono-memory-*` / `bakemono-workbench-*` 底层除工作台外壳外，主要是工作台外壳和一些通用表单样式。帮助页（v1.26.0）、各种弹窗和提示（v1.27.0）重写时都整段删掉了旧规则；酒馆扩展设置里的入口跟着酒馆主题走，不改。再缩减要按组件重写这些部分（外观会变，先做样板给用户确认），重写时整段删掉它们的旧规则。
 - **找死类名**：`node scripts/ui-harness/tools/css-dead-names.mjs` 列出样式表里、HTML 和 JS 都没提到的类名和 id；`maybeBuilt` 是某个前缀在代码里被拼接过的（如 `is-${状态}`），要人工核对。确认后用 `css-drop-classes.mjs` 删。这一步不依赖页面覆盖范围，是最安全的清理。
 - **生效分析的盲区**：`cascade.js` 只看工作台内部，且只看模拟数据里出现过的状态。挂在 body 上的弹窗、提示，以及剧情状态子页、待确认草稿等没打开过的状态，它都看不到；某条声明在看得到的地方都被压过，不代表在看不到的地方也被压过。v1.25.6 试跑时它删掉了批量面板、编辑框的声明，已撤回——删之前必须逐条看 diff，只接受同一元素上无条件被覆盖的。
 - 历史层（注释里的 “precision pass”、“v1.2.3 refinement” 等）按出现顺序叠加。新增样式时优先修改真正生效的那条规则（可在浏览器里用 CSSOM 查 `el.matches(rule.selectorText)`），不要再追加一层覆盖。
@@ -192,7 +196,7 @@ node scripts/ui-harness/server.mjs
 
 ## 9. 后续工作
 
-- 手机实测：v1.8.8 – v1.26.1 的改动都只在模拟页面验证过，需要用户在真实酒馆（尤其手机、iOS Safari）确认；宿主保存、后台冻结、重 roll、流式协议隐藏同样需要实机。
+- 手机实测：v1.8.8 – v1.27.0 的改动都只在模拟页面验证过，需要用户在真实酒馆（尤其手机、iOS Safari）确认；宿主保存、后台冻结、重 roll、流式协议隐藏同样需要实机。
 - 新样式推广到其他页面（见第 5 节“新样式”）。已完成：剧情状态（v1.10.0）、首页（v1.11.0）、顶栏与侧栏（v1.12.0：电脑上 264px 细线侧栏，手机 ≤900px 为左侧抽屉 + 遮罩 `[data-bakemono-menu-close]`，布局尺寸与旧版一致，顶栏由 82px 收到 70px）、总结页（v1.13.0）、待确认（v1.14.0）、摘要树（v1.15.0）、表格（v1.16.0）、向量记忆（v1.17.0）、自动记忆（v1.18.0）、自动总结（v1.20.0）、自动与数据和设置中心（v1.21.0）。设置中心第一组子页（摘要方式、扫描与识别、楼层收纳，v1.22.0）、第二组（生成模型、生成提示词、注入内容，v1.23.0）、第三组（外观、整套配置、撤回与事务，v1.24.0）和提示词检查器（v1.25.0）。所有页面都已换成新样式。用户给的每页参考：首页 Magic Bento + 编辑式仪表盘；总结 时间线 + 卡片堆叠；摘要树 嵌套时间线；待确认 审阅队列；提示词检查器 文档阅读器；设置中心 系统设置列表；电脑导航 细线侧栏；手机导航 抽屉 + 分段标签。React 组件库（React Bits、Aceternity）不能直接用，只借效果、用 CSS 和原生 JS 实现。
 - RP P1：历史范围重建、精细依赖纠错、丰富人物/历法、大账本增量缓存（RP 目前仍完整重放，大档有主线程耗时风险）。
 - 固定模型输出的测试不证明真实模型语义准确率。

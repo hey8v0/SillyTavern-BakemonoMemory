@@ -113,8 +113,8 @@ export function createScanController({
     }
 
     function bindEvents() {
-        query('#bakemono-memory-reset-rules').off('click').on('click', () => {
-            const confirmed = confirmDanger(
+        query('#bakemono-memory-reset-rules').off('click').on('click', async () => {
+            const confirmed = await confirmDanger(
                 '恢复默认扫描与预览规则？',
                 ['当前扫描标签、排除标签、分类关键词和手账分段规则会被默认值覆盖。'],
             );

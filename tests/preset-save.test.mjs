@@ -29,28 +29,28 @@ function fixture() {
         renderPromptPresetControls() {}, saveGlobalSettings() {}, renderAreaPresetChange() {},
     });
     controller.bindAreaPresetControls('api', { select: '#s', name: '#name', load: '#load', save: '#save', update: '#update', delete: '#delete' });
-    const save = (name, value) => { values.set('#name', name); values.set('#value', value); handlers.get('#save')(); };
+    const save = (name, value) => { values.set('#name', name); values.set('#value', value); return handlers.get('#save')(); };
     return { presets, asked, save, setAnswer: value => { answer = value; } };
 }
 
-test('saving presets under different names keeps every one', () => {
+test('saving presets under different names keeps every one', async () => {
     const f = fixture();
-    f.save('硅基流动', 'a');
-    f.save('DeepSeek 官方', 'b');
+    await f.save('硅基流动', 'a');
+    await f.save('DeepSeek 官方', 'b');
     assert.deepEqual(f.presets.map(item => item.name), ['硅基流动', 'DeepSeek 官方']);
     assert.equal(f.presets[0].value, 'a', 'the first preset is untouched');
     assert.deepEqual(f.asked, []);
 });
 
-test('the same name replaces that preset only after asking', () => {
+test('the same name replaces that preset only after asking', async () => {
     const f = fixture();
-    f.save('硅基流动', 'a');
-    f.save('DeepSeek 官方', 'b');
+    await f.save('硅基流动', 'a');
+    await f.save('DeepSeek 官方', 'b');
     f.setAnswer(false);
-    f.save('硅基流动', 'changed');
+    await f.save('硅基流动', 'changed');
     assert.equal(f.presets[0].value, 'a', 'declining keeps the old preset');
     f.setAnswer(true);
-    f.save('硅基流动', 'changed');
+    await f.save('硅基流动', 'changed');
     assert.equal(f.presets.length, 2);
     assert.equal(f.presets[0].value, 'changed');
     assert.equal(f.presets[1].value, 'b');

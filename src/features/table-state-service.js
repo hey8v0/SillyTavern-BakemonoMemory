@@ -246,14 +246,14 @@ export function createTableStateService({
         return snapshot;
     }
     
-    function undoLastTableOperation(state = ensureState()) {
+    async function undoLastTableOperation(state = ensureState()) {
         state.tableDatabase.undoStack = Array.isArray(state.tableDatabase.undoStack) ? state.tableDatabase.undoStack : [];
         const snapshot = state.tableDatabase.undoStack[0];
         if (!snapshot) {
             toastr.info('没有可撤销的表格操作。');
             return false;
         }
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `撤销上次表格操作「${snapshot.label || '表格操作'}」？`,
             [
                 snapshot.createdAt ? `记录时间：${new Date(snapshot.createdAt).toLocaleString()}` : '',
@@ -280,14 +280,14 @@ export function createTableStateService({
         return true;
     }
     
-    function redoLastTableOperation(state = ensureState()) {
+    async function redoLastTableOperation(state = ensureState()) {
         state.tableDatabase.redoStack = Array.isArray(state.tableDatabase.redoStack) ? state.tableDatabase.redoStack : [];
         const snapshot = state.tableDatabase.redoStack[0];
         if (!snapshot) {
             toastr.info('没有可重做的表格操作。');
             return false;
         }
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `重做表格操作「${snapshot.label || '表格操作'}」？`,
             [
                 snapshot.undoneAt ? `撤销时间：${new Date(snapshot.undoneAt).toLocaleString()}` : '',
@@ -408,7 +408,7 @@ export function createTableStateService({
         return [...ids];
     }
     
-    function switchTableProfile(scope, profileId, state = ensureState(), options = {}) {
+    async function switchTableProfile(scope, profileId, state = ensureState(), options = {}) {
         const nextScope = Object.values(tableSchemaScopes).includes(scope) ? scope : tableSchemaScopes.CHAT;
         const profiles = getTableProfilesForScope(nextScope, state);
         const target = profiles.find(profile => profile.id === profileId) || profiles[0];
@@ -418,7 +418,7 @@ export function createTableStateService({
         }
         if (options.confirm !== false) {
             const rows = (state.tableDatabase.tables || []).reduce((sum, table) => sum + (table.rows?.length || 0), 0);
-            const confirmed = confirmDanger(
+            const confirmed = await confirmDanger(
                 `切换到表格组「${target.name}」？`,
                 [
                     `当前表格组：${getActiveTableProfile(state)?.name || '未命名'}`,
@@ -453,12 +453,12 @@ export function createTableStateService({
         return profile;
     }
     
-    function createBaseStoryLedgerProfile(state = ensureState()) {
+    async function createBaseStoryLedgerProfile(state = ensureState()) {
         const scope = state.tableDatabase.schemaScope || tableSchemaScopes.CHAT;
         const profiles = getTableProfilesForScope(scope, state);
         const existing = profiles.find(profile => [baseStoryLedgerPreset.name, '剧情基础台账'].includes(profile.name));
         if (existing) {
-            const switched = switchTableProfile(scope, existing.id, state);
+            const switched = await switchTableProfile(scope, existing.id, state);
             if (!switched) return null;
             existing.name = baseStoryLedgerPreset.name;
             existing.updatedAt = new Date().toISOString();
@@ -467,7 +467,7 @@ export function createTableStateService({
             return existing;
         }
     
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `创建表格组「${baseStoryLedgerPreset.name}」？`,
             ['会保留当前表格组，并新建 6 张基础表；不会创建事件摘要或大总结表。'],
         );
@@ -484,7 +484,7 @@ export function createTableStateService({
         return profile;
     }
     
-    function deleteActiveTableProfile(state = ensureState()) {
+    async function deleteActiveTableProfile(state = ensureState()) {
         const scope = state.tableDatabase.schemaScope || tableSchemaScopes.CHAT;
         const profiles = getTableProfilesForScope(scope, state);
         if (profiles.length <= 1) {
@@ -492,7 +492,7 @@ export function createTableStateService({
             return false;
         }
         const active = getActiveTableProfile(state);
-        const confirmed = confirmDanger(
+        const confirmed = await confirmDanger(
             `删除表格组「${active?.name || '未命名'}」？`,
             ['这会删除这个表格组的框架和当前聊天里对应的行数据；不会删除摘要。'],
         );

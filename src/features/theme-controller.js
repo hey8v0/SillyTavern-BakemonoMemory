@@ -262,7 +262,7 @@ export function createThemeController({
         return preset;
     }
     
-    function deleteSelectedCustomThemePreset() {
+    async function deleteSelectedCustomThemePreset() {
         const ui = getAppearanceSettings();
         if (ui.themePresets.length <= 1) {
             toastr.warning('至少保留一个主题配置。');
@@ -273,7 +273,7 @@ export function createThemeController({
             toastr.warning('内置主题不能删除；修改它时会自动另存为新配置。');
             return false;
         }
-        if (!preset || !confirmDanger(`删除主题配置“${preset.name}”？`, ['不会删除摘要、表格或其他插件配置。'])) return false;
+        if (!preset || !await confirmDanger(`删除主题配置“${preset.name}”？`, ['不会删除摘要、表格或其他插件配置。'])) return false;
         ui.themePresets = ui.themePresets.filter(item => item.id !== preset.id);
         ui.selectedThemePresetId = ui.themePresets[0].id;
         appearanceThemeDraft = sanitizeCustomTheme(ui.themePresets[0]);

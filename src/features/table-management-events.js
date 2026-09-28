@@ -31,10 +31,10 @@ export function createTableManagementEvents({
     getScopedTableSchemas,
 } = {}) {
     function bindProfileEvents() {
-        query('#bakemono-memory-table-schema-scope').off('change').on('change', function () {
+        query('#bakemono-memory-table-schema-scope').off('change').on('change', async function () {
             const state = getState();
             const nextScope = String(this.value || tableSchemaScopes.CHAT);
-            const confirmed = confirmDanger(
+            const confirmed = await confirmDanger(
                 `切换到${getTableProfileScopeLabel(nextScope)}表格作用域？`,
                 ['当前表格行数据会先保存到原表格组，再载入目标作用域的当前表格组。'],
             );
@@ -47,11 +47,11 @@ export function createTableManagementEvents({
             renderWorkbenchScope(workbenchRenderScopes.TABLES, `表格框架已切换：${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
             toastr.success(`已切换表格框架：${getTableSchemaScopeLabel(state.tableDatabase.schemaScope)}`);
         });
-        query('#bakemono-memory-switch-table-profile').off('click').on('click', () => {
+        query('#bakemono-memory-switch-table-profile').off('click').on('click', async () => {
             const state = getState();
             const scope = state.tableDatabase.schemaScope || tableSchemaScopes.CHAT;
             const profileId = String(query('#bakemono-memory-table-profile-select').val() || '');
-            if (switchTableProfile(scope, profileId, state)) {
+            if (await switchTableProfile(scope, profileId, state)) {
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, `已切换表格组：${getActiveTableProfile(state)?.name || ''}`);
             }
         });
@@ -74,9 +74,9 @@ export function createTableManagementEvents({
             renderWorkbenchScope(workbenchRenderScopes.TABLES, `已保存表格组：${profile?.name || ''}`);
             toastr.success('表格组已保存。');
         });
-        query('#bakemono-memory-delete-table-profile').off('click').on('click', () => {
+        query('#bakemono-memory-delete-table-profile').off('click').on('click', async () => {
             const state = getState();
-            if (deleteActiveTableProfile(state)) {
+            if (await deleteActiveTableProfile(state)) {
                 renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格组已删除。');
                 toastr.success('表格组已删除。');
             }
@@ -106,8 +106,8 @@ export function createTableManagementEvents({
             persistSharedConfigurationFromState(state);
             renderWorkbenchScope(workbenchRenderScopes.TABLES);
         });
-        query('#bakemono-memory-reset-turn-prompt').off('click').on('click', () => {
-            const confirmed = confirmDanger(
+        query('#bakemono-memory-reset-turn-prompt').off('click').on('click', async () => {
+            const confirmed = await confirmDanger(
                 '恢复默认正文摘要提示词？',
                 ['当前正文摘要提示词会被默认模板覆盖。'],
             );
@@ -117,8 +117,8 @@ export function createTableManagementEvents({
             persistSharedConfigurationFromState(state);
             renderWorkbenchScope(workbenchRenderScopes.TABLES, '正文摘要提示词已恢复默认。');
         });
-        query('#bakemono-memory-reset-table-prompt').off('click').on('click', () => {
-            const confirmed = confirmDanger(
+        query('#bakemono-memory-reset-table-prompt').off('click').on('click', async () => {
+            const confirmed = await confirmDanger(
                 '恢复默认表格修改提示词？',
                 ['当前表格修改提示词会被默认模板覆盖。'],
             );
@@ -128,13 +128,13 @@ export function createTableManagementEvents({
             persistSharedConfigurationFromState(state);
             renderWorkbenchScope(workbenchRenderScopes.TABLES, '表格修改提示词已恢复默认。');
         });
-        query('#bakemono-memory-table-preset-select').off('change').on('change', function () {
+        query('#bakemono-memory-table-preset-select').off('change').on('change', async function () {
             const previousId = getSelectedTablePromptPresetId();
             const selectedId = String(this.value || '');
             setSelectedTablePromptPresetId(selectedId);
             const preset = getTablePromptPresets().find(item => item.id === selectedId);
             if (!preset) return;
-            const confirmed = confirmDanger(`使用表格提示词「${preset.name}」？`, ['当前编辑框里的表格提示词会被覆盖。']);
+            const confirmed = await confirmDanger(`使用表格提示词「${preset.name}」？`, ['当前编辑框里的表格提示词会被覆盖。']);
             if (!confirmed) {
                 setSelectedTablePromptPresetId(previousId);
                 renderPromptPresetControls();
@@ -145,20 +145,20 @@ export function createTableManagementEvents({
             persistSharedConfigurationFromState(state);
             renderWorkbenchScope(workbenchRenderScopes.TABLES, `已使用并同步到所有角色卡的表格提示词：${preset.name}`);
         });
-        query('#bakemono-memory-load-table-preset').off('click').on('click', () => {
+        query('#bakemono-memory-load-table-preset').off('click').on('click', async () => {
             const preset = getTablePromptPresets().find(item => item.id === getSelectedTablePromptPresetId());
             if (!preset) {
                 toastr.warning('没有找到表格提示词预设。');
                 return;
             }
-            const confirmed = confirmDanger(`载入表格提示词「${preset.name}」？`, ['当前编辑框里的表格提示词会被覆盖。']);
+            const confirmed = await confirmDanger(`载入表格提示词「${preset.name}」？`, ['当前编辑框里的表格提示词会被覆盖。']);
             if (!confirmed) return;
             const state = getState();
             state.turnSummary.tablePrompt = preset.prompt || defaultTableEditPrompt;
             persistSharedConfigurationFromState(state);
             renderWorkbenchScope(workbenchRenderScopes.TABLES, `已载入并同步到所有角色卡的表格提示词：${preset.name}`);
         });
-        query('#bakemono-memory-save-table-preset').off('click').on('click', () => {
+        query('#bakemono-memory-save-table-preset').off('click').on('click', async () => {
             const name = String(query('#bakemono-memory-table-preset-name').val() || '').trim();
             if (!name) {
                 toastr.warning('请先填写表格提示词预设名称。');
@@ -166,7 +166,7 @@ export function createTableManagementEvents({
             }
             // A new name is a new preset; the same name replaces that one after asking (never the default).
             let preset = getTablePromptPresets().find(item => item.id !== 'default-table-prompt' && String(item.name || '').trim() === name);
-            if (preset && !confirmDanger(`已有同名预设「${name}」，覆盖它？`, ['想另外保存一份，请换一个名字。'])) return;
+            if (preset && !await confirmDanger(`已有同名预设「${name}」，覆盖它？`, ['想另外保存一份，请换一个名字。'])) return;
             if (preset) {
                 preset.prompt = String(query('#bakemono-memory-table-prompt').val() || defaultTableEditPrompt);
                 preset.updatedAt = new Date().toISOString();
@@ -179,7 +179,7 @@ export function createTableManagementEvents({
             saveGlobalSettings();
             renderWorkbenchScope(workbenchRenderScopes.TABLES, `已保存表格提示词：${preset.name}`);
         });
-        query('#bakemono-memory-update-table-preset').off('click').on('click', () => {
+        query('#bakemono-memory-update-table-preset').off('click').on('click', async () => {
             const presets = getTablePromptPresets();
             const preset = presets.find(item => item.id === getSelectedTablePromptPresetId());
             if (!preset) {
@@ -190,7 +190,7 @@ export function createTableManagementEvents({
                 toastr.warning('默认表格提示词不能覆盖，请另存为新预设。');
                 return;
             }
-            const confirmed = confirmDanger(`覆盖表格提示词「${preset.name}」？`, ['覆盖后无法自动恢复旧版本。']);
+            const confirmed = await confirmDanger(`覆盖表格提示词「${preset.name}」？`, ['覆盖后无法自动恢复旧版本。']);
             if (!confirmed) return;
             preset.name = String(query('#bakemono-memory-table-preset-name').val() || preset.name || '').trim() || preset.name;
             preset.prompt = String(query('#bakemono-memory-table-prompt').val() || defaultTableEditPrompt);
@@ -198,7 +198,7 @@ export function createTableManagementEvents({
             saveGlobalSettings();
             renderWorkbenchScope(workbenchRenderScopes.TABLES, `已覆盖表格提示词：${preset.name}`);
         });
-        query('#bakemono-memory-delete-table-preset').off('click').on('click', () => {
+        query('#bakemono-memory-delete-table-preset').off('click').on('click', async () => {
             const presets = getTablePromptPresets();
             const preset = presets.find(item => item.id === getSelectedTablePromptPresetId());
             if (!preset) {
@@ -209,7 +209,7 @@ export function createTableManagementEvents({
                 toastr.warning('默认表格提示词不能删除。');
                 return;
             }
-            const confirmed = confirmDanger(`删除表格提示词「${preset.name}」？`, ['删除后不能从预设列表恢复。']);
+            const confirmed = await confirmDanger(`删除表格提示词「${preset.name}」？`, ['删除后不能从预设列表恢复。']);
             if (!confirmed) return;
             const index = presets.findIndex(item => item.id === preset.id);
             if (index >= 0) presets.splice(index, 1);
@@ -247,13 +247,13 @@ export function createTableManagementEvents({
             }, null, 2));
             toastr.success('当前表格已导出到文本框。');
         });
-        query('#bakemono-memory-clear-table-db').off('click').on('click', () => {
+        query('#bakemono-memory-clear-table-db').off('click').on('click', async () => {
             const state = getState();
             if (!state.tableDatabase.tables.length && !state.tableDatabase.editDrafts.length) {
                 toastr.info('当前没有表格可清空。');
                 return;
             }
-            const confirmed = confirmDanger(
+            const confirmed = await confirmDanger(
                 '清空当前聊天的表格数据库？',
                 ['这会删除表格结构、表格数据和未应用的表格草稿。摘要不会被删除。'],
             );
