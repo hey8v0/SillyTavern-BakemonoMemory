@@ -131,7 +131,6 @@ test('overview dashboard keeps the mobile hierarchy compact and read-only', () =
     assert.match(hubAutomationUiSource, /function renderHubPanels\(/);
     assert.match(hubAutomationUiSource, /function renderAutomationOverview\(/);
     assert.doesNotMatch(settingsSource, /<nav class="bakemono-mobile-actions"/);
-    assert.match(styleSource, /\.bakemono-memory-control-deck \[hidden\]\s*\{[^}]*display:\s*none !important;/s);
     assert.match(styleSource, /\.bakemono-workbench-tabs\s*\{[^}]*scrollbar-width:\s*none;/s);
     assert.equal((settingsSource.match(/class="bakemono-memory-page-intro/g) || []).length, 1);
     assert.match(settingsSource, /class="bakemono-memory-page-intro bakemono-memory-help-intro"/);
