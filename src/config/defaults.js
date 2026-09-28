@@ -635,7 +635,8 @@ export function createDefaultConfiguration({
         chunkSize: 900,
         overlap: 120,
         longMessageThreshold: 1800,
-        maxIndexedMessages: 300,
+        // 0 = every floor: recall exists to bring back early story. Saved settings keep their own value.
+        maxIndexedMessages: 0,
         maxStoredTextChars: 1200,
         embeddingDimensions: 128,
         topK: 20,
