@@ -2481,6 +2481,8 @@ async function init() {
     }
 
     scheduleAutoHideRecent('init');
+    // Chats saved before 1.25.1 carry their vectors inside the chat file; move them out once the chat is open.
+    vectorMemoryService.scheduleSidecarSave(ensureState());
 
     eventSource.on(event_types.CHAT_CHANGED, () => {
         injectionPreview.close({ restoreFocus: false });

@@ -547,6 +547,8 @@ export function createVectorMemoryService({
     }
 
     function markVectorIndexDirty(reason = 'changed', state = ensureState()) {
+        // Chats saved before 1.25.1 carry their vectors in the chat file; this moves them out (a no-op once moved).
+        scheduleSidecarSave(state);
         if (waitsForSidecar(state) && !sidecarTried.has(state.vectorMemory)) {
             void whenRecordsReady(state).then(() => { if (ensureState() === state) markVectorIndexDirty(reason, state); });
             return;
@@ -1060,6 +1062,7 @@ export function createVectorMemoryService({
 
     return {
         whenRecordsReady,
+        scheduleSidecarSave,
         cancelVectorRecall,
         pruneVectorRuntimeCache,
         splitTextIntoChunks,
