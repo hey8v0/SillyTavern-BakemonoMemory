@@ -19,7 +19,8 @@ test('every primary action uses the accent colour', async () => {
     const css = await read('style.css');
     for (const selector of ['.bk-vec .bk-vec-status .bk-vec-index.menu_button {']) {
         const rule = css.slice(css.indexOf(selector), css.indexOf('}', css.indexOf(selector)));
-        assert.match(rule, /background: var\(--bk-accent\) !important;/, selector);
+        assert.match(rule, /background: var\(--ns-accent\) !important;/, selector);
+        assert.match(rule, /color: var\(--ns-on-accent/, selector);
         assert.doesNotMatch(rule, /background: var\(--SmartThemeBodyColor\)/, selector);
     }
 });

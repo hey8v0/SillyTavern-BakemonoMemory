@@ -1,3 +1,5 @@
+import { labelOn, liftAccent, parseCssColor, toCss } from '../theme/contrast.js';
+
 export function createThemeController({
     query,
     documentRef,
@@ -123,6 +125,40 @@ export function createThemeController({
         } else {
             root.style.removeProperty('--bakemono-theme-shadow-blur');
         }
+        fitFilledButtons(root, mode === 'custom' ? theme.tokens.accentStrong : '');
+    }
+
+    // Resolves a CSS colour as the workbench sees it (its own variables apply), as { r, g, b }.
+    function readRootColor(root, value) {
+        const view = documentRef.defaultView;
+        if (!view?.getComputedStyle || !documentRef.createElement) return null;
+        const probe = documentRef.createElement('span');
+        probe.style.display = 'none';
+        probe.style.color = value;
+        root.append(probe);
+        const resolved = view.getComputedStyle(probe).color;
+        probe.remove();
+        return parseCssColor(resolved);
+    }
+
+    // Labels on filled buttons pick white or near-black from the real accent and alert colours, and an accent
+    // too close to the page is moved toward the text colour (it feeds both --ns-accent and --rp-accent).
+    function fitFilledButtons(root, customAccent) {
+        try {
+            if (customAccent) root.style.setProperty('--bakemono-theme-accent-strong', customAccent);
+            else root.style.removeProperty('--bakemono-theme-accent-strong');
+            const paper = readRootColor(root, 'var(--ns-surface)'), ink = readRootColor(root, 'var(--ns-ink)');
+            let accent = readRootColor(root, 'var(--ns-accent)');
+            const alert = readRootColor(root, 'var(--ns-alert)');
+            if (!paper || !ink || !accent) return;
+            const lifted = liftAccent(accent, paper, ink);
+            if (lifted) {
+                accent = lifted;
+                root.style.setProperty('--bakemono-theme-accent-strong', toCss(lifted));
+            }
+            root.style.setProperty('--ns-on-accent', toCss(labelOn(accent)));
+            if (alert) root.style.setProperty('--ns-on-alert', toCss(labelOn(alert)));
+        } catch { /* Colours stay as the stylesheet derives them. */ }
     }
     
     function readCustomThemeFromUi() {

@@ -6,7 +6,7 @@
 const colourTokens = ['--ns-ink', '--ns-text', '--ns-muted', '--ns-faint', '--ns-rule', '--ns-rule-strong', '--ns-hover',
     '--ns-accent', '--ns-accent-soft', '--ns-alert', '--ns-ok', '--ns-surface', '--ns-serif', '--ns-mono',
     '--ns-c-event', '--ns-c-done', '--ns-c-wall', '--bk-paper',
-    '--ns-source-rule', '--ns-source-summary', '--ns-source-memory', '--ns-source-rpState', '--ns-source-table', '--ns-source-vector'];
+    '--ns-on-accent', '--ns-on-alert', '--ns-source-rule', '--ns-source-summary', '--ns-source-memory', '--ns-source-rpState', '--ns-source-table', '--ns-source-vector'];
 const dangerVerbs = /^(清空|删除|覆盖|丢弃|放弃|移除|恢复默认|重建|替换|导入)/;
 const verbs = ['清空', '删除', '覆盖', '恢复默认', '恢复', '导入', '载入', '使用', '取消隐藏', '隐藏', '重建', '重新', '生成', '加入',
     '应用', '合并', '放弃', '移除', '保存', '切换', '回滚', '撤回', '撤销', '解除', '清理', '重试', '继续'];
