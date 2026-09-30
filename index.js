@@ -239,6 +239,9 @@ function getSummaryRecoveryStorage() {
                 account.removeItem(key);
             }
         },
+        keys() {
+            return Array.from({ length: local.length }, (_, index) => local.key(index));
+        },
     };
 }
 

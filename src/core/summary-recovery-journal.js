@@ -223,6 +223,19 @@ export function createSummaryRecoveryJournal({
         }
     }
 
+    // Copies left by other chats stay until that chat is opened again, and they fill the browser's small local
+    // space. When the current chat's copy does not fit, those go first.
+    function dropOtherChats(target, key) {
+        let keys = [];
+        try {
+            keys = typeof target.keys === 'function' ? target.keys()
+                : Number.isInteger(target.length) && typeof target.key === 'function' ? Array.from({ length: target.length }, (_, i) => target.key(i)) : [];
+        } catch { keys = []; }
+        const others = keys.filter(item => typeof item === 'string' && item.startsWith(keyPrefix + ':') && item !== key);
+        for (const item of others) { try { target.removeItem(item); } catch { /* keep going */ } }
+        return others.length;
+    }
+
     function stage(state, chat = [], options = {}) {
         const target = resolveStorage();
         const key = getKey();
@@ -271,8 +284,13 @@ export function createSummaryRecoveryJournal({
             return { status: preferredRecoveryLevel === 'essential' ? 'staged-compact' : 'staged', revision };
         } catch (error) {
             if (preferredRecoveryLevel === 'full' && isQuotaExceededError(error)) {
+                const compact = JSON.stringify(makePayload('essential'));
                 try {
-                    target.setItem(key, JSON.stringify(makePayload('essential')));
+                    try { target.setItem(key, compact); }
+                    catch (error) {
+                        if (!isQuotaExceededError(error) || !dropOtherChats(target, key)) throw error;
+                        target.setItem(key, compact);
+                    }
                     pendingStateRevisions.set(state, revision);
                     return { status: 'staged-compact', revision };
                 } catch (compactError) {

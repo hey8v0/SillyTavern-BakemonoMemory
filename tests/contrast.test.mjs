@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { contrastRatio, labelOn, liftAccent, parseCssColor } from '../src/theme/contrast.js';
 
 // A user's tavern theme had a dark quote colour on a dark page: the 生成阶段总结 label (paper colour on the
@@ -23,4 +24,16 @@ test('computed colours parse in both formats browsers return', () => {
     assert.deepEqual(parseCssColor('rgba(10, 20, 30, 0.5)'), { r: 10, g: 20, b: 30 });
     assert.deepEqual(parseCssColor('color(srgb 0.124902 0.132353 0.166863)'), { r: 32, g: 34, b: 43 });
     assert.equal(parseCssColor('transparent'), null);
+});
+
+// Some beautify themes paint every .menu_button with a selector carrying three ids (寰宇独奏), which beat the
+// plugin's own fill: the label picked for the accent then sat on the theme's dark navy.
+test('filled buttons keep their fill and label against themes that repaint every button', async () => {
+    const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+    const rules = css.split('\n').filter(line => /color: var\(--ns-on-(accent|alert)/.test(line) && !/mark\.is-current/.test(line));
+    assert.ok(rules.length >= 10);
+    for (const rule of rules) {
+        assert.match(rule, /background: var\(--(ns|rp)-(accent|alert)\) !important/, rule.slice(0, 90));
+        assert.match(rule, /color: var\(--ns-on-(accent|alert), var\(--ns-surface\)\) !important/, rule.slice(0, 90));
+    }
 });

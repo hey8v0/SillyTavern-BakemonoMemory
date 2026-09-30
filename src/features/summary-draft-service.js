@@ -111,6 +111,7 @@ export function createSummaryDraftService({
         else message.swipes = cloneSerializable(snapshot.swipes);
     }
 
+    let backupNoticeShown = false;
     async function persistSummaryStateDurably(recoveryMessageIds = []) {
         const state=ensureState();
         const recovery = saveState({ recoveryMessageIds });
@@ -121,12 +122,14 @@ export function createSummaryDraftService({
         }
         await saveChatConditional();
         if(ensureState()!==state)throw new Error('保存期间已切换聊天，请回原聊天核对保存结果');
-        if (recovery && ['quota-exceeded', 'unavailable'].includes(recovery.status)) {
+        // Once per session: the save itself went through, only the extra crash copy is missing.
+        if (recovery && ['quota-exceeded', 'unavailable'].includes(recovery.status) && !backupNoticeShown) {
+            backupNoticeShown = true;
             toastr.warning(
                 recovery.status === 'quota-exceeded'
-                    ? 'TT 本地恢复空间已满；本次已继续交给酒馆保存，但本次操作暂时没有额外崩溃恢复副本。'
-                    : '当前无法使用本地恢复空间；本次已继续交给酒馆保存。',
-                '剧情剪辑台 · 恢复保护已降级',
+                    ? '总结已正常存进酒馆。浏览器本地空间满了，这次没能多留一份防崩溃的备份，不影响使用。'
+                    : '总结已正常存进酒馆。浏览器不让用本地空间，这次没能多留一份防崩溃的备份，不影响使用。',
+                '剧情剪辑台 · 没留备份',
             );
         }
         return recovery;
