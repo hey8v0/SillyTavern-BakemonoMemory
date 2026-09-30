@@ -54,22 +54,34 @@ export function createSummarySelectors({
         return dedupeByHash([...summaryLikeScanned, ...saved]);
     }
 
-    function getUnsummarizedStoryBlocks({includeCovered = false} = {}) {
+    // Floors a saved 阶段/多次总结 was made from, whether or not its sources still check out.
+    function claimedFloors(state, graph) {
+        const floors = new Set();
+        for (const node of graph.nodes) if (node.saved && (node.type === 'stage' || node.type === 'epic'))
+            for (const id of summarySourceFloors(state, node, graph)) floors.add(id);
+        return floors;
+    }
+
+    // newOnly (automatic runs): skip floors a saved summary already took. A summary whose sources went stale is
+    // shown for the user to rebuild; it is never redone from the first floor on its own.
+    function getUnsummarizedStoryBlocks({includeCovered = false, newOnly = false} = {}) {
         const state = getState();
         if(getChat)refreshMemoryLinks(state,getChat());
         const graph = resolveSummaryGraph(state);
         const covered = graph.coveredStoryHashes;
+        const claimed = newOnly ? claimedFloors(state, graph) : null;
         return getStoryMaterialBlocks().filter(block => (includeCovered || !covered.has(block.hash))
             && !inspectSummaryMaterials([block]).invalid.length && getSummaryStatus(state, block, graph).valid)
             .map(block => {
                 const ids = summarySourceFloors(state, block, graph);
                 return ids.length ? { ...block, messageId: ids[0], sourceMessageIds: ids,
                     sourceStart: ids[0], sourceEnd: ids.at(-1), sourceSortKey: ids[0] } : block;
-            });
+            })
+            .filter(block => !claimed || !block.sourceMessageIds?.length || !block.sourceMessageIds.every(id => claimed.has(id)));
     }
 
-    function getStageMaterialOverview() {
-        const targets = getUnsummarizedStoryBlocks();
+    function getStageMaterialOverview({newOnly = false} = {}) {
+        const targets = getUnsummarizedStoryBlocks({newOnly});
         const materials = getStoryMaterialBlocks();
         const selected = new Set(materials.map(block => block.hash));
         const excludedCount = getStoryMaterialBlocks(stageSourceModes.MIXED).filter(block => !selected.has(block.hash)).length;

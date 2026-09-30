@@ -452,7 +452,7 @@ export function createTurnProcessingController({
     
         const inputSnapshot=summarySources?.capture(blocks,state);
         const sourceInputs = blocks.map(block => ({ ...block, isUser: !!getChat()[block.messageId]?.is_user,
-            variant: getChat()[block.messageId]?.swipe_id ?? getChat()[block.messageId]?.swipeId ?? '' }));
+            variant: getChat()[block.messageId]?.swipe_id ?? getChat()[block.messageId]?.swipeId ?? 0 }));
         const signature = getHash(JSON.stringify(sourceInputs.map(input => [input.messageId, input.content, input.variant, input.isUser])));
         if (!options.manual && state.turnSummary.lastRun?.status === 'failed' && state.turnSummary.lastRun.signature === signature) return;
         const assertInputs = () => {
@@ -464,7 +464,7 @@ export function createTurnProcessingController({
                     includeTags: input.sourceIncludeTags, excludeTags: input.sourceExcludeTags,
                 }));
                 if (!message || !!message.is_user !== input.isUser || content !== input.content
-                    || (message.swipe_id ?? message.swipeId ?? '') !== input.variant)
+                    || (message.swipe_id ?? message.swipeId ?? 0) !== input.variant)
                     throw new Error('第 ' + input.messageId + ' 楼的摘要输入或回复版本已变化，请重新处理该楼');
             }
         };

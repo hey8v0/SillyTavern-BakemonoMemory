@@ -1,5 +1,5 @@
 import { getHash, stripConfiguredTags, parseList } from '../shared/text.js';
-import { registerSummaryChat, resolveSummaryGraph, getSummaryStatus } from './summary-provenance.js';
+import { registerSummaryChat, resolveSummaryGraph, getSummaryStatus, swipeSpellings } from './summary-provenance.js';
 
 export const semanticKinds = ['text', 'person', 'item', 'plan', 'location'];
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -37,6 +37,8 @@ function messageHashes(message, excludes, excludeKey) {
         && hit.date === message.send_date && hit.name === message.name && hit.excludeKey === excludeKey) return hit;
     const entry = { mes: message?.mes, swipe: message?.swipe_id, user: !!message?.is_user, date: message?.send_date, name: message?.name, excludeKey,
         revision: messageRevision(message),
+        // The same reply as recorded before SillyTavern filled in swipe_id 0.
+        bareRevision: swipeSpellings(message).length > 1 ? messageRevision({ ...message, swipe_id: undefined }) : '',
         memoryRevision: messageRevision({ ...message, mes: stripConfiguredTags(message?.mes || '', excludes).trim() }),
         anchor: getHash(JSON.stringify([message?.send_date || '', message?.name || '', !!message?.is_user])) };
     if (message && typeof message === 'object') hashCache.set(message, entry);
@@ -55,8 +57,9 @@ function captureSources(previous = [], chat = [], state = {}) {
     const excludes = [...new Set([...parseList(state.scanRules?.excludeTags), ...parseList(state.vectorMemory?.excludeTags), 'script', 'style'])];
     const excludeKey = excludes.join('|');
     const sources = chat.map((message, floor) => {
-        const { revision, memoryRevision, anchor } = messageHashes(message, excludes, excludeKey);
-        let match = exact.get(`${anchor}:${revision}`)?.find(item => !used.has(item.id));
+        const { revision, bareRevision, memoryRevision, anchor } = messageHashes(message, excludes, excludeKey);
+        const keys = [`${anchor}:${revision}`, ...(bareRevision ? [`${anchor}:${bareRevision}`] : [])];
+        let match = keys.map(key => exact.get(key)?.find(item => !used.has(item.id))).find(Boolean);
         if (!match) {
             const candidates = (anchors.get(anchor) || []).filter(item => !used.has(item.id));
             if (candidates.length === 1) match = candidates[0];
@@ -65,7 +68,7 @@ function captureSources(previous = [], chat = [], state = {}) {
         used.add(id);
         const variant = String(message?.swipe_id ?? message?.swipeId ?? (Array.isArray(message?.swipes) ? message.swipes.indexOf(message.mes) : ''));
         return { id, floor, anchor, revision, memoryRevision, variant,
-            ambiguous: (exact.get(`${anchor}:${revision}`)?.length || 0) > 1 };
+            ambiguous: keys.some(key => (exact.get(key)?.length || 0) > 1) };
     });
     return sources;
 }

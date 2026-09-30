@@ -7,6 +7,10 @@ const kindKeys = {story:'storySummaries',stage:'stageSummaries',epic:'epicSummar
 export const newSummaryId = () => 'summary-' + (globalThis.crypto?.randomUUID?.() || Date.now()+'-'+Math.random().toString(36).slice(2));
 export const summaryKey = item => item?.id || item?.hash;
 export const inputSignature = snapshot => getHash(JSON.stringify(snapshot || null));
+// SillyTavern treats a reply without swipe_id as swipe 0 and writes the 0 in when the floor is shown (greetings,
+// /sendas, imported floors). Both spellings are the same reply, so a summary made before must stay valid.
+export const sameVariant = (a, b) => (String(a ?? '') || '0') === (String(b ?? '') || '0');
+export const swipeSpellings = message => message?.swipe_id === 0 ? [0, ''] : [message?.swipe_id ?? ''];
 // The graph's signature already covers every source revision, so the same chat array keeps its cached graph.
 export function registerSummaryChat(state, chat) { if (chats.get(state) === chat) return; chats.set(state, chat); cache.delete(state); }
 export function invalidateSummaryGraph(state) { cache.delete(state); }
@@ -43,7 +47,7 @@ function checkSource(state, input) {
     const message = chats.get(state)?.[source?.floor];
     if (!source || !message) return failure('source_missing',refFloor(input)+'已删除或来源缺失');
     if (source.ambiguous) return failure('ambiguous_identity',refFloor(input)+'来源身份不唯一');
-    if (String(source.variant ?? '') !== String(input.variant ?? '')) return failure('source_changed',refFloor(input)+'回复变体已变化');
+    if (!sameVariant(source.variant, input.variant)) return failure('source_changed',refFloor(input)+'回复变体已变化');
     const recorded = input.excludeTags || [];
     const widened = [...new Set([...recorded, ...currentExcludes(state)])];
     const tries = [[recorded,false],[widened,false],[widened,true]].map(([tags,unpaired]) => consumedText(message,input,tags,unpaired));
@@ -126,10 +130,12 @@ export function resolveSummaryGraph(state) {
         if (ref.memoryRevision ? source.memoryRevision === ref.memoryRevision : source.revision === ref.revision) return ok();
         // Same text once everything the user excludes now is taken out (including unpaired tags such as <img …>)?
         const message = chats.get(state)?.[source.floor];
+        const swipes = swipeSpellings(message);
+        if (!ref.memoryRevision && message && swipes.some(swipe => getHash(`${message.mes || ''}|${swipe}|${!!message.is_user}`) === ref.revision)) return ok();
         if (ref.memoryRevision && message) {
             const tags = [...new Set([...currentExcludes(state), 'script', 'style'])];
             const mes = stripConfiguredTags(stripConfiguredTags(message.mes || '', tags, {unpaired:true}), tags).trim();
-            if (getHash(`${mes}|${message.swipe_id ?? ''}|${!!message.is_user}`) === ref.memoryRevision) return ok();
+            if (swipes.some(swipe => getHash(`${mes}|${swipe}|${!!message.is_user}`) === ref.memoryRevision)) return ok();
         }
         return failure('source_changed',refFloor(ref)+'的原输入版本变化');
     }

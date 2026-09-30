@@ -161,7 +161,7 @@ export function createSummaryGenerationController({
         scanBlocks({ persist: false });
         const state = getState();
         if (options.automatic && getStageMaterialOverview) {
-            const materials = getStageMaterialOverview();
+            const materials = getStageMaterialOverview({ newOnly: true });
             if (!materials.targets.length && !materials.invalid?.length) { reportNoStageMaterials(state); return; }
             const status = stageAutomationStatus(state, materials, { batch: getAutoStageTargets(materials.targets),
                 records: getFloorMemoryIndex?.(state)?.records || [], busy: getIsBusy() });
@@ -170,7 +170,7 @@ export function createSummaryGenerationController({
                 return;
             }
         }
-        const allTargets = getUnsummarizedStoryBlocks({includeCovered:!options.automatic});
+        const allTargets = getUnsummarizedStoryBlocks({includeCovered:!options.automatic, newOnly:!!options.automatic});
         if (!allTargets.length) {
             reportNoStageMaterials(state);
             return;

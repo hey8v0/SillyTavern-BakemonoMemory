@@ -41,7 +41,7 @@ export function createMemoryOrchestrator({
         }
     
         scanBakemonoBlocks({ persist: false });
-        const targets = getUnsummarizedStoryBlocks();
+        const targets = getUnsummarizedStoryBlocks({ newOnly: true });
         if (!targets.length) {
             return;
         }
