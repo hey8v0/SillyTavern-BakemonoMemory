@@ -180,12 +180,23 @@ export function createTableMemoryModel({
         const deletes = [];
         for (const operation of operations) {
             try {
+                // The story time rides along with the table edit; a time the plugin cannot use is skipped with a
+                // note, and the rows still go in.
                 if (operation.op === 'clock') {
-                    if (!nextState.chronicle) throw new Error('剧情状态尚未初始化');
-                    if (clockOperation) throw new Error('一次填表只接受一项剧情时间更新');
-                    const data = normalizeTableClock(operation.data, warnings);
-                    setStoryTime(nextState, { ...data, sourceMessageIds });
-                    clockOperation = data;
+                    try {
+                        if (!nextState.chronicle) throw new Error('剧情状态尚未初始化');
+                        if (clockOperation) throw new Error('一次填表只接受一项剧情时间更新');
+                        const data = normalizeTableClock(operation.data, warnings);
+                        if (data.relativeDays !== undefined && !nextState.chronicle.clock?.date) {
+                            const days = data.relativeDays;
+                            data.label = [data.label?.trim(), days >= 0 ? `又过了 ${days} 天` : `${-days} 天前`].filter(Boolean).join(' ');
+                            delete data.relativeDays;
+                        }
+                        setStoryTime(nextState, { ...data, sourceMessageIds });
+                        clockOperation = data;
+                    } catch (error) {
+                        warnings.push(`剧情时间没有更新（${error.message}），表格照常填写。`);
+                    }
                     continue;
                 }
                 const table = tablesByIndex.get(Number(operation.tableIndex));

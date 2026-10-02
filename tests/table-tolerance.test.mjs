@@ -54,12 +54,9 @@ test('clock accepts unambiguous complete formatting, but never invents a year', 
     assert.equal(state.chronicle.clock.date, '');
 });
 
-test('invalid dates, ambiguous clock and invalid fields stay atomic with actionable errors', () => {
+test('invalid fields stay atomic with actionable errors', () => {
     const { state, calls, model } = fixture();
     for (const [operation, expected] of [
-        [{ op: 'clock', data: { date: '2026-02-30' } }, /setStoryClock.*日期/],
-        [{ op: 'clock', data: { date: '11月99日' } }, /setStoryClock.*日期/],
-        [{ op: 'clock', data: { date: '11月14日', relativeDays: 1 } }, /setStoryClock.*同时/],
         [{ op: 'insert', tableIndex: 0, data: { 3: '值班' } }, /insertRow.*表格 #0.*第 3 列/],
         [{ op: 'insert', tableIndex: 0, data: { '01': '值班' } }, /insertRow.*第 01 列/],
         [{ op: 'insert', tableIndex: 0, data: ['值班'] }, /insertRow.*对象/],
@@ -118,7 +115,7 @@ test('invalid generated drafts preserve raw text and cannot apply an empty fallb
 for (const raw of ['<tableEdit>insertRow(0,{"0":"林舟"})\nsetStoryClock({"date":"11月14日","label":"深夜"})</tableEdit>',
     '<tableEdit>insertRow(0,{"0":"林舟"})\nsetStoryClock({"date":"2026-02-30"})</tableEdit>',
     '<tableEdit>insertRow(0,{"0":"林舟"})\ndeleteRow(0,nope)</tableEdit>']) {
-    const valid = raw.includes('11月14日');
+    const valid = !raw.includes('nope');
     for (const inline of [true, false]) test(`${inline ? 'inline' : 'independent'} table flow ${valid ? 'applies' : 'retains failed draft'}: ${raw.slice(-45)}`, async () => {
         const { state, model } = fixture();
         state.turnSummary = {};
@@ -156,3 +153,29 @@ for (const raw of ['<tableEdit>insertRow(0,{"0":"林舟"})\nsetStoryClock({"date
         if (!valid) assert.equal(state.tableDatabase.editDrafts[0].raw, inline ? chat[0].mes : raw);
     });
 }
+
+// Testers kept seeing “随正文填表未应用：setStoryClock：日期无效” and lost every row of that turn's table edit.
+test('a story time the plugin cannot use never throws the table edit away', () => {
+    const cases = [
+        [{ date: '1889年10月15日 夜晚' }, '1889-10-15', '夜晚'],
+        [{ date: '2024.10.15', label: '黄昏' }, '2024-10-15', '黄昏'],
+        [{ date: '1889-10-15T23:45' }, '1889-10-15', '23:45'],
+        [{ date: '2026-02-30' }, '', '2026-02-30'],
+        [{ date: '星历 315 年 3 月' }, '', '星历 315 年 3 月'],
+        [{ date: '11月99日', label: '深夜' }, '', '11月99日 深夜'],
+        [{ relativeDays: 3 }, '', '又过了 3 天'],
+    ];
+    for (const [data, date, label] of cases) {
+        const { state, model } = fixture();
+        model.applyTableOperations([{ op: 'insert', tableIndex: 0, data: { 0: '林舟' } }, { op: 'clock', data }], state);
+        assert.equal(state.tableDatabase.tables[0].rows.length, 1, JSON.stringify(data));
+        assert.equal(state.chronicle.clock.date, date, JSON.stringify(data));
+        assert.equal(state.chronicle.clock.label, label, JSON.stringify(data));
+    }
+    const { state, model } = fixture();
+    for (const data of [{ date: '11月14日', relativeDays: 1 }, { when: '深夜' }]) {
+        const feedback = model.inspectTableEditDraft({ raw: `<tableEdit>insertRow(0,{"0":"林舟"})\nsetStoryClock(${JSON.stringify(data)})</tableEdit>` }, state);
+        assert.equal(feedback.error, '');
+        assert.match(feedback.warnings.join(' '), /剧情时间没有更新.*表格照常填写/);
+    }
+});

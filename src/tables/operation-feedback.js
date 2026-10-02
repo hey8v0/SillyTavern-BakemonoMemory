@@ -16,22 +16,27 @@ export function normalizeTableClock(input, warnings = []) {
     if (!data.label?.trim() && !data.date?.trim() && data.relativeDays === undefined) throw new Error('没有时间内容；请填写 date、label 或 relativeDays。');
     if (data.date?.trim() && data.relativeDays !== undefined) throw new Error('date 与 relativeDays 不能同时填写，请选择日期或经过天数。');
     const date = data.date?.trim() || '';
-    const full = /^(\d{4})(?:年|[-/])(\d{1,2})(?:月|[-/])(\d{1,2})日?$/.exec(date);
+    // Anything that is not a real calendar day is kept word for word as the time description (fantasy calendars,
+    // a month without a year, “1889年10月15日 夜晚”), never a reason to throw the table edit away.
+    const keepAsLabel = (text, note) => {
+        data.date = '';
+        const label = data.label?.trim() || '';
+        data.label = label.includes(text) ? label : [text, label].filter(Boolean).join(' ');
+        warnings.push(note);
+    };
+    const full = /^(\d{4})\s*(?:年|[-/.])\s*(\d{1,2})\s*(?:月|[-/.])\s*(\d{1,2})\s*日?(?:[T\s,，]+(.*))?$/.exec(date);
     if (full) {
-        data.date = `${full[1]}-${full[2].padStart(2, '0')}-${full[3].padStart(2, '0')}`;
-        const timestamp = Date.parse(`${data.date}T00:00:00Z`);
-        if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== data.date) throw new Error(`日期「${date}」不存在，请核对月份和天数。`);
+        const iso = `${full[1]}-${full[2].padStart(2, '0')}-${full[3].padStart(2, '0')}`;
+        const timestamp = Date.parse(`${iso}T00:00:00Z`);
+        if (Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === iso) {
+            data.date = iso;
+            const rest = full[4]?.trim(), label = data.label?.trim() || '';
+            if (rest && !label.includes(rest)) data.label = [rest, label].filter(Boolean).join(' ');
+        } else keepAsLabel(date, `公历里没有「${date}」这一天，已作为时间描述保存。`);
     }
     else if (date) {
-        const partial = /^(\d{1,2})(?:月|[-/])(\d{1,2})日?$/.exec(date);
-        if (partial) {
-            const month = Number(partial[1]), day = Number(partial[2]);
-            if (month < 1 || month > 12 || day < 1 || day > [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]) throw new Error('日期中的月份或天数无效，请核对正文。');
-            data.date = '';
-            const label = data.label?.trim() || '';
-            data.label = label.includes(date) ? label : [date, label].filter(Boolean).join(' ');
-            warnings.push('未提供年份，日期已保留为时间描述。');
-        }
+        keepAsLabel(date, /^(\d{1,2})\s*(?:月|[-/.])\s*(\d{1,2})/.test(date) ? '未提供年份，日期已保留为时间描述。'
+            : `「${date}」不是年-月-日，已作为时间描述保存。`);
     }
     return data;
 }

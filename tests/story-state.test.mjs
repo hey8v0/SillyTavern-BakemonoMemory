@@ -50,9 +50,10 @@ test('AI table transaction maintains semantics and clock with source provenance 
     reset.columnKinds[1] = 'text'; reset.semanticOverrides[reset.columnIds[1]].kind = 'text';
     assert.equal(mergeTableSchemaWithRows({...shared, columnKinds:['item', 'person']}, reset).columnKinds[1], 'text');
     assert.equal(captureChronicle(state, chat).sources[0].floor, 1);
-    const before = JSON.stringify(state);
-    assert.throws(() => model.applyTableOperations(parseTableEditOperations('setStoryClock({"date":"1889-02-30"})')), /日期/);
-    assert.equal(JSON.stringify(state), before);
+    // A day the calendar does not have is kept as the time description instead of failing the edit.
+    model.applyTableOperations(parseTableEditOperations('setStoryClock({"date":"1889-02-30"})'), state, { sourceMessageIds: [1] });
+    assert.deepEqual([state.chronicle.clock.date, state.chronicle.clock.label], ['', '1889-02-30']);
+    model.applyTableOperations(parseTableEditOperations('setStoryClock({"date":"1889-10-15"})'), state, { sourceMessageIds: [1] });
     model.applyTableOperations(parseTableEditOperations('setStoryClock({"date":"1880-01-01","flashback":true})'), state, { sourceMessageIds: [1] });
     assert.equal(state.chronicle.clock.date, '1889-10-15');
     assert.equal(state.chronicle.clock.lastFlashback.date, '1880-01-01');
