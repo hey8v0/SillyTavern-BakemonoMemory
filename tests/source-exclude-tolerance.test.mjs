@@ -24,16 +24,16 @@ test('an image added to an old floor inside an excluded tag keeps the summary va
     assert.equal(getSummaryStatus(state, stage).valid, true);
 });
 
-test('the same image without an exclude, or a real text change, still asks for a rebuild', () => {
+test('the same image without an exclude, or a real text change, is marked but stays in use', () => {
     const plain = fixture('thinking');
     plain.chat[1].mes += '<image>一只在雨里的黑猫</image>';
     invalidateSummaryGraph(plain.state);
-    assert.equal(getSummaryStatus(plain.state, plain.stage).valid, false);
+    assert.deepEqual([getSummaryStatus(plain.state, plain.stage).valid, getSummaryStatus(plain.state, plain.stage).drift], [true, true]);
 
     const edited = fixture('thinking, image');
     edited.chat[1].mes = edited.chat[1].mes.replace('酒馆', '铁匠铺');
     invalidateSummaryGraph(edited.state);
-    assert.equal(getSummaryStatus(edited.state, edited.stage).valid, false);
+    assert.deepEqual([getSummaryStatus(edited.state, edited.stage).valid, getSummaryStatus(edited.state, edited.stage).drift], [true, true]);
 });
 
 test('unpaired stripping removes an <img> without an end tag only when asked', () => {

@@ -151,7 +151,7 @@ test('raw orchestration reaches the actual controller and enqueues one batch', a
     assert.equal(f.state.taskQueue[0].sourceHashes.length, 10);
 });
 
-test('coverage count changes after real stage save and releases after input changes', async () => {
+test('coverage count changes after real stage save and keeps its floors after input changes', async () => {
     const f = memoryFixture(10); f.state.stageSourceMode = 'raw';
     f.state.blocks = f.chat.map((message, i) => ({ ...block(i, 'raw'), hash: `input-${i}`, content: message.mes }));
     assert.equal(f.selectors.getStageMaterialOverview().targets.length, 10);
@@ -160,7 +160,7 @@ test('coverage count changes after real stage save and releases after input chan
     assert.equal(overview.coveredCount, 3); assert.equal(overview.targets.length, 7);
     f.chat[0].mes += ' changed';
     overview = f.selectors.getStageMaterialOverview();
-    assert.equal(overview.coveredCount, 0); assert.equal(overview.targets.length, 10);
+    assert.equal(overview.coveredCount, 3); assert.equal(overview.targets.length, 7);
 });
 
 test('disabled automation, unmet threshold and genuine continuity gaps remain blocked', async () => {

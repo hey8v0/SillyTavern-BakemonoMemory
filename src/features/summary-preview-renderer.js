@@ -424,9 +424,10 @@ export function createSummaryPreviewRenderer({
                         where.append(element('span', 'bk-sum-people', people.trim()));
                     }
                 });
-            const tag = !status.valid ? ['需重建', ' is-alert'] : parents.length ? ['已收入', ''] : ['待整理', ' is-new'];
+            const tag = !status.valid ? [status.code === 'replaced' ? '已有新版本' : '需重建', ' is-alert']
+                : status.drift ? ['原文有改动', ' is-note'] : parents.length ? ['已收入', ''] : ['待整理', ' is-new'];
             line1.append(element('span', 'bk-sum-no', range.first !== null ? `#${range.first}` : '#?'), where, element('span', `bk-sum-tag${tag[1]}`, tag[0]));
-            if (!status.valid) line1.lastChild.title = status.reason;
+            if (!status.valid || status.drift) line1.lastChild.title = status.reason;
             tap.append(line1, element('span', 'bk-sum-ttl', title), element('span', 'bk-sum-lead', firstBeat(parts)));
         } else {
             const meta = element('span', 'bk-sum-meta');
@@ -440,7 +441,8 @@ export function createSummaryPreviewRenderer({
                 into.append(element('b', '', parents.map(parent => parent.name).join('、')));
                 meta.append(into);
             }
-            if (!status.valid) meta.append(element('span', 'is-alert', '需重建：' + status.reason));
+            if (!status.valid) meta.append(element('span', 'is-alert', (status.code === 'replaced' ? '已有新版本：' : '需重建：') + status.reason));
+            else if (status.drift) meta.append(element('span', 'is-note', '原文有改动：' + status.reason));
             tap.append(element('h4', '', title), meta);
         }
         head.append(tap, menuButton(name));

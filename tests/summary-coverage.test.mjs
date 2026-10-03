@@ -18,26 +18,26 @@ test('real generation queue and save cover only valid inputs; four disjoint epic
     assert.equal(x.selectors.getUnsummarizedStageBlocks().length, 0);
 });
 
-test('stale child blocks the real generation entrance before a model request', async () => {
+test('a changed child does not block generating the volume above it', async () => {
     const x = fixture();
     await x.stage('valid', [10]); await x.stage('will change', [170]);
     x.chat[170].mes += ' changed';
-    await assert.rejects(x.generateEpic('must not generate'), /来源|重建/);
-    assert.equal(x.calls(), 0);
+    await x.generateEpic('volume');
+    assert.equal(x.calls(), 1); assert.equal(x.parts().stats.epic, 1);
 });
 
-test('stale parent releases valid children, and UI agrees with injection', async () => {
+test('a changed floor marks only its chapter; the volume and injection stay as they were', async () => {
     const x = fixture();
     const a = await x.stage('A', [10]), b = await x.stage('B', [170]);
     const e = await x.generateEpic('E');
     x.chat[170].mes += ' changed';
-    assert.equal(x.parts().stats.epic, 0); assert.equal(x.parts().stats.stage, 1);
+    assert.equal(x.parts().stats.epic, 1); assert.equal(x.parts().stats.stage, 0);
     const rows = x.records();
-    assert.equal(rows.find(r => r.hash === e.hash).status, 'stale');
-    assert.equal(rows.find(r => r.hash === b.hash).status, 'stale');
-    assert.equal(rows.find(r => r.hash === a.hash).status, 'injected');
-    assert.ok(x.selectors.getUnsummarizedStageBlocks().some(r => r.hash === a.hash));
-    assert.match(rows.find(r => r.hash === e.hash).reason, /170/);
+    assert.equal(rows.find(r => r.hash === e.hash).status, 'injected');
+    assert.equal(rows.find(r => r.hash === b.hash).status, 'archived');
+    assert.equal(rows.find(r => r.hash === a.hash).status, 'archived');
+    assert.equal(getSummaryStatus(x.state, b).drift, true);
+    assert.match(getSummaryStatus(x.state, b).reason, /170/);
 });
 
 test('same output across layers and regenerated instances has separate identities', async () => {
@@ -59,7 +59,8 @@ test('tag input ignores outside widgets but catches consumed text edits and swip
     await x.stage('from tag', [10], { tag: 'bakemono' });
     x.chat[10].mes += ' outside update'; assert.equal(x.parts().stats.stage, 1);
     x.chat[10].is_system = true; x.chat.push({ mes: 'new', send_date: 'new' }); assert.equal(x.parts().stats.stage, 1);
-    x.chat[10].mes = x.chat[10].mes.replace('summary input', 'different input'); assert.equal(x.parts().stats.stage, 0);
+    x.chat[10].mes = x.chat[10].mes.replace('summary input', 'different input'); assert.equal(x.parts().stats.stage, 1);
+    assert.equal(x.records()[0].validity, 'drift');
 });
 
 test('draft source changed after response cannot be silently rebound on save', async () => {
@@ -82,7 +83,8 @@ test('failed save rolls back source graph, arrays and actual injection; serializ
 
 test('editing output alone does not refresh outdated input evidence', async () => {
     const x = fixture(); const s = await x.stage('S', [10]); x.chat[10].mes += ' actual change';
-    await x.service.saveEditedSummary(s.hash, 'S edited', 'S edited'); assert.equal(x.parts().stats.stage, 0);
+    await x.service.saveEditedSummary(s.hash, 'S edited', 'S edited'); assert.equal(x.parts().stats.stage, 1);
+    assert.equal(x.records()[0].validity, 'drift', 'editing the output does not clear the mark');
 });
 
 test('159 / 160 / 161 / 200 / 320 / 400 floors have no arbitrary ceiling', async () => {
@@ -100,15 +102,14 @@ test('backup round trip keeps precise provenance and queued draft input snapshot
     assert.deepEqual(x.state.stageSummaries[0].provenance,original);
     assert.deepEqual(x.state.drafts[0].metadata.inputSnapshot,draft);
     assert.equal(x.parts().stats.stage,1);
-    x.chat[10].mes+=' edited'; assert.equal(x.parts().stats.stage,0);
+    x.chat[10].mes+=' edited'; assert.equal(x.parts().stats.stage,1); assert.equal(x.records()[0].validity,'drift');
 });
 
-test('input edit during model call preserves paid result as a noncommittable draft', async () => {
+test('a floor edited during the model call does not throw the paid result away', async () => {
     const x=fixture(); await x.stage('S',[10]); x.onCall(()=>{x.chat[10].mes+=' changed';});
     const draft=await x.generateEpic('paid response',{save:false});
-    assert.equal(draft.content,'paid response'); assert.match(draft.metadata.inputError,/来源|输入/);
-    assert.equal(x.state.taskQueuePaused,true);
-    assert.equal(await x.service.commitDraft(draft.id),null); assert.equal(x.calls(),1);
+    assert.equal(draft.content,'paid response'); assert.equal(draft.metadata.inputError,undefined);
+    assert.ok(await x.service.commitDraft(draft.id)); assert.equal(x.calls(),1);
 });
 
 test('recursive compression falls back to valid intermediate nodes, without a ghost coverage cache', async () => {
@@ -131,14 +132,14 @@ test('cycles and missing dependencies are visible; diagnostic excludes narrative
     assert.ok(!diagnostic.includes('original floor')); assert.equal(x.parts().stats.stage,0);
 });
 
-test('precise sources survive floor shifts but reject deleted messages and changed swipes', async () => {
+test('precise sources survive floor shifts; deleted messages and changed swipes are marked', async () => {
     const x=fixture(); await x.stage('S',[10]); x.chat.shift();
-    assert.equal(x.parts().stats.stage,1);
-    x.chat[9].swipe_id=1; assert.equal(x.parts().stats.stage,0);
-    x.chat.splice(9,1); assert.equal(x.parts().stats.stage,0);
+    assert.equal(x.parts().stats.stage,1); assert.equal(x.records()[0].validity,'valid');
+    x.chat[9].swipe_id=1; assert.equal(x.parts().stats.stage,1); assert.match(getSummaryStatus(x.state,x.state.stageSummaries[0]).reason,/变体/);
+    x.chat.splice(9,1); assert.equal(x.parts().stats.stage,1); assert.match(getSummaryStatus(x.state,x.state.stageSummaries[0]).reason,/删除/);
 });
 
-test('legacy repair preview is read only; preserved old evidence cannot wash stale nodes valid', () => {
+test('legacy repair preview is read only; preserved old evidence cannot wash the change mark off', () => {
     const x=fixture();
     x.state.storySummaries.push({hash:'old',content:'old source',sourceMessageIds:[10]});
     x.state.stageSummaries.push({hash:'upper',content:'old stage',sourceHashes:['old']});
@@ -146,8 +147,8 @@ test('legacy repair preview is read only; preserved old evidence cannot wash sta
     const before=JSON.stringify(x.state), plan=previewSummarySourceRepair(x.state,x.chat);
     assert.equal(JSON.stringify(x.state),before); assert.equal(plan.changes.length,2);
     applySummarySourceRepair(x.state,plan); refreshMemoryLinks(x.state,x.chat);
-    assert.equal(getSummaryStatus(x.state,x.state.storySummaries[0]).valid,false);
-    assert.equal(getSummaryStatus(x.state,x.state.stageSummaries[0]).valid,false);
+    assert.equal(getSummaryStatus(x.state,x.state.storySummaries[0]).drift,true);
+    assert.equal(getSummaryStatus(x.state,x.state.stageSummaries[0]).valid,true);
     assert.throws(()=>applySummarySourceRepair(x.state,plan),/变化/);
 });
 
@@ -169,12 +170,12 @@ test('failed save preserves an unrelated draft created during the pending write'
     assert.equal(x.state.epicSummaries.length,0); assert.equal(x.parts().stats.stage,1);
 });
 
-test('explicit reorganization can consume covered valid material, not stale inputs', async () => {
+test('explicit reorganization can consume covered material, also when its text changed', async () => {
     const x=fixture(); await x.stage('S',[10]); await x.generateEpic('E');
     x.state.generationTargets.epic.includeCovered=true;
     await x.generateEpic('reorganized'); assert.equal(x.state.epicSummaries.length,2);
-    x.chat[10].mes+=' changed'; await assert.rejects(x.generateEpic('invalid'),/来源|重建/);
-    assert.equal(x.calls(),2);
+    x.chat[10].mes+=' changed'; await x.generateEpic('after change');
+    assert.equal(x.calls(),3);
 });
 
 test('chat switch during response cannot write the result into the new chat', async () => {
@@ -185,9 +186,9 @@ test('chat switch during response cannot write the result into the new chat', as
     assert.equal(other.epicSummaries.length,0); assert.equal(other.drafts.length,0);
 });
 
-test('floor readiness follows valid raw-source summaries, not stale generated block copies', async () => {
+test('floor readiness follows raw-source summaries, also after their text changed', async () => {
     const x=fixture(); await x.stage('S',[10]); await x.generateEpic('E');
     assert.equal(buildFloorMemoryIndex({messages:x.chat,state:x.state}).byId.get(10).summaryState,'covered');
     x.chat[10].mes+=' changed'; x.parts();
-    assert.equal(buildFloorMemoryIndex({messages:x.chat,state:x.state}).byId.get(10).summaryState,'missing');
+    assert.equal(buildFloorMemoryIndex({messages:x.chat,state:x.state}).byId.get(10).summaryState,'covered');
 });

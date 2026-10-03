@@ -34,43 +34,31 @@ function status(f) {
         records: buildFloorMemoryIndex({ messages: f.chat, state: f.state }).records });
 }
 
-test('old changed and deleted summaries do not block a valid current batch or become missing backfill targets', async () => {
+test('old changed and deleted summaries stay usable material; only the new occupant of a deleted floor needs a summary', async () => {
     const f = fixture(116);
     for (const id of [28, 92, ...Array.from({ length: 16 }, (_, i) => 100 + i)]) await saveStory(f, [id]);
     f.chat[28].mes += ' changed'; f.chat.splice(92, 1);
     f.state.stageSourceMode = 'backfill';
-    f.state.automation = { enabled: true, floorInterval: 10, mode: 'draft' };
     const materials = f.selectors.getStageMaterialOverview();
-    assert.equal(materials.targets.length, 16); assert.equal(materials.issues.length, 2);
-    assert.equal(materials.coveredCount, 0);
-    assert.equal(status(f).code, 'ready');
-    assert.match(status(f).detail, /2 条异常/);
-    const task = await f.controller.generateStageDraft({ automatic: true });
-    assert.deepEqual(task.sourceMessageIds, Array.from({ length: 10 }, (_, i) => 99 + i));
-    await f.controller.generateStageDraft({ automatic: true });
-    assert.equal(f.state.taskQueue.length, 1); assert.equal(f.calls(), 0);
+    assert.equal(materials.targets.length, 18); assert.equal(materials.issues.length, 0);
+    const changed = f.state.storySummaries.find(item => item.sourceMessageIds?.[0] === 28);
+    assert.match(getSummaryStatus(f.state, changed).reason, /28/);
     const targets = backfill(f).buildMissingSummaryTargets();
     assert.equal(targets.filter(item => item.messageId >= 99).length, 0);
-    assert.ok(targets.some(item => item.messageId === 28));
+    assert.ok(!targets.some(item => item.messageId === 28), 'an edited floor keeps its summary');
     assert.ok(targets.some(item => item.messageId === 92), 'new occupant of deleted floor is not covered by an old summary');
     assert.equal(f.state.storySummaries.length, 18); assert.deepEqual(f.state.hiddenMessageIds || [], []);
-    const stageDraft = f.service.createDraft({ kind: 'stage', content: '甲从书店出发，到港口取回钥匙。',
-        sourceHashes: task.sourceHashes, sourceMessageIds: task.sourceMessageIds, metadata: task.metadata });
-    await f.service.commitDraft(stageDraft.id);
-    const afterSave = f.selectors.getStageMaterialOverview();
-    assert.equal(afterSave.coveredCount, 10); assert.equal(afterSave.targets.length, 6);
-    assert.equal(afterSave.issues.length, 2); assert.equal(status(f).code, 'waiting');
 });
 
-test('invalid material inside the selected batch still blocks and points to that exact record', async () => {
+test('a changed floor inside the selected batch does not block automatic summaries', async () => {
     const f = fixture(14);
     for (let id = 0; id < 14; id++) await saveStory(f, [id]);
     f.chat[4].mes += ' changed';
     f.state.stageSourceMode = 'backfill'; f.state.automation = { enabled: true, floorInterval: 10, mode: 'draft' };
-    const issue = f.selectors.getStageMaterialOverview().issues[0];
-    assert.equal(status(f).code, 'invalid'); assert.equal(status(f).action.summaryKey, issue.key);
-    await f.controller.generateStageDraft({ automatic: true });
-    assert.equal(f.state.taskQueue.length, 0); assert.equal(f.calls(), 0);
+    assert.equal(f.selectors.getStageMaterialOverview().issues.length, 0);
+    assert.equal(status(f).code, 'ready');
+    const task = await f.controller.generateStageDraft({ automatic: true });
+    assert.deepEqual(task.sourceMessageIds, Array.from({ length: 10 }, (_, i) => i)); assert.equal(f.calls(), 0);
 });
 
 test('batch-local gap checks ignore earlier missing floors but preserve interior gaps and manual leading checks', () => {
@@ -97,14 +85,14 @@ test('a valid replacement can summarize its floor without the retained stale rec
     assert.equal(task.sourceMessageIds.length, 10); assert.equal(f.calls(), 0);
 });
 
-test('saved story and stage memory suppress backfill without body tags; invalidated memory releases only its floors', async () => {
+test('saved story and stage memory suppress backfill without body tags, also after their floors were edited', async () => {
     const f = fixture(8), controller = backfill(f);
     await saveStory(f, [1, 3]); await f.stage('甲抵达港口。', [4, 5]);
     assert.deepEqual(controller.buildMissingSummaryTargets().map(item => item.messageId), [0, 2, 6, 7]);
     f.chat[4].mes += ' changed';
-    assert.deepEqual(controller.buildMissingSummaryTargets().map(item => item.messageId), [0, 2, 4, 5, 6, 7]);
+    assert.deepEqual(controller.buildMissingSummaryTargets().map(item => item.messageId), [0, 2, 6, 7]);
     f.state.storySummaries[0].content = '<summary>剧情摘要</summary>';
-    assert.deepEqual(controller.buildMissingSummaryTargets().map(item => item.messageId), [0, 1, 2, 3, 4, 5, 6, 7]);
+    assert.deepEqual(controller.buildMissingSummaryTargets().map(item => item.messageId), [0, 1, 2, 3, 6, 7], 'a summary with no story text still frees its floors');
 });
 
 test('nested summary provenance follows floor shifts, not stale metadata or claimed inclusive ranges', async () => {

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ensureChronicle, captureChronicle, replayChronicle, markStoryChange, diffState, applyDeltas, setStoryTime, upsertEntity, bindCellEntity, getCurrentStateRows, refreshMemoryLinks, isMemoryCurrent, activeStoryCoverage } from '../src/memory/story-state.js';
+import { getSummaryStatus } from '../src/memory/summary-provenance.js';
 import { createMemoryBackup, validateMemoryBackup, previewMemoryBackup, restoreMemoryBackup, createDiagnosticReport } from '../src/memory/backup-package.js';
 import { getHash } from '../src/shared/text.js';
 import { createTableMemoryModel } from '../src/features/table-memory-model.js';
@@ -69,16 +70,18 @@ function fixture() {
     return { state, chat };
 }
 
-test('excluded widget mutations do not stale saved summaries, but actual story edits do', () => {
+test('excluded widget mutations do not mark saved summaries, but actual story edits do', () => {
     const { state, chat } = fixture();
     state.vectorMemory.excludeTags = 'widget';
     refreshMemoryLinks(state, chat);
     chat[0].mes += '<widget>计时器</widget><script>run()</script>';
     refreshMemoryLinks(state, chat);
     assert.equal(isMemoryCurrent(state, state.storySummaries[0]), true);
+    assert.equal(getSummaryStatus(state, state.storySummaries[0]).drift, undefined);
     chat[0].mes = '没有交出银钥匙<widget>计时器</widget>';
     refreshMemoryLinks(state, chat);
-    assert.equal(isMemoryCurrent(state, state.storySummaries[0]), false);
+    assert.equal(isMemoryCurrent(state, state.storySummaries[0]), true, 'still in use');
+    assert.equal(getSummaryStatus(state, state.storySummaries[0]).drift, true);
 });
 
 test('migration keeps table data, creates one baseline and does not invent prior history', () => {
@@ -186,28 +189,30 @@ test('story date, relative days and flashback are separate from wall clock', () 
     assert.equal(replayChronicle(state.chronicle, { sequence: 1 }).state.clock.date, '1889-10-15');
 });
 
-test('summary provenance invalidates ancestors after source edit or child replacement and retains originals', () => {
+test('a source edit or child edit marks the summary that read it, keeps everything in use and retains originals', () => {
     const { state, chat } = fixture();
     state.stageSummaries.push({ hash: 'st', content: '阶段', sourceHashes: ['s'] });
     state.epicSummaries.push({ hash: 'ep', content: '长篇', sourceStageHashes: ['st'] });
     state.coveredBlockHashes = ['s']; refreshMemoryLinks(state, chat);
     assert.equal(isMemoryCurrent(state, { hash: 'ep' }), true);
     chat[0].mes = '重生成：没有交付'; refreshMemoryLinks(state, chat);
-    for (const hash of ['s', 'st', 'ep']) assert.equal(isMemoryCurrent(state, { hash }), false);
+    for (const hash of ['s', 'st', 'ep']) assert.equal(isMemoryCurrent(state, { hash }), true);
+    assert.equal(getSummaryStatus(state, { hash: 's' }).drift, true);
+    assert.equal(getSummaryStatus(state, { hash: 'st' }).drift, undefined, 'only the summary that read the floor is marked');
     assert.equal(state.storySummaries[0].content, '交付钥匙');
-    assert.equal(activeStoryCoverage(state).has('s'), false);
+    assert.equal(activeStoryCoverage(state).has('s'), true);
     state.storySummaries[0].content = '重新整理的摘要'; refreshMemoryLinks(state, chat);
-    assert.equal(isMemoryCurrent(state, { hash: 's' }), false, 'editing output must not rebind an outdated input');
-    assert.equal(isMemoryCurrent(state, { hash: 'st' }), false);
+    assert.equal(getSummaryStatus(state, { hash: 's' }).drift, true, 'editing output must not rebind an outdated input');
+    assert.equal(getSummaryStatus(state, { hash: 'st' }).drift, true, 'the stage read the old text of its child');
 });
 
-test('source identities follow unchanged messages, while shifted floor references require review', () => {
+test('source identities follow unchanged messages, while shifted floor references are marked', () => {
     const { state, chat } = fixture();
     state.storySummaries.push({ hash: 's2', content: '书房', sourceMessageIds: [1] }); refreshMemoryLinks(state, chat);
     const id = state.chronicle.sources[1].id;
     chat.shift(); refreshMemoryLinks(state, chat);
     assert.equal(state.chronicle.sources[0].id, id);
-    assert.equal(isMemoryCurrent(state, { hash: 's2' }), false);
+    assert.equal(getSummaryStatus(state, { hash: 's2' }).drift, true);
 });
 
 test('backup includes tag summaries and full ledger but excludes configuration, embeddings and active tasks', () => {
@@ -267,7 +272,7 @@ test('AI table operations validate whole transaction before mutating tables or u
     assert.equal(state.tableDatabase.tables[0].rows[0][1], 'Nana'); assert.equal(snapshots, 1);
 });
 
-test('injection excludes invalidated memory, releases stale coverage and includes story clock', () => {
+test('injection keeps marked memory in use and includes story clock', () => {
     const { state, chat } = fixture();
     state.memoryStrategy = 'generic'; state.tableDatabase.injectMemory = false;
     state.stageSummaries = [{ hash: 'st', content: '旧阶段', sourceHashes: ['s'] }];
@@ -279,14 +284,14 @@ test('injection excludes invalidated memory, releases stale coverage and include
         getStageMemoryBlocks: () => state.stageSummaries.filter(item => isMemoryCurrent(state, item)),
         memoryStrategies: { GENERIC: 'generic' }, renderInjectedTablesSection: () => '', renderVectorMemorySection: () => '' });
     const text = service.getInjectionMemoryParts(state).memory;
-    assert.ok(text.includes('新摘要')); assert.ok(text.includes('午夜')); assert.ok(!text.includes('旧阶段'));
+    assert.ok(text.includes('旧阶段')); assert.ok(text.includes('午夜'));
 });
 
-test('missing source floors and removed summaries cannot remain valid', () => {
+test('missing source floors are marked; removed summaries are gone', () => {
     const { state, chat } = fixture();
     state.stageSummaries.push({ hash: 'missing', content: '未知材料', sourceMessageIds: [99] });
     refreshMemoryLinks(state, chat);
-    assert.equal(isMemoryCurrent(state, { hash: 'missing' }), false);
+    assert.equal(getSummaryStatus(state, { hash: 'missing' }).drift, true);
     state.storySummaries = []; refreshMemoryLinks(state, chat);
     assert.equal(isMemoryCurrent(state, { hash: 's' }), false);
 });

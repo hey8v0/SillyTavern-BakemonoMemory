@@ -27,6 +27,12 @@ export function summaryNodes(state) {
 }
 const failure = (code, detail, path=[]) => ({valid:false,code,reason:detail,path});
 const ok = () => ({valid:true,code:'valid',reason:'来源有效',path:[]});
+// The source text moved on after the summary was made (an edit, a deleted floor, another swipe, a lost source
+// record). The summary still describes the story, so it stays in use and is only marked; the user decides whether
+// to regenerate it. Only data that cannot be read at all (a loop, an unknown format) is set aside.
+const hardFailures = new Set(['cycle', 'depth_limit', 'unknown_version']);
+const soften = status => status.valid || status.hard || hardFailures.has(status.code) ? status
+    : {valid:true,drift:true,code:'drift',driftCode:status.code,reason:status.reason.replace(/下层摘要需重建 → /g,''),path:status.path};
 const refFloor = ref => Number.isInteger(ref.floor) ? '第 '+ref.floor+' 楼' : '来源';
 // Tags the user excludes now. Text added later inside such tags (e.g. an image a picture plugin inserted into an old
 // floor) is not a change to the story, so source checks also try the current list, not only the one recorded
@@ -41,18 +47,38 @@ function consumedText(message, input, tags, unpaired) {
     }
     return {consumed: input.filter === 'turn-v1' ? stripPostProcessNoise(filterTextByConfiguredTags(mes, {excludeTags:tags,includeTags:input.includeTags || []})) : text};
 }
+function readsSame(state, message, input) {
+    const recorded = input.excludeTags || [];
+    const widened = [...new Set([...recorded, ...currentExcludes(state)])];
+    const tries = [[recorded,false],[widened,false],[widened,true]].map(([tags,unpaired]) => consumedText(message,input,tags,unpaired));
+    return {same: tries.some(({consumed}) => typeof consumed === 'string' && getHash(consumed) === input.revision && consumed.length === input.length),
+        countChanged: tries.every(t => t.countChanged)};
+}
+// The source record can be lost (another device saved over it, a branch) while the floor itself is untouched:
+// then the recorded floor still reads the same and is used.
+const recordedFloorReadsSame = (state, input) => {
+    const recorded = Number.isInteger(input.floor) ? chats.get(state)?.[input.floor] : null;
+    return !!recorded && sameVariant(recorded.swipe_id ?? recorded.swipeId, input.variant) && readsSame(state, recorded, input).same;
+};
+// Current floor of a body/tag input, or null when it cannot be found any more.
+function locateInput(state, input) {
+    const source = (state.chronicle?.sources || []).find(s => s.id === input.sourceId);
+    if (source && chats.get(state)?.[source.floor]) return source.floor;
+    return recordedFloorReadsSame(state, input) ? input.floor : null;
+}
 function checkSource(state, input) {
     const sources = state.chronicle?.sources || [];
     const source = sources.find(s => s.id === input.sourceId);
     const message = chats.get(state)?.[source?.floor];
-    if (!source || !message) return failure('source_missing',refFloor(input)+'已删除或来源缺失');
+    if (!source || !message) {
+        if (recordedFloorReadsSame(state, input)) return ok();
+        return failure('source_missing',refFloor(input)+'已删除或来源缺失');
+    }
     if (source.ambiguous) return failure('ambiguous_identity',refFloor(input)+'来源身份不唯一');
     if (!sameVariant(source.variant, input.variant)) return failure('source_changed',refFloor(input)+'回复变体已变化');
-    const recorded = input.excludeTags || [];
-    const widened = [...new Set([...recorded, ...currentExcludes(state)])];
-    const tries = [[recorded,false],[widened,false],[widened,true]].map(([tags,unpaired]) => consumedText(message,input,tags,unpaired));
-    if (tries.some(({consumed}) => typeof consumed === 'string' && getHash(consumed) === input.revision && consumed.length === input.length)) return ok();
-    return failure('source_changed',refFloor(input)+(tries.every(t => t.countChanged) ? '摘要标签数量变化' : '的实际输入版本变化'));
+    const read = readsSame(state, message, input);
+    if (read.same) return ok();
+    return failure('source_changed',refFloor(input)+(read.countChanged ? '摘要标签数量变化' : '的原文有改动'));
 }
 export function resolveSummaryGraph(state) {
     if (held.has(state) && cache.has(state)) return cache.get(state);
@@ -79,7 +105,8 @@ export function resolveSummaryGraph(state) {
         const provenance = node.provenance;
         const link = state.chronicle?.links?.[node.hash];
         if (node.duplicate || (byHash.get(node.hash)?.length > 1 && !node.id)) {
-            status = failure('ambiguous_identity','相同文字的多条记录共用了旧身份，请预览来源修复',[node.key]);
+            // Two records sharing one old identity: which one a parent meant is unknown, so neither is used.
+            status = {...failure('ambiguous_identity','相同文字的多条记录共用了旧身份，请预览来源修复',[node.key]),hard:true};
         } else if (provenance) {
             if (provenance.version !== 2 || !Array.isArray(provenance.inputs) || !provenance.inputs.length) status = failure('unknown_version','来源版本无法识别或缺少输入',[node.key]);
             else {
@@ -98,8 +125,9 @@ export function resolveSummaryGraph(state) {
                     } else if (['tag','body'].includes(input.kind)) childStatus = checkSource(state,input);
                     else if (input.kind === 'legacy') childStatus = checkLegacyRef(input.ref);
                     else childStatus = failure('source_unknown','来源类型无法核实');
-                    if (!childStatus.valid && status.valid) status = failure(input.kind==='summary'?'child_stale':childStatus.code,
-                        (input.kind==='summary'?'下层摘要需重建 → ':'')+childStatus.reason,[node.key,...childStatus.path]);
+                    if (!childStatus.valid && status.valid) status = {...failure(input.kind==='summary'?'child_stale':childStatus.code,
+                        (input.kind==='summary'?'下层摘要需重建 → ':'')+childStatus.reason,[node.key,...childStatus.path]),
+                        hard: !!childStatus.hard || hardFailures.has(childStatus.code)};
                 }
             }
         } else if (node.saved && link) {
@@ -114,12 +142,13 @@ export function resolveSummaryGraph(state) {
                 if (!child) { if(status.valid) status=failure(matches.length?'ambiguous_identity':'child_missing','下层摘要缺失或身份不唯一',[node.key,ref.hash]); continue; }
                 children.push(child);
                 const checked = check(child);
-                if (!checked.valid && status.valid) status=failure('child_stale','下层摘要需重建 → '+checked.reason,[node.key,...checked.path]);
+                if (!checked.valid && status.valid) status={...failure('child_stale','下层摘要需重建 → '+checked.reason,[node.key,...checked.path]),hard:!!checked.hard || hardFailures.has(checked.code)};
                 else if(getHash(child.content||'')!==ref.revision && status.valid) status=failure('source_changed','下层摘要内容已变化',[node.key,child.key]);
             }
         } else if (node.saved && state.chronicle) status = failure('source_unknown','旧记录来源尚未核验，请从底层重新生成',[node.key]);
         // Freshly scanned material belongs to the current scan, not the persistent legacy links.
         checking.delete(node.key); edges.set(node.key,children);
+        status = soften(status);
         result.set(node.key,status); return status;
     };
     function checkLegacyRef(ref) {
@@ -140,6 +169,29 @@ export function resolveSummaryGraph(state) {
         return failure('source_changed',refFloor(ref)+'的原输入版本变化');
     }
     nodes.forEach(check);
+    // A summary marked as changed retires once a newer, unchanged one of the same kind covers all of its floors
+    // (the user regenerated it): the two must not both be injected.
+    const drifting = nodes.filter(n => n.saved && result.get(n.key)?.drift);
+    if (drifting.length) {
+        const floorCache = new Map();
+        const floorsOf = (node, seen = new Set()) => {
+            if (!node || seen.has(node.key)) return [];
+            if (floorCache.has(node.key)) return floorCache.get(node.key);
+            seen.add(node.key);
+            const floors = node.provenance
+                ? node.provenance.inputs.flatMap(input => input.kind === 'summary' ? floorsOf(byKey.get(input.id), seen) : [locateInput(state, input)])
+                : (state.chronicle?.links?.[node.hash]?.refs || []).map(ref => ref.floor);
+            const clean = [...new Set(floors.filter(Number.isInteger))];
+            floorCache.set(node.key, clean); return clean;
+        };
+        const fresh = nodes.filter(n => n.saved && result.get(n.key)?.code === 'valid');
+        for (const node of drifting) {
+            const own = floorsOf(node);
+            if (!own.length) continue;
+            const by = fresh.find(other => other.type === node.type && other.key !== node.key && own.every(floor => floorsOf(other).includes(floor)));
+            if (by) result.set(node.key, failure('replaced', '已有新生成的版本' + (by.title ? '「' + by.title + '」' : ''), [node.key]));
+        }
+    }
     const sourceById = new Map((state.chronicle?.sources || []).map(source => [source.id, source]));
     const scannedByFloor = new Map();
     for (const node of nodes) if (!node.saved) {
@@ -164,9 +216,12 @@ export function resolveSummaryGraph(state) {
             else if(!children.length && parent.type==='stage')coveredStoryHashes.add(hash);
         }
         // A floor shift can change scan hashes, but only the same identified source and consumed block match.
+        // A summary marked as changed still owns its floors: the edited text there is not new material.
+        const drifted = result.get(parent.key)?.drift;
         for(const input of parent.provenance?.inputs || []) if(input.kind==='tag'||input.kind==='body'){
-            const source=sourceById.get(input.sourceId);
-            for(const child of scannedByFloor.get(source?.floor) || []) if(getHash(child.content||'')===input.revision)cover(parent,child);
+            const floor=sourceById.has(input.sourceId) ? sourceById.get(input.sourceId).floor : locateInput(state,input);
+            for(const child of scannedByFloor.get(floor) || []) if(getHash(child.content||'')===input.revision
+                || (drifted && (input.kind==='body' || child.matchedTag===input.tag)))cover(parent,child);
         }
     }
     const graph = {signature,nodes,byKey,byHash,result,edges,coveredBy,coveredStoryHashes,coveredStageHashes,coveredEpicHashes};
@@ -176,7 +231,7 @@ export function getSummaryStatus(state,item,graph=resolveSummaryGraph(state)) {
     const node=(item?.id && graph.byKey.get(item.id)) || graph.nodes.find(n=>n.hash===item?.hash && (!item?.type || n.type===item.type));
     const status=node ? graph.result.get(node.key) : (state.chronicle?.links?.[item?.hash] || item?.provenance || item?.isGeneratedSummary) ? failure('source_missing','摘要记录已移除') : ok();
     const coveredBy=node ? graph.coveredBy.get(node.key)||[] : [];
-    return {...status,coveredBy,reason:!status.valid?status.reason:coveredBy.length?'已由 '+coveredBy.map(key=>graph.byKey.get(key)?.title||'上层总结').join('、')+' 覆盖，原记录保留':status.reason};
+    return {...status,coveredBy,reason:!status.valid || status.drift?status.reason:coveredBy.length?'已由 '+coveredBy.map(key=>graph.byKey.get(key)?.title||'上层总结').join('、')+' 覆盖，原记录保留':status.reason};
 }
 // Resolve current floors from stable sources, never from an inclusive start/end range.
 export function summarySourceFloors(state, item, graph = resolveSummaryGraph(state)) {
@@ -188,9 +243,7 @@ export function summarySourceFloors(state, item, graph = resolveSummaryGraph(sta
         if (node.provenance) {
             for (const input of node.provenance.inputs || []) {
                 if (input.kind === 'summary') visit(graph.byKey.get(input.id));
-                else if (input.kind === 'body' || input.kind === 'tag') {
-                    add(state.chronicle?.sources?.find(source => source.id === input.sourceId)?.floor ?? input.floor);
-                } else if (input.kind === 'legacy') add(input.ref?.floor);
+                else if (input.kind === 'body' || input.kind === 'tag') add(locateInput(state, input)); else if (input.kind === 'legacy') add(input.ref?.floor);
             }
         } else {
             const link = state.chronicle?.links?.[node.hash];

@@ -80,11 +80,16 @@ export function createSummaryTimelineUi({
 
     const openLink = (block, kind) => `<button type="button" class="bk-sum-link bk-tree-open" data-bakemono-summary-focus="${esc(keyOf(block))}" data-summary-type="${esc(kind)}">打开 ›</button>`;
 
+    // Changed source text is a note, not a failure: the summary stays in use until the user regenerates it.
+    const statusNote = status => !status.valid ? `${status.code === 'replaced' ? '已有新版本' : '需重建'}：${status.reason}`
+        : status.drift ? `原文有改动：${status.reason}` : '';
+    const flagged = status => !status.valid || !!status.drift;
+
     function storyRow(state, story) {
         const status = getSummaryStatus(state, { ...story, type: blockTypes.STORY });
         const floor = floorText(state, story);
-        return `<div class="bk-tree-story${status.valid ? '' : ' is-stale'}"><span class="bk-tree-no">${Number.isFinite(floor.first) ? `#${floor.first}` : '#?'}</span>
-            <span class="bk-tree-title"${status.valid ? '' : ` title="${esc(status.reason)}"`}>${esc(nameOf(story, blockTypes.STORY))}</span>${openLink(story, blockTypes.STORY)}</div>`;
+        return `<div class="bk-tree-story${status.valid ? '' : ' is-stale'}${status.drift ? ' is-drift' : ''}"><span class="bk-tree-no">${Number.isFinite(floor.first) ? `#${floor.first}` : '#?'}</span>
+            <span class="bk-tree-title"${flagged(status) ? ` title="${esc(statusNote(status))}"` : ''}>${esc(nameOf(story, blockTypes.STORY))}</span>${openLink(story, blockTypes.STORY)}</div>`;
     }
 
     function missingRow(floor) {
@@ -106,26 +111,26 @@ export function createSummaryTimelineUi({
         const open = openChapters.has(key);
         const status = getSummaryStatus(state, { ...stage, type: blockTypes.STAGE });
         const floor = floorText(state, stage);
-        return `<div class="bk-tree-chapter${status.valid ? '' : ' is-stale'}${open ? ' is-open' : ''}">
+        return `<div class="bk-tree-chapter${status.valid ? '' : ' is-stale'}${status.drift ? ' is-drift' : ''}${open ? ' is-open' : ''}">
             <div class="bk-tree-chapter-h">
                 <button type="button" class="bk-tree-head" data-bakemono-tree-toggle="chapter" data-tree-key="${esc(key)}" aria-expanded="${open}">
                     <span class="bk-tree-chev" aria-hidden="true">›</span>
                     <span class="bk-tree-main"><strong>${esc(nameOf(stage, blockTypes.STAGE))}</strong>
                     <span class="bk-sum-meta">${[floor.text, `${stories.length} 条摘要`].filter(Boolean).map(text => `<span>${esc(text)}</span>`).join('')}${loose ? '<span class="is-alert">还没收进卷</span>' : ''}</span>
-                    ${status.valid ? '' : `<span class="bk-tree-why">需重建：${esc(status.reason)}</span>`}</span>
+                    ${flagged(status) ? `<span class="bk-tree-why${status.valid ? ' is-note' : ''}">${esc(statusNote(status))}</span>` : ''}</span>
                 </button>${openLink(stage, blockTypes.STAGE)}
             </div>
             ${open ? storyList(state, key, stories) : ''}</div>`;
     }
 
-    function volumeNode({ key, kicker, title, meta = [], warn = '', loose = false, link = '', body }) {
+    function volumeNode({ key, kicker, title, meta = [], warn = '', note = '', loose = false, link = '', body }) {
         const open = !closedVolumes.has(key);
         return `<section class="bk-tree-volume${loose ? ' is-loose' : ''}${open ? ' is-open' : ''}">
             <div class="bk-tree-volume-h">
                 <button type="button" class="bk-tree-head" data-bakemono-tree-toggle="volume" data-tree-key="${esc(key)}" aria-expanded="${open}">
                     <span class="bk-tree-chev" aria-hidden="true">›</span>
                     <span class="bk-tree-main"><span class="bk-tree-kicker">${esc(kicker)}</span><strong>${esc(title)}</strong>
-                    <span class="bk-sum-meta">${meta.filter(Boolean).map(text => `<span>${esc(text)}</span>`).join('')}${warn ? `<span class="is-alert">${esc(warn)}</span>` : ''}</span></span>
+                    <span class="bk-sum-meta">${meta.filter(Boolean).map(text => `<span>${esc(text)}</span>`).join('')}${warn ? `<span class="is-alert">${esc(warn)}</span>` : ''}${note ? `<span class="is-note">${esc(note)}</span>` : ''}</span></span>
                 </button>${link}
             </div>
             ${open ? `<div class="bk-tree-volume-body">${body()}</div>` : ''}</section>`;
@@ -160,7 +165,8 @@ export function createSummaryTimelineUi({
         const epicBlocks = dedupeByHash([...getBlocksByType(blockTypes.EPIC), ...state.epicSummaries.map(summary => ({ ...summaryToBlock(summary), type: blockTypes.EPIC }))]);
         const byHash = new Map([...storyBlocks, ...stageBlocks, ...epicBlocks].map(block => [block.hash, block]));
         const graph = resolveSummaryGraph(state);
-        const isValid = (block, kind) => getSummaryStatus(state, { ...block, type: kind }, graph).valid;
+        const statusOf = (block, kind) => getSummaryStatus(state, { ...block, type: kind }, graph);
+        const isFlagged = (block, kind) => flagged(statusOf(block, kind));
 
         let records = [];
         try { records = getFloorIndex?.(state)?.records || []; } catch { records = []; }
@@ -177,7 +183,7 @@ export function createSummaryTimelineUi({
 
         const storiesOf = stage => (stage.sourceHashes || []).map(hash => byHash.get(hash)).filter(block => block && block.type !== blockTypes.STAGE && block.type !== blockTypes.EPIC);
         const staleOnly = view.filter === 'stale';
-        const chapterPasses = stage => !staleOnly || !isValid(stage, blockTypes.STAGE) || storiesOf(stage).some(story => !isValid(story, blockTypes.STORY));
+        const chapterPasses = stage => !staleOnly || isFlagged(stage, blockTypes.STAGE) || storiesOf(stage).some(story => isFlagged(story, blockTypes.STORY));
         const order = list => list.sort((a, b) => (floorText(state, a).first - floorText(state, b).first) * (view.ascending ? 1 : -1));
 
         // A volume's body: chapters and any nested volumes or loose stories it gathered directly.
@@ -196,11 +202,11 @@ export function createSummaryTimelineUi({
         const volumeOptions = (epic, ancestors = new Set()) => {
             const floor = floorText(state, epic);
             const chapterCount = (epic.sourceStageHashes || []).length;
-            const valid = isValid(epic, blockTypes.EPIC);
+            const status = statusOf(epic, blockTypes.EPIC);
             return {
                 key: keyOf(epic), kicker: '卷 · 多次总结', title: nameOf(epic, blockTypes.EPIC),
                 meta: [floor.text, chapterCount ? `${chapterCount} 章` : ''],
-                warn: valid ? '' : '需重建：' + getSummaryStatus(state, { ...epic, type: blockTypes.EPIC }, graph).reason,
+                warn: status.valid ? '' : statusNote(status), note: status.drift ? statusNote(status) : '',
                 link: openLink(epic, blockTypes.EPIC),
                 body: volumeBody(epic, ancestors),
             };
@@ -213,13 +219,13 @@ export function createSummaryTimelineUi({
         const listedInChapter = new Set([...stageBlocks, ...epicBlocks].flatMap(block => block.sourceHashes || []));
         const rootEpics = order(epicBlocks.filter(epic => !coveredStage.has(epic.hash) && !listedInVolume.has(epic.hash)));
         const looseStages = order(stageBlocks.filter(stage => !coveredStage.has(stage.hash) && !listedInVolume.has(stage.hash) && chapterPasses(stage)));
-        const looseStories = storyBlocks.filter(story => !graph.coveredStoryHashes.has(story.hash) && !listedInChapter.has(story.hash) && (!staleOnly || !isValid(story, blockTypes.STORY)));
+        const looseStories = storyBlocks.filter(story => !graph.coveredStoryHashes.has(story.hash) && !listedInChapter.has(story.hash) && (!staleOnly || isFlagged(story, blockTypes.STORY)));
 
         const rootFactories = [];
         if (view.filter !== 'loose') {
             for (const epic of rootEpics) {
                 const options = volumeOptions(epic);
-                if (staleOnly && !options.warn && !options.body().includes('is-stale')) continue;
+                if (staleOnly && !options.warn && !options.note && !/is-(stale|drift)/.test(options.body())) continue;
                 rootFactories.push(() => volumeNode(options));
             }
         }

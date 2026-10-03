@@ -3872,6 +3872,7 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .bk-sum-tag { flex: none; font-weight: 500; }
 #bakemono-workbench-root .bk-sum-tag.is-new { color: var(--ns-accent); }
 #bakemono-workbench-root .bk-sum-tag.is-alert { color: var(--ns-alert); }
+#bakemono-workbench-root :is(.bk-sum-tag.is-note, .bk-sum-meta .is-note) { color: var(--ns-faint); }
 #bakemono-workbench-root .bk-sum-ttl { display: block; margin-top: 2px; font: 600 1.07em/1.45 var(--ns-serif); color: var(--ns-text); }
 #bakemono-workbench-root .bk-sum-lead { display: -webkit-box; margin-top: 2px; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: .94em; line-height: 1.65; color: var(--ns-muted); }
 #bakemono-workbench-root .bk-sum-story.is-open .bk-sum-lead { display: none; }
@@ -4039,6 +4040,7 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .bk-tree .bk-tree-open { flex: none; margin-top: 3px !important; }
 #bakemono-workbench-root .bk-tree-volume-h .bk-tree-open { margin-top: 16px !important; }
 #bakemono-workbench-root .bk-tree-why { display: block; margin-top: 2px; font-size: .87em; color: var(--ns-alert); }
+#bakemono-workbench-root .bk-tree-why.is-note { color: var(--ns-faint); }
 
 #bakemono-workbench-root .bk-tree-chapter { position: relative; }
 #bakemono-workbench-root .bk-tree-chapter::before { content: ""; position: absolute; left: -19px; top: 18px; width: 7px; height: 7px; border: 1.5px solid var(--ns-accent); border-radius: 50%; background: var(--bk-paper); }
