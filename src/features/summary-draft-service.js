@@ -115,6 +115,7 @@ export function createSummaryDraftService({
     async function persistSummaryStateDurably(recoveryMessageIds = []) {
         const state=ensureState();
         const recovery = saveState({ recoveryMessageIds });
+        if (recovery?.status === 'not-ready') throw new Error('聊天还没载入完，这次没有保存，请稍后再试');
         const snapshot=snapshots.get(state);
         if(snapshot)snapshot.prepared=readSummaryState(state);
         if (recovery?.status === 'error') {

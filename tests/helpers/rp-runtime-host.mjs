@@ -21,7 +21,7 @@ export function runtimeHost() {
     const noop = () => {}, empty = () => '', list = () => [];
     const context = vm.createContext({
         createRpCoreService, createRpExtractionFlow, createInjectionService, createMemoryOrchestrator,
-        ensureState: () => state, chat, getSummaryRecoveryChatIdentity: () => 'chat-A', saveState: () => ({}), saveChatConditional: async () => {},
+        ensureState: () => state, isChatReady: () => true, chat, getSummaryRecoveryChatIdentity: () => 'chat-A', saveState: () => ({}), saveChatConditional: async () => {},
         rpPromptLibrary: host.library, callGenerationModel: async () => { throw Error('No real model calls in this test'); },
         getCharacterReferenceContext: () => '', runVisibleOperation: async (_label, run) => run(), isBusy: false,
         scheduleRenderAll: noop, console: { warn: message => warnings.push(message) },

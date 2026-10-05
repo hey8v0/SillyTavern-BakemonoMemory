@@ -1,9 +1,9 @@
-import { chat, chat_metadata, extension_prompt_roles, extension_prompt_types, eventSource, event_types, generateRaw, itemizedParams, itemizedPrompts, saveChatConditional, saveSettingsDebounced, setExtensionPrompt } from '../../../../script.js';
-import { extension_settings, getContext, saveMetadataDebounced } from '../../../extensions.js';
-import { hideChatMessageRange } from '../../../chats.js';
+import { chat, chat_metadata, extension_prompt_roles, extension_prompt_types, eventSource, event_types, generateRaw, isChatSaving, itemizedParams, itemizedPrompts, saveChat as hostSaveChat, saveChatConditional as hostSaveChatConditional, saveSettingsDebounced, setExtensionPrompt } from '../../../../script.js';
+import { extension_settings, getContext } from '../../../extensions.js';
 import { getTokenCountAsync } from '../../../tokenizers.js';
 import { getImageSizeFromDataURL } from '../../../utils.js';
 import { runChatSwitchFlow } from './src/core/chat-switch.js';
+import { createChatGate } from './src/core/chat-ready.js';
 import { captureChronicle } from './src/memory/story-state.js';
 import {createSummarySourceService} from './src/features/summary-source-service.js';
 import { createStoryToolsUi } from './src/features/story-tools-ui.js';
@@ -245,6 +245,76 @@ function getSummaryRecoveryStorage() {
     };
 }
 
+// Every write to the chat file goes through these. While SillyTavern is still reading a chat (after a switch or a
+// reload the chat is empty and the metadata blank), a save would overwrite the file with nothing; see chat-ready.js.
+const chatGate = createChatGate({ getContext, getMetadata: () => chat_metadata, getChat: () => chat });
+const isChatReady = () => chatGate.isReady();
+function skippedWrite(what) {
+    console.warn(`[BakemonoMemory] ${what} skipped: the chat is not loaded yet`);
+}
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+// SillyTavern's saveChatConditional first waits at least 100 ms, then saves whichever chat is open by then: a
+// character picked inside that window had its file overwritten with nothing. saveChat reads the chat, metadata and
+// file name the moment it is called, so a running save is waited out here and the chat checked again right before.
+// Group chats have no such entry point (saveGroupChat is not exported) and keep SillyTavern's own path.
+async function saveChatConditional() {
+    const owner = chatGate.token();
+    if (!owner) {
+        skippedWrite('chat save');
+        return false;
+    }
+    if (getContext()?.groupId) {
+        await hostSaveChatConditional();
+        return true;
+    }
+    for (let tries = 0; isChatSaving && tries < 200; tries++) await pause(50);
+    if (!chatGate.sameAs(owner)) {
+        skippedWrite('chat save');
+        return false;
+    }
+    try {
+        await hostSaveChat();
+        return true;
+    } catch (error) {
+        console.error('[BakemonoMemory] chat save failed', error);
+        return false;
+    }
+}
+let metadataSaveTimer = null;
+// Like SillyTavern's saveMetadataDebounced (it saves the whole chat file), but the chat is checked again when the
+// timer fires: the same character can be reopened within the second, which its own check (character id) lets through.
+function saveMetadataDebounced() {
+    clearTimeout(metadataSaveTimer);
+    const owner = chatGate.token();
+    if (!owner) {
+        metadataSaveTimer = null;
+        skippedWrite('metadata save');
+        return;
+    }
+    metadataSaveTimer = setTimeout(() => {
+        metadataSaveTimer = null;
+        if (!chatGate.sameAs(owner)) return skippedWrite('delayed metadata save');
+        void saveChatConditional();
+    }, 1000);
+}
+// SillyTavern's hideChatMessageRange ends in saveChatConditional (see above); this does the same marking and saves
+// through the guarded path.
+async function hideChatMessageRange(start, end, unhide) {
+    if (!chatGate.isReady()) {
+        skippedWrite('hiding floors');
+        return;
+    }
+    if (Number.isNaN(Number(start))) return;
+    const last = end || start;
+    for (let messageId = Number(start); messageId <= Number(last); messageId++) {
+        const message = chat[messageId];
+        if (!message) continue;
+        message.is_system = !unhide;
+        document.querySelector(`#chat .mes[mesid="${messageId}"]`)?.setAttribute('is_system', String(!unhide));
+    }
+    await saveChatConditional();
+}
+
 const summaryRecoveryJournal = createSummaryRecoveryJournal({
     getStorage: getSummaryRecoveryStorage,
     getChatId: getSummaryRecoveryChatIdentity,
@@ -303,6 +373,10 @@ function confirmMessage(message) {
 
 
 function saveState(options = {}) {
+    if (!chatGate.isReady()) {
+        skippedWrite('state save');
+        return { status: 'not-ready', revision: 0 };
+    }
     const state = chat_metadata?.[STORAGE_KEY] || null;
     if (!state) {
         const error = new Error('当前聊天状态尚未连接到 SillyTavern 正式元数据，已阻止空保存');
@@ -479,6 +553,7 @@ const {
 
 const chatStateService = createChatStateService({
     defaultState,
+    isChatReady,
     getChatMetadata: () => chat_metadata,
     storageKey: STORAGE_KEY,
     extensionSettings: extension_settings,
@@ -2053,6 +2128,7 @@ const {
 
 const memoryOrchestrator = createMemoryOrchestrator({
     rpExtractionFlow,
+    isChatReady,
     ensureState,
     isBusy: () => isBusy,
     scanBakemonoBlocks,
@@ -2415,6 +2491,8 @@ async function initWorkbench() {
 }
 
 function reconcileSummaryRecovery(state = ensureState()) {
+    // The crash copy belongs to one chat file and is applied only once that file has been read.
+    if (!chatGate.isReady()) return { status: 'not-ready' };
     const recovery = summaryRecoveryJournal.reconcile(state, chat);
     summaryTaskQueue.recoverInterruptedTasks(state);
     if (['recovered', 'revision-only'].includes(recovery.status)) {
@@ -2450,6 +2528,9 @@ function scheduleForegroundRuntimeResume(reason = '恢复前台') {
     foregroundResumeTimer = setTimeout(async () => {
         foregroundResumeTimer = null;
         if (document.visibilityState === 'hidden') return;
+        // Still reading the chat (the tavern was reopened, or a character picked): CHAT_CHANGED runs all this once it
+        // is loaded.
+        if (!chatGate.isReady()) return;
         if (isBusy) {
             foregroundResumeWhenIdle = true;
             return;
@@ -2477,31 +2558,46 @@ const vectorAutoRecall = createVectorAutoRecall({
 });
 
 async function init() {
+    // Registered first, so every other handler of these events already sees the chat as loaded.
+    eventSource.on(event_types.CHAT_CHANGED, () => { chatGate.markLoaded(); });
+    if (event_types.CHAT_LOADED) eventSource.on(event_types.CHAT_LOADED, () => { if (!chatGate.isReady()) chatGate.markLoaded(); });
+    const chatOpen = chatGate.markLoadedIfSettled();
     ensureGlobalSettings();
     const initialState = ensureState();
-    reconcileSummaryRecovery(initialState);
-    recoverNewerSharedConfigurationFromState(initialState);
-    bootstrapSharedConfigurationFromCurrentChat(initialState);
-    syncGlobalActiveConfigToState(initialState, { force: true });
+    if (chatOpen) {
+        reconcileSummaryRecovery(initialState);
+        recoverNewerSharedConfigurationFromState(initialState);
+        bootstrapSharedConfigurationFromCurrentChat(initialState);
+        syncGlobalActiveConfigToState(initialState, { force: true });
+    }
     await initWorkbench();
     globalThis.bakemonoMemoryRecallInterceptor = vectorAutoRecall.intercept;
     vectorAutoRecall.bind(eventSource, event_types);
     syncInjection();
-    if (ensureState().vectorMemory.enabled) {
-        const state = ensureState();
-        if (state.vectorMemory.lastIndexedSignature !== getVectorSourceSignature(state)) {
-            markVectorIndexDirty('初始化检测到聊天变更', state);
-        } else {
-            scheduleVectorAutoIndex('初始化');
+    // A chat still loading gets all of this from CHAT_CHANGED.
+    if (chatGate.isReady()) {
+        if (ensureState().vectorMemory.enabled) {
+            const state = ensureState();
+            if (state.vectorMemory.lastIndexedSignature !== getVectorSourceSignature(state)) {
+                markVectorIndexDirty('初始化检测到聊天变更', state);
+            } else {
+                scheduleVectorAutoIndex('初始化');
+            }
         }
-    }
 
-    scheduleAutoHideRecent('init');
-    // Chats saved before 1.25.1 carry their vectors inside the chat file; move them out once the chat is open.
-    vectorMemoryService.scheduleSidecarSave(ensureState());
+        scheduleAutoHideRecent('init');
+        // Chats saved before 1.25.1 carry their vectors inside the chat file; move them out once the chat is open.
+        vectorMemoryService.scheduleSidecarSave(ensureState());
+    }
 
     eventSource.on(event_types.CHAT_CHANGED, () => {
         injectionPreview.close({ restoreFocus: false });
+        // No chat open (the character list, a closed chat): only clear what the previous chat injected.
+        if (!chatGate.isReady()) {
+            syncInjection();
+            scheduleRenderAll();
+            return;
+        }
         return runChatSwitchFlow({
             getState: ensureState,
             syncConfig: state => {

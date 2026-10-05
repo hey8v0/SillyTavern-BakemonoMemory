@@ -25,6 +25,7 @@ export function createMemoryOrchestrator({
     scheduleRenderAll,
     shouldRunTurnProcessing,
     rpExtractionFlow,
+    isChatReady = () => true,
 } = {}) {
     const pendingAutoSummaries = new WeakSet();
     async function runRp(method) {
@@ -35,6 +36,7 @@ export function createMemoryOrchestrator({
         }
     }
     async function maybeRunAutoSummary() {
+        if (!isChatReady()) return;
         const state = ensureState();
         if (!state.automation.enabled || isBusy() || pendingAutoSummaries.has(state)) {
             return;
@@ -99,6 +101,8 @@ export function createMemoryOrchestrator({
     }
     
     async function runMemoryOrchestrator(reason = '更新', options = {}) {
+        // A chat SillyTavern is still reading has nothing to process, and nothing may be saved into it.
+        if (!isChatReady()) return {};
         if (options.scan !== false) {
             scanBakemonoBlocks({ persist: false, render: false });
         }

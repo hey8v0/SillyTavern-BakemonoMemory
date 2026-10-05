@@ -732,7 +732,8 @@ test('state normalization remains compatible with SillyTavern metadata objects',
     assert.doesNotMatch(ensureSource, /normalizedChatStates/);
     assert.match(source, /from '.\/src\/core\/state-shape\.js'/);
     assert.match(ensureSource, /fillMissingDefaults\(state, defaultState\)/);
-    assert.match(ensureSource, /ensureCurrentChatStateSlot\(\{/);
+    assert.match(ensureSource, /resolveChatStateSlot\(\{\s*isChatReady,/);
+    assert.match(chatStateServiceSource, /return ensureCurrentChatStateSlot\(\{ getChatMetadata, chatMetadata, storageKey, createState \}\);/);
     assert.match(ensureSource, /normalizeArrayFields\(state, \['drafts', 'history', 'taskQueue', 'autoSummaryTransactions', 'memoryRecords'\]\)/);
     assert.match(ensureSource, /ensureObjectField\(state, 'automation', defaultAutomation\)/);
     assert.match(ensureSource, /state\.scanPreview = \(Array\.isArray\(state\.scanPreview\)/);
@@ -928,7 +929,7 @@ test('first shared-settings upgrade preserves the current chat before forced syn
 
 test('chat changes keep their side effects in one ordered coordinator', () => {
     assert.match(source, /from '.\/src\/core\/chat-switch\.js'/);
-    assert.match(source, /eventSource\.on\(event_types\.CHAT_CHANGED, \(\) => \{\s*injectionPreview\.close\(\{ restoreFocus: false \}\);\s*return runChatSwitchFlow\(\{/);
+    assert.match(source, /eventSource\.on\(event_types\.CHAT_CHANGED, \(\) => \{\s*injectionPreview\.close\(\{ restoreFocus: false \}\);[\s\S]{0,260}?if \(!chatGate\.isReady\(\)\) \{\s*syncInjection\(\);\s*scheduleRenderAll\(\);\s*return;\s*\}\s*return runChatSwitchFlow\(\{/);
     assert.match(source, /getState:\s*ensureState/);
     assert.match(source, /scheduleAutoHide:\s*scheduleAutoHideRecent/);
     assert.match(source, /markVectorDirty:\s*markVectorIndexDirty/);

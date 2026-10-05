@@ -1,4 +1,5 @@
 import { ensureChronicle } from '../memory/story-state.js';
+import { detachedChatState } from './chat-ready.js';
 import { removeRpVectorCache } from '../vector/source-policy.js';
 import { migrateLegacyRuleDefaults } from '../config/legacy-rule-defaults.js';
 
@@ -21,6 +22,15 @@ export function ensureCurrentChatStateSlot({
         isNewChatState,
         state: currentChatMetadata[storageKey],
     };
+}
+
+// While SillyTavern is still reading the chat, nothing is attached to its metadata (see chat-ready.js).
+export function resolveChatStateSlot({ isChatReady, getChatMetadata, chatMetadata, storageKey, createState } = {}) {
+    if (typeof isChatReady === 'function' && !isChatReady()) {
+        const detached = detachedChatState(getChatMetadata?.() || chatMetadata, createState);
+        return { isNewChatState: detached.created, state: detached.state, detached: true };
+    }
+    return ensureCurrentChatStateSlot({ getChatMetadata, chatMetadata, storageKey, createState });
 }
 
 export function shouldSanitizeChatState(previousLength, chatLength) {
@@ -77,6 +87,7 @@ export function createChatStateService({
     getActiveCoveredStageHashes,
     getInjectionMemoryParts,
     installCompactStateSerializer,
+    isChatReady,
 } = {}) {
     const sanitizedChatLengths = new WeakMap();
     const maxStoredScanPreviewItems = 240;
@@ -100,7 +111,8 @@ export function createChatStateService({
     }
     
     function ensureState() {
-        const { isNewChatState, state } = ensureCurrentChatStateSlot({
+        const { isNewChatState, state } = resolveChatStateSlot({
+            isChatReady,
             getChatMetadata,
             chatMetadata,
             storageKey,
