@@ -18,7 +18,7 @@ import { memoryStrategies, normalizeWorkflowState, stageSourceModes, workflowMod
 import { migrateBuiltInInjectionDefaults, normalizeInjectionMemoryBody, normalizeLineEndings, renderInjectionTemplate } from './src/shared/injection-template.js';
 import { dedupeByHash, unique } from './src/shared/collections.js';
 import { formatBlocksForPrompt, getPromptStructureExcerpt, migrateBuiltInStructuredPrompt, migrateEpicPromptTimeSpan, migrateStagePromptTimeSpan, renderGenerationPrompt, stripPostProcessNoise } from './src/shared/prompt-utils.js';
-import { countKeywordHits, extractAllTaggedBlocks, extractConfiguredTagBlocks, extractTaggedContent, filterTextByConfiguredTags, getHash, matchesAnyKeyword, normalizeSearchText, parseList, removeExactTextBlock, stripConfiguredTags, stripTableEditTags } from './src/shared/text.js';
+import { countKeywordHits, extractAllTaggedBlocks, extractConfiguredTagBlocks, extractTaggedContent, filterTextByConfiguredTags, getHash, matchesAnyKeyword, normalizeSearchText, parseList, parseTagRule, removeExactTextBlock, stripConfiguredTags, stripTableEditTags } from './src/shared/text.js';
 import { parseMissingSummaryBatchResult } from './src/summary/draft-parser.js';
 import { getMultiSummaryLabel, getNextMultiSummaryLevel, getSummaryKindLabel, getSummaryLevel } from './src/summary/levels.js';
 import { buildFloorMemoryIndex, createMemoryOrchestrationPlan } from './src/memory/floor-memory-index.js';
@@ -610,6 +610,7 @@ const contentBlockService = createContentBlockService({
     parseList,
     stripConfiguredTags,
     extractConfiguredTagBlocks,
+    parseTagRule,
     matchesAnyKeyword,
     blockTypes,
     workflowModes,

@@ -1,5 +1,6 @@
 import { sourceSnapshot, normalizeEvidenceText } from './source.js';
 import { readStoryDate } from './clock.js';
+import { parseTagRule, readBlockTitle } from '../shared/text.js';
 
 const list = value => String(value || '').split(/[\s,，;；]+/).filter(Boolean);
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -11,9 +12,13 @@ export function readSummarySources(raw, identity, state) {
     const excluded = ['script', 'style', 'thinking', 'think', 'rpEvents', 'tableEdit',
         ...list(state.scanRules?.excludeTags), ...list(state.turnSummary?.excludeTags), ...list(state.vectorMemory?.excludeTags)];
     const result = [];
-    for (const tag of selected.filter(tag => /^[\p{L}][\p{L}\p{N}_-]*$/u.test(tag) && !excluded.some(value => value.toLowerCase() === tag))) {
+    for (const tag of selected) {
+        // `details:章节摘要` reads only the <details> blocks with that title (see parseTagRule).
+        const { name, title } = parseTagRule(tag);
+        if (!/^[\p{L}][\p{L}\p{N}_-]*$/u.test(name) || excluded.some(value => value.toLowerCase() === name)) continue;
         let index = 0;
-        for (const match of raw.matchAll(new RegExp('<' + escape(tag) + '\\b[^>]*>([\\s\\S]*?)<\\/' + escape(tag) + '\\s*>', 'gi'))) {
+        for (const match of raw.matchAll(new RegExp('<' + escape(name) + '\\b[^>]*>([\\s\\S]*?)<\\/' + escape(name) + '\\s*>', 'gi'))) {
+            if (title && !readBlockTitle(match[0]).toLowerCase().includes(title)) continue;
             // Restrict free-text evidence to the header and ordinary narrative sections.
             const end = match[1].search(/(?:➤|▶|►|#{1,4}|【)\s*(?:[^\p{L}]{0,8})?(?:第四面墙|墙外|小剧场|未回收伏笔|伏笔|推测|推理|暗线|作者的话)/u);
             const content = end < 0 ? match[1] : match[1].slice(0, end);

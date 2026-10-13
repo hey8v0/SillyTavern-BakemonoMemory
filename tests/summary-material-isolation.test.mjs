@@ -77,6 +77,7 @@ test('a valid replacement can summarize its floor without the retained stale rec
             { hash: 'new-4', messageId: 4, sourceKind: 'raw', content: f.chat[4].mes },
         ]) } });
     await f.service.commitDraft(draft.id);
+    f.chat.push({ mes: 'next message', is_user: true, swipe_id: 0 }); // floor 9 is no longer the reply that can be rerolled
     f.state.stageSourceMode = 'backfill'; f.state.automation = { enabled: true, floorInterval: 10, mode: 'draft' };
     assert.equal(f.selectors.getStageMaterialOverview().issues.length, 1);
     assert.equal(f.state.storySummaries.length, 11);

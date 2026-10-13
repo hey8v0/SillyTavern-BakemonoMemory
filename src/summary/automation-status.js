@@ -26,9 +26,16 @@ export function stageAutomationStatus(state, materials, { batch = materials.targ
     const gaps = findTargetContinuityGaps(batch, records, { includeLeading: false });
     if (gaps.length) return status('gap', '缺少摘要，自动总结暂停', gaps.slice(0, 8).map(item => '第 ' + item.id + ' 楼').join('、'),
         { tab: 'scan', label: '检查缺失摘要' });
-    const count = auto.triggerType === 'chars' ? materials.targets.reduce((n, b) => n + String(b.content || '').length, 0) : materials.targets.length;
+    const measure = list => auto.triggerType === 'chars' ? list.reduce((n, b) => n + String(b.content || '').length, 0) : list.length;
+    const count = measure(materials.targets);
     const threshold = auto.triggerType === 'chars' ? auto.charInterval || 12000 : auto.floorInterval || 10;
     if (count < threshold) return status('waiting', '还差 ' + (threshold - count).toLocaleString() + (auto.triggerType === 'chars' ? ' 字' : ' 条摘要'));
+    // Automatic runs leave out the last reply while it can still be rerolled (see summary-selectors).
+    const open = materials.openFloor;
+    const touchesOpen = block => (block.sourceMessageIds?.length ? block.sourceMessageIds : [block.messageId]).includes(open);
+    if (Number.isInteger(open) && open >= 0 && measure(materials.targets.filter(block => !touchesOpen(block))) < threshold) {
+        return status('holding', '等下一条回复后整理', '第 ' + open + ' 楼是最新回复，可能还会重 roll；发出下一条消息后再总结');
+    }
     if (busy) return status('busy', '等待当前处理完成');
     if (auto.mode === 'remind') return status('remind', '已达到提醒条件', '', { tab: 'preview', label: '前往总结' });
     return status('ready', '已就绪，等待执行', materials.issues?.length ? `另有 ${materials.issues.length} 条异常摘要，未用于本批` : '');

@@ -96,8 +96,8 @@ export function createHubAutomationUi({
             line: stage.title,
             copy: automationEnabled ? modeName : `没整理 ${stage.currentValue.toLocaleString()} ${stage.unit}`,
             bar: stage.progress,
-            state: !automationEnabled ? '没开' : stageAlert ? '要处理' : stage.runtime.code === 'draft' ? '有草稿' : stage.runtime.code === 'waiting' ? '在攒' : '正常',
-            tone: !automationEnabled ? 'off' : stageAlert ? 'alert' : stage.runtime.code === 'waiting' || stage.runtime.code === 'draft' ? 'wait' : 'ok',
+            state: !automationEnabled ? '没开' : stageAlert ? '要处理' : stage.runtime.code === 'draft' ? '有草稿' : ['waiting', 'holding'].includes(stage.runtime.code) ? '在攒' : '正常',
+            tone: !automationEnabled ? 'off' : stageAlert ? 'alert' : ['waiting', 'holding', 'draft'].includes(stage.runtime.code) ? 'wait' : 'ok',
         });
 
         const lastFloor = ids => Math.max(-1, ...(ids || []).map(Number).filter(Number.isFinite));

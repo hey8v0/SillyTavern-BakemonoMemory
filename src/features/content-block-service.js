@@ -4,6 +4,7 @@ export function createContentBlockService({
     parseList,
     stripConfiguredTags,
     extractConfiguredTagBlocks,
+    parseTagRule = tag => ({ key: String(tag || '').trim() }),
     matchesAnyKeyword,
     blockTypes,
     workflowModes,
@@ -116,7 +117,7 @@ export function createContentBlockService({
         if (segment?.mode !== 'full') {
             return 'tag';
         }
-        const includeTags = parseList(getState().scanRules.includeTags).map(tag => tag.toLowerCase());
+        const includeTags = parseList(getState().scanRules.includeTags).map(tag => parseTagRule(tag).key.toLowerCase());
         const matchedTag = String(segment.matchedTag || '').toLowerCase();
         return includeTags.includes(matchedTag) ? 'tag' : 'raw';
     }

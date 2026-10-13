@@ -62,14 +62,24 @@ export function createSummarySelectors({
         return floors;
     }
 
-    // newOnly (automatic runs): skip floors a saved summary already took. A summary whose sources went stale is
-    // shown for the user to rebuild; it is never redone from the first floor on its own.
+    // The last reply can still be rerolled (SillyTavern swipes only the last message). Automatic runs leave it out
+    // until the next message settles it, so a reroll never pulls the source out from under a running summary.
+    function openLatestFloor() {
+        const chat = getChat?.() || [];
+        const last = chat.length - 1;
+        return last > 0 && chat[last] && !chat[last].is_user ? last : -1;
+    }
+
+    // newOnly (automatic runs): skip floors a saved summary already took, and the reply that may still be rerolled.
+    // A summary whose sources went stale is shown for the user to rebuild; it is never redone from the first floor
+    // on its own.
     function getUnsummarizedStoryBlocks({includeCovered = false, newOnly = false} = {}) {
         const state = getState();
         if(getChat)refreshMemoryLinks(state,getChat());
         const graph = resolveSummaryGraph(state);
         const covered = graph.coveredStoryHashes;
         const claimed = newOnly ? claimedFloors(state, graph) : null;
+        const open = newOnly ? openLatestFloor() : -1;
         return getStoryMaterialBlocks().filter(block => (includeCovered || !covered.has(block.hash))
             && !inspectSummaryMaterials([block]).invalid.length && getSummaryStatus(state, block, graph).valid)
             .map(block => {
@@ -77,7 +87,8 @@ export function createSummarySelectors({
                 return ids.length ? { ...block, messageId: ids[0], sourceMessageIds: ids,
                     sourceStart: ids[0], sourceEnd: ids.at(-1), sourceSortKey: ids[0] } : block;
             })
-            .filter(block => !claimed || !block.sourceMessageIds?.length || !block.sourceMessageIds.every(id => claimed.has(id)));
+            .filter(block => !claimed || !block.sourceMessageIds?.length || !block.sourceMessageIds.every(id => claimed.has(id)))
+            .filter(block => open < 0 || !(block.sourceMessageIds?.length ? block.sourceMessageIds : [block.messageId]).includes(open));
     }
 
     function getStageMaterialOverview({newOnly = false} = {}) {
@@ -96,7 +107,8 @@ export function createSummarySelectors({
         });
         const invalid = issues.map(issue => issue.reason);
         return { sourceMode: getStageSourceMode(), targets, totalCount: materials.length,
-            coveredCount: materials.length - targets.length - invalid.length, excludedCount, invalid, issues };
+            coveredCount: materials.length - targets.length - invalid.length, excludedCount, invalid, issues,
+            openFloor: openLatestFloor() };
     }
 
     function getUnsummarizedStageBlocks({includeCovered = false} = {}) {

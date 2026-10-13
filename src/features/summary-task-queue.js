@@ -110,12 +110,18 @@ export function createSummaryTaskQueue({
                         continue;
                     }
                     const inputSnapshot = task.metadata?.inputSnapshot;
+                    // An automatic task whose source moved on (a reroll, an edit) is dropped without a draft and
+                    // without pausing the queue: the next automatic run picks the material again from the chat.
+                    const automatic = task.trigger === 'auto';
+                    const sourceMoved = message => {
+                        if (!automatic) { state.taskQueuePaused=true; return new Error(message); }
+                        return new Error('来源楼层在总结期间有变化（例如重 roll），这次结果没有保存；之后的自动总结会按新内容重新整理。');
+                    };
                     try { if(inputSnapshot)summarySources?.validate(inputSnapshot,state); }
-                    catch(error) { state.taskQueuePaused=true; throw error; }
+                    catch(error) { throw sourceMoved(error.message); }
                     const sourceSignature = getTaskSourceSignature(task);
                     if (!inputSnapshot && task.metadata?.sourceFingerprint && task.metadata.sourceFingerprint !== sourceSignature) {
-                        state.taskQueuePaused=true;
-                        throw new Error('任务排队后来源正文已变化，请重新选择材料生成，不要重试旧提示词。');
+                        throw sourceMoved('任务排队后来源正文已变化，请重新选择材料生成，不要重试旧提示词。');
                     }
                     const existingDraft = (state.drafts || []).find(draft => draft.metadata?.queueTaskId === task.id);
                     activeController = new AbortController();
@@ -136,8 +142,7 @@ export function createSummaryTaskQueue({
                     try { if(inputSnapshot)summarySources?.validate(inputSnapshot,state); }
                     catch(error) { inputError = error.message; }
                     if (!inputSnapshot && sourceSignature !== getTaskSourceSignature(task)) {
-                        state.taskQueuePaused=true;
-                        throw new Error('生成期间来源正文或回复版本已变化，本次返回未写入，请重新选择材料生成。');
+                        throw sourceMoved('生成期间来源正文或回复版本已变化，本次返回未写入，请重新选择材料生成。');
                     }
                     if (cancelledQueueTaskIds.has(task.id)) {
                         cancelledQueueTaskIds.delete(task.id);
@@ -148,6 +153,7 @@ export function createSummaryTaskQueue({
                         renderTaskQueueProgress();
                         continue;
                     }
+                    if (automatic && inputError) throw sourceMoved(inputError);
                     if (task.trigger === 'missing_summary_batch') {
                         const items = parseMissingSummaryBatchResult(rawResult, task, normalizeGeneratedBakemono);
                         if (!items.length) {
