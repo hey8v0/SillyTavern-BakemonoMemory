@@ -118,7 +118,7 @@ export function buildFloorMemoryIndex({ messages = [], state = {} } = {}) {
     }
 
     // 开场白 without a summary of its own is recorded with the first reply, so it is never a gap.
-    const opening = openingFloors(Array.isArray(messages) ? messages : []);
+    const opening = openingFloors(Array.isArray(messages) ? messages : [], { hidden: hiddenIds });
     const firstReply = [...floors.values()].filter(floor => !opening.includes(floor.id) && floor.id > (opening.at(-1) ?? -1))
         .sort((a, b) => a.id - b.id)[0];
     for (const id of opening) {

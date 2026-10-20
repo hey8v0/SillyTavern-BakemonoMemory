@@ -2,13 +2,15 @@
 // no summary, table edits or state events of their own. They are recorded together with the first reply instead.
 
 // Only once the user has written something: until then a lone character message is simply the latest reply.
-export function openingFloors(chat = []) {
+// `hidden`: floors the plugin hid (楼层收纳). SillyTavern marks a hidden message as a system one, but a hidden
+// 开场白 is still the 开场白.
+export function openingFloors(chat = [], { hidden = null } = {}) {
     const floors = [];
     for (let index = 0; index < chat.length; index++) {
         const message = chat[index];
         if (!message) continue;
         if (message.is_user) return floors;
-        if (!message.is_system && String(message.mes || '').trim()) floors.push(index);
+        if ((!message.is_system || hidden?.has(index)) && String(message.mes || '').trim()) floors.push(index);
     }
     return [];
 }

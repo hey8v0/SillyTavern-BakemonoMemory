@@ -1,6 +1,7 @@
 import {activeStoryCoverage, isMemoryCurrent} from '../memory/story-state.js';
 import {resolveSummaryGraph, getSummaryStatus, summarySourceFloors} from '../memory/summary-provenance.js';
 import {inspectSummaryMaterials} from '../summary/material-quality.js';
+import {openingFloors} from '../shared/opening.js';
 export function createSummaryBackfillController({
     query,
     getIsBusy,
@@ -151,12 +152,20 @@ export function createSummaryBackfillController({
             }
         }
         const targets = [];
+        // 开场白 is recorded with the first reply, so the floor index never counts it as missing; neither does 补写,
+        // unless the range names it.
+        const pluginHidden = new Set([...(state.hiddenMessageIds || []), ...(state.customHiddenMessageIds || []),
+            ...(state.autoHideRecent?.managedMessageIds || [])].map(Number));
+        const opening = new Set(openingFloors(sourceChat, { hidden: pluginHidden }));
 
         sourceChat.forEach((message, messageId) => {
             if (rangeIds && !rangeIds.has(messageId)) {
                 return;
             }
             if (!message?.mes || message.is_user || (message.is_system && !includeHidden)) {
+                return;
+            }
+            if (opening.has(messageId) && !rangeIds) {
                 return;
             }
             if (rememberedFloors.has(messageId) || messageHasConfiguredSummary(message, state)) {

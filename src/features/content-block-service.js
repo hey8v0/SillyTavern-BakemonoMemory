@@ -4,7 +4,7 @@ export function createContentBlockService({
     parseList,
     stripConfiguredTags,
     extractConfiguredTagBlocks,
-    parseTagRule = tag => ({ key: String(tag || '').trim() }),
+    parseTagRule = tag => ({ name: String(tag || '').trim(), key: String(tag || '').trim() }),
     matchesAnyKeyword,
     blockTypes,
     workflowModes,
@@ -31,6 +31,15 @@ export function createContentBlockService({
             .trim();
     }
 
+    // 补写缺失摘要 writes <bakemono> blocks into the floor, and 补写 counts them as the floor's summary. Read them
+    // even when the reading tags name another format, unless they overlap a block those tags did read.
+    function withWrittenSummaries(text, segments, includeTags) {
+        if (!includeTags.length || includeTags.some(tag => parseTagRule(tag).name.toLowerCase() === 'bakemono')) return segments;
+        const written = extractConfiguredTagBlocks(text, ['bakemono'])
+            .filter(block => !segments.some(segment => segment.content.includes(block.content) || block.content.includes(segment.content)));
+        return [...segments, ...written];
+    }
+
     function extractConfiguredSegments(text, rules = getState().scanRules) {
         if (!text) {
             return [];
@@ -42,12 +51,12 @@ export function createContentBlockService({
         const mode = rules.mode === 'full' ? 'full' : 'tag';
 
         if (mode === 'tag') {
-            return extractConfiguredTagBlocks(stripped, includeTags.length ? includeTags : ['bakemono'])
+            return withWrittenSummaries(stripped, extractConfiguredTagBlocks(stripped, includeTags.length ? includeTags : ['bakemono']), includeTags)
                 .map(segment => ({ ...segment, mode }));
         }
 
         if (includeTags.length) {
-            const tagSegments = extractConfiguredTagBlocks(stripped, includeTags);
+            const tagSegments = withWrittenSummaries(stripped, extractConfiguredTagBlocks(stripped, includeTags), includeTags);
             if (tagSegments.length) {
                 return tagSegments.map(segment => ({ ...segment, mode }));
             }
@@ -119,7 +128,7 @@ export function createContentBlockService({
         }
         const includeTags = parseList(getState().scanRules.includeTags).map(tag => parseTagRule(tag).key.toLowerCase());
         const matchedTag = String(segment.matchedTag || '').toLowerCase();
-        return includeTags.includes(matchedTag) ? 'tag' : 'raw';
+        return includeTags.includes(matchedTag) || matchedTag === 'bakemono' ? 'tag' : 'raw';
     }
 
     function shouldPersistScannedBlock(block, state = getState()) {
