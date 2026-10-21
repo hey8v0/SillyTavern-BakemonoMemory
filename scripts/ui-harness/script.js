@@ -87,6 +87,8 @@ if (typeof location !== 'undefined' && new URLSearchParams(location.search).has(
 }
 export async function generateRaw(){ throw new Error('模拟环境：未连接模型'); }
 export async function saveChatConditional(){ return true; }
+export async function saveChat(){ return true; }
+export let isChatSaving = false;
 export function saveSettingsDebounced(){}
 export async function saveSettings(){ return true; }
 export function setExtensionPrompt(key, value){ (window.__injected ||= {})[key] = value; }

@@ -172,6 +172,7 @@ export function createWorkbenchRenderer({
             query('#bakemono-memory-custom-temperature').val(state.automation.customApi?.temperature ?? defaultAutomation.customApi.temperature);
             query('#bakemono-memory-custom-max-tokens').val(state.automation.customApi?.maxTokens ?? defaultAutomation.customApi.maxTokens);
             query('#bakemono-memory-custom-stream').val(String(!!state.automation.customApi?.stream));
+            query('#bakemono-memory-custom-via-tavern').prop('checked', !!state.automation.customApi?.viaTavern);
         }
     }
 

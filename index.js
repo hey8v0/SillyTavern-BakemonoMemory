@@ -1862,6 +1862,7 @@ const generationClient = createGenerationClient({
     getCustomChatCompletionsUrl,
     defaultAutomation,
     fetchImpl: (...args) => fetch(...args),
+    getTavernHeaders: () => tavernHost.getRequestHeaders(),
     readCustomApiFieldsFromUi,
     persistSharedConfigurationFromState,
     toastr,

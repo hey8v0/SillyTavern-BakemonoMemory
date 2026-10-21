@@ -350,6 +350,8 @@
           <label class="bk-vec-row"><span>创意温度</span><input id="bakemono-memory-custom-temperature" type="number" min="0" max="2" step="0.1"></label>
           <label class="bk-vec-row"><span>最大输出长度</span><input id="bakemono-memory-custom-max-tokens" type="number" min="100" step="100"></label>
           <label class="bk-vec-row"><span>请求方式</span><select id="bakemono-memory-custom-stream"><option value="false">非流式</option><option value="true">流式</option></select></label>
+          <label class="bk-tbl-switch bk-auto-row"><span class="bk-tbl-switch-copy">经酒馆后端转发</span><input type="checkbox" id="bakemono-memory-custom-via-tavern" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
+          <p class="bk-tbl-set-note">提示 Failed to fetch 或跨域（CORS）时打开，比如智谱。请求改由酒馆服务器代发，用的还是上面的地址、密钥和模型，“拉取模型”也一样。</p>
         </div>
         <section class="bk-tbl-settings bk-auto-settings" aria-label="生成模型设置">
           <span class="bk-tbl-settings-label">设置</span>
@@ -1233,7 +1235,7 @@
             <button id="bakemono-memory-help-search-clear" type="button" class="bk-sum-link" hidden>清空</button>
           </label>
           <div id="bakemono-memory-help-list" class="bk-help-groups" aria-live="polite"></div>
-          <p class="bk-help-foot">v1.28.3 · 反馈问题时带上这个版本号</p>
+          <p class="bk-help-foot">v1.28.4 · 反馈问题时带上这个版本号</p>
         </div>
 
         <div data-bakemono-help-view="article" hidden>

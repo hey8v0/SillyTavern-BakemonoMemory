@@ -1,5 +1,5 @@
 import { runApiRequest } from '../shared/request-policy.js';
-import { getQianfanPersonalModelCatalog } from '../vector/provider-config.js';
+import { buildTavernCustomRequest, getQianfanPersonalModelCatalog, tavernChatCompletionsUrl, tavernModelsUrl } from '../vector/provider-config.js';
 
 export function createGenerationClient({
     ensureState,
@@ -14,6 +14,7 @@ export function createGenerationClient({
     extractCustomModelIds,
     renderCustomModelOptions,
     formatApiFailure = response => `接口请求失败：${response.status} ${response.statusText}`,
+    getTavernHeaders = () => ({}),
     requestTimeoutMs = 300000,
 } = {}) {
     let modelRequest = 0;
@@ -38,16 +39,19 @@ export function createGenerationClient({
         }
     
         const stream = !!config.stream;
-        return await runApiRequest({ url: getCustomChatCompletionsUrl(baseUrl), fetchImpl, signal,
+        const viaTavern = !!config.viaTavern;
+        const action = viaTavern ? '自定义 API 请求失败（经酒馆转发）' : '自定义 API 请求失败';
+        return await runApiRequest({ url: viaTavern ? tavernChatCompletionsUrl : getCustomChatCompletionsUrl(baseUrl), fetchImpl, signal,
             timeoutMs: requestTimeoutMs,
-            formatError: response => formatApiFailure(response, '自定义 API 请求失败'),
+            formatError: response => formatApiFailure(response, action),
             init: {
             method: 'POST',
-            headers: {
+            headers: viaTavern ? { ...getTavernHeaders(), 'Content-Type': 'application/json' } : {
                 'Content-Type': 'application/json',
                 ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
             },
             body: JSON.stringify({
+                ...(viaTavern ? buildTavernCustomRequest(baseUrl, apiKey) : {}),
                 model,
                 messages: [
                     ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
@@ -62,6 +66,8 @@ export function createGenerationClient({
             return await readOpenAIStream(response);
         }
         const data = await response.json();
+        // SillyTavern answers a failed upstream request with 200 and { error: { message } }.
+        if (viaTavern && data?.error) throw new Error(`${action}：${data.error.message || '服务商返回错误'}。请检查接口地址、密钥和模型。`);
         checkFinishReason(data?.choices?.[0]?.finish_reason);
         const content = data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text;
         if (!content) {
@@ -143,7 +149,18 @@ export function createGenerationClient({
         try {
             const catalog = getQianfanPersonalModelCatalog(baseUrl);
             let models = catalog?.models;
-            if (!catalog) {
+            if (!catalog && config.viaTavern) {
+                const response = await fetchImpl(tavernModelsUrl, {
+                    method: 'POST',
+                    headers: { ...getTavernHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify(buildTavernCustomRequest(baseUrl, apiKey)),
+                });
+                if (!response.ok) throw new Error(formatApiFailure(response, '拉取模型失败（经酒馆转发）'));
+                const data = await response.json();
+                // SillyTavern reports a failed upstream check as 200 with { error: true }.
+                if (data?.error) throw new Error('拉取模型失败（经酒馆转发）：服务商没有返回模型列表，请检查接口地址和密钥。');
+                models = extractCustomModelIds(data);
+            } else if (!catalog) {
                 const response = await fetchImpl(getCustomModelsUrl(baseUrl), {
                     method: 'GET',
                     headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },

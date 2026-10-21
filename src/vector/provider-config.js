@@ -14,6 +14,26 @@ export function getCustomEmbeddingsUrl(baseUrl) {
     return getApiEndpoint(baseUrl, 'embeddings');
 }
 
+// The base SillyTavern's custom chat-completion source expects: it appends /chat/completions and /models itself.
+export function getCustomApiRootUrl(baseUrl) {
+    const url = new URL(getApiEndpoint(baseUrl, 'chat/completions'));
+    url.pathname = url.pathname.replace(/\/chat\/completions$/, '');
+    return url.toString().replace(/\/+$/, '');
+}
+
+// Requests SillyTavern's server sends for us ("经酒馆后端转发"), so a provider that blocks browser requests (CORS,
+// "Failed to fetch") still answers. The plugin's own key is sent as a header that replaces the key SillyTavern
+// keeps for its custom source; without a key the header is empty, so that stored key is never sent elsewhere.
+export function buildTavernCustomRequest(baseUrl, apiKey) {
+    return {
+        chat_completion_source: 'custom',
+        custom_url: getCustomApiRootUrl(baseUrl),
+        custom_include_headers: JSON.stringify({ Authorization: apiKey ? `Bearer ${apiKey}` : '' }),
+    };
+}
+export const tavernChatCompletionsUrl = '/api/backends/chat-completions/generate';
+export const tavernModelsUrl = '/api/backends/chat-completions/status';
+
 // Official catalog snapshot, not an authenticated account/model-list response.
 // https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6 (checked 2026-09-22)
 const qianfanPersonalModels = Object.freeze([
