@@ -23,8 +23,11 @@ export function createMemoryOrchestrator({
     scheduleRenderAll,
     shouldRunTurnProcessing,
     isChatReady = () => true,
-    // 剧情事实: a message resets its idle timer; after the per-turn work it may consolidate a batch of summaries.
+    // 剧情事实: a message resets its idle timer (`noteFactsActivity`); a run that is not a message (a return to the
+    // foreground, a reload) only checks whether the idle time has passed (`resumeFacts`). After the per-turn work
+    // either may consolidate a batch of summaries.
     noteFactsActivity = () => {},
+    resumeFacts = () => {},
     consolidateFacts = () => {},
 } = {}) {
     const pendingAutoSummaries = new WeakSet();
@@ -91,7 +94,9 @@ export function createMemoryOrchestrator({
         if (options.scan !== false) {
             scanBakemonoBlocks({ persist: false, render: false });
         }
-        noteFactsActivity();
+        // Messages are activity; a resume (`activity: false`) is not, or the idle 整理 would never come.
+        if (options.activity === false) resumeFacts();
+        else noteFactsActivity();
         let state = ensureState();
         let floorIndex = getCurrentFloorMemoryIndex(state);
         let plan = getMemoryOrchestrationPlan(state, floorIndex);

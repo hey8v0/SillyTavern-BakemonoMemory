@@ -25,6 +25,10 @@ export function runChatSwitchFlow(actions = {}) {
     if (typeof flow.syncInjection === 'function') {
         flow.syncInjection();
     }
+    // 剧情事实: the idle check against the last message of the chat just opened (it may queue a task).
+    if (typeof flow.resumeFacts === 'function') {
+        flow.resumeFacts(state);
+    }
     if (typeof flow.scheduleRender === 'function') {
         flow.scheduleRender();
     }

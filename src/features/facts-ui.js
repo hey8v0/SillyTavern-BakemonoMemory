@@ -27,6 +27,10 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
             lines.push(held ? `${held} 个整理结果在"待确认"等你看` : queued ? `${queued} 个整理任务在队列里`
                 : pending ? `${pending} 条摘要还没整理${facts.settings.auto ? `，攒够 ${every} 条自动整理${facts.settings.idleMinutes ? `，空闲 ${facts.settings.idleMinutes} 分钟也会整理` : ''}` : ''}`
                 : facts.settings.auto ? `摘要都整理过了，攒够 ${every} 条新摘要再整理` : '自动整理已关，需要时点"整理事实"');
+            const blocked = controller.blockedBatch?.(state);
+            if (blocked) lines.push(`第 ${blocked.floorFrom}–${blocked.floorTo} 楼这批整理失败了 ${blocked.failures} 次，没再自动重试；在队列里重试，或点"整理事实"`);
+            const shorter = controller.chatShorterThanProgress?.(state);
+            if (shorter) lines.push(`已整理到第 ${shorter.cursor} 楼，但这个聊天只有 ${shorter.lastFloor + 1} 楼（分支或删过楼层）：卡片里可能有之后才发生的事，可以在"变化"里逐次撤回`);
         }
         const latest = [...facts.history].reverse().find(item => !item.undone && item.trigger !== 'user');
         return `<section class="rp-overview"><p class="rp-note">${lines.map(esc).join('<br>')}</p>

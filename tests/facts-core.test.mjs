@@ -5,13 +5,9 @@ import { parseFactCards } from '../src/facts/parser.js';
 import { buildFactsPrompt, defaultFactsPrompt } from '../src/facts/prompt.js';
 import { renderFactsSection } from '../src/facts/injection.js';
 import { renderFactsChanges, summarizeFactsChanges } from '../src/facts/diff.js';
-import { createFactsController } from '../src/features/facts-controller.js';
-import { createSummaryTaskQueue } from '../src/features/summary-task-queue.js';
 import { getHash } from '../src/shared/text.js';
 
-const blockTypes = { STORY: 'story', STAGE: 'stage', EPIC: 'epic', FACTS: 'facts' };
-const reply = (cards, extra = {}) => `好的。\n<factCards>\n${JSON.stringify({ cards, retired: [], reflection: {}, ...extra })}\n</factCards>`;
-const lin = (处境 = '在书店') => ({ kind: 'person', name: '林晚', fields: { 处境, 目标: '找到旧信的主人' } });
+import { factsRuntime as runtime, blockTypes, reply, lin } from './helpers/facts-runtime.mjs';
 
 function seeded() {
     const facts = createDefaultFacts();
@@ -142,31 +138,6 @@ test('the injected section fits the budget, names what the recent floors name, a
     assert.equal(renderFactsSection(facts, '林晚').text, '');
 });
 
-function runtime({ enabled = true, auto = true, review = false, every = 3, idleMinutes = 10, floors = 12, summaries = 3 } = {}) {
-    // Even floors are replies, each with one summary (saved or read from the reply in turn); the last floor is the open reply.
-    const chat = Array.from({ length: floors }, (_, i) => ({ mes: `正文 ${i}`, is_user: i % 2 === 1 }));
-    const state = { facts: { ...createDefaultFacts(), settings: { ...createDefaultFacts().settings, enabled, auto, review, everySummaries: every, idleMinutes } },
-        generationPrompts: {}, taskQueue: [], drafts: [], storySummaries: [], blocks: [], stageSummaries: [], epicSummaries: [], automation: {} };
-    const addSummary = floor => {
-        const text = `第 ${floor} 楼：林晚${floor % 2 ? '在书店' : '去码头'}。`;
-        if ((floor / 2) % 2) state.storySummaries.push({ hash: `s${floor}`, content: `<bakemono>${text}</bakemono>`, sourceMessageIds: [floor] });
-        else state.blocks.push({ hash: `b${floor}`, type: 'story', messageId: floor, content: text, sourceKind: 'tag' });
-    };
-    for (let floor = 2; floor < 2 + summaries * 2; floor += 2) addSummary(floor);
-    const toasts = [], scopes = [], timers = [];
-    const toastr = { info: m => toasts.push(['info', m]), warning: m => toasts.push(['warning', m]), error: m => toasts.push(['error', m]), success: () => {}, clear: () => {} };
-    let result = '', current = state;
-    const queue = createSummaryTaskQueue({ getState: () => current, getHash, getKindLabel: k => k, saveState: () => {}, renderWorkbenchScope: (s, t) => scopes.push(t), renderTaskQueueProgress: () => {},
-        workbenchRenderScopes: { DRAFTS: 'drafts' }, getIsBusy: () => false, setBusy: () => {}, toastr, callGenerationModel: async () => result, normalizeGeneratedBakemono: v => v,
-        createDraft: () => { throw Error('facts never become drafts'); }, commitDraft: async () => null, blockTypes, defaultAutomation: {}, switchWorkbenchTab: () => {},
-        resultHandlers: { facts: (...args) => controller.handleTaskResult(...args) } });
-    const controller = createFactsController({ getState: () => current, getChat: () => chat, saveState: () => {}, enqueueSummaryTask: task => queue.enqueueSummaryTask({ ...task, autoStart: false }),
-        blockTypes, getBlockPlainText: text => String(text).replace(/<[^>]+>/g, ''), toastr, renderWorkbenchScope: (s, t) => scopes.push(t), workbenchRenderScopes: { DRAFTS: 'drafts' },
-        confirm: async () => true, storyTimeContext: () => '',
-        setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimer: id => { if (timers[id - 1]) timers[id - 1].cleared = true; },
-        createDraft: data => { const draft = { id: 'draft-' + current.drafts.length, title: data.metadata?.suggestedTitle || '', ...data }; current.drafts.unshift(draft); return draft; } });
-    return { state, chat, queue, controller, toasts, scopes, timers, addSummary, setResult: value => { result = value; }, switchChat: () => { current = structuredClone(state); } };
-}
 
 test('整理 waits for a batch of new 剧情摘要, reads them oldest first and leaves the open reply out', async () => {
     const r = runtime({ every: 3, summaries: 2, floors: 13 });
@@ -287,7 +258,7 @@ test('with 先审再用 the result waits in 待确认 as a diff; applying it mov
     assert.equal(r.state.facts.lastIntegratedFloor, 6);
     assert.equal(r.state.facts.reflection.mainline, '旧信之谜');
     // Held then discarded: pending again.
-    r.state.facts.lastIntegratedFloor = -1;
+    r.state.facts.lastIntegratedFloor = -1; r.state.facts.integrated = {};
     r.controller.maybeRun();
     await r.queue.processTaskQueue();
     assert.equal(r.state.drafts.length, 1);
@@ -298,6 +269,7 @@ test('with 先审再用 the result waits in 待确认 as a diff; applying it mov
 test('a chat consolidated per stage before v1.34 starts its cursor after the stages already done', () => {
     const r = runtime({ summaries: 3 });
     r.state.facts.doneStages = ['st1'];
+    delete r.state.facts.integrated; // a chat from before v1.34.1 has no per-summary record yet
     r.state.stageSummaries = [{ hash: 'st1', sourceMessageIds: [1, 2, 3, 4] }];
     assert.equal(r.controller.facts().lastIntegratedFloor, 4);
     assert.deepEqual(r.controller.pendingSummaries().map(entry => entry.floorEnd), [6]);

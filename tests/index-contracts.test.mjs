@@ -867,9 +867,10 @@ test('chat changes keep their side effects in one ordered coordinator', () => {
     assert.match(source, /scheduleAutoHide:\s*scheduleAutoHideRecent/);
     assert.match(source, /markVectorDirty:\s*markVectorIndexDirty/);
     assert.match(source, /syncInjection,\s*scheduleRender:\s*scheduleRenderAll/);
+    assert.match(source, /resumeFacts:\s*\(\) => factsController\.resume\(\)/, '剧情事实 checks its idle time inside the coordinator, after the chat is loaded');
     assert.match(
         chatSwitchSource,
-        /flow\.recover\(state\)[\s\S]*flow\.syncConfig\(state\)[\s\S]*flow\.scheduleAutoHide\(chatSwitchReasons\.autoHide\)[\s\S]*flow\.markVectorDirty\(chatSwitchReasons\.vectorDirty\)[\s\S]*flow\.syncInjection\(\)[\s\S]*flow\.scheduleRender\(\)/,
+        /flow\.recover\(state\)[\s\S]*flow\.syncConfig\(state\)[\s\S]*flow\.scheduleAutoHide\(chatSwitchReasons\.autoHide\)[\s\S]*flow\.markVectorDirty\(chatSwitchReasons\.vectorDirty\)[\s\S]*flow\.syncInjection\(\)[\s\S]*flow\.resumeFacts\(state\)[\s\S]*flow\.scheduleRender\(\)/,
     );
 });
 

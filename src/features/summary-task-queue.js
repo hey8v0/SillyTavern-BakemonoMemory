@@ -115,10 +115,13 @@ export function createSummaryTaskQueue({
                     const inputSnapshot = task.metadata?.inputSnapshot;
                     // An automatic task whose source moved on (a reroll, an edit) is dropped without a draft and
                     // without pausing the queue: the next automatic run picks the material again from the chat.
-                    const automatic = task.trigger === 'auto';
+                    // 整理事实 started by count or by idle time is automatic in the same sense; a manual one waits.
+                    const automatic = task.trigger === 'auto' || /^facts_(auto|idle)$/.test(String(task.trigger || ''));
                     const sourceMoved = message => {
                         if (!automatic) { state.taskQueuePaused=true; return new Error(message); }
-                        return new Error('来源楼层在总结期间有变化（例如重 roll），这次结果没有保存；之后的自动总结会按新内容重新整理。');
+                        return new Error(resultHandlers[task.kind]
+                            ? '材料摘要在整理期间有变化（被改过或删除），这次结果没有保存；之后会按新内容重新整理。'
+                            : '来源楼层在总结期间有变化（例如重 roll），这次结果没有保存；之后的自动总结会按新内容重新整理。');
                     };
                     try { if(inputSnapshot)summarySources?.validate(inputSnapshot,state); }
                     catch(error) { throw sourceMoved(error.message); }

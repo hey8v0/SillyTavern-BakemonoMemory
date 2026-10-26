@@ -38,7 +38,7 @@ export function createDefaultFactSettings() {
 
 export function createDefaultFacts() {
     return { version: 1, revision: 0, cards: [], reflection: { mainline: '', threads: '', arcs: '', updatedAt: null },
-        history: [], doneStages: [], settings: createDefaultFactSettings(), lastRunAt: null, lastIntegratedFloor: -1 };
+        history: [], doneStages: [], settings: createDefaultFactSettings(), lastRunAt: null, lastIntegratedFloor: -1, integrated: {}, lastActivityAt: null };
 }
 
 const text = (value, max = 4000) => String(value ?? '').replace(/\r\n/g, '\n').trim().slice(0, max);
@@ -92,9 +92,27 @@ export function normalizeFacts(value) {
         doneStages: [...new Set((Array.isArray(source.doneStages) ? source.doneStages : []).filter(hash => typeof hash === 'string'))],
         settings: normalizeFactSettings(source.settings),
         lastRunAt: typeof source.lastRunAt === 'string' ? source.lastRunAt : defaults.lastRunAt,
-        // Every 剧情摘要 whose last floor is at or below this has been consolidated into the cards.
+        // How far the consolidation has read, as a floor: shown to the user, and the reference point for material
+        // that arrives for older floors. Progress itself is `integrated`.
         lastIntegratedFloor: Number.isInteger(source.lastIntegratedFloor) ? source.lastIntegratedFloor : -1,
+        // Every 剧情摘要 consolidated so far, by its id, with the text version that was read: an edited summary
+        // (same id, new text) or one written later for an older floor is pending again. null = not yet migrated
+        // from the floor cursor (chats from before v1.34.1); the controller fills it once the chat is loaded.
+        integrated: source.integrated && typeof source.integrated === 'object'
+            ? Object.fromEntries(Object.entries(source.integrated).filter(([hash, revision]) => hash && typeof revision === 'string'))
+            : null,
+        // When the last message was sent or received, for the idle check after a reload or a return to the foreground.
+        lastActivityAt: typeof source.lastActivityAt === 'string' ? source.lastActivityAt : null,
     };
+}
+
+// Summaries that no longer exist (deleted, or rescanned under another id) leave the record.
+export function pruneIntegrated(facts, knownHashes) {
+    if (!facts.integrated) return 0;
+    const known = knownHashes instanceof Set ? knownHashes : new Set(knownHashes);
+    let dropped = 0;
+    for (const hash of Object.keys(facts.integrated)) if (!known.has(hash)) { delete facts.integrated[hash]; dropped += 1; }
+    return dropped;
 }
 
 export function cardMatchesName(card, name) {
@@ -139,8 +157,11 @@ const cleanIncoming = (kind, fields) => {
 };
 
 // Writes one 整理事实 result into the cards. Fields the model leaves out or empties are unchanged (省略=保持);
-// fields the user edited are kept unless `overrideUser`. Returns the history entry, or null when nothing changed.
-export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash = null, taskId = null, floorTo = null, now = new Date().toISOString(), overrideUser = false } = {}) {
+// fields the user edited are kept unless `overrideUser`. `sources` are the summaries this result read
+// ({ hash, revision }): they are recorded as integrated, and the history entry carries them so an undo reopens them.
+// Returns the history entry; a result that changed nothing still leaves a light entry (changes: []) when it read
+// anything, so "checked" and "changed" are both on record. Null only when there was nothing at all to record.
+export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash = null, taskId = null, floorTo = null, sources = [], now = new Date().toISOString(), overrideUser = false } = {}) {
     const floorBefore = facts.lastIntegratedFloor ?? -1;
     const changes = [], warnings = [];
     const touched = new Set();
@@ -204,14 +225,17 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
     if (reflectionChanged) facts.reflection.updatedAt = now;
     if (stageHash && !facts.doneStages.includes(stageHash)) facts.doneStages.push(stageHash);
     if (Number.isInteger(floorTo) && floorTo > floorBefore) facts.lastIntegratedFloor = floorTo;
-    facts.lastRunAt = now;
-    if (!changes.length && !reflectionChanged) {
-        // Nothing to undo, but the floors still count as read: remember that without a history entry.
-        return null;
+    const read = (Array.isArray(sources) ? sources : []).filter(source => source && typeof source.hash === 'string' && source.hash)
+        .map(source => ({ hash: source.hash, revision: String(source.revision ?? ''), floorEnd: Number.isInteger(source.floorEnd) ? source.floorEnd : null }));
+    if (read.length) {
+        facts.integrated ||= {};
+        for (const source of read) facts.integrated[source.hash] = source.revision;
     }
+    facts.lastRunAt = now;
+    if (!changes.length && !reflectionChanged && !read.length && !stageHash) return null;
     facts.revision += 1;
     const entry = { id: `facts-${getHash(`${now}|${facts.revision}|${stageHash || ''}`)}`, at: now, trigger, stageHash, taskId, changes,
-        floorBefore, floorTo: Number.isInteger(floorTo) ? floorTo : null,
+        floorBefore, floorTo: Number.isInteger(floorTo) ? floorTo : null, sources: read,
         reflectionBefore, reflectionAfter: reflectionChanged ? { ...facts.reflection } : null, warnings, undone: false };
     facts.history.push(entry);
     facts.history = facts.history.slice(-60);
@@ -219,6 +243,8 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
 }
 
 // Puts the cards back the way they were before one entry (the latest by default). Cards created by it are removed.
+// Only the fields that entry changed go back, and a field the user edited since keeps the user's value; the
+// summaries it read are pending again.
 export function undoFactsUpdate(facts, entryId = null, now = new Date().toISOString()) {
     const entry = entryId ? facts.history.find(item => item.id === entryId) : [...facts.history].reverse().find(item => !item.undone);
     if (!entry || entry.undone) return null;
@@ -227,14 +253,21 @@ export function undoFactsUpdate(facts, entryId = null, now = new Date().toISOStr
         if (index < 0) continue;
         if (change.created) { facts.cards.splice(index, 1); continue; }
         const card = facts.cards[index];
-        card.fields = { ...card.fields, ...change.before };
+        const editedSince = card.updatedBy === 'user';
+        for (const key of factFields[card.kind]) {
+            const before = change.before?.[key] ?? '', after = change.after?.[key] ?? '';
+            if (before === after) continue;
+            if (editedSince && card.userFields.includes(key) && card.fields[key] !== after) continue;
+            card.fields[key] = before;
+        }
         card.status = change.statusBefore || card.status;
-        if (change.metaBefore) Object.assign(card, change.metaBefore, { aliases: [...change.metaBefore.aliases] });
-        else card.updatedAt = now;
+        if (change.metaBefore && !editedSince) Object.assign(card, change.metaBefore, { aliases: [...change.metaBefore.aliases] });
+        else if (!editedSince) card.updatedAt = now;
     }
     if (entry.reflectionAfter) facts.reflection = { ...entry.reflectionBefore };
     if (entry.stageHash) facts.doneStages = facts.doneStages.filter(hash => hash !== entry.stageHash);
     if (Number.isInteger(entry.floorBefore) && entry.floorTo != null) facts.lastIntegratedFloor = entry.floorBefore;
+    if (facts.integrated) for (const source of entry.sources || []) delete facts.integrated[source.hash];
     entry.undone = true;
     entry.undoneAt = now;
     facts.revision += 1;

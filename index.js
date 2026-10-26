@@ -5,6 +5,7 @@ import { getImageSizeFromDataURL } from '../../../utils.js';
 import { runChatSwitchFlow } from './src/core/chat-switch.js';
 import { createChatGate } from './src/core/chat-ready.js';
 import { captureChronicle } from './src/memory/story-state.js';
+import { getSummaryStatus } from './src/memory/summary-provenance.js';
 import {createSummarySourceService} from './src/features/summary-source-service.js';
 import { createStoryToolsUi } from './src/features/story-tools-ui.js';
 import { createAutomationBehaviorConfig, createSharedInlineGenerationConfig, createSharedVectorConfig, isStateConfigNewerThanActive, markActiveConfigApplied, mergeAutomationBehaviorConfig, mergeSharedInlineGenerationConfig, mergeSharedVectorConfig, readActiveConfig, sharedConfigVersion, shouldBootstrapSharedConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
@@ -1843,6 +1844,7 @@ const {
 
 const memoryOrchestrator = createMemoryOrchestrator({
     noteFactsActivity: () => factsController.noteActivity(),
+    resumeFacts: () => factsController.resume(),
     consolidateFacts: () => factsController.maybeRun({ trigger: 'auto' }),
     isChatReady,
     ensureState,
@@ -1906,7 +1908,10 @@ const {
 const summaryTaskQueue = createSummaryTaskQueue({
     summarySources,
     rebuildMissingTask: task => summaryBackfillController.rebuildMissingTask(task),
-    getTaskSourceSignature: task => JSON.stringify((task.sourceMessageIds || []).map(id => [id, chat[id] ? getMessageVariantKey(chat[id]) : null, getHash(chat[id]?.mes || '')])),
+    // A summary task reads floors; 整理事实 reads summaries, so its fingerprint is theirs (id and text version).
+    getTaskSourceSignature: task => task.kind === blockTypes.FACTS
+        ? factsController.sourceSignature(task)
+        : JSON.stringify((task.sourceMessageIds || []).map(id => [id, chat[id] ? getMessageVariantKey(chat[id]) : null, getHash(chat[id]?.mes || '')])),
     getState: ensureState,
     getHash,
     getKindLabel,
@@ -1945,6 +1950,7 @@ const factsController = createFactsController({
     getState: ensureState,
     getChat: () => chat,
     isChatReady,
+    summaryStatus: (state, item) => getSummaryStatus(state, item),
     saveState,
     enqueueSummaryTask,
     blockTypes,
@@ -2290,6 +2296,8 @@ function scheduleForegroundRuntimeResume(reason = '恢复前台') {
                 scheduleInlineCapture: true,
                 vectorDirtyReason: reason,
                 render: true,
+                // Not a message: 剧情事实 checks whether the idle time passed instead of starting its timer over.
+                activity: false,
             });
         } catch (error) {
             console.warn('[BakemonoMemory] foreground runtime resume failed', error);
@@ -2353,6 +2361,9 @@ async function init() {
             recover: state => reconcileSummaryRecovery(state),
             scheduleAutoHide: scheduleAutoHideRecent,
             markVectorDirty: markVectorIndexDirty,
+            // The chat just opened may have been idle since its last message: 剧情事实 checks once the injection is
+            // in place (runChatSwitchFlow orders the steps), with the chat loaded.
+            resumeFacts: () => factsController.resume(),
             syncInjection,
             scheduleRender: scheduleRenderAll,
         });
