@@ -132,7 +132,13 @@ export function createFactsController({
     function failures(state, signature) {
         return (state.taskQueue || []).filter(task => task.kind === blockTypes.FACTS && task.status === 'failed' && task.metadata?.factsBatch === signature).length;
     }
-    const selectBatch = (trigger, pending, every) => trigger === 'auto' ? pending.slice(0, Math.max(1, every)) : pending.slice(0, maxBatch);
+    // Older material (backfilled or edited below the cursor) and new material never share a batch, so a batch's floors
+    // say how old its material is and the cards' time order holds (see applyFactsUpdate).
+    const selectBatch = (trigger, pending, every) => {
+        const run = pending.findIndex(entry => !!entry.backfill !== !!pending[0]?.backfill);
+        const same = run < 0 ? pending : pending.slice(0, run);
+        return same.slice(0, trigger === 'auto' ? Math.max(1, every) : maxBatch);
+    };
     // The automatic batch that is due but was given up on after repeated failures, for the page to explain.
     function blockedBatch(state = getState()) {
         const current = facts(state);
@@ -151,9 +157,24 @@ export function createFactsController({
     }
 
     // What one result would change, computed on a copy; shown in 待确认 when results are held for review.
-    function previewUpdate(current, parsed, { floorTo = null, taskId = null, sources = [] } = {}) {
+    function previewUpdate(current, parsed, { floorFrom = null, floorTo = null, taskId = null, sources = [] } = {}) {
         const copy = structuredClone(current);
-        return applyFactsUpdate(copy, parsed, { trigger: 'review', floorTo, taskId, sources, now: now() }) || { changes: [], warnings: [], reflectionAfter: null, floorTo, sources };
+        return applyFactsUpdate(copy, parsed, { trigger: 'review', floorFrom, floorTo, taskId, sources, now: now() }) || { changes: [], warnings: [], reflectionAfter: null, floorTo, sources };
+    }
+
+    // Whether the summaries a result was made from are still there at the text that was read. A held result whose
+    // material changed (an edit, a reroll that rewrote the summary, a deletion, a branch) must not be applied.
+    function staleSources(state, sources = []) {
+        if (!sources.length) return '';
+        const byHash = new Map(summaryEntries(state).map(entry => [entry.item.hash, entry]));
+        for (const source of sources) {
+            const entry = byHash.get(source.hash);
+            const where = Number.isInteger(source.floorEnd) ? `第 ${source.floorEnd} 楼` : '一条';
+            if (!entry) return `${where}的摘要已经改写、重 roll 或删除`;
+            if (entry.revision !== source.revision) return `${where}的摘要在整理之后改过`;
+            if (summaryStatus(state, entry.item)?.valid === false) return `${where}的摘要来源失效了`;
+        }
+        return '';
     }
 
     // One request over a run of pending summaries. Material longer than the budget is cut at a summary boundary;
@@ -294,18 +315,19 @@ export function createFactsController({
         const parsed = parseFactCards(rawResult);
         const current = facts(state);
         const floorTo = Number.isInteger(task.metadata?.factsFloorTo) ? task.metadata.factsFloorTo : null;
+        const floorFrom = Number.isInteger(task.metadata?.factsFloorFrom) ? task.metadata.factsFloorFrom : null;
         const sources = Array.isArray(task.metadata?.factsSources) ? task.metadata.factsSources : [];
         const remaining = Number(task.metadata?.factsRemaining) || 0;
         if (current.settings.review && createDraft) {
-            const preview = previewUpdate(current, parsed, { floorTo, taskId: task.id, sources });
+            const preview = previewUpdate(current, parsed, { floorFrom, floorTo, taskId: task.id, sources });
             const draft = createDraft({ kind: blockTypes.FACTS, content: rawResult, sourceHashes: task.sourceHashes || [], sourceMessageIds: [], prompt: task.prompt,
-                trigger: task.trigger, metadata: { factsFloorFrom: task.metadata?.factsFloorFrom ?? null, factsFloorTo: floorTo, factsSources: sources, factsPreview: preview, suggestedTitle: task.label, lockTitle: true } });
+                trigger: task.trigger, metadata: { factsFloorFrom: floorFrom, factsFloorTo: floorTo, factsSources: sources, factsPreview: preview, factsRevision: current.revision, suggestedTitle: task.label, lockTitle: true } });
             task.metadata = { ...(task.metadata || {}), factsDraftId: draft.id, factsChanges: preview.changes.length };
             saveState();
             renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `整理结果已进入待确认：${summarizeFactsChanges(preview)}。${remaining ? `还有 ${remaining} 条摘要等这批确认后再整理。` : ''}`);
             return draft;
         }
-        const entry = applyFactsUpdate(current, parsed, { trigger: task.trigger === 'facts_manual' ? 'manual' : 'facts', floorTo, taskId: task.id, sources, now: now() });
+        const entry = applyFactsUpdate(current, parsed, { trigger: task.trigger === 'facts_manual' ? 'manual' : 'facts', floorFrom, floorTo, taskId: task.id, sources, now: now() });
         pruneIntegrated(current, summaryEntries(state).map(item => item.item.hash));
         task.metadata = { ...(task.metadata || {}), factsChanges: entry?.changes.length || 0, factsWarnings: entry?.warnings || [] };
         saveState();
@@ -348,9 +370,21 @@ export function createFactsController({
         try { parsed = parseFactCards(draft.content); }
         catch (error) { toastr.warning?.(error.message, '整理事实'); return null; }
         const floorTo = Number.isInteger(draft.metadata?.factsFloorTo) ? draft.metadata.factsFloorTo : null;
+        const floorFrom = Number.isInteger(draft.metadata?.factsFloorFrom) ? draft.metadata.factsFloorFrom : null;
         const sources = Array.isArray(draft.metadata?.factsSources) ? draft.metadata.factsSources : [];
         const current = facts(state);
-        const entry = applyFactsUpdate(current, parsed, { trigger: 'review', floorTo, taskId: null, sources, now: now() });
+        const stale = staleSources(state, sources);
+        if (stale) {
+            draft.metadata = { ...(draft.metadata || {}), inputError: `${stale}，这份结果没有应用。丢弃它，这些摘要会按现在的内容重新整理` };
+            saveState();
+            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `整理结果没有应用：${stale}。`);
+            toastr.warning?.(`整理结果没有应用：${stale}。丢弃它后会按新内容重新整理。`, '整理事实');
+            return null;
+        }
+        const revisionBefore = current.revision;
+        const entry = applyFactsUpdate(current, parsed, { trigger: 'review', floorFrom, floorTo, taskId: null, sources, now: now() });
+        // The cards moved on while the result waited (another 整理, an edit): it was applied to the cards as they are now.
+        if (entry && Number.isInteger(draft.metadata?.factsRevision) && draft.metadata.factsRevision !== revisionBefore) entry.warnings.push('卡片在审阅期间有改动，已按现在的卡片重新计算');
         pruneIntegrated(current, summaryEntries(state).map(item => item.item.hash));
         state.drafts.splice(index, 1);
         saveState();

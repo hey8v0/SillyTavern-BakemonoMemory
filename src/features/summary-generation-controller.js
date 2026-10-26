@@ -83,6 +83,9 @@ export function createSummaryGenerationController({
         const blocks = filterCovered(pool, config);
         return describeBatches(config.batch ? partitionGenerationTargets(blocks, 'stage', config) : [selectGenerationTargets(blocks, config)], { gaps: true });
     };
+    // What “阶段总结 N 条 / 全部没整理的 N 条” in the panel count: the same filter the selection uses, so a chapter
+    // already in a 多次总结 is counted only when 重新整理 is ticked.
+    const countEpicSources = pools => (config = {}) => ({ stage: filterCovered(pools.stage, config).length, epic: filterCovered(pools.epic, config).length });
     const describeEpic = pools => config => {
         const blocks = filterCovered(selectEpicSourcePool(pools, config.sourceMode), config);
         return describeBatches(config.batch ? partitionGenerationTargets(blocks, 'epic', config) : [selectGenerationTargets(blocks, config)]);
@@ -351,7 +354,7 @@ export function createSummaryGenerationController({
         let targetConfig = state.generationTargets.epic;
         if (!options.automatic) {
             readGenerationTargetSettings();
-            targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length, { sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length },
+            targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length, { sourceCounts: countEpicSources({ stage: allStageTargets, epic: allMultiTargets }),
                 describe: describeEpic({ stage: allStageTargets, epic: allMultiTargets }) });
             if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
             if (!targetConfig) {
@@ -431,7 +434,7 @@ export function createSummaryGenerationController({
             return;
         }
 
-        const targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', sourceBlocks.length, { batch: true, sourceCounts: { stage: allStageTargets.length, epic: allMultiTargets.length },
+        const targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', sourceBlocks.length, { batch: true, sourceCounts: countEpicSources({ stage: allStageTargets, epic: allMultiTargets }),
             describe: describeEpic({ stage: allStageTargets, epic: allMultiTargets }) });
         if (getState() !== state) throw new Error('选择材料期间已切换聊天，请在当前聊天重新选择。');
         if (!targetConfig) {

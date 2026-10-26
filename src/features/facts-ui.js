@@ -1,4 +1,4 @@
-import { countCardsByKind, factFieldHints, factFields, factKindLabels, factKinds } from '../facts/model.js';
+import { countCardsByKind, describeTransition, factFieldHints, factFields, factKindLabels, factKinds, storyOrder } from '../facts/model.js';
 import { renderFactsChanges, summarizeFactsChanges } from '../facts/diff.js';
 import { renderOpenThreads } from '../facts/injection.js';
 import { sheetAction, sheetConfirm } from '../ui/action-sheet.js';
@@ -138,9 +138,9 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         if (current.editing === card.id) body = renderEditForm(card);
         else if (current.merging === card.id) body = renderMergeForm(card, facts);
         else {
-            const past = [...(card.timeline || [])].reverse().slice(0, 6);
+            const past = storyOrder(card.timeline).reverse().slice(0, 6);
             body = `${fields.length ? `<dl class="rp-facts">${fields.map(key => `<dt>${esc(key)}</dt><dd>${esc(card.fields[key])}${card.userFields.includes(key) ? '<span class="rp-tag is-hint">你改过</span>' : ''}</dd>`).join('')}</dl>` : '<p class="rp-note">还没有内容</p>'}
-                ${past.length ? `<ol class="rp-past">${past.map(item => `<li><span class="rp-mono">${item.floor != null ? esc(floorNo(item.floor)) : '—'}</span>${esc(item.field === '已结束' ? '已结束' : `${item.field}：${item.from || '（空）'} → ${item.to || '（清空）'}`)}</li>`).join('')}</ol>` : ''}
+                ${past.length ? `<ol class="rp-past">${past.map(item => `<li><span class="rp-mono">${item.floor != null ? esc(floorNo(item.floor)) : '—'}</span>${esc(describeTransition(item))}</li>`).join('')}</ol>` : ''}
                 <p class="rp-note">${card.aliases.length ? `别名 ${esc(card.aliases.join('、'))} · ` : ''}${esc(triggerLabel[card.updatedBy] || '整理')}于 ${esc(when(card.updatedAt) || '未知')}${retired ? ' · 已结束，只在被点名时注入' : card.pinned ? ' · 固定注入' : ''}</p>
                 <div class="rp-entry-actions">${link('edit', '编辑')}<button type="button" class="rp-more" data-facts-action="more" aria-label="更多操作">⋯</button></div>`;
         }

@@ -1,7 +1,7 @@
 /**
  * The 整理事实 request: the stage's material, the cards it names, the user's notes and the current reflection.
  */
-import { factFields, factFieldHints, factKindLabels, isOpenThread, selectRelevantCards } from './model.js';
+import { describeTransition, factFields, factFieldHints, factKindLabels, isOpenThread, selectRelevantCards, storyOrder } from './model.js';
 
 export const defaultFactsPrompt = `你是剧情剪辑台的事实整理器。下面是一段剧情的摘要材料，以及目前记录的相关事实卡片。请根据材料更新卡片。
 
@@ -13,7 +13,7 @@ export const defaultFactsPrompt = `你是剧情剪辑台的事实整理器。下
 - 材料和卡片现状矛盾、又分不清哪个对（材料是传闻，或早于现状）时，不要改字段，写进 conflicts：{"name":"卡片名","field":"字段","says":"材料怎么说"}。
 - 卡片按名字对应。已有卡片请用原名；同一人换了称呼，写进 aliases。同名不同类（一个人和一个地方都叫青石）是两张卡；拿不准两个称呼是不是同一个人时不要合并，写进 conflicts，field 填“身份”。
 - 标注为"用户填写"的字段原样保留，除非材料明确推翻。
-- 明确结束的对象（死亡、已了结、永久离场）写进 retired。
+- 明确结束的对象（死亡、已了结、永久离场）写进 retired。标了"已结束"的卡片，材料提到它不代表它回来了，照常更新字段即可；只有剧情明确写了复活、归来、约定或任务重新开始，才把名字写进 revived。
 - 便签（note）由用户填写，不要修改。
 - 伏笔、约定、任务都记成 thread（线索）卡，状态写 未了 / 已了 / 失效；了结了就改状态，不要删。下面“未了的线索”列出了现在还开着的，材料里了结了的请改状态。
 - 卡片里的“经过”是以前的变化记录，只供参考，不要改回去。
@@ -40,7 +40,7 @@ export const defaultFactsPrompt = `你是剧情剪辑台的事实整理器。下
 
 输出格式：
 <factCards>
-{"cards":[{"kind":"person","name":"姓名","aliases":[],"fields":{"处境":"","目标":"","持有":"","性格":"","外貌":"","备注":""}}],"retired":[],"conflicts":[],"reflection":{"mainline":"","arcs":""}}
+{"cards":[{"kind":"person","name":"姓名","aliases":[],"fields":{"处境":"","目标":"","持有":"","性格":"","外貌":"","备注":""}}],"retired":[],"revived":[],"conflicts":[],"reflection":{"mainline":"","arcs":""}}
 </factCards>`;
 
 export const factsSystemPrompt = '你是剧情剪辑台的事实整理器。只根据提供的材料更新事实卡片，不续写剧情，不扮演角色，不编造材料里没有的事。输出一个 <factCards> 块，不要解释或 Markdown 代码围栏。';
@@ -55,8 +55,9 @@ export function cardForPrompt(card) {
     if (card.aliases.length) result.aliases = card.aliases;
     result.fields = Object.fromEntries(factFields[card.kind].filter(key => card.fields[key]).map(key => [key, card.fields[key]]));
     if (card.userFields.length) result['用户填写'] = card.userFields;
-    const past = (card.timeline || []).filter(item => item.from && item.field !== '已结束').slice(-3);
-    if (past.length) result['经过'] = past.map(item => `${item.field}：${item.from}→${item.to || '（清空）'}${item.floor != null ? `（第 ${item.floor} 楼）` : ''}`);
+    if (card.status === 'retired') result['已结束'] = true;
+    const past = storyOrder(card.timeline).slice(-3);
+    if (past.length) result['经过'] = past.map(item => `${item.floor != null ? `第 ${item.floor} 楼 ` : ''}${describeTransition(item)}`);
     return result;
 }
 

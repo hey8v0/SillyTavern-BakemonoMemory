@@ -70,7 +70,7 @@ export const summaries = [
 
 // A floor whose summary is written only after the first pass (场景 9), and the summary rewritten after a reroll (场景 10).
 export const backfillFloor = 9;
-export const backfillText = '林晚养的黑猫墨趴在柜台上，沈砚逗了它一会儿。';
+export const backfillText = '林晚养的黑猫墨趴在柜台上，沈砚逗了它一会儿。那时老看守还在矿坑门口守夜，铜钥匙揣在林晚的围裙里。';
 export const rerollFloor = 118;
 export const rerollText = '林晚和沈砚商量去领主府拿回钥匙，决定明天一早就动身。';
 
@@ -164,7 +164,8 @@ export const scriptedReplies = {
         person('林晚', { 处境: '暂住青石镇，和沈砚商量春天去领主府拿回钥匙', 持有: '姐姐的旧信、地图' }),
         person('沈砚', { 处境: '在青石镇开了间小铺子' }),
     ], reflection: { mainline: '冬天到了，拿回钥匙的事等春天。' } }),
-    backfill: wrap({ cards: [person('墨', { 处境: '趴在书店柜台上', 备注: '林晚养的黑猫' })] }),
+    // Written the way a careless model would: the old floor's state as if it were now. The code must hold the line.
+    backfill: wrap({ cards: [person('墨', { 处境: '趴在书店柜台上', 备注: '林晚养的黑猫' }), person('老看守', { 处境: '在矿坑门口守夜' }), item('铜钥匙', { 持有者: '林晚' })] }),
     reroll: wrap({ cards: [person('林晚', { 处境: '暂住青石镇，和沈砚决定明天一早去领主府拿回钥匙' })] }),
 };
 
@@ -185,5 +186,7 @@ export const checks = [
     { id: 7, name: '伏笔回收：码头之约了结，退出伏笔提醒', run: ({ card, inject }) => { const c = card('码头之约'); return !!c && !/伏笔与约定：[^\n]*码头之约/.test(inject('林晚在铺子里看书。')); } },
     { id: 8, name: '同名实体：铁匠青石和青石镇是两张卡', run: ({ facts }) => facts.cards.some(c => c.kind === 'person' && /青石/.test(c.name)) && facts.cards.some(c => c.kind === 'place' && /青石/.test(c.name)) },
     { id: 9, name: '补写旧摘要：后来补上的第 9 楼被整理，黑猫墨有卡', run: ({ card }) => !!card('墨') },
+    { id: 11, name: '补写旧楼层：死去的老看守没有被当成活着', run: ({ card }) => card('老看守')?.status === 'retired' && /死/.test(card('老看守')?.fields.处境 || '') },
+    { id: 12, name: '补写旧楼层：铜钥匙现在仍在领主手里，第 9 楼的持有者记进经过', run: ({ card }) => { const c = card('铜钥匙', 'item'); return /领主/.test(c?.fields.持有者 || '') && (c?.timeline || []).some(t => t.past && /林晚/.test(t.from)); } },
     { id: 10, name: '重 roll：第 118 楼改写后，“等春天”不再是现状', run: ({ card }) => { const c = card('林晚'); return !!c && !/春天/.test(c.fields.处境 || '') && !/春天/.test(c.fields.目标 || ''); } },
 ];

@@ -110,7 +110,9 @@ export function createSummaryTargetController({
         const current = { ...defaults, ...(state.generationTargets?.[kind] || {}) };
         const kindLabel = kind === 'epic' ? '多次总结' : '阶段总结';
         const unit = kind === 'epic' ? '条' : '章';
-        const sources = kind === 'epic' && options.sourceCounts ? options.sourceCounts : null;
+        // Epic only: how many chapters / 多次总结 a selection can use; a function of the current switches.
+        const countSources = typeof options.sourceCounts === 'function' ? options.sourceCounts : () => options.sourceCounts;
+        const sources = kind === 'epic' && options.sourceCounts ? countSources(current) : null;
         const suggestedRange = current.mode === targetSelectionModes.RANGE
             ? (inferNextRange(current.range) || current.range || defaults.range)
             : (current.range || defaults.range || '');
@@ -119,8 +121,8 @@ export function createSummaryTargetController({
         const initialMode = Object.values(targetSelectionModes).includes(current.mode) ? current.mode : targetSelectionModes.ALL;
         const radio = (name, value, checked, label, extra = '') => `<label class="bk-dlg-choice"><input type="radio" name="${name}" value="${value}"${checked ? ' checked' : ''}><span class="bk-dlg-choice-t">${label}</span>${extra}</label>`;
         const sourceRows = sources ? `<div class="bk-dlg-section"><span class="bk-dlg-label">用什么整理</span>`
-            + radio('bk-gen-source', 'stage', initialSource === 'stage', '阶段总结', `<span class="bk-dlg-n">${Number(sources.stage || 0)} 条</span>`)
-            + radio('bk-gen-source', 'epic', initialSource === 'epic', '已有的多次总结，再合一次', `<span class="bk-dlg-n">${Number(sources.epic || 0)} 条</span>`)
+            + radio('bk-gen-source', 'stage', initialSource === 'stage', '阶段总结', `<span class="bk-dlg-n" data-gen-source-n="stage">${Number(sources.stage || 0)} 条</span>`)
+            + radio('bk-gen-source', 'epic', initialSource === 'epic', '已有的多次总结，再合一次', `<span class="bk-dlg-n" data-gen-source-n="epic">${Number(sources.epic || 0)} 条</span>`)
             + '</div>' : '';
         const html = `<div class="bk-dlg-h"><div><span class="bk-dlg-label">${kindLabel} · 生成</span><h3 data-dlg-title>整理成${kindLabel}</h3>
                 <div class="bk-dlg-meta" data-gen-meta></div></div>
@@ -173,7 +175,9 @@ export function createSummaryTargetController({
                 }
                 field('[data-gen-size]').disabled = !config.batch;
                 field('[data-gen-range]').disabled = config.mode !== targetSelectionModes.RANGE;
-                const total = sources ? Number(sources[config.sourceMode] || 0) : totalLength;
+                const counts = sources ? countSources(config) || sources : null;
+                if (counts) for (const node of dialog.querySelectorAll('[data-gen-source-n]')) node.textContent = `${Number(counts[node.dataset.genSourceN] || 0)} 条`;
+                const total = counts ? Number(counts[config.sourceMode] || 0) : totalLength;
                 field('[data-gen-total]').textContent = `${total} 条`;
                 const rangeInvalid = config.mode === targetSelectionModes.RANGE && !parseLooseNumberRange(config.range).ids.size;
                 const info = rangeInvalid ? null : options.describe?.(config);

@@ -2,15 +2,16 @@
  * The 剧情事实 section of the injected memory: cards the recent floors name, pinned cards, open 线索, then the
  * reflection. Fits the character budget card by card, most relevant first.
  */
-import { describeCard, factKindLabels, isOpenThread, selectRelevantCards } from './model.js';
+import { describeCard, factKindLabels, isOpenThread, selectRelevantCards, storyOrder } from './model.js';
 
 // The last couple of transitions of a card, as one clause: 曾经：持有者 林晚（到第 24 楼）、沈砚（到第 51 楼）.
 export function describeTimeline(card, { max = 2 } = {}) {
-    const items = (card.timeline || []).filter(item => item.from && item.field !== '已结束').slice(-max);
+    const items = storyOrder(card.timeline).filter(item => item.from && item.field !== '已结束' && item.field !== '恢复').slice(-max);
     if (!items.length) return '';
     const byField = new Map();
     for (const item of items) byField.set(item.field, [...(byField.get(item.field) || []), item]);
-    return '曾经：' + [...byField.entries()].map(([field, list]) => `${field} ${list.map(item => `${item.from}${item.floor != null ? `（到第 ${item.floor} 楼）` : ''}`).join('、')}`).join('；');
+    const when = item => item.floor == null ? '' : item.past ? `（第 ${item.floor} 楼时）` : `（到第 ${item.floor} 楼）`;
+    return '曾经：' + [...byField.entries()].map(([field, list]) => `${field} ${list.map(item => `${item.from}${when(item)}`).join('、')}`).join('；');
 }
 
 export function renderFactCardLine(card) {

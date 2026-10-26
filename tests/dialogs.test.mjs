@@ -78,3 +78,30 @@ test('every confirm is awaited: the dialog does not block the page the way confi
     assert.deepEqual(missing, []);
     assert.doesNotMatch(await readFile(files[0], 'utf8'), /window\.confirm\(/);
 });
+
+// User report (v1.38.0): nine chapters, the first five already in one 多次总结. The panel's header said 4 条材料
+// (what is sent), but “阶段总结 9 条” and “全部没整理的 9 条” counted the covered five as well.
+test('the epic panel counts only what the selection would use: covered chapters only with 重新整理', async () => {
+    const stages = Array.from({ length: 9 }, (_, i) => ({ hash: 'st' + i, id: 'st' + i, type: 'stage', title: `第 ${i + 1} 章`,
+        sourceMessageIds: [i * 20 + 2, i * 20 + 20], content: `<bakemono>第 ${i + 1} 章：旅人和莉娜赶路。</bakemono>` }));
+    const state = { generationTargets: { epic: { mode: 'all', count: 5 } }, generationPrompts: { epic: '{{blocks}}' },
+        storySummaries: [], stageSummaries: stages, blocks: [], taskQueue: [], drafts: [],
+        epicSummaries: [{ hash: 'ep1', id: 'ep1', type: 'epic', content: '<bakemono>第一卷</bakemono>', sourceStageHashes: stages.slice(0, 5).map(s => s.hash), sourceHashes: [] }] };
+    let seen = null;
+    const controller = createSummaryGenerationController({
+        getIsBusy: () => false, scanBlocks() {}, getState: () => state, readGenerationTargetSettings() {},
+        getUnsummarizedStageBlocks: () => stages, getUnsummarizedMultiSummaryBlocks: () => state.epicSummaries,
+        promptGenerationTargetSelection: async (kind, total, options) => { seen = options; return null; },
+        selectGenerationTargets, partitionGenerationTargets, getMultiSummaryLabel: () => '多次总结',
+        getSourceMessageIdsFromBlocks: list => list.flatMap(block => block.sourceMessageIds),
+        formatSourceRange: ids => `${Math.min(...ids)}-${Math.max(...ids)}`, getSourceStart: ids => Math.min(...ids), getSourceEnd: ids => Math.max(...ids),
+        renderGenerationPrompt: (_, list) => list.map(block => block.content).join('\n'),
+        blockTypes: { STORY: 'story', STAGE: 'stage', EPIC: 'epic' }, defaultGenerationTargets: { epic: { count: 5 } },
+        renderWorkbenchScope() {}, workbenchRenderScopes: {}, toastr: { info() {}, warning() {}, success() {} },
+    });
+    await controller.generateEpicDraft();
+    assert.equal(typeof seen.sourceCounts, 'function', 'counts follow the 重新整理 / 有效材料 switches');
+    assert.deepEqual(seen.sourceCounts({ mode: 'all' }), { stage: 4, epic: 1 });
+    assert.deepEqual(seen.sourceCounts({ mode: 'all', includeCovered: true }), { stage: 9, epic: 1 });
+    assert.equal(seen.describe({ mode: 'all', sourceMode: 'stage', batch: false }).count, 4, 'the header agrees');
+});

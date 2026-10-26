@@ -68,6 +68,8 @@ export function normalizeCard(value, index = 0) {
         aliases: [...new Set((Array.isArray(value.aliases) ? value.aliases : []).map(alias => text(alias, 200)).filter(alias => alias && normalizeName(alias) !== normalizeName(name)))],
         fields,
         status: value.status === 'retired' ? 'retired' : 'active',
+        // Who set the status last: a status the user set is not changed by 整理 (it becomes a conflict instead).
+        statusBy: value.statusBy === 'user' ? 'user' : 'facts',
         pinned: !!value.pinned,
         userFields: [...new Set((Array.isArray(value.userFields) ? value.userFields : []).filter(key => factFields[kind].includes(key)))],
         updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : null,
@@ -76,16 +78,20 @@ export function normalizeCard(value, index = 0) {
         // Key transitions of this card (see recordTransition): where it was, who held it, how the relationship stood.
         timeline: (Array.isArray(value.timeline) ? value.timeline : []).filter(item => item && typeof item === 'object' && typeof item.field === 'string')
             .map(item => ({ field: item.field, from: text(item.from, 400), to: text(item.to, 400), floor: Number.isInteger(item.floor) ? item.floor : null,
-                at: typeof item.at === 'string' ? item.at : null, entryId: typeof item.entryId === 'string' ? item.entryId : null })).slice(-timelineCap),
+                at: typeof item.at === 'string' ? item.at : null, entryId: typeof item.entryId === 'string' ? item.entryId : null, ...(item.past ? { past: true } : {}) })).slice(-timelineCap),
+        // From which floor each current-state field (and `__status`) holds: the first floor of the batch that set it.
+        // Material from before that floor cannot replace it (see applyFactsUpdate).
+        asOf: Object.fromEntries(Object.entries(value.asOf && typeof value.asOf === 'object' ? value.asOf : {})
+            .filter(([key, floor]) => (key === '__status' || factFields[kind].includes(key)) && Number.isInteger(floor))),
     };
 }
 
 // The transitions worth keeping per card: the current-state fields changing from one value to another, and the
 // card ending. Capped; the oldest give way. The first value of a field is not a transition.
 export const timelineCap = 12;
-export function recordTransition(card, { field, from = '', to = '', floor = null, at = null, entryId = null }) {
-    if (field !== '已结束' && !from) return null;
-    const item = { field, from: text(from, 400), to: text(to, 400), floor: Number.isInteger(floor) ? floor : null, at, entryId };
+export function recordTransition(card, { field, from = '', to = '', floor = null, at = null, entryId = null, past = false }) {
+    if (field !== '已结束' && field !== '恢复' && !from) return null;
+    const item = { field, from: text(from, 400), to: text(to, 400), floor: Number.isInteger(floor) ? floor : null, at, entryId, ...(past ? { past: true } : {}) };
     card.timeline = [...(card.timeline || []), item].slice(-timelineCap);
     return item;
 }
@@ -97,6 +103,25 @@ function recordChangeTransitions(card, change, { floor, at, entryId }) {
         if (from !== to) recordTransition(card, { field, from, to, floor, at, entryId });
     }
     if (change.statusAfter === 'retired' && change.statusBefore !== 'retired') recordTransition(card, { field: '已结束', floor, at, entryId });
+    if (change.statusAfter === 'active' && change.statusBefore === 'retired') recordTransition(card, { field: '恢复', floor, at, entryId });
+}
+
+// The floor from which a card's field (or `__status`) holds. Cards from before v1.38.1 have no asOf: the latest
+// 整理 that changed it tells, as the first floor after what had been consolidated before it.
+export function stateFloor(facts, card, field) {
+    if (Number.isInteger(card.asOf?.[field])) return card.asOf[field];
+    for (const entry of [...(facts.history || [])].reverse()) {
+        if (entry.undone || entry.trigger === 'user') continue;
+        const change = entry.changes?.find(item => item.cardId === card.id);
+        if (!change) continue;
+        const moved = field === '__status' ? change.statusBefore !== change.statusAfter
+            : (change.before?.[field] || '') !== (change.after?.[field] || '');
+        if (!moved) continue;
+        if (Number.isInteger(entry.floorFrom)) return entry.floorFrom;
+        if (Number.isInteger(entry.floorBefore) && Number.isInteger(entry.floorTo)) return Math.min(entry.floorTo, entry.floorBefore + 1);
+        return null;
+    }
+    return null;
 }
 // Chats from before v1.36.0 have the diffs in their history but no timelines: build them once from what is there.
 export function seedTimelines(facts) {
@@ -114,6 +139,15 @@ export function seedTimelines(facts) {
     }
     facts.timelineVersion = 1;
     return count;
+}
+// The timeline in story order (a value recorded later from backfilled floors sits where it happened), and how one
+// item reads: a change (from → to), a value that held at an older floor (past), an end or a return.
+export const storyOrder = timeline => (timeline || []).map((item, index) => ({ item, index }))
+    .sort((a, b) => (a.item.floor ?? Infinity) - (b.item.floor ?? Infinity) || a.index - b.index).map(({ item }) => item);
+export function describeTransition(item) {
+    if (item.field === '已结束' || item.field === '恢复') return item.field;
+    if (item.past) return `${item.field}：${item.from}（当时）`;
+    return `${item.field}：${item.from || '（空）'} → ${item.to || '（清空）'}`;
 }
 // A 线索 still standing: its 状态 does not say it ended.
 export const isOpenThread = card => card.kind === 'thread' && card.status === 'active' && !/已了|失效|完成|结束|放弃|作废|取消/.test(card.fields.状态 || '');
@@ -239,8 +273,16 @@ const cleanIncoming = (kind, fields) => {
 // ({ hash, revision }): they are recorded as integrated, and the history entry carries them so an undo reopens them.
 // Returns the history entry; a result that changed nothing still leaves a light entry (changes: []) when it read
 // anything, so "checked" and "changed" are both on record. Null only when there was nothing at all to record.
-export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash = null, taskId = null, floorTo = null, sources = [], now = new Date().toISOString(), overrideUser = false } = {}) {
+// Time order: `floorFrom`–`floorTo` are the floors the material covers. A current-state field (or the card's end)
+// set from a later floor is not replaced by material from before it: the older value goes into 经过 as what was
+// true then. A card's status changes only through `retired` / `revived`, never because the card was mentioned.
+export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash = null, taskId = null, floorFrom = null, floorTo = null, sources = [], now = new Date().toISOString(), overrideUser = false } = {}) {
     const floorBefore = facts.lastIntegratedFloor ?? -1;
+    const from = Number.isInteger(floorFrom) ? floorFrom : Number.isInteger(floorTo) ? floorTo : null;
+    // Material older than what the field already says: its last floor is before the floor the field holds from.
+    const older = (card, field) => { const since = Number.isInteger(floorTo) ? stateFloor(facts, card, field) : null; return since != null && floorTo < since ? since : null; };
+    const markState = (card, fields) => { if (from == null) return; card.asOf = { ...(card.asOf || {}) }; for (const field of fields) card.asOf[field] = from; };
+    const pastIds = new Set();
     const changes = [], warnings = [], conflictIds = [];
     const entryId = `facts-${getHash(`${now}|${(facts.revision || 0) + 1}|${stageHash || ''}`)}`;
     const touched = new Set();
@@ -278,48 +320,81 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
         if (!card) {
             if (!Object.keys(fields).length) { warnings.push(`「${name}」没有任何内容，已跳过`); return; }
             card = normalizeCard({ id: `fact-${getHash(`${kind}|${name}|${now}|${index}`)}`, kind, name, aliases, fields, updatedAt: now, sourceStage: stageHash }, index);
+            markState(card, transitionFields(kind).filter(key => card.fields[key]));
             facts.cards.push(card);
             touched.add(card.id);
             changes.push({ cardId: card.id, kind: card.kind, name: card.name, created: true, before: null, after: { ...card.fields }, statusBefore: null, statusAfter: 'active', kept: [] });
             return;
         }
         const before = { ...card.fields }, kept = [];
-        const metaBefore = { updatedAt: card.updatedAt, updatedBy: card.updatedBy, sourceStage: card.sourceStage, aliases: [...card.aliases] };
+        const metaBefore = { updatedAt: card.updatedAt, updatedBy: card.updatedBy, sourceStage: card.sourceStage, aliases: [...card.aliases], asOf: { ...(card.asOf || {}) }, statusBy: card.statusBy };
         const after = { ...card.fields };
+        const stateKeys = transitionFields(card.kind);
+        const stale = (key, value) => {
+            if (!stateKeys.includes(key) || (card.fields[key] || '') === value) return false;
+            const since = older(card, key);
+            if (since == null) return false;
+            warnings.push(`「${card.name}」的${key}来自第 ${floorTo} 楼，早于现状（第 ${since} 楼起），保留现状${value ? '，旧的记进经过' : ''}`);
+            if (value) { recordTransition(card, { field: key, from: value, to: card.fields[key] || '', floor: floorTo, at: now, entryId, past: true }); pastIds.add(card.id); }
+            return true;
+        };
         for (const [key, value] of Object.entries(fields)) {
             if (!overrideUser && card.userFields.includes(key) && card.fields[key] && card.fields[key] !== value) { kept.push(key); continue; }
+            if (stale(key, value)) continue;
             after[key] = value;
         }
         for (const key of clear) {
             if (!card.fields[key]) continue;
             if (!overrideUser && card.userFields.includes(key)) { kept.push(key); continue; }
+            if (stale(key, '')) continue;
             after[key] = '';
         }
-        const statusBefore = card.status;
         // A new spelling the model led with becomes an alias; the recorded name stays the name.
         const newAliases = [...new Set([name, ...aliases])].filter(alias => !cardMatchesName(card, alias));
-        const changed = Object.keys(after).some(key => after[key] !== before[key]) || card.status !== 'active' || newAliases.length;
+        const changed = Object.keys(after).some(key => after[key] !== before[key]) || newAliases.length;
         if (!changed) return;
         card.fields = after;
         card.aliases = [...new Set([...card.aliases, ...newAliases])];
-        card.status = 'active';
+        markState(card, stateKeys.filter(key => after[key] !== before[key]));
         card.updatedAt = now;
         card.updatedBy = trigger === 'user' ? 'user' : 'facts';
         card.sourceStage = stageHash ?? card.sourceStage;
         touched.add(card.id);
-        changes.push({ cardId: card.id, kind: card.kind, name: card.name, created: false, before, after: { ...after }, statusBefore, statusAfter: 'active', kept, metaBefore });
+        changes.push({ cardId: card.id, kind: card.kind, name: card.name, created: false, before, after: { ...after }, statusBefore: card.status, statusAfter: card.status, kept, metaBefore });
     });
+    // Status changes: an end or a return the result names, from material not older than the current status, and not
+    // over a status the user set (that becomes a conflict for the user).
+    const setStatus = (card, status, label) => {
+        const since = older(card, '__status');
+        if (since != null) { warnings.push(`「${card.name}」${label}的材料（第 ${floorTo} 楼）早于它现在的状态（第 ${since} 楼起），没有改`); return; }
+        if (card.statusBy === 'user') {
+            conflict({ cardId: card.id, name: card.name, kind: card.kind, field: status === 'active' ? '恢复' : '结束', current: card.status === 'retired' ? '已结束（你设的）' : '在场（你设的）',
+                says: `第 ${floorTo ?? '?'} 楼的材料说「${card.name}」${label}` });
+            return;
+        }
+        let change = changes.find(item => item.cardId === card.id);
+        if (!change) {
+            change = { cardId: card.id, kind: card.kind, name: card.name, created: false, before: { ...card.fields }, after: { ...card.fields }, statusBefore: card.status, statusAfter: card.status, kept: [],
+                metaBefore: { updatedAt: card.updatedAt, updatedBy: card.updatedBy, sourceStage: card.sourceStage, aliases: [...card.aliases], asOf: { ...(card.asOf || {}) }, statusBy: card.statusBy } };
+            changes.push(change);
+            card.updatedAt = now;
+        }
+        card.status = status;
+        card.statusBy = 'facts';
+        markState(card, ['__status']);
+        change.statusAfter = status;
+        touched.add(card.id);
+    };
+    // The same result may give a card its last state and end it (a death with where it happened).
     for (const name of Array.isArray(parsed?.retired) ? parsed.retired : []) {
         const card = findCard(facts.cards, text(name, 200));
         if (!card || card.kind === 'note' || card.status === 'retired') continue;
-        // The same result may give a card its last state and end it (a death with where it happened).
-        const same = changes.find(change => change.cardId === card.id);
-        if (same) { card.status = 'retired'; same.statusAfter = 'retired'; continue; }
-        const metaBefore = { updatedAt: card.updatedAt, updatedBy: card.updatedBy, sourceStage: card.sourceStage, aliases: [...card.aliases] };
-        card.status = 'retired';
-        card.updatedAt = now;
-        touched.add(card.id);
-        changes.push({ cardId: card.id, kind: card.kind, name: card.name, created: false, before: { ...card.fields }, after: { ...card.fields }, statusBefore: 'active', statusAfter: 'retired', kept: [], metaBefore });
+        setStatus(card, 'retired', '结束');
+    }
+    for (const name of Array.isArray(parsed?.revived) ? parsed.revived : []) {
+        const card = findCard(facts.cards, text(name, 200));
+        if (!card || card.kind === 'note' || card.status !== 'retired') continue;
+        setStatus(card, 'active', '恢复');
     }
     for (const raw of Array.isArray(parsed?.conflicts) ? parsed.conflicts : []) {
         const name = text(raw?.name, 200), field = text(raw?.field, 50), says = text(raw?.says, 1000);
@@ -346,14 +421,14 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
         for (const source of read) facts.integrated[source.hash] = source.revision;
     }
     facts.lastRunAt = now;
-    if (!changes.length && !reflectionChanged && !read.length && !stageHash && !conflictIds.length) return null;
+    if (!changes.length && !reflectionChanged && !read.length && !stageHash && !conflictIds.length && !pastIds.size) return null;
     facts.revision += 1;
     for (const change of changes) {
         const card = facts.cards.find(item => item.id === change.cardId);
         if (card) recordChangeTransitions(card, change, { floor: Number.isInteger(floorTo) ? floorTo : null, at: now, entryId });
     }
     const entry = { id: entryId, at: now, trigger, stageHash, taskId, changes,
-        floorBefore, floorTo: Number.isInteger(floorTo) ? floorTo : null, sources: read, conflicts: conflictIds,
+        floorBefore, floorFrom: from, floorTo: Number.isInteger(floorTo) ? floorTo : null, sources: read, conflicts: conflictIds,
         reflectionBefore, reflectionAfter: reflectionChanged ? { ...facts.reflection } : null, warnings, undone: false };
     facts.history.push(entry);
     facts.history = facts.history.slice(-60);
@@ -379,10 +454,11 @@ export function undoFactsUpdate(facts, entryId = null, now = new Date().toISOStr
             card.fields[key] = before;
         }
         card.status = change.statusBefore || card.status;
-        if (change.metaBefore && !editedSince) Object.assign(card, change.metaBefore, { aliases: [...change.metaBefore.aliases] });
+        if (change.metaBefore && !editedSince) Object.assign(card, change.metaBefore, { aliases: [...change.metaBefore.aliases], ...(change.metaBefore.asOf ? { asOf: { ...change.metaBefore.asOf } } : {}) });
         else if (!editedSince) card.updatedAt = now;
-        card.timeline = (card.timeline || []).filter(item => item.entryId !== entry.id);
+        else if (change.metaBefore?.asOf) card.asOf = { ...change.metaBefore.asOf };
     }
+    for (const card of facts.cards) if (card.timeline?.some(item => item.entryId === entry.id)) card.timeline = card.timeline.filter(item => item.entryId !== entry.id);
     if (entry.reflectionAfter) facts.reflection = { ...entry.reflectionBefore };
     if (entry.stageHash) facts.doneStages = facts.doneStages.filter(hash => hash !== entry.stageHash);
     if (Number.isInteger(entry.floorBefore) && entry.floorTo != null) facts.lastIntegratedFloor = entry.floorBefore;
@@ -408,6 +484,10 @@ export function resolveConflict(facts, conflictId, choice, now = new Date().toIS
             recordTransition(card, { field: conflict.field, from, to: card.fields[conflict.field], floor: conflict.floorTo ?? null, at: now, entryId: facts.history.at(-1)?.id || null });
         }
     }
+    if (choice === 'accept' && card && (conflict.field === '恢复' || conflict.field === '结束')) {
+        editCard(facts, card.id, { status: conflict.field === '恢复' ? 'active' : 'retired' }, now);
+        recordTransition(card, { field: conflict.field === '恢复' ? '恢复' : '已结束', floor: conflict.floorTo ?? null, at: now, entryId: facts.history.at(-1)?.id || null });
+    }
     conflict.status = choice === 'accept' ? 'accepted' : 'dismissed';
     conflict.resolvedAt = now;
     facts.revision += 1;
@@ -428,7 +508,7 @@ export function editCard(facts, cardId, { name, aliases, fields = {}, status, pi
         card.fields[key] = value;
         if (!card.userFields.includes(key)) card.userFields.push(key);
     }
-    if (status === 'active' || status === 'retired') card.status = status;
+    if ((status === 'active' || status === 'retired') && status !== card.status) { card.status = status; card.statusBy = 'user'; }
     if (typeof pinned === 'boolean') card.pinned = pinned;
     card.updatedAt = now;
     card.updatedBy = 'user';
