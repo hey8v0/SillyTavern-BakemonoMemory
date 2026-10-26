@@ -1,6 +1,7 @@
 import { isMemoryCurrent, storyTimeContext, refreshMemoryLinks, activeStoryCoverage } from '../memory/story-state.js';
 import {resolveSummaryGraph} from '../memory/summary-provenance.js';
 import { isFirstReplyTurn, openingFloors, openingNote } from '../shared/opening.js';
+import { recallText } from '../facts/recall.js';
 
 export function createInjectionService({
     ensureState,
@@ -64,9 +65,12 @@ export function createInjectionService({
         const copies = Math.max(1, (template.match(/\{\{memory\}\}/g) || []).length);
         const rules = [inlineValues.summaryValue,
             state.injection?.enabled === false ? '' : template.replaceAll('{{memory}}', '')].join('\n\n');
-        // 剧情事实: cards the recent floors name. Not budgeted against the summaries; it has its own character budget.
+        // 剧情事实: cards the recent floors name, and the ones the recalled old summaries name (so a memory the
+        // vector recall brought back comes with who and what it is about). Not budgeted against the summaries;
+        // it has its own character budget.
         const recentFloors = Math.max(1, Number(state.facts?.settings?.recentFloors) || 6);
-        const recentText = state.injection?.enabled === false ? '' : (getChat?.() || []).slice(-recentFloors).map(message => String(message?.mes || '')).join('\n');
+        const recalled = state.vectorMemory?.enabled ? recallText(state.vectorMemory.lastHits || []) : '';
+        const recentText = state.injection?.enabled === false ? '' : [(getChat?.() || []).slice(-recentFloors).map(message => String(message?.mes || '')).join('\n'), recalled].filter(Boolean).join('\n');
         sources.facts = state.injection?.enabled === false ? '' : (renderFactsSection(state, recentText)?.text || '');
         const sections = [sources.summary, sources.memory, sources.facts, sources.time, sources.vector].filter(Boolean);
         const memory = sections.join('\n\n').trim();

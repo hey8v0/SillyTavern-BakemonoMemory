@@ -54,6 +54,8 @@ export function createVectorMemoryService({
     countKeywordHits,
     selectHybridCandidates,
     fetchImpl = globalThis.fetch,
+    // 剧情事实: (state, recentConversationText) => names of the cards it mentions, joined into the recall keywords.
+    getFactsKeywords = () => [],
     formatApiFailure = response => `嵌入向量接口请求失败：${response.status} ${response.statusText}`,
     setTimer = globalThis.setTimeout,
     vectorSidecar = null,
@@ -405,6 +407,7 @@ export function createVectorMemoryService({
         state.vectorMemory.lastQueries = [];
         state.vectorMemory.lastRewriteIntent = '';
         state.vectorMemory.lastInferredKeywords = [];
+        state.vectorMemory.lastFactsKeywords = [];
         state.vectorMemory.lastEmbeddingCandidates = [];
         state.vectorMemory.lastRerankCandidates = [];
         state.vectorMemory.lastQuery = '';
@@ -1022,7 +1025,12 @@ export function createVectorMemoryService({
             return clearVectorRecall('向量维度不一致，请刷新索引；本次未混用不同维度。', state);
         }
         const inferredKeywords = requestState.vectorMemory.lastInferredKeywords || [];
-        const keywords = unique([...parseList(state.vectorMemory.keywordTriggers), ...inferredKeywords]);
+        // 剧情事实: every name of the cards the recent conversation mentions, so an older summary that used
+        // another name still scores on keywords (no extra request).
+        let factsKeywords = [];
+        try { factsKeywords = unique(getFactsKeywords(state, getVectorQueryText(state, explicitQuery).split(/\n\n关键词提示：/)[0]) || []); }
+        catch (error) { console.warn(`[BakemonoMemory] facts keywords failed`, error); }
+        const keywords = unique([...parseList(state.vectorMemory.keywordTriggers), ...inferredKeywords, ...factsKeywords]);
         const embeddingThreshold = Math.max(0, Number(state.vectorMemory.embeddingThreshold ?? state.vectorMemory.minScore ?? defaultVectorMemory.embeddingThreshold));
         const limits = recallLimits({ ...defaultVectorMemory, ...state.vectorMemory });
         const rerankCandidateCount = Math.max(1, Number(state.vectorMemory.rerankCandidateCount || state.vectorMemory.topK || defaultVectorMemory.rerankCandidateCount),
@@ -1077,6 +1085,7 @@ export function createVectorMemoryService({
         state.vectorMemory.lastQueries = queries;
         state.vectorMemory.lastRewriteIntent = requestState.vectorMemory.lastRewriteIntent || '';
         state.vectorMemory.lastInferredKeywords = inferredKeywords;
+        state.vectorMemory.lastFactsKeywords = factsKeywords;
         const plan = { groups, signature, lastHits: null };
         recallPlans.set(state, plan);
         applyRecallPlan(state, plan);

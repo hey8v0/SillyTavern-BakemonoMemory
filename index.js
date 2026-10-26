@@ -6,6 +6,7 @@ import { runChatSwitchFlow } from './src/core/chat-switch.js';
 import { createChatGate } from './src/core/chat-ready.js';
 import { captureChronicle } from './src/memory/story-state.js';
 import { getSummaryStatus } from './src/memory/summary-provenance.js';
+import { factsRecallKeywords } from './src/facts/recall.js';
 import {createSummarySourceService} from './src/features/summary-source-service.js';
 import { createStoryToolsUi } from './src/features/story-tools-ui.js';
 import { createAutomationBehaviorConfig, createSharedInlineGenerationConfig, createSharedVectorConfig, isStateConfigNewerThanActive, markActiveConfigApplied, mergeAutomationBehaviorConfig, mergeSharedInlineGenerationConfig, mergeSharedVectorConfig, readActiveConfig, sharedConfigVersion, shouldBootstrapSharedConfig, shouldSyncActiveConfig } from './src/core/config-sync.js';
@@ -1054,6 +1055,8 @@ const {
 } = configurationController;
 
 const vectorMemoryService = createVectorMemoryService({
+    // 剧情事实: the cards the recent conversation names lend every name they go by to the recall keywords.
+    getFactsKeywords: (state, text) => factsRecallKeywords(factsController.facts(state), text),
     vectorSidecar: createVectorSidecar({ getHeaders: () => tavernHost.getRequestHeaders(), getChatKey: () => getSummaryRecoveryChatIdentity(), getHash,
         warn: (...args) => console.warn(...args) }),
     formatApiFailure,

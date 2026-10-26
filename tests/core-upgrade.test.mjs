@@ -557,3 +557,21 @@ test('a dimension cap asks for shorter vectors, cuts them when the API ignores i
     await f.service.buildVectorMemoryIndex();
     assert.equal(f.state.vectorMemory.records[0].embedding.length, 4096, 'removing the cap rebuilds at the full size');
 });
+
+test('the cards the recent conversation names lend every name they go by to the actual recall keywords', async () => {
+    const { factsRecallKeywords } = await import('../src/facts/recall.js');
+    const f = vectorFixture(2, { selectHybridCandidates, computeHybridRerankScore,
+        countKeywordHits: (text, keywords) => keywords.filter(keyword => String(text).includes(keyword)).length,
+        getFactsKeywords: (state, text) => factsRecallKeywords(state.facts, text) });
+    f.state.facts = { settings: { enabled: true }, cards: [{ kind: 'person', name: '林晚', aliases: ['小晚'], status: 'active' }] };
+    f.chat[0].mes = '林晚把银钥匙藏进了墙缝。';
+    f.chat[1].mes = '小晚盯着墙缝发呆。';
+    Object.assign(f.state.vectorMemory, { queryMode: 'off', skipIfAllInContext: false, contextWindowMessages: 0,
+        embeddingThreshold: 0, rerankThreshold: 0, rerankCandidateCount: 20, finalRecallCount: 2, fullRecallCount: 2, perMessageMaxChars: 1600, maxStoredTextChars: 1200 });
+    await f.service.buildVectorMemoryIndex();
+    const hits = await f.service.retrieveVectorMemoryHits('');
+    assert.deepEqual(f.state.vectorMemory.lastFactsKeywords, ['林晚', '小晚']);
+    const old = hits.find(hit => hit.messageId === 0);
+    assert.ok(old, 'the floor that used the recorded name is recalled for the alias');
+    assert.ok(old.keywordHits >= 1);
+});
