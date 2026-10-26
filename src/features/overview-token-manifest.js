@@ -27,16 +27,11 @@ export function createOverviewTokenManifest({
         if (state.inlineGeneration?.summaryEnabled) {
             ruleSections.push(parts.inlineValues?.summaryValue ?? renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state));
         }
-        if (state.inlineGeneration?.tableEnabled) {
-            ruleSections.push(parts.inlineValues?.tableValue ?? renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state));
-        }
-        if (parts.rpMaintenance) ruleSections.push(parts.rpMaintenance);
         return {
-            rpState: mainInjectionContent ? String(parts.sources?.rpState || '') : '',
             facts: mainInjectionContent ? String(parts.sources?.facts || '') : '',
             summary: mainInjectionContent ? String(parts.sources?.summary || '') : '',
             memory: mainInjectionContent ? String(parts.sources?.memory || '') : '',
-            table: mainInjectionContent ? String(parts.sources?.table || '') : '',
+            time: mainInjectionContent ? String(parts.sources?.time || '') : '',
             vector: mainInjectionContent ? String(parts.sources?.vector || '') : '',
             rule: ruleSections.filter(Boolean).join('\n\n'),
         };
@@ -80,11 +75,7 @@ export function createOverviewTokenManifest({
         if (state.inlineGeneration?.summaryEnabled) {
             expectedSections.push(parts.inlineValues?.summaryValue ?? renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state));
         }
-        if (state.inlineGeneration?.tableEnabled) {
-            expectedSections.push(parts.inlineValues?.tableValue ?? renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state));
-        }
         const normalizedPrompt = String(promptText || '');
-        expectedSections.push(parts.rpMaintenance || '');
         const nonEmpty = expectedSections.filter(section => String(section || '').trim());
         return nonEmpty.length > 0 && nonEmpty.every(section => normalizedPrompt.includes(section));
     }
@@ -100,7 +91,7 @@ export function createOverviewTokenManifest({
     async function renderOverviewTokenManifest(state = getState()) {
         const revision = ++renderRevision;
         const sourceTexts = getOverviewInjectionSources(state);
-        const sourceKeys = ['rule', 'summary', 'memory', 'rpState', 'facts', 'table', 'vector'];
+        const sourceKeys = ['rule', 'summary', 'memory', 'facts', 'time', 'vector'];
         const sourceCounts = await Promise.all(sourceKeys.map(key => getOverviewTokenCount(sourceTexts[key])));
         const lastPromptUsage = await getLastPromptUsage();
         if (revision !== renderRevision || getActiveTab() !== 'overview' || getState() !== state) return;

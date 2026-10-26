@@ -43,8 +43,6 @@ export function createReviewQueueUi({
     getKindLabel,
     blockTypes,
     historyPageSize = 10,
-    renderRpReview,
-    getRpPendingCount = state => state.rpCore?.candidates?.filter(item => item.status === 'pending').length || 0,
     escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]),
     describeSummary = draft => ({ title: draft.title || '', lead: String(draft.content || '').replace(/\s+/g, ' ').trim().slice(0, 180) }),
     createSummaryDocument = null,
@@ -67,7 +65,7 @@ export function createReviewQueueUi({
     }
 
     function renderTabs(state = getState()) {
-        const counts = { drafts: state.drafts.length + getRpPendingCount(state), tasks: state.taskQueue.length, history: state.history.length };
+        const counts = { drafts: state.drafts.length, tasks: state.taskQueue.length, history: state.history.length };
         query('#bakemono-memory-review-draft-count').text(counts.drafts);
         query('#bakemono-memory-review-task-count').text(counts.tasks);
         query('#bakemono-memory-review-history-count').text(counts.history);
@@ -191,12 +189,10 @@ export function createReviewQueueUi({
         const container = documentRef.querySelector('#bakemono-memory-draft-list');
         if (!container) return;
         renderTabs(state);
-        renderRpReview?.(state);
         container.innerHTML = '';
-        const rpPending = getRpPendingCount(state);
         const missingDraftCount = state.drafts.filter(draft => draft.metadata?.appendMode === 'missing_summary').length;
         const missingTaskCount = state.taskQueue.filter(task => isMissingSummaryTask(task) && ['queued', 'failed', 'partial', 'done'].includes(task.status)).length;
-        const total = state.drafts.length + rpPending;
+        const total = state.drafts.length;
 
         const intro = documentRef.createElement('section');
         intro.className = 'bk-sum-next bk-rev-intro';
@@ -210,14 +206,6 @@ export function createReviewQueueUi({
                 <button type="button" class="bk-sum-link is-alert" data-bakemono-action="remove-missing-all">全部移除…</button></div>` : ''}`;
         container.append(intro);
 
-        if (rpPending) {
-            const rp = documentRef.createElement('button');
-            rp.type = 'button';
-            rp.className = 'bk-rev-rp';
-            rp.dataset.bakemonoNav = 'rp-state';
-            rp.innerHTML = `<span class="bk-rev-dot" aria-hidden="true"></span><span class="bk-rev-grow">剧情状态 · ${rpPending} 条待确认<small>在剧情状态页逐条确认</small></span><span class="bk-sum-link">去看 ›</span>`;
-            container.append(rp);
-        }
 
         if (!state.drafts.length) return;
         const timeline = documentRef.createElement('div');

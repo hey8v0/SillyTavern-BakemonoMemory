@@ -1,5 +1,4 @@
 import { isMemoryCurrent, storyTimeContext, refreshMemoryLinks, activeStoryCoverage } from '../memory/story-state.js';
-import { storyStateEditGuide } from './table-memory-model.js';
 import {resolveSummaryGraph} from '../memory/summary-provenance.js';
 import { isFirstReplyTurn, openingFloors, openingNote } from '../shared/opening.js';
 
@@ -11,25 +10,16 @@ export function createInjectionService({
     getActiveCoveredStageHashes,
     getStageMemoryBlocks,
     memoryStrategies,
-    renderInjectedTablesSection,
     renderVectorMemorySection,
     setExtensionPrompt,
     injectionKey,
     extensionPromptTypes,
     extensionPromptRoles,
     defaultState,
-    formatTableDataForPrompt,
-    formatTableGuideForPrompt,
-    formatSpecificTablesForPrompt,
-    getReadonlyTables,
-    getWritableTables,
     defaultInlineSummaryPrompt,
-    defaultInlineTablePrompt,
     inlinePromptKeys,
     defaultInjectionTemplate,
     renderInjectionTemplate,
-    rpExtractionFlow,
-    renderRpStateMemory = () => '',
     renderFactsSection = () => ({ text: '' }),
 } = {}) {
     function updateInjectionFromSummaries() {
@@ -63,26 +53,22 @@ export function createInjectionService({
                 stageContents.length ? '## 阶段总结\n' + stageContents.join('\n\n') : '',
             ].filter(Boolean).join('\n\n'),
             memory: storyContents.length ? '## 普通剧情摘要\n' + storyContents.join('\n\n') : '',
-            rpState: '',
             facts: '',
-            table: [storyTimeContext(state), renderInjectedTablesSection?.(state)].filter(Boolean).join('\n\n'),
+            time: storyTimeContext(state),
             vector: renderVectorMemorySection?.(state) || '',
         };
         const memoryBudget = Number(state.injection?.memoryBudgetChars) > 0 ? Number(state.injection.memoryBudgetChars) : 60000;
-        const otherMemory = state.injection?.enabled === false ? '' : [sources.summary, sources.memory, sources.table, sources.vector].filter(Boolean).join('\n\n');
+        const otherMemory = state.injection?.enabled === false ? '' : [sources.summary, sources.memory, sources.time, sources.vector].filter(Boolean).join('\n\n');
         const inlineValues = getInlinePromptValues(state);
         const template = String(state.injection?.template || defaultInjectionTemplate);
         const copies = Math.max(1, (template.match(/\{\{memory\}\}/g) || []).length);
-        const rules = [inlineValues.summaryValue, inlineValues.tableValue,
+        const rules = [inlineValues.summaryValue,
             state.injection?.enabled === false ? '' : template.replaceAll('{{memory}}', '')].join('\n\n');
-        const rpContext = rpExtractionFlow?.context?.(state, { query: getChat?.().at(-1)?.mes || '', includeBrief: state.injection?.enabled !== false,
-            availableBudget: Math.max(0, Math.floor((memoryBudget - otherMemory.length * copies - rules.length - 8 * copies) / copies)) });
-        sources.rpState = rpContext?.brief ?? renderRpStateMemory(state);
         // 剧情事实: cards the recent floors name. Not budgeted against the summaries; it has its own character budget.
         const recentFloors = Math.max(1, Number(state.facts?.settings?.recentFloors) || 6);
         const recentText = state.injection?.enabled === false ? '' : (getChat?.() || []).slice(-recentFloors).map(message => String(message?.mes || '')).join('\n');
         sources.facts = state.injection?.enabled === false ? '' : (renderFactsSection(state, recentText)?.text || '');
-        const sections = [sources.summary, sources.memory, sources.rpState, sources.facts, sources.table, sources.vector].filter(Boolean);
+        const sections = [sources.summary, sources.memory, sources.facts, sources.time, sources.vector].filter(Boolean);
         const memory = sections.join('\n\n').trim();
         const savedSummaries = (state.stageSummaries?.length || 0) + (state.epicSummaries?.length || 0);
         const diagnostic = state.injection?.enabled === false ? '长期记忆注入已关闭。'
@@ -94,16 +80,12 @@ export function createInjectionService({
         return {
             memory, diagnostic,
             sources,
-            rpMaintenance: withOpeningNote(rpContext?.maintenance ?? rpExtractionFlow?.prompt('inline', state) ?? '', '剧情状态'),
-            rpContext,
             inlineValues,
             stats: {
                 epic: epicContents.length,
                 stage: stageContents.length,
                 story: storyContents.length,
-                table: state.tableDatabase?.injectMemory === false ? 0 : (state.tableDatabase?.tables || []).length,
                 vector: state.vectorMemory?.lastHits?.length || 0,
-                rpState: sources.rpState ? 1 : 0,
                 facts: sources.facts ? 1 : 0,
             },
         };
@@ -128,13 +110,7 @@ export function createInjectionService({
     }
     
     function renderInlinePrompt(template, state = ensureState()) {
-        const includeRows = true;
-        const tableData = formatTableDataForPrompt(state);
         return String(template || '')
-            .replaceAll('{{tableData}}', tableData)
-            .replaceAll('{{tableGuide}}', formatTableGuideForPrompt(state))
-            .replaceAll('{{readonlyTables}}', formatSpecificTablesForPrompt(getReadonlyTables(state), { includeRows }))
-            .replaceAll('{{writableTables}}', formatSpecificTablesForPrompt(getWritableTables(state), { includeRows }));
     }
     
     // On the first reply the 开场白 is still unrecorded; ask for it in the same reply instead of a request of its own.
@@ -151,18 +127,15 @@ export function createInjectionService({
         const summaryValue = state.inlineGeneration?.summaryEnabled
             ? withOpeningNote(renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state), '摘要', state)
             : '';
-        let tableValue = state.inlineGeneration?.tableEnabled
-            ? renderInlinePrompt(state.inlineGeneration.tablePrompt || defaultInlineTablePrompt, state)
-            : '';
-        if (tableValue && !tableValue.includes(storyStateEditGuide)) tableValue += '\n\n' + [storyTimeContext(state), storyStateEditGuide].filter(Boolean).join('\n\n');
-        return { summaryValue, tableValue: withOpeningNote(tableValue, '表格', state) };
+        return { summaryValue, tableValue: '' };
     }
 
     function syncInlineGenerationPrompts(state = ensureState(), parts = getInjectionMemoryParts(state)) {
         const depth = Math.max(0, Number(state.inlineGeneration?.depth ?? 1));
         const role = Number(state.inlineGeneration?.role ?? extensionPromptRoles.SYSTEM);
         const { summaryValue, tableValue } = parts.inlineValues || getInlinePromptValues(state);
-        const rpPrompt = parts.rpMaintenance;
+        // Cleared every time: older versions injected 剧情状态 upkeep and table instructions under these keys.
+        const rpPrompt = '';
         setExtensionPrompt(inlinePromptKeys.RP_STATE || 'bakemono-rp-state-maintenance', rpPrompt, extensionPromptTypes.IN_CHAT, depth, false, role);
         setExtensionPrompt(inlinePromptKeys.SUMMARY, summaryValue, extensionPromptTypes.IN_CHAT, depth, false, role);
         setExtensionPrompt(inlinePromptKeys.TABLE, tableValue, extensionPromptTypes.IN_CHAT, depth, false, role);

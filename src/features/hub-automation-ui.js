@@ -1,7 +1,7 @@
 import { themeChoiceLabel } from '../theme/theme-schema.js';
 import { stageAutomationStatus } from '../summary/automation-status.js';
 import { getSummarySourceShortLabel } from './summary-source-wizard.js';
-import { summarySourceChoice, tableModeChoice } from './turn-trigger-policy.js';
+import { summarySourceChoice } from './turn-trigger-policy.js';
 
 export function createHubAutomationUi({
     documentRef,
@@ -55,17 +55,13 @@ export function createHubAutomationUi({
         const index = getCurrentFloorMemoryIndex(state);
         const floorStats = index.aggregates;
         const latest = index.latest;
-        const source = summarySourceChoice(state), tableMode = tableModeChoice(state);
-        // Summaries read from replies still count as recording; only “manual” for both is off.
-        const turnOn = !(source === 'manual' && tableMode === 'manual');
+        const source = summarySourceChoice(state);
+        // Summaries read from replies still count as recording; only “manual” is off.
+        const turnOn = source !== 'manual';
         const automationEnabled = !!state.automation?.enabled;
-        const tables = Array.isArray(state.tableDatabase?.tables) ? state.tableDatabase.tables : [];
-        const tableRows = tables.reduce((sum, table) => sum + (Array.isArray(table.rows) ? table.rows.length : 0), 0);
-        const tableDrafts = state.tableDatabase?.editDrafts || [];
-        const tableOn = tables.length > 0 && tableMode !== 'manual';
         const vectorEnabled = !!state.vectorMemory?.enabled;
         const vectorRecords = Array.isArray(state.vectorMemory?.records) ? state.vectorMemory.records : [];
-        const enabledCount = [turnOn, automationEnabled, tableOn, vectorEnabled].filter(Boolean).length;
+        const enabledCount = [turnOn, automationEnabled, !!state.facts?.settings?.enabled, vectorEnabled].filter(Boolean).length;
         const draftCount = (state.drafts || []).length;
 
         const orchestrationTitle = floorStats.pendingDraftCount
@@ -79,11 +75,10 @@ export function createHubAutomationUi({
         query('#bakemono-memory-data-hub-enabled').text(`4 项开着 ${enabledCount} 项`);
 
         const summaryName = { existing: '回复自带', inline: '随正文写', independent: '单独写', manual: '只手动' }[source] || '旧版组合';
-        const tableName = { inline: '随正文写', after: '单独写', manual: '只手动' }[tableMode];
         const latestSaved = ['saved', 'covered'].includes(latest?.summaryState);
         setFrame('turn', {
             line: !latest ? '等待第一条回复' : latestSaved ? `第 ${latest.id} 楼已记好` : latest.summaryState === 'draft' ? `第 ${latest.id} 楼等你确认` : `第 ${latest.id} 楼还没有摘要`,
-            copy: `摘要${summaryName} · 表格${tableName}`,
+            copy: `摘要${summaryName}`,
             bar: latest ? (latestSaved ? 100 : 40) : 0,
             state: !turnOn ? '没开' : !latest || latestSaved ? '正常' : '要补',
             tone: !turnOn ? 'off' : !latest || latestSaved ? 'ok' : 'alert',
@@ -126,7 +121,7 @@ export function createHubAutomationUi({
             tone: !vectorEnabled ? 'off' : state.vectorMemory?.dirty || !vectorRecords.length ? 'wait' : 'ok',
         });
 
-        query('#bakemono-memory-data-hub-table-count').text(tableRows.toLocaleString());
+        query('#bakemono-memory-data-hub-facts-count').text(factCards.toLocaleString());
         query('#bakemono-memory-data-hub-vector-count').text(vectorRecords.length.toLocaleString());
         query('#bakemono-memory-data-hub-draft-count').text(draftCount.toLocaleString());
 

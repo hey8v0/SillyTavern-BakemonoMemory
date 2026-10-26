@@ -90,15 +90,3 @@ test('header badge states what is injected in plain words', () => {
     assert.equal(status(true, 'x'.repeat(1367)), '注入 1,367字');
     assert.equal(status(true, 'x'.repeat(23456)), '注入 2.3万字');
 });
-
-test('status wording separates summaries from RP state and names what each RP button does', async () => {
-    assert.match(await read('src/features/workflow-overview-model.js'), /title: '尚未建立摘要记忆'/);
-    assert.match(await read('src/features/hub-automation-ui.js'), /楼尚无摘要/);
-    const rp = await read('src/features/rp-state-ui.js');
-    assert.match(rp, /button\('capture', '读取最新回复'\)/);
-    assert.match(rp, /条变化没记上/);
-    assert.match(rp, /progress\.latest/);
-    assert.match(rp, /data-rp-action="extract"><span class="rp-set-text"><strong>用模型重新整理最新回复<\/strong>[\s\S]*?\+1 次请求/);
-    assert.doesNotMatch(rp, /<footer[^`]*data-rp-action="extract"/, 'the paid re-extract lives in settings, not the page footer');
-    assert.doesNotMatch(rp, /button\(['"](?:capture|extract)['"], ['"](?:检查最新正文|重新提取最新正文|处理最新正文)/);
-});

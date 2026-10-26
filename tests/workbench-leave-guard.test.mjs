@@ -146,11 +146,3 @@ test('stylesheet keeps hidden elements hidden', async () => {
     const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
     assert.match(css, /#bakemono-workbench-root \[hidden\] \{ display: none !important; \}/);
 });
-
-test('RP onboarding shows its confirmation in place of the start button', async () => {
-    const source = await readFile(new URL('../src/features/rp-state-ui.js', import.meta.url), 'utf8');
-    const onboarding = source.slice(source.indexOf('if (!core) {'), source.indexOf('const hasData'));
-    assert.match(onboarding, /nav\.setup \? `<section class="rp-preview"/);
-    assert.match(onboarding, /<div class="rp-controls">\$\{button\('enable-confirm'/);
-    assert.doesNotMatch(onboarding, /insertAdjacentHTML\('beforeend', `<section class="rp-preview"/);
-});

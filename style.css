@@ -147,7 +147,6 @@
   display: block;
 }
 
-.bakemono-workbench-root[data-active-tab="turn-summary"] .bakemono-table-panel-card,
 .bakemono-workbench-root[data-active-tab="tables"] .bakemono-turn-panel-card {
   display: none !important;
 }
@@ -1127,13 +1126,7 @@
     min-width: 0;
   }
 
-  .bakemono-workbench-root[data-active-tab="tables"] .bakemono-workbench-panel[data-bakemono-panel="turn-summary"].is-active > .bakemono-table-panel-card {
-    grid-column: 2;
-  }
 
-  .bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-editor-grid > .bakemono-table-panel-card {
-    min-height: calc(100dvh - 164px);
-  }
 
 
 
@@ -1160,14 +1153,10 @@
     grid-template-columns: 1fr;
   }
 
-  .bakemono-workbench-root[data-active-tab="tables"] .bakemono-workbench-panel[data-bakemono-panel="turn-summary"].is-active > .bakemono-table-panel-card,
   .bakemono-workbench-root[data-active-tab="tables"] .bakemono-workbench-panel[data-bakemono-panel="turn-summary"].is-active > .bakemono-memory-editor-grid {
     grid-column: 1;
   }
 
-  .bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-editor-grid > .bakemono-table-panel-card {
-    min-height: auto;
-  }
 }
 
 @media (max-width: 900px) {
@@ -1461,9 +1450,6 @@
   display: block;
 }
 
-.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-editor-grid > .bakemono-table-panel-card {
-  min-height: 0;
-}
 
 
 
@@ -1513,17 +1499,7 @@
 
 
 
-.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-editor-grid > .bakemono-table-panel-card {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
 
-.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-editor-grid > .bakemono-table-panel-card > h4 {
-  display: none;
-}
 
 
 
@@ -2460,9 +2436,6 @@
 
 
 /* Dedicated table page: the primary database must never collapse away. */
-.bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-editor-grid > .bakemono-table-panel-card {
-  display: block !important;
-}
 
 /* SillyTavern's global text_pole styles must not escape the archive shell. */
 
@@ -3636,8 +3609,8 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root [data-bakemono-stack-source="rule"], #bakemono-workbench-root [data-bakemono-token-source="rule"] .bk-home-swatch { background: var(--ns-source-rule); }
 #bakemono-workbench-root [data-bakemono-stack-source="summary"], #bakemono-workbench-root [data-bakemono-token-source="summary"] .bk-home-swatch { background: var(--ns-source-summary); }
 #bakemono-workbench-root [data-bakemono-stack-source="memory"], #bakemono-workbench-root [data-bakemono-token-source="memory"] .bk-home-swatch { background: var(--ns-source-memory); }
-#bakemono-workbench-root [data-bakemono-stack-source="rpState"], #bakemono-workbench-root [data-bakemono-token-source="rpState"] .bk-home-swatch { background: var(--ns-source-rpState); }
-#bakemono-workbench-root [data-bakemono-stack-source="table"], #bakemono-workbench-root [data-bakemono-token-source="table"] .bk-home-swatch { background: var(--ns-source-table); }
+#bakemono-workbench-root [data-bakemono-stack-source="facts"], #bakemono-workbench-root [data-bakemono-token-source="facts"] .bk-home-swatch { background: var(--ns-source-rpState); }
+#bakemono-workbench-root [data-bakemono-stack-source="time"], #bakemono-workbench-root [data-bakemono-token-source="time"] .bk-home-swatch { background: var(--ns-source-table); }
 #bakemono-workbench-root [data-bakemono-stack-source="vector"], #bakemono-workbench-root [data-bakemono-token-source="vector"] .bk-home-swatch { background: var(--ns-source-vector); }
 #bakemono-workbench-root .bk-home-list { margin-top: 10px; border-top: 1px solid var(--ns-rule); }
 #bakemono-workbench-root .bk-home :is(.bk-home-src, .bk-home-setting) { display: grid; align-items: center; gap: 10px; width: 100%; height: 60px; border-bottom: 1px solid var(--ns-rule); transition: background .2s; }
@@ -3950,9 +3923,6 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .bk-rev-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--ns-rule); color: var(--ns-muted); }
 #bakemono-workbench-root .bk-rev-bulk .bk-rev-grow { flex-basis: 100%; }
 #bakemono-workbench-root .bk-rev-bulk strong { color: var(--ns-text); font-weight: 500; }
-#bakemono-workbench-root .bk-rev .bk-rev-rp { display: flex !important; align-items: baseline; gap: 12px; width: 100% !important; padding: 14px 0 !important; border-bottom: 1px solid var(--ns-rule) !important; }
-#bakemono-workbench-root .bk-rev-rp small { display: block; font-size: .85em; color: var(--ns-faint); }
-#bakemono-workbench-root .bk-rev-dot { flex: none; align-self: flex-start; width: 8px; height: 8px; margin-top: .6em; border-radius: 50%; background: var(--ns-alert); }
 
 #bakemono-workbench-root .bk-rev-draft { padding: 2px 0 16px; border-bottom: 1px dashed var(--ns-rule); }
 #bakemono-workbench-root .bk-rev-draft-h { display: flex; align-items: flex-start; gap: 8px; }
@@ -4064,18 +4034,8 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-editor-grid { display: block; }
 /* 表格 has its own sidebar entry, so the “back to 自动与数据” link of the shared panel is not shown here. */
 #bakemono-workbench-root[data-active-tab="tables"] .bakemono-memory-parent-link { display: none; }
-#bakemono-workbench-root .bk-tbl-page { max-width: 60rem; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
-#bakemono-workbench-root .bk-tbl-page :is(select, input[type="text"], input:not([type]), textarea) { width: 100%; margin: 0; padding: 7px 0; border: 0; border-bottom: 1px solid var(--ns-rule-strong); border-radius: 0; background: transparent; box-shadow: none; color: var(--ns-text); font: inherit; }
-#bakemono-workbench-root .bk-tbl-page :is(select, input, textarea):focus { outline: none; border-bottom-color: var(--ns-accent); }
-#bakemono-workbench-root .bk-tbl-page select option { background: var(--bk-paper); color: var(--ns-text); }
-#bakemono-workbench-root .bk-tbl-spacer { flex: 1; }
-#bakemono-workbench-root .bk-tbl-page .checkbox_label { display: inline-flex; align-items: center; gap: 8px; margin: 0; color: var(--ns-muted); font-size: .92em; }
 
 /* status */
-#bakemono-workbench-root .bk-tbl-status { padding: 20px 0; border-bottom: 1px solid var(--ns-rule); }
-#bakemono-workbench-root .bk-tbl-status h3 { margin: 6px 0 4px; font: 600 clamp(1.3em, 5vw, 1.6em)/1.3 var(--ns-serif); color: var(--ns-text); text-wrap: balance; }
-#bakemono-workbench-root .bk-tbl-facts b { font-weight: 500; color: var(--ns-text); }
-#bakemono-workbench-root .bk-tbl-page .bk-tbl-status .bk-tbl-fill.menu_button { display: inline-flex; align-items: baseline; gap: 8px; width: auto; min-height: 40px; margin: 0; padding: 8px 16px; border: 0; border-radius: 4px; background: none; box-shadow: inset 0 0 0 1px var(--ns-rule-strong); color: var(--ns-text); font: inherit; font-weight: 500; }
 #bakemono-workbench-root .bk-tbl-cost { font: 500 11px var(--ns-mono); color: var(--ns-faint); }
 #bakemono-workbench-root .bk-tbl-switch { display: flex; align-items: center; gap: 12px; margin: 14px 0 0; padding: 10px 0 0; border-top: 1px dashed var(--ns-rule); cursor: pointer; }
 #bakemono-workbench-root .bk-tbl-switch-copy { flex: 1; min-width: 0; color: var(--ns-text); }
@@ -4088,83 +4048,12 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .bk-tbl-switch input:focus-visible + .bk-tbl-toggle { outline: 2px solid var(--ns-accent); outline-offset: 2px; }
 
 /* this turn's changes */
-#bakemono-workbench-root .bk-tbl-diff-head[hidden] { display: none; }
-#bakemono-workbench-root .bk-tbl-diff { padding: 18px 0; border-bottom: 1px solid var(--ns-rule); }
-#bakemono-workbench-root .bk-tbl-diff-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
-#bakemono-workbench-root .bk-tbl-diff-h h4 { flex: 1 1 auto; margin: 0; font: 600 1.15em/1.35 var(--ns-serif); color: var(--ns-text); }
-#bakemono-workbench-root .bk-tbl-diff-note { margin-top: 8px; font-size: .9em; color: var(--ns-muted); }
-#bakemono-workbench-root .bk-tbl-diff-note[hidden] { display: none; }
-#bakemono-workbench-root .bk-tbl-diff-note.is-error { color: var(--ns-alert); }
-#bakemono-workbench-root .bk-tbl-diff-note p { margin: 0; }
-#bakemono-workbench-root .bk-tbl-diff-note small { display: block; color: var(--ns-faint); }
-#bakemono-workbench-root .bk-tbl-op { display: grid; grid-template-columns: 1.4em minmax(0, 1fr); gap: 0 8px; padding: 10px 0; border-bottom: 1px dashed var(--ns-rule); }
-#bakemono-workbench-root .bk-tbl-op-sign { font: 600 15px/1.5 var(--ns-mono); color: var(--ns-accent); }
-#bakemono-workbench-root .bk-tbl-op.is-delete .bk-tbl-op-sign { color: var(--ns-alert); }
-#bakemono-workbench-root .bk-tbl-op-where { display: block; font: 12px/1.5 var(--ns-mono); color: var(--ns-faint); }
-#bakemono-workbench-root .bk-tbl-op strong { display: block; font-weight: 500; color: var(--ns-text); overflow-wrap: anywhere; }
-#bakemono-workbench-root .bk-tbl-op-change { margin: 2px 0 0; font-size: .93em; color: var(--ns-muted); overflow-wrap: anywhere; }
-#bakemono-workbench-root .bk-tbl-op-label { margin-right: 8px; font-size: .9em; color: var(--ns-faint); }
-#bakemono-workbench-root .bk-tbl-op-change s { color: var(--ns-faint); text-decoration-color: var(--ns-alert); }
-#bakemono-workbench-root .bk-tbl-op-change b { font-weight: 500; color: var(--ns-text); }
-#bakemono-workbench-root .bk-tbl-diff-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
-#bakemono-workbench-root .bk-tbl-raw > summary { list-style: none; color: var(--ns-accent); font-size: .9em; cursor: pointer; }
-#bakemono-workbench-root .bk-tbl-raw > summary::-webkit-details-marker { display: none; }
-#bakemono-workbench-root .bk-tbl-raw[open] { order: 3; flex-basis: 100%; }
-#bakemono-workbench-root .bk-tbl-raw textarea { margin-top: 10px !important; padding: 10px 12px !important; border: 1px solid var(--ns-rule-strong) !important; border-radius: 4px !important; font: 13px/1.6 var(--ns-mono) !important; }
-#bakemono-workbench-root .bk-tbl-raw .bk-sum-editor-actions { margin-top: 10px; }
 
 /* directory and tables */
-#bakemono-workbench-root .bk-tbl-dir { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 0; padding: 16px 0 6px; }
-#bakemono-workbench-root .bk-tbl-page .bk-tbl-dir button { color: var(--ns-muted); }
-#bakemono-workbench-root .bk-tbl-dir b { margin-left: 4px; font: 500 11.5px var(--ns-mono); color: var(--ns-accent); }
-#bakemono-workbench-root .bk-tbl-sep { margin: 0 10px; color: var(--ns-rule-strong); }
-#bakemono-workbench-root .bk-tbl-page .bk-tbl-view { margin-left: auto !important; padding-left: 16px !important; font-size: .87em; white-space: nowrap; }
 #bakemono-workbench-root .bk-tbl { position: relative; padding-bottom: 14px; }
-#bakemono-workbench-root .bk-tbl-h { position: sticky; top: 0; z-index: 2; display: flex; align-items: flex-start; gap: 8px; padding: 12px 0 8px; border-bottom: 1px solid var(--ns-rule); background: var(--bk-paper); }
-#bakemono-workbench-root .bk-tbl-page .bk-tbl-head { flex: 1; min-width: 0; display: flex !important; align-items: flex-start; gap: 8px; }
-#bakemono-workbench-root .bk-tbl-chev { flex: none; width: 12px; margin-top: 3px; font: 13px/1.4 var(--ns-mono); color: var(--ns-faint); transition: transform .2s; }
-#bakemono-workbench-root .bk-tbl.is-open .bk-tbl-chev { transform: rotate(90deg); }
-#bakemono-workbench-root .bk-tbl-main { min-width: 0; }
-#bakemono-workbench-root .bk-tbl-main strong { display: block; font: 600 1.1em/1.4 var(--ns-serif); color: var(--ns-text); }
-#bakemono-workbench-root .bk-tbl-no { margin-right: 6px; font: 500 12px var(--ns-mono); color: var(--ns-faint); }
-#bakemono-workbench-root .bk-tbl-main .is-alert { color: var(--ns-alert); }
 
 /* a record: its title, then one small block per field — name above value, blocks divided by a thin rule */
-#bakemono-workbench-root .bk-tbl-rec { position: relative; padding: 14px 0 16px 14px; border-bottom: 1px solid var(--ns-rule); }
-#bakemono-workbench-root .bk-tbl-rec::before { content: ""; position: absolute; left: 0; top: 21px; width: 5px; height: 5px; border-radius: 50%; background: var(--ns-rule-strong); }
-#bakemono-workbench-root .bk-tbl-rec.is-new::before { background: var(--ns-accent); box-shadow: 0 0 0 3px var(--ns-accent-soft); }
-#bakemono-workbench-root .bk-tbl-rec-h { display: flex; align-items: baseline; gap: 10px; }
-#bakemono-workbench-root .bk-tbl-rec-h strong { min-width: 0; font: 600 1.05em/1.45 var(--ns-serif); color: var(--ns-text); overflow-wrap: anywhere; }
-#bakemono-workbench-root .bk-tbl-rec-h small { flex: none; font: 500 11px var(--ns-mono); color: var(--ns-accent); }
-#bakemono-workbench-root .bk-tbl-rec dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5em, 1fr)); gap: 10px 0; margin: 8px 0 0; }
-#bakemono-workbench-root .bk-tbl-cell { min-width: 0; padding: 0 14px 0 12px; border-left: 1px solid var(--ns-rule-strong); }
-#bakemono-workbench-root .bk-tbl-cell.is-long { grid-column: 1 / -1; }
-#bakemono-workbench-root .bk-tbl-cell dt { font: 500 11px/1.5 var(--ns-mono); letter-spacing: .04em; }
-#bakemono-workbench-root .bk-tbl-cell dd { margin: 1px 0 0; font-size: .95em; line-height: 1.65; color: var(--ns-text); overflow-wrap: anywhere; white-space: pre-wrap; }
-#bakemono-workbench-root .bk-tbl-cell dd.is-empty { color: var(--ns-faint); }
-#bakemono-workbench-root .bk-tbl-cell.is-long:not(.is-expanded) dd { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
-#bakemono-workbench-root .bk-tbl-page .bk-tbl-expand { margin-top: 2px !important; font-size: .85em !important; }
-#bakemono-workbench-root .bk-tbl-page :is(.bk-tbl-more, .bk-tbl-add) { display: inline-block; margin: 10px 14px 0 14px !important; }
-#bakemono-workbench-root .bk-tbl-edit { padding: 14px 0 16px 14px; border-bottom: 1px solid var(--ns-rule); }
-#bakemono-workbench-root .bk-tbl-edit .bk-sum-field + .bk-sum-field { margin-top: 10px; }
-#bakemono-workbench-root .bk-tbl-edit .bk-sum-field textarea { min-height: 0; padding: 6px 0 !important; border: 0 !important; border-bottom: 1px solid var(--ns-rule-strong) !important; border-radius: 0 !important; background: none !important; font: inherit !important; resize: vertical; }
-#bakemono-workbench-root .bk-tbl-page .bk-sum-editor-actions { gap: 16px; margin-top: 12px; }
-#bakemono-workbench-root .bk-tbl-grid-wrap { margin-top: 8px; overflow-x: auto; border: 1px solid var(--ns-rule); border-radius: 4px; }
-#bakemono-workbench-root .bk-tbl-grid { width: 100%; min-width: 100%; border-collapse: collapse; font-size: .9em; }
-#bakemono-workbench-root .bk-tbl-grid :is(th, td) { padding: 7px 10px; border-bottom: 1px solid var(--ns-rule); text-align: left; vertical-align: top; color: var(--ns-text); }
-#bakemono-workbench-root .bk-tbl-grid th { font: 500 11.5px var(--ns-mono); color: var(--ns-faint); white-space: nowrap; background: var(--ns-hover); }
-#bakemono-workbench-root .bk-tbl-grid td { min-width: 6em; max-width: 18em; overflow-wrap: anywhere; }
-#bakemono-workbench-root .bk-tbl-grid tr.is-new td:first-child { box-shadow: inset 2px 0 0 var(--ns-accent); }
 #bakemono-workbench-root .bk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-#bakemono-workbench-root .bk-tbl-fields { padding: 14px 0 6px; }
-#bakemono-workbench-root .bk-tbl-fields > .bk-sum-field + .bk-sum-field { margin-top: 12px; }
-#bakemono-workbench-root .bk-tbl-flags { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 14px 0 4px; }
-#bakemono-workbench-root .bk-tbl-field { margin-top: 12px; padding: 12px 0 0 12px; border-top: 1px dashed var(--ns-rule); border-left: 1px solid var(--ns-rule-strong); }
-#bakemono-workbench-root .bk-tbl-field .bk-sum-field + .bk-sum-field { margin-top: 8px; }
-#bakemono-workbench-root .bk-tbl-field-foot { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 16px; margin-top: 8px; }
-#bakemono-workbench-root .bk-tbl-kind { display: grid; gap: 2px; margin: 0; }
-#bakemono-workbench-root .bk-tbl-kind > span { font: 500 10.5px/1.4 var(--ns-mono); letter-spacing: .14em; color: var(--ns-faint); }
-#bakemono-workbench-root .bk-tbl-page .bk-sum-field textarea { min-height: 0; }
 
 /* settings list */
 #bakemono-workbench-root .bk-tbl-settings { margin-top: 28px; border-top: 1px solid var(--ns-rule-strong); }
@@ -4383,7 +4272,6 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .bk-vec-in { color: var(--ns-c-done); }
 #bakemono-workbench-root .bk-auto-what b.is-done, #bakemono-workbench-root .bk-auto-steps b { color: var(--ns-c-done); }
 #bakemono-workbench-root .bk-auto-table { color: var(--ns-c-people); }
-#bakemono-workbench-root .bk-tbl-cell dt { color: var(--ns-c-people); }
 
 /* Automatic stage summaries (自动总结): how far the next chapter is, when to summarise, the latest chapters. Shares the
    自动记忆 rows (.bk-auto) and the 表格 settings rows; links replace the model and prompt settings kept elsewhere. */

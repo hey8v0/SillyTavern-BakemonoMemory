@@ -76,10 +76,7 @@ export function createChatStateService({
     defaultGenerationTargets,
     migrateTurnSummaryPrompt,
     defaultTurnSummaryPrompt,
-    tableSchemaScopes,
     ensureGlobalSettings,
-    ensureTableProfileForScope,
-    mergeScopedTableSchemasIntoState,
     migrateInlineSummaryPrompt,
     defaultInlineSummaryPrompt,
     defaultVectorMemory,
@@ -190,26 +187,14 @@ export function createChatStateService({
         migrateTurnSummaryPrompt(state.turnSummary, defaultTurnSummaryPrompt, migrateBuiltInStructuredPrompt);
         ensureObjectField(state, 'tableDatabase', defaultState.tableDatabase);
         fillMissingDefaults(state.tableDatabase, defaultState.tableDatabase);
-        if (!Object.values(tableSchemaScopes).includes(state.tableDatabase.schemaScope)) {
-            ensureGlobalSettings();
-            state.tableDatabase.schemaScope = extensionSettings[storageKey].defaultTableSchemaScope || tableSchemaScopes.CHAT;
-        }
-        normalizeArrayFields(state.tableDatabase, ['tables', 'editDrafts', 'history', 'undoStack', 'redoStack', 'rollbackHistory']);
-        state.tableDatabase.lastAppliedSourceMessageIds = getFiniteMessageIds(state.tableDatabase.lastAppliedSourceMessageIds || []);
-        normalizeArrayFields(state.tableDatabase, ['chatProfiles']);
-        ensureObjectField(state.tableDatabase, 'profileRows', {});
-        ensureTableProfileForScope(state.tableDatabase.schemaScope, state);
-        mergeScopedTableSchemasIntoState(state);
+        // Older chats keep their table rows for the 剧情事实 import; nothing reads or writes them otherwise.
+        normalizeArrayFields(state.tableDatabase, ['tables', 'editDrafts', 'history']);
         ensureObjectField(state, 'inlineGeneration', defaultState.inlineGeneration);
         // v1.32.0: tables are no longer written per turn; 剧情事实 records facts per stage instead.
         state.inlineGeneration.tableEnabled = false;
         if (state.turnSummary && ['table', 'both'].includes(state.turnSummary.processingMode)) state.turnSummary.processingMode = 'summary';
         fillMissingDefaults(state.inlineGeneration, defaultState.inlineGeneration);
         migrateInlineSummaryPrompt(state.inlineGeneration, defaultInlineSummaryPrompt, migrateBuiltInStructuredPrompt);
-        if (state.inlineGeneration.hideTableEditMigratedToRegex !== true) {
-            state.inlineGeneration.hideTableEdit = false;
-            state.inlineGeneration.hideTableEditMigratedToRegex = true;
-        }
         ensureObjectField(state, 'vectorMemory', defaultVectorMemory);
         fillMissingDefaults(state.vectorMemory, defaultVectorMemory);
         migrateVectorQueryRewritePrompt(state.vectorMemory, defaultVectorMemory.queryRewritePrompt);

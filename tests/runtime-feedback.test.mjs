@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as text from '../src/shared/text.js';
 import { createTurnProcessingController } from '../src/features/turn-processing-controller.js';
-import { createTableWorkflowController } from '../src/features/table-workflow-controller.js';
 import { createVectorMemoryService } from '../src/features/vector-memory-service.js';
 import { createInjectionService } from '../src/features/injection-service.js';
 import { createSummaryMemoryModel } from '../src/features/summary-memory-model.js';
@@ -27,26 +26,6 @@ function tableFixture() {
         createTableEditDraft: () => null, saveState: noop, renderWorkbenchScope: noop });
     return { state, chat, workflow, calls, errors, fail: () => { fail = true; } };
 }
-
-test('table generation passes state to source checks and reaches the model without includeUserMessage errors', async () => {
-    const f = tableFixture();
-    await f.workflow.processLatestTableEdit({ manual: true });
-    assert.deepEqual(f.errors, []);
-    assert.equal(f.calls.length, 1);
-    assert.equal(f.state.turnSummary.lastProcessedMessageId, 1);
-});
-
-test('failed automatic table work waits for manual retry or changed source instead of resuming endlessly', async () => {
-    const f = tableFixture(); f.fail();
-    await f.workflow.processLatestTableEdit();
-    await f.workflow.processLatestTableEdit();
-    assert.equal(f.calls.length, 1);
-    await f.workflow.processLatestTableEdit({ manual: true });
-    assert.equal(f.calls.length, 2);
-    f.chat[1].mes += '他拿起钥匙。';
-    await f.workflow.processLatestTableEdit();
-    assert.equal(f.calls.length, 3);
-});
 
 test('one failed auto index emits one warning and pauses automatic work until explicit retry', async () => {
     const state = { vectorMemory: { enabled: true, records: [], embeddingProvider: 'local' } };

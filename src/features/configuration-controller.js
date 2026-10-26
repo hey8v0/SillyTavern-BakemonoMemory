@@ -19,18 +19,12 @@ export function createConfigurationController({
     defaultAutomation,
     defaultState,
     defaultTurnSummaryPrompt,
-    defaultTableEditPrompt,
     turnProcessingModes,
     mergeSharedInlineGenerationConfig,
     mergeSharedVectorConfig,
     createAutomationBehaviorConfig,
     mergeAutomationBehaviorConfig,
     defaultVectorMemory,
-    tableSchemaScopes,
-    normalizeImportedTablesFromJson,
-    findMatchingTable,
-    mergeTableSchemaWithRows,
-    setTableSchemaScope,
     syncInlineGenerationPrompts,
     scheduleVectorAutoIndex,
     scanBlocks,
@@ -139,7 +133,6 @@ export function createConfigurationController({
                 excludeTags: String(preset.turnSummary.excludeTags || ''),
                 referenceContext: String(preset.turnSummary.referenceContext || ''),
                 prompt: String(preset.turnSummary.prompt || state.turnSummary.prompt || defaultTurnSummaryPrompt),
-                tablePrompt: String(preset.turnSummary.tablePrompt || state.turnSummary.tablePrompt || defaultTableEditPrompt),
             };
         }
         if (preset.inlineGeneration) {
@@ -159,27 +152,6 @@ export function createConfigurationController({
             if (!options.skipVectorSchedule) {
                 scheduleVectorAutoIndex('载入全局配置');
             }
-        }
-        if (preset.tableDatabase) {
-            const currentTables = Array.isArray(state.tableDatabase.tables) ? state.tableDatabase.tables : [];
-            const sharedSchemas = Array.isArray(preset.tableDatabase.tables)
-                ? normalizeImportedTablesFromJson({ tables: preset.tableDatabase.tables })
-                : null;
-            state.tableDatabase = {
-                ...state.tableDatabase,
-                enabled: !!preset.tableDatabase.enabled,
-                injectMemory: preset.tableDatabase.injectMemory !== false,
-                autoApply: !!preset.tableDatabase.autoApply,
-                schemaScope: Object.values(tableSchemaScopes).includes(preset.tableDatabase.schemaScope)
-                    ? preset.tableDatabase.schemaScope
-                    : state.tableDatabase.schemaScope,
-                tables: sharedSchemas
-                    ? sharedSchemas.map(schema => mergeTableSchemaWithRows(schema, findMatchingTable(schema, currentTables)))
-                    : currentTables,
-                editDrafts: state.tableDatabase.editDrafts || [],
-                history: state.tableDatabase.history || [],
-            };
-            setTableSchemaScope(state.tableDatabase.schemaScope, state);
         }
         state.activeConfigId = preset.id || state.activeConfigId || '';
         state.configInitialized = true;
@@ -289,7 +261,6 @@ export function createConfigurationController({
                     excludeTags: String(state.turnSummary.excludeTags || ''),
                     referenceContext: String(state.turnSummary.referenceContext || ''),
                     prompt: String(state.turnSummary.prompt || defaultTurnSummaryPrompt),
-                    tablePrompt: String(state.turnSummary.tablePrompt || defaultTableEditPrompt),
                 },
                 inlineGeneration: createSharedInlineGenerationConfig(state.inlineGeneration || defaultState.inlineGeneration),
             };
@@ -312,7 +283,6 @@ export function createConfigurationController({
                     excludeTags: String(state.turnSummary.excludeTags || ''),
                     referenceContext: String(state.turnSummary.referenceContext || ''),
                     prompt: String(state.turnSummary.prompt || defaultTurnSummaryPrompt),
-                    tablePrompt: String(state.turnSummary.tablePrompt || defaultTableEditPrompt),
                 },
                 inlineGeneration: createSharedInlineGenerationConfig(state.inlineGeneration || defaultState.inlineGeneration),
             };
@@ -395,7 +365,6 @@ export function createConfigurationController({
                 state.turnSummary.excludeTags = String(preset.turnSummary.excludeTags || '');
                 state.turnSummary.referenceContext = String(preset.turnSummary.referenceContext || state.turnSummary.referenceContext || '');
                 state.turnSummary.prompt = preset.turnSummary.prompt || state.turnSummary.prompt || defaultTurnSummaryPrompt;
-                state.turnSummary.tablePrompt = preset.turnSummary.tablePrompt || state.turnSummary.tablePrompt || defaultTableEditPrompt;
             }
             if (preset.inlineGeneration) {
                 state.inlineGeneration = mergeSharedInlineGenerationConfig(state.inlineGeneration, preset.inlineGeneration, defaultState.inlineGeneration);
@@ -417,7 +386,6 @@ export function createConfigurationController({
                 excludeTags: String(preset.turnSummary.excludeTags || ''),
                 referenceContext: String(preset.turnSummary.referenceContext || ''),
                 prompt: String(preset.turnSummary.prompt || state.turnSummary.prompt || defaultTurnSummaryPrompt),
-                tablePrompt: String(preset.turnSummary.tablePrompt || state.turnSummary.tablePrompt || defaultTableEditPrompt),
             };
             if (preset.inlineGeneration) {
                 state.inlineGeneration = mergeSharedInlineGenerationConfig(state.inlineGeneration, preset.inlineGeneration, defaultState.inlineGeneration);

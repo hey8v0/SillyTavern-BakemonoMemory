@@ -12,7 +12,7 @@ export const helpGuideSections = [
 
 // Where a page name in the text leads: [data-bakemono-nav value].
 export const helpPageTargets = {
-    '剪辑台': 'overview', '总结': 'preview', '剧情事实': 'facts', '剧情状态': 'rp-state', '向量记忆': 'vector',
+    '剪辑台': 'overview', '总结': 'preview', '剧情事实': 'facts', '向量记忆': 'vector',
     '待确认': 'drafts', '自动与数据': 'data-hub', '设置中心': 'settings-hub',
     '剪辑台 → 上一轮内容': 'prompt-inspector', '总结 → 摘要树': 'timeline',
     '自动与数据 → 自动记忆': 'turn-summary', '自动与数据 → 自动总结': 'automation',
@@ -216,7 +216,7 @@ export const helpGuideArticles = {
         lead: '从 1.32 起，人物、关系、物品和约定由“剧情事实”按阶段整理成卡片，不再每一轮抽取。以前的剧情状态和表格页从侧栏收起，数据都还在。',
         steps: [
             ['把旧内容接过来', '到“剧情事实”页，顶部点“从剧情状态和表格导入”，旧内容会变成卡片。只补充，不覆盖。'],
-            ['想再看一眼旧页面', '“剧情事实”页顶部有“打开以前的剧情状态 / 表格”，能看、能导出，但不会再自动记录，也不再注入。'],
+            ['原来的数据还在', '以前记下的剧情状态和表格保存在聊天里，恢复包也会带上；导入之后它们只作为来源，不再单独显示。'],
             ['表格的两个设置', '“自动与数据 → 自动记忆”里不再问表格怎么填；随正文填表和回复后填表都已停用。'],
         ],
         note: ['为什么改', '每一轮让模型输出带编号的修改指令，错一条就丢一条，很难改对；按阶段整张重写卡片更稳，也更省请求。'],

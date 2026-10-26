@@ -16,27 +16,6 @@ async function loadModule(path, replacements = []) {
     return await import(toDataModule(source));
 }
 
-test('table operation parser reads insert, update and delete without applying them', async () => {
-    const textSource = await readFile(new URL('src/shared/text.js', repoUrl), 'utf8');
-    const textUrl = toDataModule(textSource);
-    const parser = await loadModule('src/tables/operation-parser.js', [
-        ["'../shared/text.js'", `'${textUrl}'`],
-    ]);
-    const operations = parser.parseTableEditOperations(`
-        <tableEdit>
-        insertRow(0, {0: 'Nana', 1: '鲸湾'})
-        updateRow(0, 2, {1: '书房'})
-        deleteRow(1, 3)
-        </tableEdit>
-    `);
-
-    assert.deepEqual(operations, [
-        { op: 'insert', tableIndex: 0, data: { 0: 'Nana', 1: '鲸湾' } },
-        { op: 'update', tableIndex: 0, rowIndex: 2, data: { 1: '书房' } },
-        { op: 'delete', tableIndex: 1, rowIndex: 3 },
-    ]);
-});
-
 test('vector query parser keeps Chinese clues and removes reasoning residue', async () => {
     const parser = await loadModule('src/vector/query-parser.js');
     const payload = parser.parseVectorQueryRewritePayload(`

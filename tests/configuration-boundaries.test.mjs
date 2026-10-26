@@ -6,24 +6,21 @@ import { createVectorSettingsModel } from '../src/features/vector-settings-model
 import { createConfigurationService } from '../src/features/configuration-service.js';
 import { readFile } from 'node:fs/promises';
 
-test('RP state, tables and vectors have sidebar entries and stay reachable from the data hub', async () => {
+test('剧情事实 and vectors have sidebar entries and stay reachable from the data hub', async () => {
     const navigation = createWorkbenchNavigation();
-    assert.equal(navigation.getMenuTab('tables'), 'tables');
     assert.equal(navigation.getMenuTab('vector'), 'vector');
     assert.equal(navigation.getMenuTab('automation'), 'data-hub');
-    assert.equal(navigation.getMenuTab('rp-state'), 'rp-state');
     const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
-    // v1.32.0: 剧情事实 has the sidebar entry and the data-hub frame; 剧情状态 and 表格 keep their panels but no entry.
+    // v1.33.0: 剧情事实 has the sidebar entry and the data-hub frame; 剧情状态 and 表格 are gone.
     assert.match(html, /data-bakemono-tab="facts"/);
     assert.match(html, /data-bakemono-tab="vector"/);
     assert.match(html, /data-bakemono-nav="facts"/);
     assert.match(html, /data-bakemono-nav="vector"/);
     assert.doesNotMatch(html, /data-bakemono-tab="tables"|data-bakemono-tab="rp-state"|data-bakemono-nav="tables"/);
-    assert.match(html, /data-bakemono-panel="rp-state"/);
+    assert.doesNotMatch(html, /data-bakemono-panel="rp-state"|bakemono-memory-table-list/);
     assert.match(html, /data-bakemono-panel="turn-summary"/);
     assert.doesNotMatch(html, /id="bakemono-story-state"/);
     assert.match(html, /id="bakemono-story-backup"/);
-    assert.match(html, /id="bakemono-memory-table-list"/);
 });
 
 test('saving another configuration page preserves committed vector settings', () => {

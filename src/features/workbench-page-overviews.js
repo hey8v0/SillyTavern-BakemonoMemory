@@ -94,7 +94,7 @@ export function createWorkbenchPageOverviews({
     }
 
     // Sizes per source use the home page's source names and colours.
-    const injectionSources = [['summary', '阶段／多次总结'], ['memory', '长期记忆'], ['rpState', '剧情状态'], ['facts', '剧情事实'], ['table', '表格记忆'],['vector', '向量召回']];
+    const injectionSources = [['summary', '阶段／多次总结'], ['memory', '长期记忆'], ['facts', '剧情事实'], ['time', '剧情时间'],['vector', '向量召回']];
     function renderInjectionOverview(state = getState()) {
         const enabled = !!state.injection.enabled;
         const content = renderInjectionContent(state);

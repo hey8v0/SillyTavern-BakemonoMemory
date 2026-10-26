@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as text from '../src/shared/text.js';
 import { createContentBlockService } from '../src/features/content-block-service.js';
-import { readSummarySources } from '../src/rp-core/summary-source.js';
 
 // One reply, three <details> blocks that differ only in their title (reported by a user).
 const reply = '甲推开门。\n'
@@ -52,12 +51,4 @@ test('scanning with a titled rule finds one summary per reply', () => {
     // The same result by excluding the other two titles.
     state = { scanRules: { mode: 'tag', includeTags: 'details', excludeTags: 'details:剧情选项, details:反馈' } };
     assert.deepEqual(service.extractConfiguredSegments(reply).map(segment => segment.content), [segments[0].content]);
-});
-
-test('story state reads the titled summary block as its summary source', () => {
-    const state = { scanRules: { includeTags: 'details:章节摘要' } };
-    const sources = readSummarySources(reply, { messageId: 'm1', variantId: 'v1' }, state);
-    assert.equal(sources.length, 1);
-    assert.match(sources[0].text, /旧信/);
-    assert.doesNotMatch(sources[0].text, /码头 B|节奏/);
 });

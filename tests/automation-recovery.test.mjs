@@ -1,7 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runtimeHost } from './helpers/rp-runtime-host.mjs';
-import { parsePayload } from '../src/rp-core/extraction.js';
 import { inspectSummaryMaterials } from '../src/features/summary-generation-controller.js';
 import { stageAutomationStatus } from '../src/summary/automation-status.js';
 import { summarySourceChoice, applySummarySourceChoice } from '../src/features/turn-trigger-policy.js';
@@ -10,7 +8,6 @@ import { fixture as summaryFixture } from './helpers/summary-runtime.mjs';
 import * as text from '../src/shared/text.js';
 import { stripPostProcessNoise } from '../src/shared/prompt-utils.js';
 import * as meta from '../src/summary/source-metadata.js';
-import { createRpExtractionFlow } from '../src/rp-core/extraction-flow.js';
 
 const noop = () => {};
 
@@ -50,9 +47,9 @@ test('invalid material is excluded from counts and blocks automatic generation w
     assert.equal(f.calls(), 0);
 });
 
-test('selecting automatic summary connects its prerequisite; legacy manual/off and table settings stay intact', () => {
+test('selecting automatic summary connects its prerequisite; legacy manual/off settings stay intact', () => {
     for (const enabled of [false, true]) {
-        const state = { turnSummary: { enabled, auto: false, processingMode: 'both', prompt: '自定义' },
+        const state = { turnSummary: { enabled, auto: false, processingMode: 'summary', prompt: '自定义' },
             inlineGeneration: { summaryEnabled: false, tableEnabled: true }, tableDatabase: { enabled: false }, stageSourceMode: 'raw' };
         const original = structuredClone(state), choice = summarySourceChoice(state);
         assert.equal(choice, enabled ? 'manual' : 'existing');
@@ -71,11 +68,6 @@ test('selecting automatic summary connects its prerequisite; legacy manual/off a
     const original = structuredClone(legacy);
     assert.equal(summarySourceChoice(legacy), 'legacy');
     applySummarySourceChoice(legacy, 'legacy'); assert.deepEqual(legacy, original);
-    const tableOnly = { turnSummary: { enabled: true, auto: true, processingMode: 'table' }, inlineGeneration: { summaryEnabled: false } };
-    const tableOriginal = structuredClone(tableOnly);
-    assert.equal(summarySourceChoice(tableOnly), 'legacy');
-    applySummarySourceChoice(tableOnly, 'legacy'); assert.deepEqual(tableOnly, tableOriginal);
-    applySummarySourceChoice(tableOnly, 'independent'); assert.equal(tableOnly.turnSummary.processingMode, 'both');
 });
 
 function turnFixture(onCall) {
@@ -130,35 +122,6 @@ test('failed automatic per-turn processing waits for an explicit retry instead o
     await assert.rejects(f.controller.processLatestTurnSummary({ manual: true }), /接口超时/);
     assert.equal(f.calls(), 2);
     assert.equal(f.state.turnSummary.lastRun.status, 'failed');
-});
-
-test('RP accepts an optional JSON fence, but rejects broken JSON without guessing values', () => {
-    assert.equal(parsePayload('<rpEvents>```json\n{"version":2,"events":[]}\n```</rpEvents>').length, 0);
-    assert.throws(() => parsePayload('<rpEvents>{"version":2,"events":[}</rpEvents>'), /JSON/);
-});
-
-test('unchanged invalid inline RP notifies once and a corrected protocol is read again', async () => {
-    const h = runtimeHost(); await h.service.enable();
-    h.chat[0].mes += '<rpEvents>{"version":2,"events":[}</rpEvents>';
-    for (let i = 0; i < 3; i++) await h.orchestrator.runMemoryOrchestrator('回复完成', { scan: false });
-    assert.equal(h.warnings.length, 1);
-    assert.equal(h.state.rpCore.facts.length, 0);
-    h.chat[0].mes = '甲进入书店。<rpEvents>{"version":2,"events":[]}</rpEvents>';
-    assert.equal(await h.flow.captureInline(), true);
-});
-
-test('concurrent inline events report one error, and failed-protocol dedup survives flow recreation', async () => {
-    const h = runtimeHost(); await h.service.enable();
-    h.chat[0].mes += '<rpEvents>{"version":2,"events":[}</rpEvents>';
-    const results = await Promise.allSettled([h.flow.captureInline(), h.flow.captureInline(), h.flow.captureInline()]);
-    assert.equal(results.filter(result => result.status === 'rejected').length, 1);
-    const reloaded = createRpExtractionFlow({ getState: () => h.state, getChat: () => h.chat, service: h.service });
-    assert.equal(await reloaded.captureInline(), false);
-    h.chat[0].mes = '甲进入书店。<rpEvents>{"version":2,"events":';
-    assert.equal((await reloaded.captureInline({ detailed: true })).status, 'incomplete');
-    h.chat[0].mes = '甲进入书店。<rpEvents>{"version":2,"events":[]}</rpEvents>';
-    assert.equal(await reloaded.captureInline(), true);
-    assert.equal(h.state.rpCore.facts.length, 0);
 });
 
 test('disclosure headings alone are not summary material; custom prose remains valid', () => {

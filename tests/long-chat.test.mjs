@@ -1,12 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runtimeHost } from './helpers/rp-runtime-host.mjs';
 import { createVectorSidecar, vectorSidecarName } from '../src/vector/sidecar.js';
 import { serializeVectorMemory } from '../src/vector/storage.js';
-import { replayLedger, createReplayCache, foldLedger } from '../src/rp-core/ledger.js';
-import { applyDomainFact } from '../src/rp-core/domain.js';
-import { compactChange } from '../src/rp-core/extraction.js';
-import { validateRpBackup } from '../src/rp-core/backup.js';
 import { getHash } from '../src/shared/text.js';
 
 const block = events => '<rpEvents>' + JSON.stringify({ version: 2, events }) + '</rpEvents>';
@@ -59,56 +54,4 @@ test('the vector index goes to its own file and leaves the chat file', async () 
     assert.equal(await createVectorSidecar({ fetchImpl, getHash }).load(lost), false);
     assert.equal(lost.dirty, true, 'an unreadable file means the index is rebuilt');
     assert.match(vectorSidecarName('a|b', getHash), /^bakemono-vectors-[0-9a-f]{16}\.json$/);
-});
-
-test('a change record keeps only what changed, not the whole person', () => {
-    const states = Array.from({ length: 50 }, (_, i) => ({ id: 's' + i, description: '旧状态' + i }));
-    const before = { id: 'a', name: '甲', traits: [], states };
-    const after = { ...before, states: [...states, { id: 'new', description: '受伤' }] };
-    const change = compactChange(before, after);
-    assert.deepEqual(change.after.states, [{ id: 'new', description: '受伤' }]);
-    assert.deepEqual(change.before.states, []);
-    assert.equal(change.after.name, '甲');
-    assert.ok(JSON.stringify(change).length < 200);
-});
-
-async function story(replies) {
-    const h = runtimeHost(); await h.service.enable();
-    h.chat[0].mes += block([e('person_registered', { id: '甲', name: '甲' }), e('location_created', { id: '书店', name: '书店' })]);
-    await h.flow.captureInline();
-    for (let i = 1; i <= replies; i++) {
-        h.chat.push({ mes: '说话', is_user: true });
-        h.chat.push({ mes: '正文第' + i + '段。' + block([
-            e('person_state_started', { id: '甲', stateId: 's' + i, description: '第' + i + '段的心情' }),
-            e('item_registered', { id: 'item' + i, name: '物品' + i, owner: '甲', holder: '甲' }),
-            ...(i > 1 ? [e('person_state_ended', { id: '甲', stateId: 's' + (i - 1) })] : []),
-        ]) });
-        await h.flow.captureInline();
-    }
-    return h;
-}
-
-test('carrying the replay across replies gives the same state as replaying from scratch', async () => {
-    const h = await story(12);
-    const full = replayLedger(h.state.rpCore, applyDomainFact).projection;
-    const cache = createReplayCache(applyDomainFact);
-    const partial = { ...h.state.rpCore, facts: h.state.rpCore.facts.slice(0, 10) };
-    cache(partial);
-    assert.deepEqual(cache(h.state.rpCore).projection, full);
-    assert.equal(h.service.view().projection.items.length, 12);
-});
-
-test('old floors fold into the starting state without changing the current state', async () => {
-    const h = await story(6);
-    const core = h.state.rpCore, cutoff = 7;
-    const before = replayLedger(core, applyDomainFact).projection;
-    const folded = foldLedger(core, cutoff, applyDomainFact);
-    const after = replayLedger(folded, applyDomainFact).projection;
-    assert.deepEqual(after.items, before.items);
-    assert.deepEqual(after.people[0].states.filter(item => !item.ended), before.people[0].states.filter(item => !item.ended));
-    assert.ok(folded.facts.length < core.facts.length);
-    assert.equal(folded.baseline.floor, cutoff);
-    assert.equal(folded.baseline.startFloor, core.baseline.floor);
-    assert.ok(folded.facts.every(fact => fact.order >= cutoff));
-    validateRpBackup(folded);
 });

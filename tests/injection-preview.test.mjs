@@ -23,18 +23,18 @@ test('module previews split tables, recall hits and paragraphs without changing 
     assert.deepEqual(splitInjectionPreview('vector', '  \n '), []);
 });
 
-test('preview and token totals use the prepared inline instructions including appended table guidance', () => {
-    const state = { injection: { enabled: true, template: '规则{{memory}}' }, inlineGeneration: { tableEnabled: true, summaryEnabled: true } };
-    const sources = { rpState: '状态', facts: '事实', summary: '总结', memory: '摘要', table: '表格', vector: '召回' };
+test('preview and token totals use the prepared inline instructions', () => {
+    const state = { injection: { enabled: true, template: '规则{{memory}}' }, inlineGeneration: { summaryEnabled: true } };
+    const sources = { facts: '事实', summary: '总结', memory: '摘要', time: '时间', vector: '召回' };
     const manifest = createOverviewTokenManifest({ getState: () => state,
-        getInjectionMemoryParts: () => ({ sources, rpMaintenance: 'RP规则', inlineValues: { summaryValue: '摘要指令', tableValue: '表格指令+状态填写指南' } }),
+        getInjectionMemoryParts: () => ({ sources, inlineValues: { summaryValue: '摘要指令', tableValue: '' } }),
         renderInjectionContent: () => '规则正文', renderInlinePrompt: () => { throw new Error('must use prepared instructions'); } });
-    assert.deepEqual(manifest.getOverviewInjectionSources(), { ...sources, rule: '规则\n\n摘要指令\n\n表格指令+状态填写指南\n\nRP规则' });
-    assert.equal(manifest.doesLastPromptMatchCurrentInjection('规则正文 摘要指令 表格指令+状态填写指南 RP规则'), true);
-    assert.equal(manifest.doesLastPromptMatchCurrentInjection('规则正文 摘要指令 表格指令 RP规则'), false);
+    assert.deepEqual(manifest.getOverviewInjectionSources(), { ...sources, rule: '规则\n\n摘要指令' });
+    assert.equal(manifest.doesLastPromptMatchCurrentInjection('规则正文 摘要指令'), true);
+    assert.equal(manifest.doesLastPromptMatchCurrentInjection('规则正文 别的指令'), false);
     state.injection.enabled = false;
-    assert.equal(manifest.getOverviewInjectionSources().table, '');
-    assert.match(manifest.getOverviewInjectionSources().rule, /表格指令\+状态填写指南/);
+    assert.equal(manifest.getOverviewInjectionSources().time, '');
+    assert.match(manifest.getOverviewInjectionSources().rule, /摘要指令/);
 });
 
 test('six native module buttons and popup lifecycle are wired into the workbench', () => {

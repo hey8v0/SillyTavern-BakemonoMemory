@@ -1,4 +1,4 @@
-import { applySummarySourceChoice, applyTableModeChoice, summarySourceChoice, tableModeChoice, workflowForSummarySource } from './turn-trigger-policy.js';
+import { applySummarySourceChoice, summarySourceChoice, workflowForSummarySource } from './turn-trigger-policy.js';
 
 import { normalizeFactSettings } from '../facts/model.js';
 import { defaultFactsPrompt } from '../facts/prompt.js';
@@ -15,25 +15,20 @@ export function createConfigurationService({
     defaultStageGenerationPrompt,
     defaultEpicGenerationPrompt,
     defaultTurnSummaryPrompt,
-    defaultTableEditPrompt,
     defaultInlineSummaryPrompt,
-    defaultInlineTablePrompt,
     defaultInjectionTemplate,
     defaultGenerationTargets,
     defaultVectorMemory,
     defaultState,
     turnProcessingModes,
-    tableSchemaScopes,
     extensionPromptRoles,
     memoryStrategies,
     workflowModes,
     stageSourceModes,
     makePresetId,
     getStageSourceMode,
-    setTableSchemaScope,
     createSharedInlineGenerationConfig,
     createSharedVectorConfig,
-    getTableSchemasForPreset,
     getActiveGlobalConfig,
     setActiveGlobalConfig,
     markActiveConfigApplied,
@@ -149,10 +144,8 @@ export function createConfigurationService({
             return state;
         }
         // 自动记忆 chooses the summary source and the table mode with two selects; the flags below follow from them.
-        const previousSource = summarySourceChoice(state), previousTable = tableModeChoice(state);
+        const previousSource = summarySourceChoice(state);
         const chosenSource = String(query('#bakemono-memory-turn-summary-source').val() || previousSource);
-        const chosenTable = String(query('#bakemono-memory-turn-table-mode').val() || previousTable);
-        const checked = (selector, current) => query(selector).length ? !!query(selector).prop('checked') : current;
         state.turnSummary = {
             ...state.turnSummary,
             triggerTiming: String(query('#bakemono-memory-turn-trigger-timing').val() || 'immediate') === 'next_user' ? 'next_user' : 'immediate',
@@ -166,31 +159,16 @@ export function createConfigurationService({
             excludeTags: String(query('#bakemono-memory-turn-exclude-tags').val() || ''),
             referenceContext: String(query('#bakemono-memory-turn-reference').val() || ''),
             prompt: String(query('#bakemono-memory-turn-prompt').val() || defaultTurnSummaryPrompt),
-            tablePrompt: String(query('#bakemono-memory-table-prompt').val() || defaultTableEditPrompt),
-        };
-        state.tableDatabase = {
-            ...state.tableDatabase,
-            enabled: checked('#bakemono-memory-table-enabled', !!state.tableDatabase.enabled),
-            injectMemory: query('#bakemono-memory-table-inject-memory').length
-                ? query('#bakemono-memory-table-inject-memory').prop('checked')
-                : state.tableDatabase.injectMemory !== false,
-            autoApply: query('#bakemono-memory-table-auto-apply').prop('checked'),
-            schemaScope: String(query('#bakemono-memory-table-schema-scope').val() || state.tableDatabase.schemaScope || tableSchemaScopes.CHAT),
         };
         state.inlineGeneration = {
             ...state.inlineGeneration,
-            tableEnabled: checked('#bakemono-memory-inline-table-enabled', !!state.inlineGeneration.tableEnabled),
-            hideTableEdit: query('#bakemono-memory-inline-hide-table').prop('checked'),
             summaryPrompt: String(query('#bakemono-memory-inline-summary-prompt').val() || defaultInlineSummaryPrompt),
-            tablePrompt: String(query('#bakemono-memory-inline-table-prompt').val() || defaultInlineTablePrompt),
         };
         const sourceChanged = chosenSource !== previousSource && chosenSource !== 'legacy';
         if (sourceChanged) {
             applySummarySourceChoice(state, chosenSource);
             Object.assign(state, workflowForSummarySource(chosenSource));
         }
-        if (sourceChanged || chosenTable !== previousTable) applyTableModeChoice(state, chosenTable);
-        setTableSchemaScope(state.tableDatabase.schemaScope, state);
         return state;
     }
 
@@ -261,17 +239,9 @@ export function createConfigurationService({
                 excludeTags: String(state.turnSummary.excludeTags || ''),
                 referenceContext: String(state.turnSummary.referenceContext || ''),
                 prompt: String(state.turnSummary.prompt || defaultTurnSummaryPrompt),
-                tablePrompt: String(state.turnSummary.tablePrompt || defaultTableEditPrompt),
             },
             inlineGeneration: createSharedInlineGenerationConfig(state.inlineGeneration || defaultState.inlineGeneration),
             vectorMemory: createSharedVectorConfig(state.vectorMemory || defaultVectorMemory),
-            tableDatabase: {
-                enabled: !!state.tableDatabase.enabled,
-                injectMemory: state.tableDatabase.injectMemory !== false,
-                autoApply: !!state.tableDatabase.autoApply,
-                schemaScope: state.tableDatabase.schemaScope || tableSchemaScopes.CHAT,
-                tables: getTableSchemasForPreset(state),
-            },
             createdAt: options.createdAt || now,
             updatedAt: now,
         };
@@ -353,7 +323,6 @@ export function createConfigurationService({
             turnSummary: preset.turnSummary && typeof preset.turnSummary === 'object' ? preset.turnSummary : null,
             inlineGeneration: preset.inlineGeneration && typeof preset.inlineGeneration === 'object' ? preset.inlineGeneration : null,
             vectorMemory: preset.vectorMemory && typeof preset.vectorMemory === 'object' ? preset.vectorMemory : null,
-            tableDatabase: preset.tableDatabase && typeof preset.tableDatabase === 'object' ? preset.tableDatabase : null,
             createdAt: preset.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString(),
         };

@@ -4,7 +4,7 @@
 
 ## 1. 接手约定
 
-- 当前版本 **1.32.0**，分支 `main`，远端 `hey8v0/SillyTavern-BakemonoMemory`。先看 `git status` / `git log`，不要从旧对话推断现状。
+- 当前版本 **1.33.0**，分支 `main`，远端 `hey8v0/SillyTavern-BakemonoMemory`。先看 `git status` / `git log`，不要从旧对话推断现状。
 - 源码就在本仓库。任务工作区、酒馆安装目录都不是源码；不要默认同步本机酒馆、调用模型。
 - 不覆盖用户未提交的修改，不强推。提交与推送以当次授权为准。
 - **用户的测试方式**：用户在手机上的酒馆里更新插件来实测，所以每完成一批改动，经用户同意后发布一个小版本并推送（见第 8 节）。一次一批，便于定位问题。
@@ -19,37 +19,27 @@
 | `index.js` | 启动、SillyTavern 生命周期适配、模块装配；前向依赖用惰性回调 |
 | `settings.html` | 工作台全部页面的静态结构 |
 | `style.css` | 全部样式（约 1.2 万行，见第 7 节） |
-| `src/` | 按 config / core / features / memory / rp-core / summary / tables / vector / ui / shared / theme 分的模块 |
-| `tests/*.test.mjs` | `node --test` 全量回归（约 575 项） |
+| `src/` | 按 config / core / facts / features / memory / summary / vector / ui / shared / theme 分的模块；`rp-core/` 只剩给老聊天导入用的只读重放 |
+| `tests/*.test.mjs` | `node --test` 全量回归（约 450 项） |
 | `tests/offline/` | 需 linkedom 的离线 DOM 检查 |
 | `tests/browser/` | 需 Playwright 的原生浏览器检查 |
 | `scripts/ui-harness/` | 模拟酒馆页面 + 样式分析工具（第 6、7 节） |
-| `docs/` | 本文、架构、剧情状态提示词 |
+| `docs/` | 本文、架构、剧情事实设计（`FACT_CARDS_DESIGN.md`） |
 
 ## 3. 产品与数据边界
 
-- 摘要、自由表格、剧情状态（RP）三者独立。旧 chronicle 仍服务表格/摘要，不能删除，也不能当 RP 的事实来源。
-- 菜单直达“剧情状态”；表格/向量在“自动与数据 → 记忆结构”。RP 总览点对象进详情；全部记录按类型分组，每页 20 项。
-- RP 空白启用，从当前楼层开始；不导入旧表、不从摘要头部生成事实。旧 RP 基线保留。
-- RP 自动方式只有 inline / independent，默认 inline（无额外请求）；independent 须用户主动选择。手动“用模型重新提取”不改变自动方式；时机、过滤、注入各自独立。
-- schema 1、规则 3、协议 2、来源策略 2、规范化 1 分开管理。旧规则/来源保留，迁移留 upgradeSnapshot，未知版本不改写。
-- 模型输出局部 events，自动收录，用户事后纠错。省略不清空，状态逐项修订/结束，借还/销毁/恢复/约定重开有明确动作。只有 Facts 改状态。
-- 随正文的 rpEvents 只在阅读区隐藏，原文/编辑/导出保留；宿主显示正则与 DOM 补做配合，不覆盖用户正则。
-- RP 提示词版本 3、协议 2。只有精确匹配的旧内置默认会自动升级；自定义及预设保留。已应用指令与表单草稿分离，预设跨聊天共享。
+- 记忆分四层：情景（剧情摘要 → 阶段总结 → 多次总结）、语义（剧情事实卡片，按阶段整理）、检索（向量）、反思（整理时写的主线/伏笔/弧线）。旧 chronicle 仍服务摘要来源核对，不能删除。
+- 剧情事实不在每一轮抽取：阶段总结保存后一次整理，模型按名字整张重写卡片，没有 id 协议。用户改过的字段受保护；每次整理一条 history，可撤回。设计与分批见 `docs/FACT_CARDS_DESIGN.md`。
+- 剧情状态（rp-core）和表格（tables）在 v1.33.0 删除。老聊天的 `state.rpCore` 和 `state.tableDatabase` 数据保留、恢复包照常进出，只由剧情事实页的“导入”读取（`src/facts/migration.js` + `rp-core` 只读重放）。回复里旧的 `<rpEvents>` 块仍由 `rp-protocol-display.js` 在阅读区隐藏。
 
 ## 4. 代码入口
 
 | 职责 | 入口 |
 |---|---|
-| RP 生命周期/事务 | `src/rp-core/service.js`、`transaction.js`、`policy.js` |
-| RP 来源/自动提取 | `chat-sources.js`、`extraction-flow.js`、`extraction.js` |
-| RP 身份/分组/规则/重放 | `identity.js`、`groups.js`、`domain.js`、`local-events.js`、`ledger.js` |
-| RP 注入/短引用/说法 | `rp-core/context.js`、`model-references.js`、`current-information.js`；`features/injection-service.js` |
-| RP 界面/提示词 | `features/rp-state-*.js`；`rp-core/prompt.js`、`prompt-library.js` |
+| 老剧情状态只读重放（导入用） | `src/rp-core/ledger.js`（`replayLedger`）、`domain.js`、`state-update.js`、`local-events.js`、`validation.js`、`clock.js`、`references.js`、`current-information.js`；`backup.js` 校验恢复包里的旧账本 |
 | 全局设置/保存 | `src/core/*settings*`、`global-config-save.js`、`persistence.js` |
-| 聊天恢复/备份 | `core/summary-recovery-journal.js`；`rp-core/backup.js`；`memory/backup-package.js` |
-| 摘要/表格/召回 | `features/summary-*.js`、`table-*.js`、`vector-*.js`；`src/vector` |
-| 填表校验/错误 | `tables/operation-parser.js`、`operation-feedback.js`；`table-memory-model` 预检与应用共用暂存校验；草稿应用须传 raw，失败保留原文 |
+| 聊天恢复/备份 | `core/summary-recovery-journal.js`；`memory/backup-package.js`（含 `facts`、旧 `rpCore`/`tableDatabase`） |
+| 摘要/召回 | `features/summary-*.js`、`vector-*.js`；`src/vector` |
 | 本轮注入预览 | `features/overview-token-manifest.js`、`injection-preview.js`；只读当前配置；用 `ui/dialogs.js` 的面板 |
 | 设置页保存 | `ui/page-settings.js`（保存栏、草稿、离开提醒）；离开提醒用 `dialogs.choose` |
 | 弹窗 | `ui/dialogs.js`：`confirm(title, lines)` → Promise<boolean>、`choose({ title, choices })`、`open({ html, onReady })`；`index.js` 的 `confirmDanger` 和注入给各模块的 `confirm: confirmMessage` 都走它 |
@@ -141,12 +131,8 @@
 - 宿主实时元数据用 getter；`ensureGlobalSettings()` 不返回对象，初始化后从 `extension_settings[STORAGE_KEY]` 取值。
 - 后台不读隐藏表单、不把运行状态升为全局配置；合法的 false/0/空字符串不是缺失值。全局保存须回读核验，聊天保存不等于全局成功。
 - 注入预览、计数与发送用实时有效来源；`generatedMemory` 只是每次重建的缓存（因此注入页“记忆正文”只读）。“已选入”不等于已发送。向量 `lastIndexError` 只属本聊天，失败后靠手动刷新恢复，不随后台事件重试刷屏。
-- RP 串行事务检查聊天、来源、分支和修订；失败只回滚本次 RP，不覆盖较新状态或摘要；普通 RP 错误不阻断同聊天摘要；切聊天停止旧流程。
-- 自动同源只处理一次；手动重提取替代模型旧批次，保留审计与人工纠错。早期来源变动后，后续绝对状态保守停用。RP 失败去重绑定来源与协议哈希，修正输出可重读；独立调用失败需手动重试。
-- RP 简报/维护槽共享字符预算，只发相关现状和短引用，不发完整投影/近期事件 JSON。短引用由原身份确定，校验后解码，不换存档 ID。维护提示词超预算时暂停。
-- RP 不参与向量/BM25 召回；`vector/source-policy` 清理旧 RP 索引与命中，不删账本。
-- RP 恢复/清空只处理 RP 及其缓存：先确认、下载副本，绑定聊天/修订，恢复后停用并暂停；深层校验；旧包缺 RP 不清空现有 RP。
-- 恢复副本只在新载入核对到修订后清理，focus/切页不算落盘证明；轻量恢复不能丢正式摘要、账本、表格与决定。
+- `vector/source-policy` 仍清理老聊天里的 RP 向量索引与命中，不删数据。
+- 恢复副本只在新载入核对到修订后清理，focus/切页不算落盘证明；轻量恢复不能丢正式摘要、账本与决定。
 - 日志/诊断用白名单，不含正文、密钥、接口地址或原始模型输出。
 - 摘要有效性/覆盖统一走 `memory/summary-provenance`；持久覆盖数组不是当前事实。新摘要 UUID 与 contentHash 分离，provenance 固定实际输入，编辑输出不能重绑来源。旧档迁移须预览/备份。
 - 自动总结选材、编排与进度共用 `summary-selectors`、`summary/material-quality`、`summary/automation-status`；触发标记只在入队后写入，同批防重；来源校验比较实际输入。只检查所选批次内的缺口；选材、补写、覆盖与隐藏共用 `summarySourceFloors`。
@@ -155,7 +141,7 @@
 - 开场白判断（`shared/opening.js` 的 `openingFloors`）要传插件隐藏的楼层（`hidden`），否则被收纳的开场白会被当成系统消息、变成普通楼层；楼层索引与补写缺失摘要都这样传，补写不把开场白列为目标（范围写明时除外）。扫描在读取标签之外还读补写写回的 `<bakemono>` 块（与已读块重叠的不重复读），与补写的“已有摘要”判断一致（v1.28.3）。
 - 生成用自定义接口可选“经酒馆后端转发”（`customApi.viaTavern`）：请求发给酒馆 `/api/backends/chat-completions/generate`（拉模型走 `/status`），`chat_completion_source: 'custom'`，`custom_url` 为去掉 `/chat/completions` 的根地址，插件密钥放在 `custom_include_headers` 的 Authorization 里覆盖酒馆自存的 custom 密钥；没填密钥时发空值，不让酒馆自存密钥流向别的地址。酒馆把上游失败回成 200 + `{ error }`（拉模型是 `{ error: true }`），要当错误处理；流式失败会把 401 改成 400。向量嵌入接口不走转发（v1.28.4，已在 1.19 临时实例上实测）。
 - 剧情事实（v1.29.0 起）：`state.facts` 每聊天一份，`facts.settings` 随整套配置同步（`getConfigPayloadFromState` 的 `facts`、提示词 `factsPrompt`）。整理任务 kind 为 `blockTypes.FACTS`，走摘要任务队列的 `resultHandlers`，不生成草稿；来源校验只按 `sourceMessageIds` 指纹。`applyFactsUpdate` 按名字/别名对应卡片，省略=保持，`userFields` 不被模型覆盖，每次结果写一条 `history`，`undoFactsUpdate` 按条逆向。阶段保存钩子是 `summary-draft-service` 的 `onSummaryCommitted`（持久化成功后才调）。被 data: URL 内联加载的模块（`configuration-controller`、`turn-processing-controller` 等，见 `tests/state-config-sync`、`tt-runtime-regressions`）不能有相对 import，事实相关的默认值和函数要作为参数注入；`tests/helpers/rp-runtime-host.mjs` 的 vm 上下文要提供 `renderFactsSection`、`factsController`。
-- v1.32.0 起剧情状态和表格冻结：`index.js` 的 `rpFrozenFlow`（Proxy，覆盖 channel/prompt/context/runIndependent/captureInline/reconcilePending/scheduleCapture，其余委托真实 flow）接给编排器、注入、正文处理和事件回调；`rpStateUi` 仍拿真实 flow。注入里 `renderInjectedTablesSection`/`renderRpStateMemory` 接成空；`chat-state-service` 把 `inlineGeneration.tableEnabled` 置 false、`turnSummary.processingMode` 的 table/both 改成 summary；自动记忆向导只剩摘要一问。侧栏去掉两个入口，面板保留（`switchTab('rp-state'|'tables')` 仍可达，剧情事实页提供入口）。`facts.settings.version` 2 表示用过新默认（开启）；`tests/helpers/rp-runtime-host.mjs` 里 `rpFrozenFlow` 绑定为真实 flow，旧 RP 测试继续验证旧管线直到第五批删除。
+- v1.33.0 起剧情状态和表格的代码已删：`inlineGeneration.tableEnabled` 恒为 false、`turnSummary.processingMode` 恒为 summary（`chat-state-service` 归一化），注入来源键为 summary / memory / facts / time / vector（`time` 只有 `storyTimeContext`）。被 data: URL 内联加载的模块不能有相对 import（见上）。
 - 摘要来源选择写入旧配置字段，保留旧手动及组合方式（“旧版组合设置”）；运行错误不进全局预设。
 
 ## 6. 测试与界面检查
@@ -184,7 +170,7 @@ node scripts/ui-harness/server.mjs
 ```
 
 - 模拟宿主在 `scripts/ui-harness/script.js`（8 楼示例对话，其中 2 楼带摘要；加 `?sum` 再追加 48 楼，每条回复带一段完整格式的剧情摘要，用来看总结页）与 `scripts/ui-harness/scripts/*.js`。它没有酒馆自己的样式，所以对话框里的输入框是白色的，这不代表插件有问题；`box-sizing` 已按酒馆补上。
-- 剧情状态：打开 `http://127.0.0.1:8765/?rp`，最后一楼会带一段 27 条的示例 `rpEvents`（其中 1 条故意多余，用来检查“没记上”提示）；启用剧情状态后点“读取最新回复”。
+- `?rp` 会让最后一楼带一段旧版 `rpEvents`，现在只用来确认阅读区仍把它隐藏。
 - 插件会把聊天状态备份到 `localStorage`，刷新页面后旧状态会被恢复；要从头开始，先在控制台执行 `localStorage.clear()` 再刷新。
 - 手机宽度（< 768px）在浏览器模拟时会自动刷新一次页面，脚本要等刷新完成再运行。
 - 一次拍全：`node scripts/ui-harness/tools/snap-all.mjs 名字`（模拟页面要先开着；无头 Chrome，默认 1280、800、375 三个宽度 × 日、夜、跟随酒馆三种外观，先给模拟聊天加摘要树并启用剧情状态），再用 snapdiff 逐个比较。帮助页第 21 节里的一个小标签偶尔上下差 1 像素，同一份样式连拍也会出现，是时序问题，不算差异。拍“改动前”的基准时不要用 `git stash`：本机 `core.autocrlf=true`，stash pop 会把改过的文件换成 CRLF，读源码的测试会失败；用 `git worktree` 或先拍基准再改。
@@ -214,113 +200,9 @@ node scripts/ui-harness/server.mjs
 
 ## 9. 后续工作
 
-- 手机实测：v1.8.8 – v1.32.0 的改动都只在模拟页面验证过，需要用户在真实酒馆（尤其手机、iOS Safari）确认；宿主保存、后台冻结、重 roll、流式协议隐藏同样需要实机。
+- 手机实测：v1.8.8 – v1.33.0 的改动都只在模拟页面验证过，需要用户在真实酒馆（尤其手机、iOS Safari）确认；宿主保存、后台冻结、重 roll、流式协议隐藏同样需要实机。
 - 新样式推广到其他页面（见第 5 节“新样式”）。已完成：剧情状态（v1.10.0）、首页（v1.11.0）、顶栏与侧栏（v1.12.0：电脑上 264px 细线侧栏，手机 ≤900px 为左侧抽屉 + 遮罩 `[data-bakemono-menu-close]`，布局尺寸与旧版一致，顶栏由 82px 收到 70px）、总结页（v1.13.0）、待确认（v1.14.0）、摘要树（v1.15.0）、表格（v1.16.0）、向量记忆（v1.17.0）、自动记忆（v1.18.0）、自动总结（v1.20.0）、自动与数据和设置中心（v1.21.0）。设置中心第一组子页（摘要方式、扫描与识别、楼层收纳，v1.22.0）、第二组（生成模型、生成提示词、注入内容，v1.23.0）、第三组（外观、整套配置、撤回与事务，v1.24.0）和提示词检查器（v1.25.0）。所有页面都已换成新样式。用户给的每页参考：首页 Magic Bento + 编辑式仪表盘；总结 时间线 + 卡片堆叠；摘要树 嵌套时间线；待确认 审阅队列；提示词检查器 文档阅读器；设置中心 系统设置列表；电脑导航 细线侧栏；手机导航 抽屉 + 分段标签。React 组件库（React Bits、Aceternity）不能直接用，只借效果、用 CSS 和原生 JS 实现。
-- 剧情事实替换剧情状态和表格，分五批（`docs/FACT_CARDS_DESIGN.md` §9）：① 数据模型 + 整理 + 注入（v1.29.0）；② 卡片编辑、历史、待确认 diff（v1.30.0）；③ 旧状态/旧表导入与各处改口（v1.31.0）；④ 默认开启、隐藏旧入口（v1.32.0）；⑤ 删旧代码。第一批未用真实模型验证卡片质量，是整个方案的前提。
-- RP P1（剧情事实替换后作废）：历史范围重建、精细依赖纠错、丰富人物/历法、大账本增量缓存（RP 目前仍完整重放，大档有主线程耗时风险）。
+- 剧情事实替换剧情状态和表格，分五批（`docs/FACT_CARDS_DESIGN.md` §9）：① 数据模型 + 整理 + 注入（v1.29.0）；② 卡片编辑、历史、待确认 diff（v1.30.0）；③ 旧状态/旧表导入与各处改口（v1.31.0）；④ 默认开启、隐藏旧入口（v1.32.0）；⑤ 删旧代码（v1.33.0）。第一批未用真实模型验证卡片质量，是整个方案的前提。
+- 剧情事实整理的质量还没用真实模型验证过（五批都只跑了自动化测试和模拟页面）。质量不行时先调 `src/facts/prompt.js` 的提示词和 `model.js` 的字段粒度。
+- `rp-core` 的只读重放和 `backup-package` 里的旧表/旧账本进出，等老聊天都导入过以后可以再删一轮。
 - 固定模型输出的测试不证明真实模型语义准确率。
-
-## 附录：v1.7.0 剧情状态实施与验收
-
-剧情状态首次实现时的需求编号与测试对应表，修改剧情状态相关逻辑时可用来找回归测试。
-
-### 范围与结果
-
-起始提交 fad4a627997cc04acb4a79be572958fd026fcdcb（1.7.0-beta.3），起始工作区干净，没有覆盖用户未提交修改。执行任务书 P0-A～D，发布目标 main，版本 1.7.0。
-
-| 范围 | 完成内容 | 主要入口 |
-|---|---|---|
-| P0-A | 空白启用、独立配置/正文来源、两种模式、手动单次提取、暂停/清空/RP 专属恢复 | service、policy、chat-sources、extraction-flow、rp-state-ui |
-| P0-B | 局部事件、独立状态项、借还/恢复/重开、幂等、重提取替代、原子组、下游失效 | identity、extraction、groups、domain、local-events、ledger |
-| P0-C | 暖纸总览，新建、变化/纠错、逐项状态、来源/差异、分页、进度/缺口 | rp-state-ui、rp-state-editors、rp-state-presentation、state-view |
-| P0-D | 独立简报/维护槽、完整选材后预算、类型检索/缓存过滤、失败隔离、版本化恢复 | context、memory、injection-service、memory-orchestrator、backup |
-
-基线 423 项通过；升级后 447 项 Node 回归通过，无跳过。新增用例执行生产 service → flow → orchestrator → injection-service 及实际 MESSAGE_SENT 回调；宿主保存与模型响应是离线替身，业务模块用生产实现。
-
-133 个运行模块按 ES module 解析，完整 CSS 解析通过。15 组离线 UI/存储/显示检查，以及独立合成长档测量。没有打开浏览器、调用真实模型、同步本机酒馆或上传聊天。
-
-### 兼容与行为变化
-
-- schema 1、规则 3、协议 2、来源策略 2 分别管理；旧规则/来源继续读取，留升级前副本；旧 RP 基线、自定义提示词不删除。
-- 新状态不导入旧表或摘要头部。默认 inline；旧 reply/reuse 无法等价迁移时暂停、提示重选，不自动增加调用。
-- 旧 state 输入受局部保护，不能悄悄覆盖集合或越过借用/终止规则；旧记录按旧规则重放。
-- 有效空事件推进进度，缺失/截断/失败不冒充成功；手动重提取不重复消耗、不覆盖人工纠错。
-- 专属恢复绑定聊天，深层校验字段/引用/版本。恢复后模块关闭、任务暂停，仅清理 RP 缓存，不动其他记忆。
-
-### 验收映射
-
-测试名为可检索片段；Node 项执行下方全量命令，UI 项执行离线脚本。
-
-| ID | 测试文件 / 场景 |
-|---|---|
-| I01、I03、I04、I05、I06 | rp-independent：independent activation and body-only policy；offline/rp-independent-ui 空白启用；check-rp-state 有旧表也不导入 |
-| I02、P04、P05 | rp-independent-acceptance：production service→flow→orchestrator→injection with summary and tables disabled |
-| I05 | rp-independent-acceptance：actual MESSAGE_SENT callback honors RP delayed timing |
-| I07 | rp-auto-recording：summary edits do not invalidate body-owned state；rp-maintenance 旧来源兼容 |
-| I08 | rp-independent：manual extraction works in paused inline without changing automatic settings |
-| I09、I11 | rp-independent-acceptance：migration preserves legacy baseline, prompt and paused choice, and is idempotent |
-| I10、R08、R09、R10 | rp-independent-acceptance：scoped backup restore and clear preserve unrelated data and reject another chat；rp-backup 任务暂停/旧包兼容 |
-| S01、S02、S04 | rp-independent：local state rules preserve omissions and guard explicit transitions；rp-independent-acceptance：same-looking temporary states |
-| S03、S04、S05、S06 | rp-independent-acceptance：loans, terminal plans and one-way relationships use explicit transitions |
-| S07、S13 | rp-independent-acceptance：claims and dreams do not set scene；directed visibility；提示词约束待转告/私密信息 |
-| S08、S09 | rp-independent-acceptance：two real consumes, callback retry, manual replacement and user correction |
-| S10 | rp-independent-acceptance：homonymous explicit new people remain distinct；same-looking temporary states |
-| S11 | rp-maintenance、rp-extraction、rp-protocol-tolerance：关联失败原子性/局部非法项；target/present 关联新建对象 |
-| S12 | rp-independent-acceptance：missing/truncated output stays failed; a late complete empty block advances progress |
-| R01、R02 | rp-flow：编辑/切聊天/修订/迟到结果；rp-feedback：host swipe metadata replacement and reload |
-| R03、R04 | rp-independent-acceptance：earlier edit invalidates later absolute assertions while relative deltas replay safely |
-| R05、R06 | rp-independent：failed save cannot alter RP or other data；rp-independent-acceptance：RP failure does not block summary |
-| R07 | rp-independent-acceptance：未知版本、损坏字段/引用、迁移幂等；legacy same-floor replay order |
-| R09 | rp-independent-acceptance：cancelled request cannot append job status into restored state |
-| P01、P02、P03、P08 | rp-independent：all-entity relevance and indivisible budgets；实际注入的小总预算阻断 |
-| P06 | recall-feedback：cached RP hit is revalidated after correction and disabling RP injection |
-| P07 | rp-independent-acceptance：returning a loan updates current ownership and typed history without editing summaries |
-| U01、U02 | offline/rp-independent-ui：新建/逐项结束/恢复；offline/rp-auto-ui：失败/旧表单/焦点/输入/预设；check-rp-state-v2 返回滚动 |
-| U03 | rp-independent-acceptance：paged history、legacy historical snapshots；offline/rp-auto-ui 只读快照 |
-| U04 | check-rp-story-sheet：360/390/430px DOM/CSS 约束、44px 按钮、长文本、20 条分页，不是浏览器布局实测 |
-
-关系、梦境、在场等采用受控模型输出，验证规则和结算，不证明真实模型每次语义都正确。
-
-### 运行方法
-
-Windows / Node v24.14.0，仓库根目录：
-
-~~~powershell
-node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.mjs
-git -c core.safecrlf=false diff --check
-node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/offline/rp-auto-ui.mjs
-node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/offline/rp-independent-ui.mjs
-node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/offline/rp-display.mjs
-node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/offline/rp-archive.mjs
-~~~
-
-UI 依赖 linkedom，可让 BAKEMONO_TEST_LINKEDOM 指向已有 esm/index.js，无需在酒馆安装。rp-display 另需 BAKEMONO_TEST_TAVERN 指向只读宿主，使用其实际格式化/正则与 Showdown，消毒及 DOM 为模拟。
-
-本次另运行任务工作区 .ui-validation 的 check-runtime-syntax，以及 check、check-core、check-story、check-vector-config、check-recall-ui、check-rp-state、check-rp-state-v2、check-rp-feedback、check-rp-overview-v3、check-summary-source、check-rp-story-sheet、check-rp-protocol。旧导入/摘要头部测试改为当前合同，导航/安全文本/返回/窄屏断言保留。
-
-#### 合成长档测量
-
-单次离线结果，不是手机指标，不承诺固定耗时：
-
-| 数据 | 操作 | 实测 |
-|---|---|---|
-| 1000 条来源事实、150 人物 | 来源核对与完整重放 | 2128.9 ms |
-| 同上 | 编译简报 / 取一页历史 | 6.4 / 9.5 ms |
-| 同上 | 序列化后校验与恢复 | 295.3 ms |
-| 增加 1 条事实后 | 再次完整重放 | 1926.5 ms |
-| 1001 条事实 | 序列化大小 | 438964 bytes |
-| 205 个实体 | 20 次离线总览渲染 | 86.0 ms |
-
-当前不是增量重放。大档有主线程耗时风险；检查点/增量缓存留 P1，分页不等于重放优化。
-
-### 手动路径
-
-1. 升级前备份聊天；菜单 → 剧情状态 → 从当前启用，无需配置表格或自动摘要。
-2. 默认随正文；维护设置选择独立调用、暂停、延迟与正文过滤。手动“重新提取最新正文”会提示额外调用。
-3. 点对象进详情修改或逐项结束状态；“添加记录”主动新建。问题看历史与处理进度，无需每楼审批。
-4. 提示词设置载入新版默认再应用，或继续使用自定义预设。
-5. 状态维护设置内备份/恢复，先下载副本，只操作本聊天 RP；恢复后主动启用，不自动补跑。
-
-### 未包含
-
-P1：历史范围补录/重建、精细依赖与摘要局部联动、丰富人物/私密认知/自定义历法、大账本增量缓存。未测试浏览器/手机真实布局、模型准确率或后台联网可靠性；页面冻结不能保证继续联网。

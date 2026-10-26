@@ -4,66 +4,14 @@ import { ensureChronicle, captureChronicle, replayChronicle, markStoryChange, di
 import { getSummaryStatus } from '../src/memory/summary-provenance.js';
 import { createMemoryBackup, validateMemoryBackup, previewMemoryBackup, restoreMemoryBackup, createDiagnosticReport } from '../src/memory/backup-package.js';
 import { getHash } from '../src/shared/text.js';
-import { createTableMemoryModel } from '../src/features/table-memory-model.js';
-import { mergeTableSchemaWithRows, toTableSchema } from '../src/tables/schema-utils.js';
 import { buildPersistedChatState } from '../src/core/persisted-chat-state.js';
 import { createInjectionService } from '../src/features/injection-service.js';
 import { createSummaryRecoveryJournal } from '../src/core/summary-recovery-journal.js';
-import { parseTableEditOperations } from '../src/tables/operation-parser.js';
-import { createTableStateService } from '../src/features/table-state-service.js';
-
-test('table undo and redo include the associated AI clock and entity state', async () => {
-    const { state, chat } = fixture();
-    state.tableDatabase.chatProfiles = [{id:'p', tables:[]}];
-    const service = createTableStateService({ getState: () => state, getHash, getFiniteMessageIds: ids => ids,
-        tableSchemaScopes: {CHAT:'chat', GLOBAL:'global', CHARACTER:'character'}, normalizeTableSchemas: x => x,
-        updateInjectionFromSummaries() {}, saveState: () => captureChronicle(state, chat), saveChatConditional() {},
-        confirmDanger: () => true, renderWorkbenchScope() {}, workbenchRenderScopes: {}, toastr: {success(){}, info(){}} });
-    const model = createTableMemoryModel({ getState: () => state, getFiniteMessageIds: ids => ids,
-        pushTableUndoSnapshot: service.pushTableUndoSnapshot, normalizeTableText: String,
-        saveCurrentTableProfileRows: service.saveCurrentTableProfileRows, updateInjectionFromSummaries() {} });
-    model.applyTableOperations(parseTableEditOperations('setColumnKind(0, 1, "person")\nsetStoryClock({"date":"1889-10-15"})'), state, {sourceMessageIds:[1]});
-    captureChronicle(state, chat);
-    const entities = structuredClone(state.chronicle.entities);
-    assert.ok(entities.length);
-    await service.undoLastTableOperation(state);
-    assert.equal(state.chronicle.clock.date, '');
-    assert.deepEqual(state.chronicle.entities, []);
-    await service.redoLastTableOperation(state);
-    assert.equal(state.chronicle.clock.date, '1889-10-15');
-    assert.deepEqual(state.chronicle.entities, entities);
-});
-
-test('AI table transaction maintains semantics and clock with source provenance atomically', () => {
-    const { state, chat } = fixture();
-    const model = createTableMemoryModel({ getState: () => state, getFiniteMessageIds: ids => ids,
-        pushTableUndoSnapshot: () => ({ id: 'u' }), normalizeTableText: String,
-        saveCurrentTableProfileRows() {}, updateInjectionFromSummaries() {} });
-    const ops = parseTableEditOperations('<tableEdit>setColumnKind(0, 0, "item")\nsetColumnKind(0, 1, "person")\nsetStoryClock({"date":"1889-10-15","label":"夜晚"})\nupdateRow(0, 0, {"1":"Nana"})</tableEdit>');
-    assert.equal(ops.length, 4);
-    model.applyTableOperations(ops, state, { sourceMessageIds: [1] });
-    assert.equal(state.chronicle.clock.date, '1889-10-15');
-    assert.ok(state.chronicle.entities.some(e => e.name === 'Nana' && e.kind === 'person'));
-    const table = state.tableDatabase.tables[0];
-    const shared = { ...toTableSchema(table), columnKinds: ['text', 'text'] };
-    assert.deepEqual(mergeTableSchemaWithRows(shared, table).columnKinds, ['item', 'person']);
-    const reset = structuredClone(table);
-    reset.columnKinds[1] = 'text'; reset.semanticOverrides[reset.columnIds[1]].kind = 'text';
-    assert.equal(mergeTableSchemaWithRows({...shared, columnKinds:['item', 'person']}, reset).columnKinds[1], 'text');
-    assert.equal(captureChronicle(state, chat).sources[0].floor, 1);
-    // A day the calendar does not have is kept as the time description instead of failing the edit.
-    model.applyTableOperations(parseTableEditOperations('setStoryClock({"date":"1889-02-30"})'), state, { sourceMessageIds: [1] });
-    assert.deepEqual([state.chronicle.clock.date, state.chronicle.clock.label], ['', '1889-02-30']);
-    model.applyTableOperations(parseTableEditOperations('setStoryClock({"date":"1889-10-15"})'), state, { sourceMessageIds: [1] });
-    model.applyTableOperations(parseTableEditOperations('setStoryClock({"date":"1880-01-01","flashback":true})'), state, { sourceMessageIds: [1] });
-    assert.equal(state.chronicle.clock.date, '1889-10-15');
-    assert.equal(state.chronicle.clock.lastFlashback.date, '1880-01-01');
-});
 
 function fixture() {
     const chat = [{ mes: '交出银钥匙', send_date: 'a' }, { mes: '进入书房', send_date: 'b' }];
-    const state = { tableDatabase: { schemaScope: 'chat', activeProfileId: 'p', profileRows: {}, chatProfiles: [],
-        tables: [{ id: 't', tableIndex: 0, name: '物品', columns: ['名称', '持有人'], rows: [['银钥匙', '夏尔']], allowAiEdit: true }] },
+    // The chronicle still records table rows older chats carry, so the fixture keeps one table.
+    const state = { tableDatabase: { schemaScope: 'chat', activeProfileId: 'p', profileRows: {}, chatProfiles: [], tables: [{ id: 't', tableIndex: 0, name: '物品', columns: ['名称', '持有人'], rows: [['银钥匙', '夏尔']], allowAiEdit: true }] },
         storySummaries: [{ hash: 's', content: '交付钥匙', sourceMessageIds: [0] }], stageSummaries: [], epicSummaries: [], drafts: [], coveredBlockHashes: [], coveredStageHashes: [],
         vectorMemory: { enabled: false, customApi: { apiKey: 'SECRET_KEY' }, records: [] }, automation: { customApi: { apiKey: 'PRIVATE' } } };
     ensureChronicle(state, chat); captureChronicle(state, chat);
@@ -147,16 +95,6 @@ test('backfilled sources are recorded at observation floor, not retroactively at
     chat.pop(); state.tableDatabase.tables[0].rows[0][1] = '夏尔';
     const correction = captureChronicle(state, chat);
     assert.equal(correction.observedFloor, 2); assert.equal(correction.actualFloor, 1);
-});
-
-test('table schemas preserve stable row/column IDs and semantic bindings', () => {
-    const { state } = fixture();
-    const table = state.tableDatabase.tables[0];
-    table.columnKinds = ['item', 'person'];
-    const merged = mergeTableSchemaWithRows(toTableSchema(table), table);
-    assert.deepEqual(merged.columnIds, table.columnIds);
-    assert.deepEqual(merged.rowIds, table.rowIds);
-    assert.deepEqual(merged.columnKinds, ['item', 'person']);
 });
 
 test('entity identity survives rename; ambiguous names are not guessed; type mismatch rejected', () => {
@@ -258,18 +196,6 @@ test('compact chat serializer preserves authoritative ledger and semantic state'
     const snapshot = buildPersistedChatState(state);
     assert.deepEqual(snapshot.chronicle, state.chronicle);
     assert.deepEqual(snapshot.tableDatabase.tables, state.tableDatabase.tables);
-});
-
-test('AI table operations validate whole transaction before mutating tables or undo history', () => {
-    const { state } = fixture(); let snapshots = 0;
-    const model = createTableMemoryModel({ getState: () => state, getFiniteMessageIds: ids => ids,
-        pushTableUndoSnapshot: () => { snapshots++; return { id: 'undo' }; }, normalizeTableText: String,
-        saveCurrentTableProfileRows: () => {}, updateInjectionFromSummaries: () => {} });
-    const before = JSON.stringify(state.tableDatabase.tables);
-    assert.throws(() => model.applyTableOperations([{ op: 'update', tableIndex: 0, rowIndex: 0, data: { 1: 'Nana' } }, { op: 'update', tableIndex: 99, rowIndex: 0, data: { 1: '错误' } }]), /不存在/);
-    assert.equal(JSON.stringify(state.tableDatabase.tables), before); assert.equal(snapshots, 0);
-    model.applyTableOperations([{ op: 'update', tableIndex: 0, rowIndex: 0, data: { 1: 'Nana' } }]);
-    assert.equal(state.tableDatabase.tables[0].rows[0][1], 'Nana'); assert.equal(snapshots, 1);
 });
 
 test('injection keeps marked memory in use and includes story clock', () => {

@@ -52,12 +52,6 @@ const summaryMemoryModelSource = fs.readFileSync(new URL('../src/features/summar
 const summarySelectorsSource = fs.readFileSync(new URL('../src/features/summary-selectors.js', import.meta.url), 'utf8');
 const summaryTargetControllerSource = fs.readFileSync(new URL('../src/features/summary-target-controller.js', import.meta.url), 'utf8');
 const summaryTaskQueueSource = fs.readFileSync(new URL('../src/features/summary-task-queue.js', import.meta.url), 'utf8');
-const tableStateServiceSource = fs.readFileSync(new URL('../src/features/table-state-service.js', import.meta.url), 'utf8');
-const tableMemoryModelSource = fs.readFileSync(new URL('../src/features/table-memory-model.js', import.meta.url), 'utf8');
-const tableWorkflowControllerSource = fs.readFileSync(new URL('../src/features/table-workflow-controller.js', import.meta.url), 'utf8');
-const tableWorkbenchUiSource = fs.readFileSync(new URL('../src/features/table-workbench-ui.js', import.meta.url), 'utf8');
-const tableEditorEventsSource = fs.readFileSync(new URL('../src/features/table-editor-events.js', import.meta.url), 'utf8');
-const tableManagementEventsSource = fs.readFileSync(new URL('../src/features/table-management-events.js', import.meta.url), 'utf8');
 const contentConfigurationEventsSource = fs.readFileSync(new URL('../src/features/content-configuration-events.js', import.meta.url), 'utf8');
 const automationConfigurationEventsSource = fs.readFileSync(new URL('../src/features/automation-configuration-events.js', import.meta.url), 'utf8');
 const vectorMemoryServiceSource = fs.readFileSync(new URL('../src/features/vector-memory-service.js', import.meta.url), 'utf8');
@@ -261,31 +255,6 @@ test('summary target selection and task queue are assembled outside the entry fi
     assert.doesNotMatch(summaryTaskQueueSource, /renderAll\(/);
 });
 
-test('table profiles, scoped storage, and rollback transactions share one table state boundary', () => {
-    assert.match(source, /import \{ createTableStateService \} from '\.\/src\/features\/table-state-service\.js';/);
-    assert.match(source, /const tableStateService = createTableStateService\(\{/);
-    assert.match(tableStateServiceSource, /function getActiveTableProfile\(/);
-    assert.match(tableStateServiceSource, /function persistCurrentTableDatabase\(/);
-    assert.match(tableStateServiceSource, /function rollbackTableOperationsForMessages\(/);
-    assert.doesNotMatch(source, /function getActiveTableProfile\(|function rollbackTableOperationsForMessages\(/);
-    assert.doesNotMatch(tableStateServiceSource, /renderAll\(/);
-    assert.match(tableMemoryModelSource, /function applyTableOperations\(/);
-    assert.match(tableWorkflowControllerSource, /async function processLatestTableEdit\(/);
-    assert.match(tableWorkbenchUiSource, /function renderTableList\(/);
-    assert.match(tableEditorEventsSource, /bakemonoTableDraftAction/);
-    assert.match(tableEditorEventsSource, /bakemonoTableAction/);
-    assert.match(tableEditorEventsSource, /pushTableUndoSnapshot/);
-    assert.match(tableManagementEventsSource, /function bindProfileEvents\(/);
-    assert.match(tableManagementEventsSource, /function bindPromptEvents\(/);
-    assert.match(tableManagementEventsSource, /function bindTransferEvents\(/);
-    assert.match(tableManagementEventsSource, /bakemono-memory-table-schema-scope/);
-    assert.match(tableManagementEventsSource, /bakemono-memory-table-preset-select/);
-    assert.match(tableManagementEventsSource, /bakemono-memory-clear-table-db/);
-    assert.doesNotMatch(source, /bakemonoTableDraftAction|bakemonoTableAction|bakemonoTableFlags/);
-    assert.doesNotMatch(source, /bakemono-memory-table-schema-scope|bakemono-memory-table-preset-select|bakemono-memory-clear-table-db/);
-    assert.doesNotMatch(source, /function applyTableOperations\(|async function processLatestTableEdit\(|function renderTableList\(/);
-});
-
 test('vector recall uses independent semantic and lexical candidates with explainable scores', () => {
     assert.match(vectorMemoryServiceSource, /selectHybridCandidates\(scored, queries, keywords/);
     assert.match(vectorMemoryServiceSource, /keywordBoost:\s*state\.vectorMemory\.keywordBoost/);
@@ -366,8 +335,6 @@ test('floor memory orchestration stays derived and the base ledger remains optio
     assert.match(source, /event_types\.MESSAGE_RECEIVED, async \(\) => \{\s*await runMemoryOrchestrator/s);
     assert.match(settingsSource, /id="bakemono-memory-index-ready-floor"/);
     assert.match(settingsSource, /id="bakemono-memory-index-pending-count"/);
-    assert.match(settingsSource, /id="bakemono-memory-create-base-ledger"/);
-    assert.match(settingsSource, /不会加入事件摘要或大总结表/);
     assert.doesNotMatch(source, /floorMemoryIndex\s*:/);
 });
 
@@ -448,19 +415,12 @@ test('review desk keeps drafts first while preserving task and history operation
     assert.match(settingsSource, /class="bakemono-workbench-panel bk-sum bk-rev" data-bakemono-panel="drafts"/);
 });
 
-test('automatic memory and tables keep the demo status-first hierarchy', () => {
-    // 自动记忆: status, how each turn is recorded (two hidden selects drive the choice rows), recent floors, settings.
+test('automatic memory keeps the demo status-first hierarchy', () => {
+    // 自动记忆: status, how each turn is recorded (one hidden select drives the choice rows), recent floors, settings.
     assert.match(settingsSource, /class="bakemono-turn-panel-card bk-sum bk-auto"/);
     assert.match(settingsSource, /<select id="bakemono-memory-turn-summary-source" hidden/);
-    assert.match(settingsSource, /<select id="bakemono-memory-turn-table-mode" hidden/);
     assert.match(settingsSource, /id="bakemono-memory-turn-recent"/);
-    assert.match(settingsSource, /id="bakemono-memory-table-overview-count"/);
-    assert.match(settingsSource, /class="bakemono-memory-table-diff-head/);
-    assert.match(settingsSource, /id="bakemono-memory-table-draft-list"/);
-    assert.match(settingsSource, /class="[^"]*bakemono-memory-table-maintenance/);
     assert.match(turnSummaryUiSource, /data-bk-auto-pick/);
-    assert.match(turnSummaryUiSource, /bakemono-memory-table-overview-draft-count/);
-    assert.match(tableWorkbenchUiSource, /className = 'bakemono-memory-table-diff-list'/);
 });
 
 function extractTemplate(name) {
@@ -565,23 +525,6 @@ test('prompt migration orchestration stays outside the entry state adapter', () 
     assert.match(promptMigrationsSource, /const legacyVectorQueryRewritePattern =/);
 });
 
-test('table rollback plan cascades through newer dependent transactions', async () => {
-    const moduleSource = fs.readFileSync(new URL('../src/tables/rollback-plan.js', import.meta.url), 'utf8');
-    const moduleUrl = `data:text/javascript;base64,${Buffer.from(moduleSource, 'utf8').toString('base64')}`;
-    const { buildTableRollbackPlan } = await import(moduleUrl);
-    const stack = [
-        { id: 'newest', profileKey: 'chat:a', sourceMessageIds: [30], tables: [{ rows: [['before-30']] }] },
-        { id: 'affected', profileKey: 'chat:a', sourceMessageIds: [20], tables: [{ rows: [['before-20']] }] },
-        { id: 'oldest', profileKey: 'chat:a', sourceMessageIds: [10], tables: [{ rows: [['before-10']] }] },
-        { id: 'other-profile', profileKey: 'chat:b', sourceMessageIds: [20], tables: [{ rows: [['other']] }] },
-    ];
-
-    const plan = buildTableRollbackPlan(stack, [20], 'chat:a');
-    assert.deepEqual(plan.rollbackSnapshotIds, ['newest', 'affected']);
-    assert.deepEqual(plan.cascadedSnapshotIds, ['newest']);
-    assert.equal(plan.restoreSnapshot.id, 'affected');
-    assert.deepEqual(plan.cascadedSourceMessageIds, [30]);
-});
 
 test('hot paths use scoped or coalesced rendering', () => {
     const queueSource = extractFunctionFrom(summaryTaskQueueSource, 'processTaskQueue');
@@ -648,9 +591,6 @@ test('vector, draft, and table actions use page-scoped rendering', () => {
         assert.doesNotMatch(functionSource, /renderAll\(/);
     }
     for (const [moduleSource, name] of [
-        [tableStateServiceSource, 'undoLastTableOperation'],
-        [tableStateServiceSource, 'redoLastTableOperation'],
-        [tableWorkbenchUiSource, 'createCustomTableFromUi'],
     ]) {
         const functionSource = extractFunctionFrom(moduleSource, name);
         assert.match(functionSource, /renderWorkbenchScope\(workbenchRenderScopes\.TABLES/);
@@ -911,13 +851,6 @@ test('TT lifecycle refreshes loaded chats and retries missed automatic work on f
     assert.match(source, /runMemoryOrchestrator\('恢复前台'/);
 });
 
-test('table mutations request an immediate tavern save instead of relying only on debounce', () => {
-    assert.match(tableStateServiceSource, /saveChatConditional/);
-    assert.match(tableWorkflowControllerSource, /await saveChatConditional\(\)/);
-    assert.match(turnProcessingControllerSource, /changedMessage \|\| capturedSomething/);
-    assert.match(configurationControllerSource, /mergeTableSchemaWithRows/);
-    assert.match(configurationControllerSource, /findMatchingTable/);
-});
 
 test('first shared-settings upgrade preserves the current chat before forced synchronization', () => {
     assert.match(configurationServiceSource, /function bootstrapSharedConfigurationFromCurrentChat\(/);
@@ -998,18 +931,11 @@ test('appearance settings ship protected film-slate day and night presets', () =
     assert.match(themeControllerSource, /builtInCustomThemePresetIds\.has/);
 });
 
-test('table-memory injection toggle persists immediately before page refresh', () => {
-    assert.match(tableManagementEventsSource, /query\('#bakemono-memory-table-inject-memory'\)\.off\('change\.bakemonoTableInjection'\)/);
-    assert.match(tableManagementEventsSource, /state\.tableDatabase\.injectMemory = !!this\.checked;[\s\S]*?persistSharedConfigurationFromState\(state\);/);
-});
 
 test('entry assembly keeps forward dependencies lazy until their modules exist', () => {
     assert.match(source, /getActiveCoveredStageHashes:\s*\(\.\.\.args\) => getActiveCoveredStageHashes\(\.\.\.args\)/);
-    assert.equal((source.match(/updateInjectionFromSummaries:\s*\(\.\.\.args\) => updateInjectionFromSummaries\(\.\.\.args\)/g) || []).length, 2);
-    assert.match(source, /findLatestAssistantTurn:\s*\(\.\.\.args\) => findLatestAssistantTurn\(\.\.\.args\)/);
-    assert.match(source, /buildLatestTurnBlocks:\s*\(\.\.\.args\) => buildLatestTurnBlocks\(\.\.\.args\)/);
-    assert.match(source, /callGenerationModel:\s*\(\.\.\.args\) => callGenerationModel\(\.\.\.args\)/);
-    assert.match(source, /buildTurnReferenceSystemPrompt:\s*\(\.\.\.args\) => buildTurnReferenceSystemPrompt\(\.\.\.args\)/);
+    // The table workflow and 剧情状态 wiring that needed the other forward references went with v1.33.0.
+    assert.match(source, /updateInjectionFromSummaries:\s*\(\.\.\.args\) => injectionService\.updateInjectionFromSummaries\(\.\.\.args\)/);
     assert.equal((source.match(/syncInjection:\s*\(\.\.\.args\) => syncInjection\(\.\.\.args\)/g) || []).length, 3);
     assert.match(source, /function getKindLabel\(kind\)/);
     assert.doesNotMatch(source, /const getKindLabel\s*=/);

@@ -23,10 +23,6 @@ import { parseMissingSummaryBatchResult } from './src/summary/draft-parser.js';
 import { getMultiSummaryLabel, getNextMultiSummaryLevel, getSummaryKindLabel, getSummaryLevel } from './src/summary/levels.js';
 import { buildFloorMemoryIndex, createMemoryOrchestrationPlan } from './src/memory/floor-memory-index.js';
 import { formatSourceRange, getBlockSortKey, getFiniteMessageIds, getSourceEnd, getSourceMessageIdsFromBlocks, getSourceStart, getSummarySortKey, sortSummariesBySource } from './src/summary/source-metadata.js';
-import { parseTableEditOperations } from './src/tables/operation-parser.js';
-import { buildTableRollbackPlan } from './src/tables/rollback-plan.js';
-import { baseStoryLedgerPreset, createBaseStoryLedgerTables } from './src/tables/builtin-presets.js';
-import { findMatchingTable, mergeTableSchemaWithRows, normalizeImportedTablesFromJson, normalizeTableSchemas, normalizeTableText, toTableSchema } from './src/tables/schema-utils.js';
 import { defaultGenerationTargets, findTargetContinuityGaps, getSortedTargetBlocks, parseLooseNumberRange, partitionGenerationTargets, selectGenerationTargets, targetSelectionModes } from './src/summary/target-selection.js';
 import { cosineSimilarity, createLocalEmbedding } from './src/vector/math.js';
 import { computeHybridRerankScore, selectHybridCandidates } from './src/vector/hybrid-retrieval.js';
@@ -39,12 +35,6 @@ import { createSummaryMemoryModel } from './src/features/summary-memory-model.js
 import { createSummarySelectors } from './src/features/summary-selectors.js';
 import { createSummaryTargetController } from './src/features/summary-target-controller.js';
 import { createSummaryTaskQueue } from './src/features/summary-task-queue.js';
-import { createTableStateService } from './src/features/table-state-service.js';
-import { createTableMemoryModel } from './src/features/table-memory-model.js';
-import { createTableWorkflowController } from './src/features/table-workflow-controller.js';
-import { createTableWorkbenchUi } from './src/features/table-workbench-ui.js';
-import { createTableEditorEvents } from './src/features/table-editor-events.js';
-import { createTableManagementEvents } from './src/features/table-management-events.js';
 import { createContentConfigurationEvents } from './src/features/content-configuration-events.js';
 import { createAutomationConfigurationEvents } from './src/features/automation-configuration-events.js';
 import { createVectorMemoryService } from './src/features/vector-memory-service.js';
@@ -61,13 +51,7 @@ import { createVectorAutoRecall } from './src/features/vector-auto-recall.js';
 import * as tavernHost from '../../../../script.js';
 import { createGlobalConfigSaveVerifier } from './src/core/global-config-save.js';
 import { createTurnProcessingController } from './src/features/turn-processing-controller.js';
-import { createRpCoreService } from './src/rp-core/service.js';
-import { createRpPromptLibrary } from './src/rp-core/prompt-library.js';
-import { createRpExtractionFlow } from './src/rp-core/extraction-flow.js';
-import { createRpStateUi } from './src/features/rp-state-ui.js';
 import { createRpProtocolDisplay, ensureRpDisplayFilter } from './src/features/rp-protocol-display.js';
-import { findChatSource } from './src/rp-core/chat-sources.js';
-import { renderRpStateMemory } from './src/rp-core/memory.js';
 import { shouldRunTurnProcessing, summarySourceChoice } from './src/features/turn-trigger-policy.js';
 import { createSummarySourceWizard } from './src/features/summary-source-wizard.js';
 import { createGenerationClient } from './src/features/generation-client.js';
@@ -96,6 +80,8 @@ import { createFactsController } from './src/features/facts-controller.js';
 import { createFactsUi } from './src/features/facts-ui.js';
 import { renderFactsSection } from './src/facts/injection.js';
 import { normalizeFactSettings } from './src/facts/model.js';
+import { replayLedger } from './src/rp-core/ledger.js';
+import { applyDomainFact } from './src/rp-core/domain.js';
 import { currentInformation } from './src/rp-core/current-information.js';
 import { defaultFactsPrompt } from './src/facts/prompt.js';
 import { createReviewQueueEvents } from './src/features/review-queue-events.js';
@@ -437,7 +423,6 @@ function renderActivePresetControls(...args) {
 }
 
 let presetEventsController = null;
-let tableManagementEvents = null;
 let contentConfigurationEvents = null;
 let automationConfigurationEvents = null;
 function renderInlinePromptPresetControls(...args) {
@@ -488,7 +473,6 @@ const globalSettingsService = createGlobalSettingsService({
     createSharedInlineGenerationConfig,
     areaPresetScopes,
     tableSchemaScopes,
-    createTableProfile: (...args) => tableStateService.createTableProfile(...args),
     defaultTableEditPrompt,
     defaultInlineSummaryPrompt,
     defaultInlineTablePrompt,
@@ -597,8 +581,6 @@ const chatStateService = createChatStateService({
     defaultTurnSummaryPrompt,
     tableSchemaScopes,
     ensureGlobalSettings,
-    ensureTableProfileForScope: (...args) => tableStateService.ensureTableProfileForScope(...args),
-    mergeScopedTableSchemasIntoState: (...args) => tableStateService.mergeScopedTableSchemasIntoState(...args),
     migrateInlineSummaryPrompt,
     defaultInlineSummaryPrompt,
     defaultVectorMemory,
@@ -903,231 +885,17 @@ const {
     renderAppearanceSettings,
 } = themeController;
 
-const tableStateService = createTableStateService({
-    tableSchemaScopes,
-    getContext,
-    ensureGlobalSettings,
-    extensionSettings: extension_settings,
-    storageKey: STORAGE_KEY,
-    getChatState: () => chat_metadata[STORAGE_KEY],
-    getHash,
-    normalizeTableSchemas,
-    getState: ensureState,
-    saveGlobalSettings,
-    findMatchingTable,
-    mergeTableSchemaWithRows,
-    updateInjectionFromSummaries: (...args) => updateInjectionFromSummaries(...args),
-    saveState,
-    saveChatConditional,
-    getFiniteMessageIds,
-    toastr,
-    confirmDanger,
-    renderWorkbenchScope,
-    workbenchRenderScopes,
-    buildTableRollbackPlan,
-    scheduleRenderAll,
-    baseStoryLedgerPreset,
-    createBaseStoryLedgerTables,
-});
-const {
-    collectMessageIdsFromEventArgs,
-    createBaseStoryLedgerProfile,
-    createTableProfile,
-    createTableProfileForCurrentScope,
-    deleteActiveTableProfile,
-    ensureChatTableProfiles,
-    ensureTableProfileForScope,
-    getActiveTableProfile,
-    getActiveTableProfileKey,
-    getAppliedTableHistoriesForMessage,
-    getCurrentCharacterSchemaKey,
-    getCurrentCharacterSchemaLabel,
-    getScopedTableSchemas,
-    getTableProfileLibrary,
-    getTableProfileScopeLabel,
-    getTableProfilesForScope,
-    getTableSchemaLibrary,
-    getTableSchemaScopeLabel,
-    hasAppliedTableEditForMessage,
-    loadActiveTableProfileRows,
-    mergeScopedTableSchemasIntoState,
-    persistCurrentTableDatabase,
-    pushTableUndoSnapshot,
-    redoLastTableOperation,
-    rollbackLatestTableOperationForChangedMessages,
-    rollbackLatestTableOperationForDeletedMessages,
-    rollbackTableOperationsForMessages,
-    saveCurrentTableProfileRows,
-    saveScopedTableSchemas,
-    setTableSchemaScope,
-    switchTableProfile,
-    syncCurrentTableSchemas,
-    undoLastTableOperation,
-} = tableStateService;
 
-const tableMemoryModel = createTableMemoryModel({
-    getState: ensureState,
-    formatBlocksForPrompt,
-    formatSourceRange,
-    getSourceMessageIdsFromBlocks,
-    defaultTableEditPrompt,
-    getHash,
-    parseTableEditOperations,
-    getFiniteMessageIds,
-    pushTableUndoSnapshot,
-    normalizeTableText,
-    saveCurrentTableProfileRows,
-    updateInjectionFromSummaries: (...args) => updateInjectionFromSummaries(...args),
-});
-const {
-    applyTableOperations,
-    buildTableEditPrompt,
-    createTableEditDraft,
-    inspectTableEditDraft,
-    formatSpecificTablesForPrompt,
-    formatTableDataForPrompt,
-    formatTableGuideForPrompt,
-    getNextTableIndex,
-    getReadonlyTables,
-    getTableSchemasForPreset,
-    getWritableTables,
-    renderInjectedTablesSection,
-} = tableMemoryModel;
 
-const rpCoreService = createRpCoreService({
-    getChatIdentity: getSummaryRecoveryChatIdentity,
-    getState: ensureState,
-    getChat: () => chat,
-    saveState,
-    saveChat: () => saveChatConditional(),
-});
 const rpProtocolDisplay = createRpProtocolDisplay({
     documentRef: document, getChat: () => chat,
     installDisplayFilter: () => ensureRpDisplayFilter(extension_settings, saveSettingsDebounced),
     // A synthetic ID keeps the host's greeting macro substitution away from stored chat[0].
     renderProtocol: (text, message) => tavernHost.messageFormatting(text, message.name, false, false, -1),
 });
-const rpPromptLibrary = createRpPromptLibrary({
-    read: () => {
-        ensureGlobalSettings();
-        return extension_settings[STORAGE_KEY].rpPromptLibrary;
-    },
-    write: value => {
-        ensureGlobalSettings();
-        extension_settings[STORAGE_KEY].rpPromptLibrary = value;
-    },
-    confirmSave: value => confirmRpPromptConfiguration(value),
-});
-// v1.32.0: 剧情状态 no longer records or injects per turn; 剧情事实 took that over. Per-turn callers get this
-// frozen flow; the 剧情状态 page keeps the real one for reading and manual use.
-const rpFrozenMethods = { channel: () => null, prompt: () => '', context: () => null, runIndependent: async () => null,
-    captureInline: async () => null, reconcilePending: async () => null, scheduleCapture: () => {} };
-const rpFrozenFlow = new Proxy(rpFrozenMethods, { get: (target, key) => key in target ? target[key] : rpExtractionFlow[key] });
-const rpExtractionFlow = createRpExtractionFlow({
-    onBackgroundResult: () => { syncInjection(); scheduleRenderAll(); },
-    onBackgroundError: () => {
-        console.warn('[BakemonoMemory] RP maintenance deferred', { category: 'rp-maintenance', status: 'failed' });
-        scheduleRenderAll();
-    },
-    getPrompt: () => rpPromptLibrary.current(),
-    callGenerationModel: options => callGenerationModel(options),
-    getReferenceContext: async (state, floor) => {
-        const settings = state.rpCore.settings, sections = [];
-        if (settings.includeCharacterContext !== false) sections.push(getCharacterReferenceContext().slice(0, 6000));
-        if (settings.includeWorldInfo === true) sections.push((await turnProcessingController.getWorldInfoReferenceContext(
-            [{ messageId: floor, content: chat[floor]?.mes || '' }],
-            { ...state, turnSummary: { ...state.turnSummary, includeWorldInfo: true, worldInfoMaxContext: 2048 } },
-        )).slice(0, 6000));
-        return sections.filter(Boolean).join('\n\n');
-    },
-    runGeneration: (label, run) => runVisibleOperation(label, run, '剧情事件提取完成'),
-    isBusy: () => isBusy,
-    getState: ensureState,
-    getChat: () => chat,
-    service: rpCoreService,
-});
 
-const tableWorkflowController = createTableWorkflowController({
-    rpExtractionFlow: rpFrozenFlow,
-    getState: ensureState,
-    findLatestAssistantTurn: (...args) => findLatestAssistantTurn(...args),
-    toastr,
-    buildLatestTurnBlocks: (...args) => buildLatestTurnBlocks(...args),
-    runGeneration,
-    callGenerationModel: (...args) => callGenerationModel(...args),
-    buildTableEditPrompt,
-    buildTurnReferenceSystemPrompt: (...args) => buildTurnReferenceSystemPrompt(...args),
-    createTableEditDraft,
-    saveState,
-    saveChatConditional,
-    renderWorkbenchScope,
-    workbenchRenderScopes,
-    applyTableOperations,
-    formatSourceRange,
-    switchWorkbenchTab,
-});
-const { processLatestTableEdit } = tableWorkflowController;
 
-const tableWorkbenchUi = createTableWorkbenchUi({
-    inspectTableEditDraft,
-    query: $,
-    document,
-    requestFrame: callback => (
-        typeof globalThis.requestAnimationFrame === 'function'
-            ? globalThis.requestAnimationFrame(callback)
-            : globalThis.setTimeout(callback, 16)
-    ),
-    getState: ensureState,
-    getTableProfilesForScope,
-    tableSchemaScopes,
-    getActiveTableProfile,
-    getTablePromptPresets,
-    getSelectedTablePromptPresetId,
-    escapeHtml,
-    formatSourceRange,
-    toastr,
-    persistCurrentTableDatabase,
-    renderWorkbenchScope,
-    workbenchRenderScopes,
-    normalizeImportedTablesFromJson,
-    confirmDanger,
-    parseList,
-    getHash,
-    getNextTableIndex,
-});
-const {
-    createCustomTableFromUi,
-    importTablesFromText,
-    renderTableEditDrafts,
-    renderTableList,
-    renderTableProfileControls,
-    renderTablePromptPresetControls,
-    saveEditedTableFromElement,
-    uiState: tableUiState,
-} = tableWorkbenchUi;
 
-const tableEditorEvents = createTableEditorEvents({
-    inspectTableEditDraft,
-    query: $,
-    getState: ensureState,
-    toastr,
-    confirmDanger,
-    parseTableEditOperations,
-    renderWorkbenchScope,
-    workbenchRenderScopes,
-    applyTableOperations,
-    formatSourceRange,
-    saveEditedTableFromElement,
-    tableUiState,
-    pushTableUndoSnapshot,
-    persistCurrentTableDatabase,
-    undoLastTableOperation,
-    redoLastTableOperation,
-    createCustomTableFromUi,
-    createBaseStoryLedgerProfile,
-    sheet: actionSheet,
-    escapeHtml,
-});
 
 const vectorSettingsModel = createVectorSettingsModel({
     query: $,
@@ -1171,10 +939,8 @@ const configurationService = createConfigurationService({
     stageSourceModes,
     makePresetId,
     getStageSourceMode,
-    setTableSchemaScope,
     createSharedInlineGenerationConfig,
     createSharedVectorConfig,
-    getTableSchemasForPreset,
     getActiveGlobalConfig,
     setActiveGlobalConfig,
     markActiveConfigApplied,
@@ -1246,10 +1012,6 @@ const configurationController = createConfigurationController({
     mergeAutomationBehaviorConfig,
     defaultVectorMemory,
     tableSchemaScopes,
-    normalizeImportedTablesFromJson,
-    findMatchingTable,
-    mergeTableSchemaWithRows,
-    setTableSchemaScope,
     syncInlineGenerationPrompts: (...args) => injectionService.syncInlineGenerationPrompts(...args),
     scheduleVectorAutoIndex: (...args) => vectorMemoryService.scheduleVectorAutoIndex(...args),
     scanBlocks: options => scanBakemonoBlocks(options),
@@ -1483,8 +1245,6 @@ const {
 } = archiveController;
 
 const injectionService = createInjectionService({
-    renderRpStateMemory: () => '',
-    rpExtractionFlow: rpFrozenFlow,
     getChat: () => chat,
     ensureState,
     getActiveEpicMemoryBlocks,
@@ -1493,7 +1253,6 @@ const injectionService = createInjectionService({
     getStageMemoryBlocks,
     memoryStrategies,
     // v1.32.0: tables and 剧情状态 no longer inject; 剧情事实 does.
-    renderInjectedTablesSection: () => '',
     renderVectorMemorySection,
     renderFactsSection: (state, recentText) => renderFactsSection(factsController.facts(state), recentText),
     setExtensionPrompt,
@@ -1501,11 +1260,6 @@ const injectionService = createInjectionService({
     extensionPromptTypes: extension_prompt_types,
     extensionPromptRoles: extension_prompt_roles,
     defaultState,
-    formatTableDataForPrompt,
-    formatTableGuideForPrompt,
-    formatSpecificTablesForPrompt,
-    getReadonlyTables,
-    getWritableTables,
     defaultInlineSummaryPrompt,
     defaultInlineTablePrompt,
     inlinePromptKeys,
@@ -1568,38 +1322,6 @@ const {
     bind: bindPresetEvents,
 } = presetEventsController;
 
-tableManagementEvents = createTableManagementEvents({
-    query: $,
-    getState: ensureState,
-    tableSchemaScopes,
-    getTableProfileScopeLabel,
-    confirmDanger,
-    renderWorkbenchScope,
-    workbenchRenderScopes,
-    setTableSchemaScope,
-    saveState,
-    getTableSchemaScopeLabel,
-    toastr,
-    switchTableProfile,
-    getActiveTableProfile,
-    createTableProfileForCurrentScope,
-    syncCurrentTableSchemas,
-    saveGlobalSettings,
-    deleteActiveTableProfile,
-    saveCurrentTableProfileRows,
-    loadActiveTableProfileRows,
-    persistSharedConfigurationFromState,
-    updateInjectionFromSummaries,
-    defaultTurnSummaryPrompt,
-    defaultTableEditPrompt,
-    getSelectedTablePromptPresetId,
-    setSelectedTablePromptPresetId,
-    getTablePromptPresets,
-    renderPromptPresetControls,
-    makeTablePromptPreset,
-    importTablesFromText,
-    getScopedTableSchemas,
-});
 
 contentConfigurationEvents = createContentConfigurationEvents({
     query: $,
@@ -1770,16 +1492,11 @@ const turnSummaryUi = createTurnSummaryUi({
     defaultState,
     turnProcessingModes,
     tableSchemaScopes,
-    getTableSchemaScopeLabel,
-    getCurrentCharacterSchemaLabel,
-    renderTableProfileControls,
     defaultTurnSummaryPrompt,
     defaultTableEditPrompt,
     defaultInlineSummaryPrompt,
     defaultInlineTablePrompt,
     renderInlinePromptPresetControls,
-    renderTableList,
-    renderTableEditDrafts,
     getFloorMemoryIndex: state => workflowOverviewModel.getCurrentFloorMemoryIndex(state),
     escapeHtml,
 });
@@ -1961,8 +1678,6 @@ const {
 } = summaryDraftService;
 
 const reviewQueueUi = createReviewQueueUi({
-    renderRpReview: state => rpStateUi.renderReview(state),
-    getRpPendingCount: state => rpStateUi.getPendingCount(state),
     documentRef: document,
     query: $,
     getState: ensureState,
@@ -2003,20 +1718,6 @@ const {
     renderOverview: renderMaintenanceOverview,
 } = maintenanceUi;
 
-const rpStateUi = createRpStateUi({
-    getContextPreview: state => getInjectionMemoryParts(state).rpContext,
-    promptLibrary: rpPromptLibrary,
-    documentRef: document, getState: ensureState, service: rpCoreService, flow: rpExtractionFlow,
-    escapeHtml, navigate: switchWorkbenchTab, confirm: confirmMessage,
-    refresh: () => updateInjectionFromSummaries(),
-    locateSource: evidence => {
-        const source = evidence && findChatSource(chat, ensureState(), evidence.messageId + '|' + evidence.variantId);
-        if (!source) throw new Error('正文来源已变化或丢失');
-        const element = document.querySelector(`#chat .mes[mesid="${source.floor}"]`);
-        if (!element) throw new Error('该楼层尚未显示，请先在聊天中载入');
-        element.scrollIntoView({ block: 'center', behavior: 'auto' });
-    },
-});
 
 const storyToolsUi = createStoryToolsUi({
     documentRef: document, getState: ensureState, getChat: () => chat,
@@ -2089,7 +1790,6 @@ const summaryActionSheet = createSummaryActionSheet({
 
 const turnProcessingController = createTurnProcessingController({
     summarySources,
-    rpExtractionFlow: rpFrozenFlow,
     getContext,
     getChat: () => chat,
     getChatMetadata: () => chat_metadata,
@@ -2102,11 +1802,7 @@ const turnProcessingController = createTurnProcessingController({
     createDraft,
     defaultInlineSummaryPrompt,
     commitDraft,
-    getAppliedTableHistoriesForMessage,
     saveState,
-    rollbackLatestTableOperationForChangedMessages,
-    createTableEditDraft,
-    applyTableOperations,
     formatSourceRange,
     toastr,
     stripTableEditTags,
@@ -2125,12 +1821,9 @@ const turnProcessingController = createTurnProcessingController({
     filterTextByConfiguredTags,
     parseList,
     turnProcessingModes,
-    processLatestTableEdit,
-    hasAppliedTableEditForMessage,
     runGeneration: (...args) => operationFeedback.runGeneration(...args),
     callGenerationModel,
     extractTaggedContent,
-    buildTableEditPrompt,
 });
 const {
     buildLatestTurnBlocks,
@@ -2148,7 +1841,6 @@ const {
 } = turnProcessingController;
 
 const memoryOrchestrator = createMemoryOrchestrator({
-    rpExtractionFlow: rpFrozenFlow,
     isChatReady,
     ensureState,
     isBusy: () => isBusy,
@@ -2163,7 +1855,6 @@ const memoryOrchestrator = createMemoryOrchestrator({
     workbenchRenderScopes,
     generateStageDraft,
     turnProcessingModes,
-    processLatestTableEdit,
     processLatestTurnSummary,
     getCurrentFloorMemoryIndex,
     getMemoryOrchestrationPlan,
@@ -2261,8 +1952,10 @@ const factsController = createFactsController({
     persistSharedConfigurationFromState,
     createDraft: (...args) => summaryDraftService.createDraft(...args),
     getLegacy: state => {
-        const view = state.rpCore ? rpCoreService.view(state) : null;
-        return { projection: view?.projection || null, information: view && state.rpCore ? currentInformation(state.rpCore, view) : [],
+        // The older ledger is replayed read-only for the import; nothing writes to it any more.
+        let projection = null;
+        try { projection = Array.isArray(state.rpCore?.facts) ? replayLedger(state.rpCore, applyDomainFact).projection : null; } catch { projection = null; }
+        return { projection, information: projection ? currentInformation(state.rpCore, {}) : [],
             tables: state.tableDatabase?.tables || [] };
     },
 });
@@ -2313,7 +2006,6 @@ workbenchRenderer = createWorkbenchRenderer({
         if (tab === 'settings') summarySourceWizard.refresh();
         if (tab === 'turn-summary' || tab === 'tables') syncSummarySourceControls($, summarySourceChoice(state));
     },
-    renderRpState: state => rpStateUi.render(state),
     renderFacts: state => factsUi.render(state),
     documentRef: document,
     globalRef: globalThis,
@@ -2393,7 +2085,6 @@ const workbenchActionController = createWorkbenchActionController({
     clearStuckMissingSummaryTasks,
     readTurnSummaryFieldsFromUi,
     processLatestTurnSummary,
-    processLatestTableEdit,
     undoLastCommit,
     clearFinishedQueueTasks,
     clearHistoryRecords,
@@ -2509,11 +2200,8 @@ function bindSettingsEvents() {
     bindPromptEvents();
     bindMaintenanceEvents();
     storyToolsUi.bind();
-    rpStateUi.bind();
     factsUi.bind();
     overviewWorkbenchUi.bind(document);
-    tableEditorEvents.bind();
-    tableManagementEvents.bind();
     contentConfigurationEvents.bind();
     automationConfigurationEvents.bind();
     vectorActionsController.bind();
@@ -2689,7 +2377,7 @@ async function init() {
     if (event_types.MESSAGE_SENT) {
         eventSource.on(event_types.MESSAGE_SENT, async () => {
             const state = ensureState();
-            if (!shouldRunTurnProcessing(state.turnSummary, 'user') && !rpFrozenFlow.channel(state)) return;
+            if (!shouldRunTurnProcessing(state.turnSummary, 'user')) return;
             await runMemoryOrchestrator('开始新一轮', {
                 scan: false,
                 turnOnly: true,
@@ -2716,14 +2404,11 @@ async function init() {
             markAffectedAutoSummaryTransactions(messageIds, event === event_types.MESSAGE_DELETED ? '楼层已删除' : event === event_types.MESSAGE_SWIPED ? '楼层已重 roll' : '楼层已编辑');
             scheduleAutoHideRecent('message changed');
             if (event !== event_types.MESSAGE_DELETED) {
-                rollbackLatestTableOperationForChangedMessages(messageIds, ensureState());
                 const state = ensureState();
                 state.inlineGeneration.lastProcessedMessageId = null;
                 state.inlineGeneration.lastProcessedSignature = '';
                 scheduleInlineGenerationCapture('消息更新');
-                rpFrozenFlow.scheduleCapture();
             } else {
-                rollbackLatestTableOperationForDeletedMessages(messageIds, ensureState());
             }
             markVectorIndexDirty('消息变更');
             syncInjection();

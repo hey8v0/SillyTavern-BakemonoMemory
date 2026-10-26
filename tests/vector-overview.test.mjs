@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createVectorWorkbenchUi } from '../src/features/vector-workbench-ui.js';
-import { clearRpDerivedCache, renderRpStateMemory } from '../src/rp-core/memory.js';
 
 test('vector panel reports tagged and saved summaries separately and removes legacy RP previews', () => {
     const records = [
@@ -30,28 +29,11 @@ test('vector panel reports tagged and saved summaries separately and removes leg
     assert.equal(state.vectorMemory.lastRerankCandidates.length, 0);
 });
 
-test('removing derived RP cache preserves ledger, direct state injection and vector settings', () => {
-    const state = { rpCore: { settings: { enabled: true, inject: true }, facts: [{ id: 'keep' }] },
-        vectorMemory: { enabled: true, customApi: { model: 'keep-model' }, records: [{ id: 'body' }, { summaryType: 'rp-claims' }], lastHits: [{ memoryHash: 'rp:facts:old' }] } };
-    const view = { projection: { clock: { date: '2024-04-12', calendar: 'gregorian' }, people: [{ id: 'p', name: '人物甲', location: 'room' }],
-        locations: [{ id: 'room', name: '书房' }], relationships: [], plans: [], items: [] } };
-    const before = JSON.stringify(state.rpCore);
-    const brief = renderRpStateMemory(state, view, '人物甲');
-    assert.match(brief, /人物甲/);
-    clearRpDerivedCache(state);
-    assert.equal(JSON.stringify(state.rpCore), before);
-    assert.equal(renderRpStateMemory(state, view, '人物甲'), brief);
-    assert.equal(state.vectorMemory.customApi.model, 'keep-model');
-    assert.equal(state.vectorMemory.enabled, true);
-    assert.deepEqual(state.vectorMemory.records, [{ id: 'body' }]);
-    assert.deepEqual(state.vectorMemory.lastHits, []);
-});
-
 test('overview lists the six injection sources in order, each with its own muted colour', () => {
     const html = readFileSync(new URL('../settings.html', import.meta.url), 'utf8');
     const css = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
     const sources = [...html.matchAll(/data-bakemono-token-source="([^"]+)"/g)].map(m => m[1]);
-    assert.deepEqual(sources, ['rule', 'summary', 'memory', 'rpState', 'table', 'vector']);
+    assert.deepEqual(sources, ['rule', 'summary', 'memory', 'facts', 'time', 'vector']);
     for (const key of sources) {
         assert.match(html, new RegExp('id="bakemono-memory-token-pct-' + key + '"'));
         assert.match(css, new RegExp('\\[data-bakemono-stack-source="' + key + '"\\]'));

@@ -1,5 +1,4 @@
 import { storyTimeContext } from '../memory/story-state.js';
-import { stripRpProtocol } from '../rp-core/extraction-flow.js';
 import { firstUserFloor, openingFloors } from '../shared/opening.js';
 
 export function createTurnProcessingController({
@@ -16,14 +15,9 @@ export function createTurnProcessingController({
     createDraft,
     defaultInlineSummaryPrompt,
     commitDraft,
-    getAppliedTableHistoriesForMessage,
     saveState,
-    rollbackLatestTableOperationForChangedMessages,
-    createTableEditDraft,
-    applyTableOperations,
     formatSourceRange,
     toastr,
-    stripTableEditTags,
     updateInjectionFromSummaries,
     saveChatConditional,
     scheduleRenderAll,
@@ -39,14 +33,13 @@ export function createTurnProcessingController({
     filterTextByConfiguredTags,
     parseList,
     turnProcessingModes,
-    processLatestTableEdit,
-    hasAppliedTableEditForMessage,
     runGeneration,
     callGenerationModel,
     extractTaggedContent,
-    buildTableEditPrompt,
 } = {}) {
     let inlineCaptureTimer = null;
+    // Replies of older versions carry a <rpEvents> block; it is never summary material.
+    const stripRpProtocol = text => String(text || '').replace(/<rpEvents\b[^>]*>[\s\S]*?(?:<\/rpEvents\s*>|$)/gi, '').trim();
 
     function getTurnExcludeTags(state = ensureState()) {
         return [...new Set([
@@ -159,7 +152,7 @@ export function createTurnProcessingController({
         const state = ensureState();
         const capturedRp = false;
         if (ensureState() !== state) throw new Error('提取期间聊天已变化');
-        if (!state.inlineGeneration?.summaryEnabled && !state.inlineGeneration?.tableEnabled) {
+        if (!state.inlineGeneration?.summaryEnabled) {
             return false;
         }
         const turn = findLatestAssistantTurn();
@@ -200,54 +193,6 @@ export function createTurnProcessingController({
             }
         }
     
-        if (state.inlineGeneration.tableEnabled && /<tableEdit[\s>]/i.test(text)) {
-            let draft = null;
-            try {
-                const existingHistories = getAppliedTableHistoriesForMessage(turn.assistantMessage.messageId, state);
-                if (existingHistories.some(history => history.sourceSignature === signature)) {
-                    state.inlineGeneration.lastProcessedMessageId = turn.assistantMessage.messageId;
-                    state.inlineGeneration.lastProcessedSignature = signature;
-                    saveState();
-                    return capturedSomething;
-                }
-                if ((state.tableDatabase.editDrafts || []).some(draft => draft.sourceSignature === signature)) {
-                    state.inlineGeneration.lastProcessedMessageId = turn.assistantMessage.messageId;
-                    state.inlineGeneration.lastProcessedSignature = signature;
-                    saveState();
-                    return capturedSomething;
-                }
-                const latestHistory = existingHistories[0];
-                if (latestHistory && latestHistory.sourceSignature !== signature) {
-                    rollbackLatestTableOperationForChangedMessages([turn.assistantMessage.messageId], state);
-                }
-                const blocks = buildLatestTurnBlocks(state);
-                draft = createTableEditDraft(text, blocks, state);
-                if (draft) {
-                    draft.sourceSignature = signature;
-                    capturedSomething = true;
-                }
-                if (draft && state.tableDatabase.autoApply) {
-                    const undoSnapshot = applyTableOperations(draft.operations, state, {
-                        raw: draft.raw,
-                        sourceMessageIds: draft.sourceMessageIds,
-                        undoLabel: `随正文表格修改：${formatSourceRange(draft.sourceMessageIds || [])}`,
-                    });
-                    state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString(), undoSnapshotId: undoSnapshot?.id || '', sourceSignature: signature });
-                    state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draft.id);
-                    toastr.success(`已自动应用 ${draft.operations.length} 项随正文表格修改。`);
-                } else if (draft) {
-                    toastr.info(`已捕获 ${draft.operations.length} 项随正文表格修改，请到草稿确认。`);
-                }
-                capturedSomething = capturedSomething || !!draft;
-                if (state.inlineGeneration.hideTableEdit !== false && message) {
-                    message.mes = stripTableEditTags(message.mes || '');
-                    changedMessage = true;
-                }
-            } catch (error) {
-                if (draft) draft.applicationError = `随正文填表未应用：${error?.message || error}`;
-                toastr.warning(`随正文填表未应用：${error?.message || error}${draft ? '；草稿已保留。' : ''}`);
-            }
-        }
     
         state.inlineGeneration.lastProcessedMessageId = turn.assistantMessage.messageId;
         state.inlineGeneration.lastProcessedSignature = signature;
@@ -392,10 +337,7 @@ export function createTurnProcessingController({
         if (manual) {
             sections.push(`## 用户手动参考资料\n${manual}`);
         }
-        const rpPrompt = '';
-        const base = (purpose === 'table'
-            ? `你是剧情剪辑台的表格整理助手。只输出 tableThink 和 tableEdit${rpPrompt ? ' 以及 rpEvents' : ''}，不写正文。`
-            : '你是剧情剪辑台的正文摘要器。只总结输入正文，不续写剧情。输出必须包含 summaryDraft 标签。') + (rpPrompt ? '\n\n' + rpPrompt : '');
+        const base = '你是剧情剪辑台的正文摘要器。只总结输入正文，不续写剧情。输出必须包含 summaryDraft 标签。';
         return sections.length
             ? `${base}\n\n以下是摘要/填表时必须参考的人设与世界观资料。它们只用于理解正文，不代表本轮新发生事件；不要把参考资料当成本轮剧情直接写入。\n\n${sections.join('\n\n')}`
             : base;
@@ -416,11 +358,6 @@ export function createTurnProcessingController({
         const state = ensureState();
         const mode = state.turnSummary.processingMode || turnProcessingModes.BOTH;
         const shouldGenerateSummary = mode !== turnProcessingModes.TABLE;
-        const shouldGenerateTable = mode !== turnProcessingModes.SUMMARY && state.tableDatabase.enabled && state.tableDatabase.tables.length;
-        if (!shouldGenerateSummary && shouldGenerateTable) {
-            await processLatestTableEdit(options);
-            return;
-        }
         if (!shouldGenerateSummary || (!state.turnSummary.enabled && !options.manual)) {
             return;
         }
@@ -436,12 +373,6 @@ export function createTurnProcessingController({
             state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
             saveState();
             await saveChatConditional();
-            return;
-        }
-        if (!options.manual && hasAppliedTableEditForMessage(turn.assistantMessage.messageId, state)) {
-            state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
-            saveState();
-            renderWorkbenchScope(workbenchRenderScopes.TABLES, '本楼已经通过随正文表格修改应用过表格内容，已跳过回复后填表。');
             return;
         }
         const blocks = buildLatestTurnBlocks(state);
@@ -500,28 +431,6 @@ export function createTurnProcessingController({
                 await commitDraft(summaryDraft.id, summaryDraft.content, { silent: true });
             }
     
-            if (shouldGenerateTable && !hasAppliedTableEditForMessage(turn.assistantMessage.messageId, state)) {
-                const tableResult = await callGenerationModel({
-                    prompt: buildTableEditPrompt(blocks, state),
-                    systemPrompt: await buildTurnReferenceSystemPrompt(blocks, 'table', state),
-                });
-                let draft = null;
-                try {
-                    draft = createTableEditDraft(tableResult, blocks, state);
-                    if (draft && state.tableDatabase.autoApply) {
-                        const undoSnapshot = applyTableOperations(draft.operations, state, {
-                            raw: draft.raw,
-                            sourceMessageIds: draft.sourceMessageIds,
-                            undoLabel: `回复后表格修改：${formatSourceRange(draft.sourceMessageIds || [])}`,
-                        });
-                        state.tableDatabase.history.unshift({ ...draft, appliedAt: new Date().toISOString(), undoSnapshotId: undoSnapshot?.id || '' });
-                        state.tableDatabase.editDrafts = state.tableDatabase.editDrafts.filter(item => item.id !== draft.id);
-                    }
-                } catch (error) {
-                    if (draft) draft.applicationError = `填表未应用：${error?.message || error}`;
-                    toastr.warning(`填表未应用：${error?.message || error}${draft ? '；草稿已保留。' : ''}`);
-                }
-            }
     
             state.turnSummary.lastProcessedMessageId = turn.assistantMessage.messageId;
             state.turnSummary.lastRun = { status: 'done', messageId: turn.assistantMessage.messageId };

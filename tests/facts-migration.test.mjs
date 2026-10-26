@@ -2,7 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildLegacyImport, cardsFromProjection, cardsFromTables, classifyTable, importCards, mergeImportedCards } from '../src/facts/migration.js';
 import { createDefaultFacts, findCard } from '../src/facts/model.js';
-import { createBaseStoryLedgerTables } from '../src/tables/builtin-presets.js';
+// The six tables the removed 基础表格 preset created (v1.16–v1.32), as they sit in older chats.
+const createBaseStoryLedgerTables = () => [
+    { name: '角色特征表格', columns: ['角色名', '性别/年龄/身高/外貌', '性格', '长期备注', '临时BUFF', '当前衣着'], rows: [] },
+    { name: '人物关系表格', columns: ['双方角色名', '基础关系(底层身份)', '当前关系(流动状态)', '相互情感态度'], rows: [] },
+    { name: '世界设定表格', columns: ['设定名', '类型', '详细说明', '影响范围'], rows: [] },
+    { name: '重要物品表格', columns: ['拥有人', '物品名', '描述', '效果/意义', '来源'], rows: [] },
+    { name: '约定表格', columns: ['日期', '双方角色名', '任务/约定内容', '完成/待完成', '结果'], rows: [] },
+    { name: '剧情指导', columns: ['内容'], readOnly: true, rows: [] },
+];
 import { createMemoryBackup, validateMemoryBackup, restoreMemoryBackup, previewMemoryBackup } from '../src/memory/backup-package.js';
 import { getHash } from '../src/shared/text.js';
 

@@ -17,26 +17,6 @@ async function loadModule(path, replacements = []) {
     return await import(toDataModule(source));
 }
 
-test('table rollback planner cascades newer transactions without mutating the stack', async () => {
-    const { buildTableRollbackPlan } = await loadModule('src/tables/rollback-plan.js');
-    const stack = [
-        { id: 'newest', profileKey: 'chat:a', sourceMessageIds: [30], tables: [{ rows: [['before-30']] }] },
-        { id: 'affected', profileKey: 'chat:a', sourceMessageIds: [20], tables: [{ rows: [['before-20']] }] },
-        { id: 'oldest', profileKey: 'chat:a', sourceMessageIds: [10], tables: [{ rows: [['before-10']] }] },
-        { id: 'other-profile', profileKey: 'chat:b', sourceMessageIds: [20], tables: [{ rows: [['other']] }] },
-    ];
-
-    const plan = buildTableRollbackPlan(stack, [20], 'chat:a');
-
-    assert.deepEqual(plan.rollbackSnapshotIds, ['newest', 'affected']);
-    assert.deepEqual(plan.affectedSnapshotIds, ['affected']);
-    assert.deepEqual(plan.cascadedSnapshotIds, ['newest']);
-    assert.deepEqual(plan.cascadedSourceMessageIds, [30]);
-    assert.equal(plan.restoreSnapshot.id, 'affected');
-    assert.equal(stack.length, 4);
-    assert.equal(buildTableRollbackPlan(stack, [999], 'chat:a'), null);
-});
-
 test('summary target selection sorts, filters ranges and partitions deterministically', async () => {
     const metadataSource = await readFile(new URL('src/summary/source-metadata.js', repoUrl), 'utf8');
     const metadataUrl = toDataModule(metadataSource);
@@ -170,14 +150,4 @@ test('delayed turn orchestration skips the new assistant event and runs on the n
     assert.equal(processed, 0);
     await orchestrator.runMemoryOrchestrator('开始新一轮', { turnOnly: true, turnTrigger: 'user' });
     assert.equal(processed, 1);
-});
-
-test('built-in story ledger excludes duplicate summary tables and keeps guidance read-only', async () => {
-    const { baseStoryLedgerPreset, createBaseStoryLedgerTables } = await loadModule('src/tables/builtin-presets.js');
-    const tables = createBaseStoryLedgerTables();
-    assert.equal(baseStoryLedgerPreset.name, '基础表格');
-    assert.deepEqual(tables.map(table => table.name), ['角色特征表格', '人物关系表格', '世界设定表格', '重要物品表格', '约定表格', '剧情指导']);
-    assert.equal(tables.some(table => /事件摘要|大总结/.test(table.name)), false);
-    assert.equal(tables.at(-1).readOnly, true);
-    assert.equal(tables.at(-1).allowAiEdit, false);
 });

@@ -106,7 +106,8 @@ test('choosing a source fills the advanced fields, counts as one change and disc
     assert.equal(dom.nodes['bakemono-memory-summary-source-custom'].hidden, false);
     assert.match(dom.nodes['bakemono-memory-summary-source-custom-text'].textContent, /不会注入/);
 
-    state = { ...baseState(), turnSummary: { enabled: true, auto: true, processingMode: 'table' } };
+    // In-reply and separate summaries both on is the one legacy combination left; it is shown, not offered.
+    state = { ...baseState(), inlineGeneration: { summaryEnabled: true }, turnSummary: { enabled: true, auto: true, processingMode: 'summary' } };
     wizard.render(state);
     assert.equal(dom.nodes['bakemono-memory-summary-source-legacy'].hidden, false);
     assert.equal(dom.radios.some(radio => radio.checked), false, 'legacy combinations are not shown as a choice');
