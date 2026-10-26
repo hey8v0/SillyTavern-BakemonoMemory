@@ -5,7 +5,7 @@ const pages = {
     scan: { label: '扫描规则', fields: /^bakemono-memory-(scan-mode|include-tags|exclude-tags|full-min-length|include-hidden|class-|layout-)/ },
     automation: { label: '自动总结', fields: /^bakemono-memory-(auto-|backfill-batch-size$)/ },
     generation: { label: '生成接口', fields: /^bakemono-memory-(api-provider|custom-)/ },
-    prompts: { label: '生成提示词', fields: /^bakemono-memory-(story|missing|stage|epic)-prompt$/ },
+    prompts: { label: '生成提示词', fields: /^bakemono-memory-(story|missing|stage|epic|facts)-prompt$/ },
     injection: { label: '注入设置', fields: /^bakemono-memory-(injection-(template|enabled)|depth|role)$/ },
     'turn-summary': { label: '摘要与表格设置', fields: /^bakemono-memory-(turn-|inline-|table-(prompt|enabled|inject-memory|auto-apply|schema-scope)$)/ },
 };

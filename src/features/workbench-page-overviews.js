@@ -12,6 +12,7 @@ export function createWorkbenchPageOverviews({
     defaultMissingSummaryPrompt,
     defaultStageGenerationPrompt,
     defaultEpicGenerationPrompt,
+    defaultFactsPrompt = '',
     defaultGenericStoryGenerationPrompt = '',
     defaultGenericStageGenerationPrompt = '',
     defaultGenericEpicGenerationPrompt = '',
@@ -41,17 +42,19 @@ export function createWorkbenchPageOverviews({
             missing: ['#bakemono-memory-missing-prompt', state.generationPrompts.missing || defaultMissingSummaryPrompt],
             stage: ['#bakemono-memory-stage-prompt', state.generationPrompts.stage || defaultStageGenerationPrompt],
             epic: ['#bakemono-memory-epic-prompt', state.generationPrompts.epic || defaultEpicGenerationPrompt],
+            facts: ['#bakemono-memory-facts-prompt', state.generationPrompts.facts || defaultFactsPrompt],
         }[type] || ['#bakemono-memory-stage-prompt', state.generationPrompts.stage || defaultStageGenerationPrompt];
         const editorValue = String(query(config[0]).val() || '').trim();
         return editorValue || String(config[1] || '').trim();
     }
 
-    const promptKeys = ['story', 'missing', 'stage', 'epic'];
+    const promptKeys = ['story', 'missing', 'stage', 'epic', 'facts'];
     const promptDefaults = () => ({
         story: [defaultStoryGenerationPrompt, defaultGenericStoryGenerationPrompt],
         missing: [defaultMissingSummaryPrompt],
         stage: [defaultStageGenerationPrompt, defaultGenericStageGenerationPrompt],
         epic: [defaultEpicGenerationPrompt, defaultGenericEpicGenerationPrompt],
+        facts: [defaultFactsPrompt],
     });
     const isDefaultPrompt = (key, value) => promptDefaults()[key].some(text => text && String(text).trim() === String(value || '').trim());
     // The line a person recognises a prompt by: its first line of real text, without markdown marks.
@@ -91,7 +94,7 @@ export function createWorkbenchPageOverviews({
     }
 
     // Sizes per source use the home page's source names and colours.
-    const injectionSources = [['summary', '阶段／多次总结'], ['memory', '长期记忆'], ['rpState', '剧情状态'], ['table', '表格记忆'], ['vector', '向量召回']];
+    const injectionSources = [['summary', '阶段／多次总结'], ['memory', '长期记忆'], ['rpState', '剧情状态'], ['facts', '剧情事实'], ['table', '表格记忆'],['vector', '向量召回']];
     function renderInjectionOverview(state = getState()) {
         const enabled = !!state.injection.enabled;
         const content = renderInjectionContent(state);
@@ -239,7 +242,7 @@ export function createWorkbenchPageOverviews({
         });
         root.off('input.bakemonoPromptPreview').on(
             'input.bakemonoPromptPreview',
-            '#bakemono-memory-story-prompt, #bakemono-memory-missing-prompt, #bakemono-memory-stage-prompt, #bakemono-memory-epic-prompt',
+            '#bakemono-memory-story-prompt, #bakemono-memory-missing-prompt, #bakemono-memory-stage-prompt, #bakemono-memory-epic-prompt, #bakemono-memory-facts-prompt',
             () => renderPromptOverview(),
         );
         root.off('change.bakemonoProvider input.bakemonoProvider').on('change.bakemonoProvider input.bakemonoProvider',

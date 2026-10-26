@@ -37,6 +37,9 @@
         <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="preview">
           <span>总结</span>
         </button>
+        <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="facts">
+          <span>剧情事实</span>
+        </button>
         <button type="button" class="bakemono-workbench-tab" data-bakemono-tab="rp-state">
           <span>剧情状态</span>
         </button>
@@ -643,6 +646,9 @@
 
       </section>
 
+      <section class="bakemono-workbench-panel" data-bakemono-panel="facts">
+        <div id="bakemono-facts-root" class="rp-core-ui"></div>
+      </section>
       <section class="bakemono-workbench-panel" data-bakemono-panel="rp-state">
         <div id="bakemono-rp-root" class="rp-core-ui"></div>
       </section>
@@ -1077,6 +1083,13 @@
             <div class="bk-tbl-set-actions"><button type="button" class="bk-sum-link" id="bakemono-memory-reset-epic-prompt">恢复默认</button><button type="button" class="bk-sum-link" data-bakemono-gen-prompt-copy="epic">复制</button></div>
           </div>
         </div>
+        <div class="bk-prm-item is-event" data-bakemono-prompt="facts">
+          <button type="button" class="bk-prm-h" data-bakemono-prompt-open="facts" aria-expanded="false"><span class="bk-prm-dot" aria-hidden="true"></span><span class="bk-prm-copy"><strong>整理事实</strong><span class="bk-prm-first" data-bakemono-prompt-first></span></span><span class="bk-prm-state" data-bakemono-prompt-state></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></button>
+          <div class="bk-prm-body" hidden>
+            <textarea id="bakemono-memory-facts-prompt" rows="14" spellcheck="false" aria-label="整理事实提示词"></textarea>
+            <div class="bk-tbl-set-actions"><button type="button" class="bk-sum-link" id="bakemono-memory-reset-facts-prompt">恢复默认</button><button type="button" class="bk-sum-link" data-bakemono-gen-prompt-copy="facts">复制</button></div>
+          </div>
+        </div>
         <section class="bk-tbl-settings bk-auto-settings" aria-label="生成提示词设置">
           <span class="bk-tbl-settings-label">设置</span>
           <details class="bk-tbl-set">
@@ -1235,7 +1248,7 @@
             <button id="bakemono-memory-help-search-clear" type="button" class="bk-sum-link" hidden>清空</button>
           </label>
           <div id="bakemono-memory-help-list" class="bk-help-groups" aria-live="polite"></div>
-          <p class="bk-help-foot">v1.28.4 · 反馈问题时带上这个版本号</p>
+          <p class="bk-help-foot">v1.29.0 · 反馈问题时带上这个版本号</p>
         </div>
 
         <div data-bakemono-help-view="article" hidden>

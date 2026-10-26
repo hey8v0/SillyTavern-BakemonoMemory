@@ -2,6 +2,7 @@ import { ensureChronicle } from '../memory/story-state.js';
 import { detachedChatState } from './chat-ready.js';
 import { removeRpVectorCache } from '../vector/source-policy.js';
 import { migrateLegacyRuleDefaults } from '../config/legacy-rule-defaults.js';
+import { normalizeFacts } from '../facts/model.js';
 
 export function ensureCurrentChatStateSlot({
     getChatMetadata,
@@ -183,6 +184,7 @@ export function createChatStateService({
             ensureObjectField(state.generationTargets, kind, defaults);
             fillMissingDefaults(state.generationTargets[kind], defaults);
         }
+        state.facts = normalizeFacts(state.facts);
         ensureObjectField(state, 'turnSummary', defaultState.turnSummary);
         fillMissingDefaults(state.turnSummary, defaultState.turnSummary);
         migrateTurnSummaryPrompt(state.turnSummary, defaultTurnSummaryPrompt, migrateBuiltInStructuredPrompt);

@@ -92,6 +92,11 @@ import { createSummaryActionSheet } from './src/features/summary-action-sheet.js
 import { createActionSheet } from './src/ui/action-sheet.js';
 import { createWorkbenchPageOverviews } from './src/features/workbench-page-overviews.js';
 import { createReviewQueueUi } from './src/features/review-queue-ui.js';
+import { createFactsController } from './src/features/facts-controller.js';
+import { createFactsUi } from './src/features/facts-ui.js';
+import { renderFactsSection } from './src/facts/injection.js';
+import { normalizeFactSettings } from './src/facts/model.js';
+import { defaultFactsPrompt } from './src/facts/prompt.js';
 import { createReviewQueueEvents } from './src/features/review-queue-events.js';
 import { createMaintenanceUi } from './src/features/maintenance-ui.js';
 import { createSummaryTimelineUi } from './src/features/summary-timeline-ui.js';
@@ -1208,6 +1213,8 @@ const summarySourceWizard = createSummarySourceWizard({
 
 const configurationController = createConfigurationController({
     getState: ensureState,
+    defaultFactsPrompt,
+    normalizeFactSettings,
     defaultStoryGenerationPrompt,
     defaultMissingSummaryPrompt,
     defaultStageGenerationPrompt,
@@ -1481,6 +1488,7 @@ const injectionService = createInjectionService({
     memoryStrategies,
     renderInjectedTablesSection,
     renderVectorMemorySection,
+    renderFactsSection: (state, recentText) => renderFactsSection(factsController.facts(state), recentText),
     setExtensionPrompt,
     injectionKey: INJECTION_KEY,
     extensionPromptTypes: extension_prompt_types,
@@ -1589,6 +1597,7 @@ tableManagementEvents = createTableManagementEvents({
 contentConfigurationEvents = createContentConfigurationEvents({
     query: $,
     navigatorRef: navigator,
+    defaultFactsPrompt,
     getState: ensureState,
     defaultInjectionTemplate,
     syncInjection,
@@ -1822,6 +1831,7 @@ const {
 const workbenchPageOverviews = createWorkbenchPageOverviews({
     documentRef: document,
     windowRef: window,
+    defaultFactsPrompt,
     navigatorRef: navigator,
     query: $,
     getState: ensureState,
@@ -1911,6 +1921,7 @@ const summaryDraftService = createSummaryDraftService({
     extractConfiguredSegments,
     removeExactTextBlock,
     confirm: confirmMessage,
+    onSummaryCommitted: summary => factsController.onSummaryCommitted(summary),
 });
 const {
     clearStuckMissingSummaryTasks,
@@ -2217,6 +2228,7 @@ const summaryTaskQueue = createSummaryTaskQueue({
     switchWorkbenchTab,
     confirmDanger,
     historyState,
+    resultHandlers: { [blockTypes.FACTS]: (...args) => factsController.handleTaskResult(...args) },
 });
 const {
     clearFinishedQueueTasks,
@@ -2226,6 +2238,28 @@ const {
     removeQueueTask,
     retryQueueTask,
 } = summaryTaskQueue;
+
+const factsController = createFactsController({
+    getState: ensureState,
+    saveState,
+    enqueueSummaryTask,
+    blockTypes,
+    getBlockPlainText,
+    toastr,
+    renderWorkbenchScope,
+    workbenchRenderScopes,
+    syncInjection: () => syncInjection(),
+    confirm: confirmDanger,
+    persistSharedConfigurationFromState,
+});
+const factsUi = createFactsUi({
+    documentRef: document,
+    getState: ensureState,
+    controller: factsController,
+    escapeHtml,
+    refresh: () => renderWorkbenchScope(workbenchRenderScopes.DRAFTS),
+    getChat: () => chat,
+});
 
 const reviewQueueEvents = createReviewQueueEvents({
     pauseQueue: () => summaryTaskQueue.pauseQueue(),
@@ -2266,6 +2300,7 @@ workbenchRenderer = createWorkbenchRenderer({
         if (tab === 'turn-summary' || tab === 'tables') syncSummarySourceControls($, summarySourceChoice(state));
     },
     renderRpState: state => rpStateUi.render(state),
+    renderFacts: state => factsUi.render(state),
     documentRef: document,
     globalRef: globalThis,
     query: $,
@@ -2461,6 +2496,7 @@ function bindSettingsEvents() {
     bindMaintenanceEvents();
     storyToolsUi.bind();
     rpStateUi.bind();
+    factsUi.bind();
     overviewWorkbenchUi.bind(document);
     tableEditorEvents.bind();
     tableManagementEvents.bind();

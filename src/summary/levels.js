@@ -21,5 +21,6 @@ export function getMultiSummaryLabel(levelOrItem = 2) {
 export function getSummaryKindLabel(kind, blockTypes) {
     if (kind === blockTypes.STORY) return '剧情摘要';
     if (kind === blockTypes.EPIC) return '多次总结';
+    if (kind === blockTypes.FACTS) return '整理事实';
     return '阶段总结';
 }

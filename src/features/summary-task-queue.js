@@ -25,6 +25,8 @@ export function createSummaryTaskQueue({
     getTaskSourceSignature = () => '',
     summarySources,
     rebuildMissingTask,
+    // Task kinds whose result is not a summary draft (整理事实): the handler consumes the raw reply.
+    resultHandlers = {},
 } = {}) {
     let isQueueRunning = false;
     let runVersion = 0;
@@ -85,6 +87,7 @@ export function createSummaryTaskQueue({
         const toast = toastr.info('正在处理总结任务队列...', '剧情剪辑台', { timeOut: 0, extendedTimeOut: 0 });
         let createdDrafts = 0;
         let autoCommitted = 0;
+        let handled = 0;
         try {
             while (true) {
                 if (!isCurrentRun()) return;
@@ -154,6 +157,17 @@ export function createSummaryTaskQueue({
                         continue;
                     }
                     if (automatic && inputError) throw sourceMoved(inputError);
+                    if (resultHandlers[task.kind]) {
+                        await resultHandlers[task.kind](rawResult, task);
+                        if (!isCurrentRun()) return;
+                        handled += 1;
+                        task.status = 'done';
+                        task.error = '';
+                        task.updatedAt = new Date().toISOString();
+                        saveState();
+                        renderTaskQueueProgress(`已处理任务：${task.label}`);
+                        continue;
+                    }
                     if (task.trigger === 'missing_summary_batch') {
                         const items = parseMissingSummaryBatchResult(rawResult, task, normalizeGeneratedBakemono);
                         if (!items.length) {
@@ -254,7 +268,8 @@ export function createSummaryTaskQueue({
                 ? `任务队列处理完成，已自动保存 ${autoCommitted} 个阶段总结并收纳旧楼层。`
                 : autoCommitted
                     ? `任务队列处理完成，已自动保存 ${autoCommitted} 个阶段总结，另有 ${createdDrafts} 个草稿待确认。`
-                    : createdDrafts ? '任务队列处理完成，生成结果已进入草稿箱。' : '本次没有生成草稿，请查看任务中的失败原因。';
+                    : createdDrafts ? '任务队列处理完成，生成结果已进入草稿箱。'
+                    : handled ? '任务队列处理完成。' : '本次没有生成草稿，请查看任务中的失败原因。';
             renderWorkbenchScope(workbenchRenderScopes.DRAFTS, message);
         } finally {
             toastr.clear(toast);

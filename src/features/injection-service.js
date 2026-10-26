@@ -30,6 +30,7 @@ export function createInjectionService({
     renderInjectionTemplate,
     rpExtractionFlow,
     renderRpStateMemory = () => '',
+    renderFactsSection = () => ({ text: '' }),
 } = {}) {
     function updateInjectionFromSummaries() {
         const state = ensureState();
@@ -63,6 +64,7 @@ export function createInjectionService({
             ].filter(Boolean).join('\n\n'),
             memory: storyContents.length ? '## 普通剧情摘要\n' + storyContents.join('\n\n') : '',
             rpState: '',
+            facts: '',
             table: [storyTimeContext(state), renderInjectedTablesSection?.(state)].filter(Boolean).join('\n\n'),
             vector: renderVectorMemorySection?.(state) || '',
         };
@@ -76,7 +78,11 @@ export function createInjectionService({
         const rpContext = rpExtractionFlow?.context?.(state, { query: getChat?.().at(-1)?.mes || '', includeBrief: state.injection?.enabled !== false,
             availableBudget: Math.max(0, Math.floor((memoryBudget - otherMemory.length * copies - rules.length - 8 * copies) / copies)) });
         sources.rpState = rpContext?.brief ?? renderRpStateMemory(state);
-        const sections = [sources.summary, sources.memory, sources.rpState, sources.table, sources.vector].filter(Boolean);
+        // 剧情事实: cards the recent floors name. Not budgeted against the summaries; it has its own character budget.
+        const recentFloors = Math.max(1, Number(state.facts?.settings?.recentFloors) || 6);
+        const recentText = state.injection?.enabled === false ? '' : (getChat?.() || []).slice(-recentFloors).map(message => String(message?.mes || '')).join('\n');
+        sources.facts = state.injection?.enabled === false ? '' : (renderFactsSection(state, recentText)?.text || '');
+        const sections = [sources.summary, sources.memory, sources.rpState, sources.facts, sources.table, sources.vector].filter(Boolean);
         const memory = sections.join('\n\n').trim();
         const savedSummaries = (state.stageSummaries?.length || 0) + (state.epicSummaries?.length || 0);
         const diagnostic = state.injection?.enabled === false ? '长期记忆注入已关闭。'
@@ -98,6 +104,7 @@ export function createInjectionService({
                 table: state.tableDatabase?.injectMemory === false ? 0 : (state.tableDatabase?.tables || []).length,
                 vector: state.vectorMemory?.lastHits?.length || 0,
                 rpState: sources.rpState ? 1 : 0,
+                facts: sources.facts ? 1 : 0,
             },
         };
     }

@@ -39,6 +39,7 @@ export function createSummaryDraftService({
     extractConfiguredSegments,
     removeExactTextBlock,
     confirm,
+    onSummaryCommitted = null,
 } = {}) {
     const durableSummaryStateKeys = [
         'blocks',
@@ -531,6 +532,8 @@ export function createSummaryDraftService({
             if (options.silent) throw error;
             return null;
         }
+        // Only a summary that reached the chat file counts; 整理事实 queues from here.
+        try { onSummaryCommitted?.(summary, draft); } catch (error) { console.warn('[剧情剪辑台] 保存后处理失败', error); }
         if (!options.silent) {
             renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '草稿已确认保存。');
             const status=getSummaryStatus(state,summary);

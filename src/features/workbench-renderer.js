@@ -1,4 +1,5 @@
 import { resolveSummaryGraph } from '../memory/summary-provenance.js';
+import { defaultFactsPrompt } from '../facts/prompt.js';
 import { summarySourceChoice } from './turn-trigger-policy.js';
 
 export const workbenchRenderScopes = Object.freeze({
@@ -37,6 +38,7 @@ export function createWorkbenchRenderer({
     renderTaskQueue,
     renderTurnSummaryPanel,
     renderRpState,
+    renderFacts = () => {},
     renderInjectionOverview,
     renderPromptOverview,
     renderGenerationOverview = () => {},
@@ -136,6 +138,7 @@ export function createWorkbenchRenderer({
             query('#bakemono-memory-missing-prompt').val(state.generationPrompts.missing || defaultMissingSummaryPrompt);
             query('#bakemono-memory-stage-prompt').val(state.generationPrompts.stage || defaultStageGenerationPrompt);
             query('#bakemono-memory-epic-prompt').val(state.generationPrompts.epic || defaultEpicGenerationPrompt);
+            query('#bakemono-memory-facts-prompt').val(state.generationPrompts.facts || defaultFactsPrompt);
         } else if (activeTab === 'scan') {
             query('#bakemono-memory-scan-mode').val(state.scanRules.mode || defaultScanRules.mode);
             query('#bakemono-memory-include-tags').val(state.scanRules.includeTags || defaultScanRules.includeTags);
@@ -193,6 +196,7 @@ export function createWorkbenchRenderer({
         else if (tabName === 'drafts') {
             renderDrafts(); renderHistory(); renderTaskQueue();
         } else if (tabName === 'rp-state') renderRpState?.(state);
+        else if (tabName === 'facts') renderFacts(state);
         else if (tabName === 'turn-summary' || tabName === 'tables') renderTurnSummaryPanel(state);
         else if (tabName === 'injection') renderInjectionOverview(state);
         else if (tabName === 'prompts') renderPromptOverview(state);
@@ -243,6 +247,7 @@ export function createWorkbenchRenderer({
         else if (activeTab === 'drafts') { renderDrafts(); renderHistory(); renderTaskQueue(); }
         else if (activeTab === 'maintenance') renderMaintenanceOverview(state);
         else if (activeTab === 'rp-state') renderRpState?.(state);
+        else if (activeTab === 'facts') renderFacts(state);
         else if (activeTab === 'automation') renderAutomationOverview(state);
         else if (activeTab === 'turn-summary' || activeTab === 'tables') { renderActivePresetControls(activeTab); renderTurnSummaryPanel(state); }
     }
@@ -257,6 +262,7 @@ export function createWorkbenchRenderer({
         } else if (scope === workbenchRenderScopes.DRAFTS) {
             if (activeTab === 'drafts') { renderDrafts(); renderHistory(); renderTaskQueue(); }
             else if (activeTab === 'rp-state') renderRpState?.(state);
+        else if (activeTab === 'facts') renderFacts(state);
             else if (activeTab === 'maintenance') renderMaintenanceOverview(state);
             else if (activeTab === 'data-hub' && options.refreshDataHub !== false) renderDataHubMemory(state);
             else if (activeTab === 'automation' || activeTab === 'preview') renderSummarySurface(activeTab, state);

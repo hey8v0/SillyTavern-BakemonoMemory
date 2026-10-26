@@ -4,7 +4,7 @@
 
 export const helpGuideSections = [
     { id: 'start', title: '从这里开始', code: 'START', numbered: true, articles: ['first-steps', 'summary-source', 'old-chat'] },
-    { id: 'pages', title: '按页面', code: 'PAGES', articles: ['page-home', 'page-summary', 'page-story-state', 'page-tables',
+    { id: 'pages', title: '按页面', code: 'PAGES', articles: ['page-home', 'page-summary', 'page-facts', 'page-story-state', 'page-tables',
         'page-vector', 'page-review', 'page-data-hub', 'page-settings-summary', 'page-settings-model', 'page-settings-injection'] },
     { id: 'trouble', title: '遇到问题', code: 'TROUBLE', articles: ['injection-empty', 'not-recognized', 'recall-empty',
         'phone-lag', 'error-codes', 'feedback'] },
@@ -12,7 +12,7 @@ export const helpGuideSections = [
 
 // Where a page name in the text leads: [data-bakemono-nav value].
 export const helpPageTargets = {
-    '剪辑台': 'overview', '总结': 'preview', '剧情状态': 'rp-state', '表格': 'tables', '向量记忆': 'vector',
+    '剪辑台': 'overview', '总结': 'preview', '剧情事实': 'facts', '剧情状态': 'rp-state', '表格': 'tables', '向量记忆': 'vector',
     '待确认': 'drafts', '自动与数据': 'data-hub', '设置中心': 'settings-hub',
     '剪辑台 → 上一轮内容': 'prompt-inspector', '总结 → 摘要树': 'timeline',
     '自动与数据 → 自动记忆': 'turn-summary', '自动与数据 → 自动总结': 'automation',
@@ -96,6 +96,19 @@ export const helpGuideArticles = {
             ['没记上时', '概览顶部会写原因。在“设置”里点“读取最新回复”重新读，不花钱；或者“用模型重新整理最新回复”，多一次请求。'],
         ],
         note: ['同一对人只有一条关系', '关系换了说法（比如从“主仆”变成“搭档”）会替换旧的说法，旧说法留在变化记录里。'],
+    },
+    'page-facts': {
+        label: '剧情事实', keys: '事实卡片 · 整理事实 · 主线与伏笔 · 撤回',
+        title: '剧情事实：人物、关系和线索的卡片', minutes: 3, goto: '剧情事实',
+        lead: '剧情事实把稳定的东西记成卡片：人物、关系、地点、物品、线索、设定。它不是每一轮都记，而是每保存一个阶段总结整理一次，把这段剧情里变了的卡片重写一遍。',
+        steps: [
+            ['打开记录', '在页面顶部打开“记录剧情事实”。之后每保存一个阶段总结，插件会多发一次请求，整理这段剧情里的卡片；还没整理过的阶段，点“整理事实”手动补。'],
+            ['看卡片', '目录行按类型分：人物、关系、地点、物品、线索、设定、便签。点一张卡展开字段。人物卡里有“目标”和“处境”，线索卡记还没了结的约定和伏笔。'],
+            ['主线与伏笔', '每次整理还会写一段反思：当前主线、未回收的伏笔、人物弧线的变化。打开“把主线与伏笔一起注入”，这段也会发给模型。'],
+            ['注入', '每一轮只注入最近几楼提到的卡片，加上固定注入的和未了结的线索，总量受预算限制。在“剪辑台 → 上一轮内容”能看到实际发出去的。'],
+            ['不对就撤回', '整理结果直接写进卡片。觉得改错了，点“撤回上一次整理”，卡片回到整理前；那个阶段会重新算作没整理。'],
+        ],
+        note: ['和剧情状态、表格的关系', '剧情事实会逐步取代剧情状态和表格。现在三者并存，各自独立；旧数据不会被动。'],
     },
     'page-tables': {
         label: '表格', keys: '表格组 · 什么时候填表 · 撤销与导出',

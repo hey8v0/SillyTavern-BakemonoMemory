@@ -28,6 +28,7 @@ export function runtimeHost() {
         getActiveEpicMemoryBlocks: list, getMultiSummaryLabel: empty, getActiveCoveredStageHashes: () => new Set(), getStageMemoryBlocks: list,
         memoryStrategies: { GENERIC: 'generic' }, renderInjectedTablesSection: state => state.tableDatabase?.injectMemory === false ? '' : '旧表独立内容',
         renderVectorMemorySection: empty, setExtensionPrompt: (key, text) => prompts.set(key, text), INJECTION_KEY: 'memory',
+        renderFactsSection: () => ({ text: '' }), factsController: { facts: state => state.facts || {} },
         extension_prompt_types: { IN_CHAT: 1 }, extension_prompt_roles: { SYSTEM: 0 }, defaultState: { injection: { depth: 999 } },
         formatTableDataForPrompt: empty, formatTableGuideForPrompt: empty, formatSpecificTablesForPrompt: empty,
         getReadonlyTables: list, getWritableTables: list, defaultInlineSummaryPrompt: '摘要指令', defaultInlineTablePrompt: '表格指令',

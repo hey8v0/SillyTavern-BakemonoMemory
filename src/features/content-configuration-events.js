@@ -1,5 +1,6 @@
 export function createContentConfigurationEvents({
     query,
+    defaultFactsPrompt = '',
     navigatorRef,
     getState,
     defaultInjectionTemplate,
@@ -79,6 +80,14 @@ export function createContentConfigurationEvents({
             key: 'epic',
             value: defaultEpicGenerationPrompt,
             status: '多次总结提示词已恢复默认。',
+        });
+        resetPrompt({
+            selector: '#bakemono-memory-reset-facts-prompt',
+            title: '恢复默认整理事实提示词？',
+            warning: '当前整理事实提示词会被默认模板覆盖。',
+            key: 'facts',
+            value: defaultFactsPrompt,
+            status: '整理事实提示词已恢复默认。',
         });
         resetPrompt({
             selector: '#bakemono-memory-reset-story-prompt',

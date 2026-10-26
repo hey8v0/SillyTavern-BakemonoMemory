@@ -1,5 +1,7 @@
 export function createConfigurationController({
     getState,
+    defaultFactsPrompt = '',
+    normalizeFactSettings = value => value,
     defaultStoryGenerationPrompt,
     defaultMissingSummaryPrompt,
     defaultStageGenerationPrompt,
@@ -65,6 +67,8 @@ export function createConfigurationController({
         state.generationPrompts.missing = preset.missing || defaultMissingSummaryPrompt;
         state.generationPrompts.stage = preset.stage || defaultStageGenerationPrompt;
         state.generationPrompts.epic = preset.epic || defaultEpicGenerationPrompt;
+        state.generationPrompts.facts = preset.factsPrompt || defaultFactsPrompt;
+        if (preset.facts) state.facts = { ...(state.facts || {}), settings: normalizeFactSettings(preset.facts) };
         if (preset.scanRules) {
             state.scanRules = { ...structuredClone(defaultScanRules), ...structuredClone(preset.scanRules) };
         }
@@ -276,6 +280,7 @@ export function createConfigurationController({
                 missing: String(state.generationPrompts.missing || defaultMissingSummaryPrompt),
                 stage: String(state.generationPrompts.stage || defaultStageGenerationPrompt),
                 epic: String(state.generationPrompts.epic || defaultEpicGenerationPrompt),
+                factsPrompt: String(state.generationPrompts.facts || defaultFactsPrompt),
                 turnSummary: {
                     includeCharacterContext: state.turnSummary.includeCharacterContext !== false,
                     includeWorldInfo: !!state.turnSummary.includeWorldInfo,
@@ -381,6 +386,7 @@ export function createConfigurationController({
             state.generationPrompts.missing = preset.missing || defaultMissingSummaryPrompt;
             state.generationPrompts.stage = preset.stage || defaultStageGenerationPrompt;
             state.generationPrompts.epic = preset.epic || defaultEpicGenerationPrompt;
+            state.generationPrompts.facts = preset.factsPrompt || state.generationPrompts.facts || defaultFactsPrompt;
             if (preset.turnSummary) {
                 state.turnSummary.includeCharacterContext = preset.turnSummary.includeCharacterContext !== false;
                 state.turnSummary.includeWorldInfo = !!preset.turnSummary.includeWorldInfo;

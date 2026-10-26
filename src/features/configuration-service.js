@@ -1,5 +1,8 @@
 import { applySummarySourceChoice, applyTableModeChoice, summarySourceChoice, tableModeChoice, workflowForSummarySource } from './turn-trigger-policy.js';
 
+import { normalizeFactSettings } from '../facts/model.js';
+import { defaultFactsPrompt } from '../facts/prompt.js';
+
 export function createConfigurationService({
     query,
     getState,
@@ -122,6 +125,7 @@ export function createConfigurationService({
         state.generationPrompts.missing = String(query('#bakemono-memory-missing-prompt').val() || defaultMissingSummaryPrompt);
         state.generationPrompts.stage = String(query('#bakemono-memory-stage-prompt').val() || defaultStageGenerationPrompt);
         state.generationPrompts.epic = String(query('#bakemono-memory-epic-prompt').val() || defaultEpicGenerationPrompt);
+        if (query('#bakemono-memory-facts-prompt').length) state.generationPrompts.facts = String(query('#bakemono-memory-facts-prompt').val() || defaultFactsPrompt);
         return state;
     }
 
@@ -222,6 +226,8 @@ export function createConfigurationService({
             missing: String(state.generationPrompts.missing || defaultMissingSummaryPrompt),
             stage: String(state.generationPrompts.stage || defaultStageGenerationPrompt),
             epic: String(state.generationPrompts.epic || defaultEpicGenerationPrompt),
+            factsPrompt: String(state.generationPrompts.facts || defaultFactsPrompt),
+            facts: normalizeFactSettings(state.facts?.settings),
             scanRules: structuredClone(state.scanRules),
             classificationRules: structuredClone(state.classificationRules),
             previewLayouts: structuredClone(state.previewLayouts),

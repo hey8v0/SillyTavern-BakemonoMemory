@@ -1,3 +1,6 @@
+import { createDefaultFacts } from '../facts/model.js';
+import { defaultFactsPrompt } from '../facts/prompt.js';
+
 export function createDefaultConfiguration({
     memoryStrategies,
     workflowModes,
@@ -10,6 +13,8 @@ export function createDefaultConfiguration({
         STORY: 'story',
         STAGE: 'stage',
         EPIC: 'epic',
+        // Not a summary: a task kind for 整理事实 (see src/facts).
+        FACTS: 'facts',
     };
     
     const memoryRecordStatuses = {
@@ -746,7 +751,9 @@ export function createDefaultConfiguration({
             missing: defaultMissingSummaryPrompt,
             stage: defaultStageGenerationPrompt,
             epic: defaultEpicGenerationPrompt,
+            facts: defaultFactsPrompt,
         },
+        facts: createDefaultFacts(),
         automation: defaultAutomation,
         generationTargets: defaultGenerationTargets,
         turnSummary: {
