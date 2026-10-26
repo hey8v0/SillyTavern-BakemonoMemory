@@ -361,7 +361,7 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
             return;
         }
         const before = { ...card.fields }, kept = [];
-        const metaBefore = { updatedAt: card.updatedAt, updatedBy: card.updatedBy, sourceStage: card.sourceStage, aliases: [...card.aliases], asOf: { ...(card.asOf || {}) }, statusBy: card.statusBy, floors: [...(card.floors || [])] };
+        const metaBefore = { updatedAt: card.updatedAt, updatedBy: card.updatedBy, sourceStage: card.sourceStage, aliases: [...card.aliases], asOf: { ...(card.asOf || {}) }, statusBy: card.statusBy };
         const after = { ...card.fields };
         const stateKeys = transitionFields(card.kind);
         const stale = (key, value) => {
@@ -394,7 +394,11 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
         card.updatedBy = trigger === 'user' ? 'user' : 'facts';
         card.sourceStage = stageHash ?? card.sourceStage;
         touched.add(card.id);
-        changes.push({ cardId: card.id, kind: card.kind, name: card.name, created: false, before, after: { ...after }, statusBefore: card.status, statusAfter: card.status, kept, metaBefore });
+        // Only the fields that changed are kept: undo, the diff and the timeline all read just those (history is part of
+        // the chat file, which is written whole on every save).
+        const moved = Object.keys(after).filter(key => after[key] !== before[key]);
+        changes.push({ cardId: card.id, kind: card.kind, name: card.name, created: false, before: Object.fromEntries(moved.map(key => [key, before[key]])),
+            after: Object.fromEntries(moved.map(key => [key, after[key]])), statusBefore: card.status, statusAfter: card.status, kept, metaBefore });
     });
     // Status changes: an end or a return the result names, from material not older than the current status, and not
     // over a status the user set (that becomes a conflict for the user).
@@ -408,8 +412,8 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
         }
         let change = changes.find(item => item.cardId === card.id);
         if (!change) {
-            change = { cardId: card.id, kind: card.kind, name: card.name, created: false, before: { ...card.fields }, after: { ...card.fields }, statusBefore: card.status, statusAfter: card.status, kept: [],
-                metaBefore: { updatedAt: card.updatedAt, updatedBy: card.updatedBy, sourceStage: card.sourceStage, aliases: [...card.aliases], asOf: { ...(card.asOf || {}) }, statusBy: card.statusBy, floors: [...(card.floors || [])] } };
+            change = { cardId: card.id, kind: card.kind, name: card.name, created: false, before: {}, after: {}, statusBefore: card.status, statusAfter: card.status, kept: [],
+                metaBefore: { updatedAt: card.updatedAt, updatedBy: card.updatedBy, sourceStage: card.sourceStage, aliases: [...card.aliases], asOf: { ...(card.asOf || {}) }, statusBy: card.statusBy } };
             changes.push(change);
             card.updatedAt = now;
         }
@@ -462,8 +466,18 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
         if (!card) continue;
         let floors = [];
         try { floors = floorList(mentionFloors?.(card) || []); } catch { floors = []; }
-        if (floors.length) card.floors = floorList([...(card.floors || []), ...floors]);
+        if (floors.length) {
+            // What this 整理 added (and what the cap pushed out), so an undo takes exactly that back.
+            const before = card.floors || [];
+            card.floors = floorList([...before, ...floors]);
+            const added = card.floors.filter(floor => !before.includes(floor)), dropped = before.filter(floor => !card.floors.includes(floor));
+            if (added.length) change.floorsAdded = added;
+            if (dropped.length) change.floorsDropped = dropped;
+        }
         recordChangeTransitions(card, change, { floor: Number.isInteger(floorTo) ? floorTo : null, at: now, entryId, floors });
+        // The undo record keeps only what this change moved (aliases, state floors, who set the status, stage).
+        const meta = change.metaBefore;
+        if (meta) for (const key of ['aliases', 'asOf', 'statusBy', 'sourceStage']) if (JSON.stringify(meta[key] ?? null) === JSON.stringify(card[key] ?? null)) delete meta[key];
     }
     const entry = { id: entryId, at: now, trigger, stageHash, taskId, changes,
         floorBefore, floorFrom: from, floorTo: Number.isInteger(floorTo) ? floorTo : null, sources: read, conflicts: conflictIds,
@@ -492,10 +506,10 @@ export function undoFactsUpdate(facts, entryId = null, now = new Date().toISOStr
             card.fields[key] = before;
         }
         card.status = change.statusBefore || card.status;
-        if (change.metaBefore && !editedSince) Object.assign(card, change.metaBefore, { aliases: [...change.metaBefore.aliases], ...(change.metaBefore.asOf ? { asOf: { ...change.metaBefore.asOf } } : {}) });
+        if (change.metaBefore && !editedSince) Object.assign(card, change.metaBefore, { ...(change.metaBefore.aliases ? { aliases: [...change.metaBefore.aliases] } : {}), ...(change.metaBefore.asOf ? { asOf: { ...change.metaBefore.asOf } } : {}) });
         else if (!editedSince) card.updatedAt = now;
-        else if (change.metaBefore?.asOf) { card.asOf = { ...change.metaBefore.asOf }; card.floors = [...(change.metaBefore.floors || card.floors || [])]; }
-        if (change.metaBefore?.floors) card.floors = [...change.metaBefore.floors];
+        else if (change.metaBefore?.asOf) card.asOf = { ...change.metaBefore.asOf };
+        if (change.floorsAdded || change.floorsDropped) card.floors = floorList([...(card.floors || []).filter(floor => !(change.floorsAdded || []).includes(floor)), ...(change.floorsDropped || [])]);
     }
     for (const card of facts.cards) if (card.timeline?.some(item => item.entryId === entry.id)) card.timeline = card.timeline.filter(item => item.entryId !== entry.id);
     if (entry.reflectionAfter) facts.reflection = { ...entry.reflectionBefore };
