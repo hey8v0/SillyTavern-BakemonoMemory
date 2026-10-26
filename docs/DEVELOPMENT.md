@@ -176,6 +176,17 @@ node scripts/ui-harness/server.mjs
 - 一次拍全：`node scripts/ui-harness/tools/snap-all.mjs 名字`（模拟页面要先开着；无头 Chrome，默认 1280、800、375 三个宽度 × 日、夜、跟随酒馆三种外观，先给模拟聊天加摘要树并启用剧情状态），再用 snapdiff 逐个比较。帮助页第 21 节里的一个小标签偶尔上下差 1 像素，同一份样式连拍也会出现，是时序问题，不算差异。拍“改动前”的基准时不要用 `git stash`：本机 `core.autocrlf=true`，stash pop 会把改过的文件换成 CRLF，读源码的测试会失败；用 `git worktree` 或先拍基准再改。
 - 快照：在页面控制台执行 `(await import('/snap.js')).run('名字')`，结果写到 `scripts/ui-harness/.output/名字.json`；比较两次：`node scripts/ui-harness/tools/snapdiff.mjs a.json b.json`。它会逐页打开全部折叠栏，记录所有元素的位置与 40 余项计算样式，并关闭动画以保证可重复（同一版本连续两次应为 0 差异）。
 
+### 剧情事实评测（scripts/facts-eval）
+
+```powershell
+node scripts/facts-eval/run.mjs                                   # 离线：脚本回复，核对流水线
+node scripts/facts-eval/run.mjs --api https://host/v1 --key sk-… --model 模型名 --name 自取的名字
+```
+
+- `corpus.mjs`：60 条摘要（第 2–120 楼每个偶数楼一条）、离线用的脚本回复（按每批第一楼编号）、十个场景的检查和允许出现的卡片名单（其余算“无据新增”）。改摘要要连带改检查和脚本回复。
+- `run.mjs`：真实的 controller + 任务队列 + 提示词 + 解析 + 注入，先按 `everySummaries` 自动分批整理，再补写第 9 楼、改写第 118 楼各整理一次。输出每项通过情况、卡片数、无据新增、待裁决、警告、请求次数、Token（接口给 usage 就用它，否则按字数估）、耗时；JSON 写到 `scripts/facts-eval/.output/`（已忽略）。比较版本时在另一个目录检出旧版本，用那份代码的 `run.mjs`（v1.38.0 之前的版本没有这个脚本，只能手动比较注入内容）。
+- 离线全过只说明流水线和检查没问题，不代表真实模型记得对；真实模型的结果要看“无据新增”和失败项，提示词调整后再跑一遍比较。
+
 ## 7. 样式表现状与整理方法
 
 - 现状（v1.27.0）约 4,750 行、226 KB（重做界面前 12,074 行、329 KB、`!important` 135 处）。剩下的基本都在用：约 820 条规则作用于脚本生成的内容；旧的 `bakemono-memory-*` / `bakemono-workbench-*` 底层除工作台外壳外，主要是工作台外壳和一些通用表单样式。帮助页（v1.26.0）、各种弹窗和提示（v1.27.0）重写时都整段删掉了旧规则；酒馆扩展设置里的入口跟着酒馆主题走，不改。再缩减要按组件重写这些部分（外观会变，先做样板给用户确认），重写时整段删掉它们的旧规则。
