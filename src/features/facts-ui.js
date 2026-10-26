@@ -140,7 +140,8 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         else {
             const past = storyOrder(card.timeline).reverse().slice(0, 6);
             body = `${fields.length ? `<dl class="rp-facts">${fields.map(key => `<dt>${esc(key)}</dt><dd>${esc(card.fields[key])}${card.userFields.includes(key) ? '<span class="rp-tag is-hint">你改过</span>' : ''}</dd>`).join('')}</dl>` : '<p class="rp-note">还没有内容</p>'}
-                ${past.length ? `<ol class="rp-past">${past.map(item => `<li><span class="rp-mono">${item.floor != null ? esc(floorNo(item.floor)) : '—'}</span>${esc(describeTransition(item))}</li>`).join('')}</ol>` : ''}
+                ${past.length ? `<ol class="rp-past">${past.map(item => `<li><span class="rp-mono">${item.floor != null ? esc(floorNo(item.floor)) : '—'}</span>${esc(describeTransition(item))}${item.floors?.length ? `<small class="rp-tag is-hint">依据第 ${esc(item.floors.join('、'))} 楼</small>` : ''}</li>`).join('')}</ol>` : ''}
+                ${card.floors?.length ? `<p class="rp-note">摘要里提到它的楼层：${esc(card.floors.slice(-10).join('、'))}${card.floors.length > 10 ? ` 等 ${card.floors.length} 处` : ''}</p>` : ''}
                 <p class="rp-note">${card.aliases.length ? `别名 ${esc(card.aliases.join('、'))} · ` : ''}${esc(triggerLabel[card.updatedBy] || '整理')}于 ${esc(when(card.updatedAt) || '未知')}${retired ? ' · 已结束，只在被点名时注入' : card.pinned ? ' · 固定注入' : ''}</p>
                 <div class="rp-entry-actions">${link('edit', '编辑')}<button type="button" class="rp-more" data-facts-action="more" aria-label="更多操作">⋯</button></div>`;
         }

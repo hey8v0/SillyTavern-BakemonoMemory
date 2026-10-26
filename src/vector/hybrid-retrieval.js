@@ -47,9 +47,10 @@ export function computeHybridRerankScore(record = {}, options = {}) {
     const keywordBoost = Math.max(0, Number(options.keywordBoost ?? 0.18));
     const embeddingScore = Math.max(0, Math.min(1, Number(record.embeddingScore ?? record.similarity ?? 0)));
     const lexicalScore = Math.max(0, Math.min(1, Number(record.lexicalScore || 0)));
-    const keywordCount = Array.isArray(record.matchedKeywords)
+    // A record 剧情事实 points at (factsHint) counts as one more keyword match.
+    const keywordCount = (Array.isArray(record.matchedKeywords)
         ? record.matchedKeywords.length
-        : Math.max(0, Number(record.keywordHits || 0));
+        : Math.max(0, Number(record.keywordHits || 0))) + (record.factsHint ? 1 : 0);
     const totalKeywords = Math.max(1, Number(options.explicitKeywordCount || keywordCount || 1));
     const keywordScore = Math.min(1, keywordCount / totalKeywords);
     return Math.max(0, Math.min(1,
@@ -81,7 +82,7 @@ export function selectHybridCandidates(records = [], queries = [], keywordTerms 
             || Number(b.messageId || 0) - Number(a.messageId || 0))
         .slice(0, candidateCount);
     const keywordRanked = enriched
-        .filter(record => Number(record.keywordHits || 0) > 0)
+        .filter(record => Number(record.keywordHits || 0) > 0 || record.factsHint)
         .slice()
         .sort((a, b) => Number(b.keywordHits || 0) - Number(a.keywordHits || 0)
             || Number(b.lexicalScore || 0) - Number(a.lexicalScore || 0))

@@ -18,6 +18,7 @@ const mod = file => import(pathToFileURL(path.join(repo, 'src', file)).href);
 export async function runEval({ api = '', key = '', model = '', temperature = 0.2, every = corpus.everySummaries, name = '', log = () => {} } = {}) {
     const [{ createDefaultFacts, findCard }, { createFactsController }, { createSummaryTaskQueue }, { renderFactsSection }, { getHash }] = await Promise.all([
         mod('facts/model.js'), mod('features/facts-controller.js'), mod('features/summary-task-queue.js'), mod('facts/injection.js'), mod('shared/text.js')]);
+    const { factsRecallHints } = await mod('facts/recall.js');
     const blockTypes = { STORY: 'story', STAGE: 'stage', EPIC: 'epic', FACTS: 'facts' };
     const floors = 122;
     const chat = Array.from({ length: floors }, (_, i) => ({ mes: `第 ${i} 楼正文`, is_user: i % 2 === 1 }));
@@ -91,7 +92,8 @@ export async function runEval({ api = '', key = '', model = '', temperature = 0.
     const facts = controller.facts(state);
     const inject = text => renderFactsSection(facts, text).text;
     const card = (name, kind = null) => findCard(facts.cards, name, kind);
-    const results = corpus.checks.map(check => { let ok = false, error = ''; try { ok = !!check.run({ facts, inject, card }); } catch (e) { error = e.message; } return { id: check.id, name: check.name, ok, error }; });
+    const hints = text => factsRecallHints(facts, text);
+    const results = corpus.checks.map(check => { let ok = false, error = ''; try { ok = !!check.run({ facts, inject, card, hints }); } catch (e) { error = e.message; } return { id: check.id, name: check.name, ok, error }; });
     const known = corpus.knownNames;
     const unknownCards = facts.cards.filter(c => !known.some(n => c.name.includes(n) || n.includes(c.name))).map(c => `${c.kind}:${c.name}`);
     const report = {

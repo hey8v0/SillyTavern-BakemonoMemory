@@ -701,6 +701,7 @@ export function createDefaultConfiguration({
         lastRewriteIntent: '',
         lastInferredKeywords: [],
         lastFactsKeywords: [],
+        lastFactsFloors: [],
         lastEmbeddingCandidates: [],
         lastRerankCandidates: [],
         lastRecallSkippedReason: '',

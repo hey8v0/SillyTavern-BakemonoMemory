@@ -129,6 +129,8 @@ export const scriptedReplies = {
         person('阿砚', { 处境: '独自进了矿坑，三天没出来' }),
         rel('林晚与沈砚', { 当前关系: '勉强合作' }),
         rule('藏金室', { 说明: '【传闻】矿坑深处是旧领主的藏金室，没人见过', 影响范围: '青石镇' }),
+        // Written the way a careless model would: what 青石 said, put where he is, without a mark.
+        person('青石', { 处境: '青石说矿坑深处是旧领主的藏金室' }),
         rule('青石镇封锁', { 说明: '领主的人封锁了青石镇，没有通行证不得进出', 影响范围: '青石镇' }),
     ], retired: ['老看守'], reflection: { mainline: '老看守死了，阿砚带着钥匙进了矿坑，林晚和沈砚勉强合作去找他。' } }),
     62: wrap({ cards: [
@@ -188,5 +190,7 @@ export const checks = [
     { id: 9, name: '补写旧摘要：后来补上的第 9 楼被整理，黑猫墨有卡', run: ({ card }) => !!card('墨') },
     { id: 11, name: '补写旧楼层：死去的老看守没有被当成活着', run: ({ card }) => card('老看守')?.status === 'retired' && /死/.test(card('老看守')?.fields.处境 || '') },
     { id: 12, name: '补写旧楼层：铜钥匙现在仍在领主手里，第 9 楼的持有者记进经过', run: ({ card }) => { const c = card('铜钥匙', 'item'); return /领主/.test(c?.fields.持有者 || '') && (c?.timeline || []).some(t => t.past && /林晚/.test(t.from)); } },
+    { id: 13, name: '不可靠叙事：没加标记的“青石说……”也没进他的处境', run: ({ card }) => { const c = card('青石', 'person'); return !!c && !/藏金/.test(c.fields.处境 || '') && /【声称】/.test(c.fields.备注 || ''); } },
+    { id: 14, name: '不带名字的回忆：“那天晚上你答应过我的事”指回第 20 楼的码头之约', run: ({ hints }) => hints('那天晚上你答应过我的事情，还记得吗？').floors.includes(20) },
     { id: 10, name: '重 roll：第 118 楼改写后，“等春天”不再是现状', run: ({ card }) => { const c = card('林晚'); return !!c && !/春天/.test(c.fields.处境 || '') && !/春天/.test(c.fields.目标 || ''); } },
 ];

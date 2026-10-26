@@ -1,4 +1,4 @@
-import { applyFactsUpdate, createCard, editCard, mergeCards, normalizeFacts, pruneIntegrated, removeCard, resolveConflict as settleConflict, seedTimelines, undoFactsUpdate } from '../facts/model.js';
+import { applyFactsUpdate, cardMentions, createCard, editCard, mergeCards, normalizeFacts, pruneIntegrated, removeCard, resolveConflict as settleConflict, seedTimelines, undoFactsUpdate } from '../facts/model.js';
 import { parseFactCards } from '../facts/parser.js';
 import { summarizeFactsChanges } from '../facts/diff.js';
 import { buildLegacyImport, importCards } from '../facts/migration.js';
@@ -160,6 +160,14 @@ export function createFactsController({
     function previewUpdate(current, parsed, { floorFrom = null, floorTo = null, taskId = null, sources = [] } = {}) {
         const copy = structuredClone(current);
         return applyFactsUpdate(copy, parsed, { trigger: 'review', floorFrom, floorTo, taskId, sources, now: now() }) || { changes: [], warnings: [], reflectionAfter: null, floorTo, sources };
+    }
+
+    // The floors of a result's material that mention a card, read from the summaries themselves.
+    function mentionFloorsFor(state, sources = []) {
+        const byHash = new Map(summaryEntries(state).map(entry => [entry.item.hash, entry]));
+        const texts = sources.map(source => ({ floor: source.floorEnd, text: getBlockPlainText(byHash.get(source.hash)?.item.content || '') }))
+            .filter(item => Number.isInteger(item.floor) && item.text);
+        return card => texts.filter(item => cardMentions(card, item.text) > 0).map(item => item.floor);
     }
 
     // Whether the summaries a result was made from are still there at the text that was read. A held result whose
@@ -327,7 +335,7 @@ export function createFactsController({
             renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `整理结果已进入待确认：${summarizeFactsChanges(preview)}。${remaining ? `还有 ${remaining} 条摘要等这批确认后再整理。` : ''}`);
             return draft;
         }
-        const entry = applyFactsUpdate(current, parsed, { trigger: task.trigger === 'facts_manual' ? 'manual' : 'facts', floorFrom, floorTo, taskId: task.id, sources, now: now() });
+        const entry = applyFactsUpdate(current, parsed, { trigger: task.trigger === 'facts_manual' ? 'manual' : 'facts', floorFrom, floorTo, taskId: task.id, sources, mentionFloors: mentionFloorsFor(state, sources), now: now() });
         pruneIntegrated(current, summaryEntries(state).map(item => item.item.hash));
         task.metadata = { ...(task.metadata || {}), factsChanges: entry?.changes.length || 0, factsWarnings: entry?.warnings || [] };
         saveState();
@@ -382,7 +390,7 @@ export function createFactsController({
             return null;
         }
         const revisionBefore = current.revision;
-        const entry = applyFactsUpdate(current, parsed, { trigger: 'review', floorFrom, floorTo, taskId: null, sources, now: now() });
+        const entry = applyFactsUpdate(current, parsed, { trigger: 'review', floorFrom, floorTo, taskId: null, sources, mentionFloors: mentionFloorsFor(state, sources), now: now() });
         // The cards moved on while the result waited (another 整理, an edit): it was applied to the cards as they are now.
         if (entry && Number.isInteger(draft.metadata?.factsRevision) && draft.metadata.factsRevision !== revisionBefore) entry.warnings.push('卡片在审阅期间有改动，已按现在的卡片重新计算');
         pruneIntegrated(current, summaryEntries(state).map(item => item.item.hash));

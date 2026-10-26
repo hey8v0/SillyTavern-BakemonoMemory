@@ -575,3 +575,28 @@ test('the cards the recent conversation names lend every name they go by to the 
     assert.ok(old, 'the floor that used the recorded name is recalled for the alias');
     assert.ok(old.keywordHits >= 1);
 });
+
+test('a callback line without names recalls the floor where the promise was told, through the actual pipeline', async () => {
+    const { factsRecallHints } = await import('../src/facts/recall.js');
+    const run = async withHints => {
+        const f = vectorFixture(4, { selectHybridCandidates, computeHybridRerankScore,
+            countKeywordHits: (text, keywords) => keywords.filter(keyword => String(text).includes(keyword)).length,
+            ...(withHints ? { getFactsHints: (state, text) => factsRecallHints(state.facts, text) } : {}) });
+        f.state.facts = { settings: { enabled: true }, cards: [
+            { kind: 'thread', name: '看海之约', aliases: [], status: 'retired', fields: { 内容: '沈砚说下次带林晚去看海', 状态: '已了' }, floors: [0] }] };
+        f.chat[0].mes = '沈砚说下次带林晚去看海。';
+        f.chat[1].mes = '雨下了一整夜，炉火很旺。';
+        f.chat[2].mes = '客栈老板端来热汤。';
+        f.chat[3].mes = '林晚把窗关上。';
+        Object.assign(f.state.vectorMemory, { queryMode: 'off', skipIfAllInContext: false, contextWindowMessages: 0,
+            embeddingThreshold: 0, rerankThreshold: 0, rerankCandidateCount: 20, finalRecallCount: 1, fullRecallCount: 1, perMessageMaxChars: 1600, maxStoredTextChars: 1200 });
+        await f.service.buildVectorMemoryIndex();
+        const hits = await f.service.retrieveVectorMemoryHits('那天晚上你答应过我的事情，还记得吗？');
+        return { hits, floors: f.state.vectorMemory.lastFactsFloors };
+    };
+    const control = await run(false);
+    assert.notEqual(control.hits[0]?.messageId, 0, 'without the cards nothing points at floor 0');
+    const hinted = await run(true);
+    assert.deepEqual(hinted.floors, [0]);
+    assert.equal(hinted.hits[0]?.messageId, 0);
+});

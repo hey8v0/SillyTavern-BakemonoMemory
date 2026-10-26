@@ -46,6 +46,8 @@ export function renderFactsSection(facts, recentText, { budgetChars = facts?.set
         selected.push(card);
         used += line.length + 1;
     }
-    const text = [lines.length ? header + lines.join('\n') : '', reflection].filter(Boolean).join('\n\n');
+    // One line on the marks, only when a card carries them: hearsay and secrets are not what every character knows.
+    const marks = lines.some(line => /【[^】\n]{1,14}】/.test(line)) ? '（【】里是传闻、推测或只有部分人物知道的事，不是所有人物都知道的事实。）\n' : '';
+    const text = [lines.length ? header + marks + lines.join('\n') : '', reflection].filter(Boolean).join('\n\n');
     return { text, cards: selected, omitted: candidates.length - selected.length };
 }

@@ -78,7 +78,11 @@ export function normalizeCard(value, index = 0) {
         // Key transitions of this card (see recordTransition): where it was, who held it, how the relationship stood.
         timeline: (Array.isArray(value.timeline) ? value.timeline : []).filter(item => item && typeof item === 'object' && typeof item.field === 'string')
             .map(item => ({ field: item.field, from: text(item.from, 400), to: text(item.to, 400), floor: Number.isInteger(item.floor) ? item.floor : null,
-                at: typeof item.at === 'string' ? item.at : null, entryId: typeof item.entryId === 'string' ? item.entryId : null, ...(item.past ? { past: true } : {}) })).slice(-timelineCap),
+                at: typeof item.at === 'string' ? item.at : null, entryId: typeof item.entryId === 'string' ? item.entryId : null, ...(item.past ? { past: true } : {}),
+                ...(Array.isArray(item.floors) && item.floors.length ? { floors: floorList(item.floors, 8) } : {}) })).slice(-timelineCap),
+        // The floors whose 剧情摘要 mention this card (when it was consolidated): where its facts come from, and where
+        // recall can look for the old events. Floors only; the text stays in the summaries.
+        floors: floorList(value.floors, cardFloorCap),
         // From which floor each current-state field (and `__status`) holds: the first floor of the batch that set it.
         // Material from before that floor cannot replace it (see applyFactsUpdate).
         asOf: Object.fromEntries(Object.entries(value.asOf && typeof value.asOf === 'object' ? value.asOf : {})
@@ -86,24 +90,31 @@ export function normalizeCard(value, index = 0) {
     };
 }
 
+export const cardFloorCap = 40;
+// Sorted, unique, whole floors; the latest `max` are kept.
+export function floorList(values, max = cardFloorCap) {
+    return [...new Set((Array.isArray(values) ? values : []).filter(Number.isInteger))].sort((a, b) => a - b).slice(-max);
+}
+
 // The transitions worth keeping per card: the current-state fields changing from one value to another, and the
 // card ending. Capped; the oldest give way. The first value of a field is not a transition.
 export const timelineCap = 12;
-export function recordTransition(card, { field, from = '', to = '', floor = null, at = null, entryId = null, past = false }) {
+export function recordTransition(card, { field, from = '', to = '', floor = null, at = null, entryId = null, past = false, floors = [] }) {
     if (field !== '已结束' && field !== '恢复' && !from) return null;
-    const item = { field, from: text(from, 400), to: text(to, 400), floor: Number.isInteger(floor) ? floor : null, at, entryId, ...(past ? { past: true } : {}) };
+    const item = { field, from: text(from, 400), to: text(to, 400), floor: Number.isInteger(floor) ? floor : null, at, entryId, ...(past ? { past: true } : {}),
+        ...(floors.length ? { floors: floorList(floors, 8) } : {}) };
     card.timeline = [...(card.timeline || []), item].slice(-timelineCap);
     return item;
 }
 const transitionFields = kind => currentStateFields[kind] || [];
-function recordChangeTransitions(card, change, { floor, at, entryId }) {
+function recordChangeTransitions(card, change, { floor, at, entryId, floors = [] }) {
     if (change.created) return;
     for (const field of transitionFields(card.kind)) {
         const from = change.before?.[field] || '', to = change.after?.[field] || '';
-        if (from !== to) recordTransition(card, { field, from, to, floor, at, entryId });
+        if (from !== to) recordTransition(card, { field, from, to, floor, at, entryId, floors });
     }
-    if (change.statusAfter === 'retired' && change.statusBefore !== 'retired') recordTransition(card, { field: '已结束', floor, at, entryId });
-    if (change.statusAfter === 'active' && change.statusBefore === 'retired') recordTransition(card, { field: '恢复', floor, at, entryId });
+    if (change.statusAfter === 'retired' && change.statusBefore !== 'retired') recordTransition(card, { field: '已结束', floor, at, entryId, floors });
+    if (change.statusAfter === 'active' && change.statusBefore === 'retired') recordTransition(card, { field: '恢复', floor, at, entryId, floors });
 }
 
 // The floor from which a card's field (or `__status`) holds. Cards from before v1.38.1 have no asOf: the latest
@@ -218,7 +229,23 @@ export function findCard(cards, name, kind = null) {
 // instead, marked, so the model sees it as hearsay and the current state is not rewritten by it.
 export const currentStateFields = Object.freeze({ person: ['处境', '目标', '持有'], item: ['持有者'], relationship: ['当前关系'], thread: ['状态'], place: ['常在此处'] });
 export const noteFieldOf = Object.freeze({ person: '备注', item: '描述', relationship: '态度', thread: '内容', place: '描述', rule: '说明', note: '内容' });
-export const hearsayMarker = /【(?:声称|猜测|传闻|已推翻)】|【[^】\n]{1,12}认为】/;
+export const hearsayMarker = /【(?:声称|猜测|推测|传闻|已推翻|秘密)】|【[^】\n]{1,12}(?:认为|知道)】/;
+const escapeRegExp = value => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// What a current-state field must not hold even when the model left out the marks: a value that opens with hearsay
+// or a hedge, or with a known person saying or believing something. Returns the mark to add, or ''. Conservative:
+// a value that opens with a place or an action (在酒馆听说了…, 沈砚说服了船长) is left alone.
+export function reportedSpeech(value, people = []) {
+    const source = String(value || '').trim();
+    if (!source) return '';
+    if (/^(?:据说|听说|传闻|传言|有人说|有传言|坊间传)/.test(source)) return '【传闻】';
+    if (/^(?:似乎|好像|也许|或许|大概|可能|疑似|估计|兴许)/.test(source)) return '【猜测】';
+    const names = [...new Set(people.map(name => String(name || '').trim()).filter(name => name.length >= 2))].sort((a, b) => b.length - a.length);
+    if (!names.length) return '';
+    const subject = `(${names.map(escapeRegExp).join('|')})`;
+    if (new RegExp(`^${subject}(?:说(?![服明话笑书和情])|声称|自称|坚称|宣称|表示|承认自己)`).test(source)) return '【声称】';
+    const belief = new RegExp(`^${subject}(?:以为|认为|相信|怀疑|猜测|觉得|坚信)`).exec(source);
+    return belief ? `【${belief[1]}认为】` : '';
+}
 const clearMarker = /^【?清除】?$/;
 const appendLine = (base, line) => !line ? base : String(base || '').includes(line) ? base : base ? `${base}\n${line}` : line;
 
@@ -276,13 +303,18 @@ const cleanIncoming = (kind, fields) => {
 // Time order: `floorFrom`–`floorTo` are the floors the material covers. A current-state field (or the card's end)
 // set from a later floor is not replaced by material from before it: the older value goes into 经过 as what was
 // true then. A card's status changes only through `retired` / `revived`, never because the card was mentioned.
-export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash = null, taskId = null, floorFrom = null, floorTo = null, sources = [], now = new Date().toISOString(), overrideUser = false } = {}) {
+// `mentionFloors(card)`: the floors of this result's material that mention the card (the controller reads the
+// summaries); they go onto the card and the changes in its 经过.
+export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash = null, taskId = null, floorFrom = null, floorTo = null, sources = [], mentionFloors = null, now = new Date().toISOString(), overrideUser = false } = {}) {
     const floorBefore = facts.lastIntegratedFloor ?? -1;
     const from = Number.isInteger(floorFrom) ? floorFrom : Number.isInteger(floorTo) ? floorTo : null;
     // Material older than what the field already says: its last floor is before the floor the field holds from.
     const older = (card, field) => { const since = Number.isInteger(floorTo) ? stateFloor(facts, card, field) : null; return since != null && floorTo < since ? since : null; };
     const markState = (card, fields) => { if (from == null) return; card.asOf = { ...(card.asOf || {}) }; for (const field of fields) card.asOf[field] = from; };
     const pastIds = new Set();
+    // Speakers for the hearsay check: the people on record and the ones this result names.
+    const people = [...facts.cards, ...(Array.isArray(parsed?.cards) ? parsed.cards : [])].filter(card => card?.kind === 'person')
+        .flatMap(card => [card.name, ...(Array.isArray(card.aliases) ? card.aliases : [])]);
     const changes = [], warnings = [], conflictIds = [];
     const entryId = `facts-${getHash(`${now}|${(facts.revision || 0) + 1}|${stageHash || ''}`)}`;
     const touched = new Set();
@@ -312,8 +344,10 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
         // Hearsay in a current-state field moves to the note field, marked as it came.
         const note = noteFieldOf[targetKind];
         for (const key of currentStateFields[targetKind] || []) {
-            if (!fields[key] || !hearsayMarker.test(fields[key]) || !note || key === note) continue;
-            fields[note] = appendLine(fields[note] ?? card?.fields[note] ?? '', fields[key]);
+            if (!fields[key] || !note || key === note) continue;
+            const mark = hearsayMarker.test(fields[key]) ? '' : reportedSpeech(fields[key], people);
+            if (!mark && !hearsayMarker.test(fields[key])) continue;
+            fields[note] = appendLine(fields[note] ?? card?.fields[note] ?? '', mark + fields[key]);
             delete fields[key];
             warnings.push(`「${name}」的${key}写的是传闻或猜测，已移到${note}`);
         }
@@ -327,7 +361,7 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
             return;
         }
         const before = { ...card.fields }, kept = [];
-        const metaBefore = { updatedAt: card.updatedAt, updatedBy: card.updatedBy, sourceStage: card.sourceStage, aliases: [...card.aliases], asOf: { ...(card.asOf || {}) }, statusBy: card.statusBy };
+        const metaBefore = { updatedAt: card.updatedAt, updatedBy: card.updatedBy, sourceStage: card.sourceStage, aliases: [...card.aliases], asOf: { ...(card.asOf || {}) }, statusBy: card.statusBy, floors: [...(card.floors || [])] };
         const after = { ...card.fields };
         const stateKeys = transitionFields(card.kind);
         const stale = (key, value) => {
@@ -375,7 +409,7 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
         let change = changes.find(item => item.cardId === card.id);
         if (!change) {
             change = { cardId: card.id, kind: card.kind, name: card.name, created: false, before: { ...card.fields }, after: { ...card.fields }, statusBefore: card.status, statusAfter: card.status, kept: [],
-                metaBefore: { updatedAt: card.updatedAt, updatedBy: card.updatedBy, sourceStage: card.sourceStage, aliases: [...card.aliases], asOf: { ...(card.asOf || {}) }, statusBy: card.statusBy } };
+                metaBefore: { updatedAt: card.updatedAt, updatedBy: card.updatedBy, sourceStage: card.sourceStage, aliases: [...card.aliases], asOf: { ...(card.asOf || {}) }, statusBy: card.statusBy, floors: [...(card.floors || [])] } };
             changes.push(change);
             card.updatedAt = now;
         }
@@ -425,7 +459,11 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
     facts.revision += 1;
     for (const change of changes) {
         const card = facts.cards.find(item => item.id === change.cardId);
-        if (card) recordChangeTransitions(card, change, { floor: Number.isInteger(floorTo) ? floorTo : null, at: now, entryId });
+        if (!card) continue;
+        let floors = [];
+        try { floors = floorList(mentionFloors?.(card) || []); } catch { floors = []; }
+        if (floors.length) card.floors = floorList([...(card.floors || []), ...floors]);
+        recordChangeTransitions(card, change, { floor: Number.isInteger(floorTo) ? floorTo : null, at: now, entryId, floors });
     }
     const entry = { id: entryId, at: now, trigger, stageHash, taskId, changes,
         floorBefore, floorFrom: from, floorTo: Number.isInteger(floorTo) ? floorTo : null, sources: read, conflicts: conflictIds,
@@ -456,7 +494,8 @@ export function undoFactsUpdate(facts, entryId = null, now = new Date().toISOStr
         card.status = change.statusBefore || card.status;
         if (change.metaBefore && !editedSince) Object.assign(card, change.metaBefore, { aliases: [...change.metaBefore.aliases], ...(change.metaBefore.asOf ? { asOf: { ...change.metaBefore.asOf } } : {}) });
         else if (!editedSince) card.updatedAt = now;
-        else if (change.metaBefore?.asOf) card.asOf = { ...change.metaBefore.asOf };
+        else if (change.metaBefore?.asOf) { card.asOf = { ...change.metaBefore.asOf }; card.floors = [...(change.metaBefore.floors || card.floors || [])]; }
+        if (change.metaBefore?.floors) card.floors = [...change.metaBefore.floors];
     }
     for (const card of facts.cards) if (card.timeline?.some(item => item.entryId === entry.id)) card.timeline = card.timeline.filter(item => item.entryId !== entry.id);
     if (entry.reflectionAfter) facts.reflection = { ...entry.reflectionBefore };

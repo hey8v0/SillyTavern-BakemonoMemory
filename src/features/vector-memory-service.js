@@ -56,6 +56,9 @@ export function createVectorMemoryService({
     fetchImpl = globalThis.fetch,
     // 剧情事实: (state, recentConversationText) => names of the cards it mentions, joined into the recall keywords.
     getFactsKeywords = () => [],
+    // Or both hints at once: { keywords, floors }. Floors are where the promises a callback line reaches for were told;
+    // records there count one keyword hit, so they become candidates and score a little higher (no extra request).
+    getFactsHints = null,
     formatApiFailure = response => `嵌入向量接口请求失败：${response.status} ${response.statusText}`,
     setTimer = globalThis.setTimeout,
     vectorSidecar = null,
@@ -408,6 +411,7 @@ export function createVectorMemoryService({
         state.vectorMemory.lastRewriteIntent = '';
         state.vectorMemory.lastInferredKeywords = [];
         state.vectorMemory.lastFactsKeywords = [];
+        state.vectorMemory.lastFactsFloors = [];
         state.vectorMemory.lastEmbeddingCandidates = [];
         state.vectorMemory.lastRerankCandidates = [];
         state.vectorMemory.lastQuery = '';
@@ -1027,8 +1031,13 @@ export function createVectorMemoryService({
         const inferredKeywords = requestState.vectorMemory.lastInferredKeywords || [];
         // 剧情事实: every name of the cards the recent conversation mentions, so an older summary that used
         // another name still scores on keywords (no extra request).
-        let factsKeywords = [];
-        try { factsKeywords = unique(getFactsKeywords(state, getVectorQueryText(state, explicitQuery).split(/\n\n关键词提示：/)[0]) || []); }
+        let factsKeywords = [], factsFloors = [];
+        try {
+            const recent = getVectorQueryText(state, explicitQuery).split(/\n\n关键词提示：/)[0];
+            const hints = getFactsHints ? getFactsHints(state, recent) || {} : { keywords: getFactsKeywords(state, recent) };
+            factsKeywords = unique(hints.keywords || []);
+            factsFloors = [...new Set((hints.floors || []).filter(Number.isInteger))];
+        }
         catch (error) { console.warn(`[BakemonoMemory] facts keywords failed`, error); }
         const keywords = unique([...parseList(state.vectorMemory.keywordTriggers), ...inferredKeywords, ...factsKeywords]);
         const embeddingThreshold = Math.max(0, Number(state.vectorMemory.embeddingThreshold ?? state.vectorMemory.minScore ?? defaultVectorMemory.embeddingThreshold));
@@ -1038,6 +1047,8 @@ export function createVectorMemoryService({
         const scored = recallRecords.map(record => {
             const similarities = queryEmbeddings.map(embedding => cosineSimilarity(embedding, record.embedding || []));
             const similarity = similarities.length ? Math.max(...similarities) : 0;
+            // A floor 剧情事实 points at (where a promise the line reaches for was told) counts as one keyword match.
+            const factsHint = !!factsFloors.length && [record.messageId, ...(record.sourceMessageIds || [])].some(floor => factsFloors.includes(Number(floor)));
             const keywordHits = countKeywordHits(`${record.title}\n${record.summary || ''}\n${record.text}`, keywords);
             return {
                 ...record,
@@ -1045,6 +1056,7 @@ export function createVectorMemoryService({
                 score: similarity,
                 similarity,
                 keywordHits,
+                ...(factsHint ? { factsHint } : {}),
             };
         });
     
@@ -1086,6 +1098,7 @@ export function createVectorMemoryService({
         state.vectorMemory.lastRewriteIntent = requestState.vectorMemory.lastRewriteIntent || '';
         state.vectorMemory.lastInferredKeywords = inferredKeywords;
         state.vectorMemory.lastFactsKeywords = factsKeywords;
+        state.vectorMemory.lastFactsFloors = factsFloors;
         const plan = { groups, signature, lastHits: null };
         recallPlans.set(state, plan);
         applyRecallPlan(state, plan);
