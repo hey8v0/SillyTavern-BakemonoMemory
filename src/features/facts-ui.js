@@ -1,74 +1,100 @@
 import { countCardsByKind, factFieldHints, factFields, factKindLabels, factKinds } from '../facts/model.js';
 import { renderFactsChanges, summarizeFactsChanges } from '../facts/diff.js';
 import { renderOpenThreads } from '../facts/injection.js';
+import { sheetAction, sheetConfirm } from '../ui/action-sheet.js';
 
-// 剧情事实 page: switches and the 整理 buttons, the reflection, then the cards (searchable, by kind, editable
-// in place) or the history of every 整理. Same film-slate classes as 剧情状态.
-export function createFactsUi({ documentRef: document, getState, controller, escapeHtml: esc, refresh = () => {}, navigate = () => {} }) {
+// 剧情事实 page, film-slate style: a slate of four numbers and the one button on top, then what needs the user
+// (待裁决), the reflection, and the cards as a directory grouped by kind. Settings fold into one row; per-card
+// actions live in the “⋯” sheet. The “变化” view is the history as a timeline.
+export function createFactsUi({ documentRef: document, getState, controller, escapeHtml: esc, sheet = null, refresh = () => {}, navigate = () => {} }) {
     const navigation = new WeakMap();
-    const nav = state => navigation.get(state) || navigation.set(state, { view: 'cards', filter: '', search: '', open: new Set(), editing: null, merging: null, adding: null }).get(state);
+    const nav = state => navigation.get(state) || navigation.set(state, { view: 'cards', filter: '', search: '', open: new Set(), editing: null, merging: null, adding: null, settings: false }).get(state);
     const button = (action, label, extra = '', primary = false) => `<button type="button" class="menu_button${primary ? ' rp-primary' : ''}" data-facts-action="${action}" ${extra}><span>${esc(label)}</span></button>`;
     const link = (action, label, extra = '') => `<button type="button" class="rp-more" data-facts-action="${action}" ${extra}>${esc(label)} <span class="rp-chevron" aria-hidden="true">›</span></button>`;
     const switchRow = (key, title, detail, checked) => `<label class="rp-set-row"><span class="rp-set-text"><strong>${esc(title)}</strong>${detail ? `<small>${esc(detail)}</small>` : ''}</span><input type="checkbox" role="switch" class="rp-switch" data-facts-setting="${key}" ${checked ? 'checked' : ''}></label>`;
     const numberRow = (key, title, detail, value, min, max) => `<label class="rp-set-row"><span class="rp-set-text"><strong>${esc(title)}</strong>${detail ? `<small>${esc(detail)}</small>` : ''}</span><input type="number" class="text_pole" style="width:5em;flex:none" data-facts-setting="${key}" min="${min}" max="${max}" step="1" value="${esc(value)}"></label>`;
     const field = (name, label, value, { rows = 2, hint = '' } = {}) => `<label class="rp-edit-field"><span>${esc(label)}${hint ? ` <small>${esc(hint)}</small>` : ''}</span><textarea rows="${rows}" data-facts-field="${esc(name)}" spellcheck="false">${esc(value || '')}</textarea></label>`;
-    const when = value => value ? new Date(value).toLocaleString() : '';
+    const when = value => value ? new Date(value).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    const floorNo = value => `#${String(value).padStart(3, '0')}`;
     const triggerLabel = { facts: '自动整理', manual: '手动整理', review: '审阅后应用', user: '你的修改', import: '导入' };
+    const label = (zh, en) => `<span class="rp-label">${esc(zh)} · ${esc(en)}</span>`;
 
-    function renderStatus(state, facts) {
+    // The slate: four numbers that say where things stand, one line of cadence, and the one button.
+    function renderSlate(state, facts) {
         const pending = controller.pendingSummaries(state).length;
-        const every = facts.settings.everySummaries;
         const queued = (state.taskQueue || []).filter(task => task.kind === 'facts' && ['queued', 'running'].includes(task.status)).length;
         const held = (state.drafts || []).filter(draft => draft.kind === 'facts').length;
-        const total = facts.cards.filter(card => card.status === 'active').length;
-        const lines = [];
-        if (!facts.settings.enabled) lines.push(`还没开始记录。打开后，每攒够 ${every} 条剧情摘要，插件会把这段剧情里的人物、关系、物品和线索整理成卡片；聊天空闲时也会把剩下的整理掉。`);
-        else {
-            lines.push(`${total} 张卡片${facts.lastRunAt ? ` · 上次整理 ${when(facts.lastRunAt)}` : ' · 还没整理过'}`);
-            lines.push(held ? `${held} 个整理结果在"待确认"等你看` : queued ? `${queued} 个整理任务在队列里`
-                : pending ? `${pending} 条摘要还没整理${facts.settings.auto ? `，攒够 ${every} 条自动整理${facts.settings.idleMinutes ? `，空闲 ${facts.settings.idleMinutes} 分钟也会整理` : ''}` : ''}`
-                : facts.settings.auto ? `摘要都整理过了，攒够 ${every} 条新摘要再整理` : '自动整理已关，需要时点"整理事实"');
-            const blocked = controller.blockedBatch?.(state);
-            if (blocked) lines.push(`第 ${blocked.floorFrom}–${blocked.floorTo} 楼这批整理失败了 ${blocked.failures} 次，没再自动重试；在队列里重试，或点"整理事实"`);
-            const shorter = controller.chatShorterThanProgress?.(state);
-            if (shorter) lines.push(`已整理到第 ${shorter.cursor} 楼，但这个聊天只有 ${shorter.lastFloor + 1} 楼（分支或删过楼层）：卡片里可能有之后才发生的事，可以在"变化"里逐次撤回`);
-        }
-        const latest = [...facts.history].reverse().find(item => !item.undone && item.trigger !== 'user');
-        return `<section class="rp-overview"><p class="rp-note">${lines.map(esc).join('<br>')}</p>
-            <div class="rp-set-list">${switchRow('enabled', '记录剧情事实', '关掉后不再整理，也不注入；已有卡片保留', facts.settings.enabled)}
-            ${switchRow('auto', '自动整理', '攒够一批摘要就整理一次，每次 1 次请求', facts.settings.auto)}
-            ${numberRow('everySummaries', '每攒几条摘要整理一次', '越小越新鲜、请求越多；最新一楼会等下一条消息后再算', facts.settings.everySummaries, 1, 50)}
-            ${numberRow('idleMinutes', '空闲几分钟后把剩下的整理掉', '0 表示不按空闲整理', facts.settings.idleMinutes, 0, 240)}
-            ${switchRow('review', '先审再用', '整理结果先进"待确认"，看过改了什么再应用', facts.settings.review)}
-            ${switchRow('injectReflection', '把主线与伏笔一起注入', '卡片之外，再给模型一段当前主线和未回收的伏笔', facts.settings.injectReflection)}</div>
-            <div class="rp-controls">${button('run', pending ? `整理事实（${pending} 条摘要）` : '整理事实', facts.settings.enabled && pending && !queued ? '' : 'disabled', true)}<span class="rp-cost is-paid">+1 次请求</span>${latest ? button('undo', '撤回上一次整理') : ''}</div>
-            ${renderImport(state, facts)}
-            ${latest ? `<p class="rp-note">上一次整理：${esc(when(latest.at))}，${esc(summarizeFactsChanges(latest))}${latest.warnings?.length ? `；${esc(latest.warnings.slice(0, 2).join('；'))}` : ''}</p>` : ''}
-            </section>`;
+        const open = controller.openConflicts?.(state).length || 0;
+        const total = facts.cards.filter(card => card.status === 'active' && card.kind !== 'note').length;
+        const cell = (zh, en, value, unit = '', extra = '') => `<div class="rp-cell">${label(zh, en)}<span class="rp-slate-value${extra}">${value}${unit ? `<small>${esc(unit)}</small>` : ''}</span></div>`;
+        const cells = [
+            cell('卡片', 'CARDS', total || '<span class="is-empty">—</span>', total ? '张' : ''),
+            cell('整理到', 'FLOOR', facts.lastIntegratedFloor >= 0 ? esc(floorNo(facts.lastIntegratedFloor)) : '<span class="is-empty">—</span>', '', ' is-timecode'),
+            cell('待整理', 'PENDING', held ? held : queued ? '…' : pending || '0', held ? '批待确认' : queued ? '' : '条摘要'),
+            cell(open ? '待裁决' : '上次整理', open ? 'OPEN' : 'LAST', open ? open : facts.lastRunAt ? esc(when(facts.lastRunAt)) : '<span class="is-empty">—</span>', open ? '处' : '', open ? '' : ' is-small'),
+        ];
+        const settings = facts.settings;
+        const cadence = !settings.enabled ? '没在记录。打开后，每攒够几条剧情摘要就把人物、关系、物品和线索整理成卡片'
+            : !settings.auto ? '自动整理已关，需要时点“整理事实”'
+            : `每攒够 ${settings.everySummaries} 条摘要自动整理${settings.idleMinutes ? `，空闲 ${settings.idleMinutes} 分钟也整理` : ''}${settings.review ? '，结果先进待确认' : ''}`;
+        const right = queued ? '正在整理…' : held ? '整理结果等你确认' : pending && settings.enabled && settings.auto && pending < settings.everySummaries ? `再攒 <b>${settings.everySummaries - pending}</b> 条就整理` : '';
+        return `<section class="rp-slate"><div class="rp-slate-grid is-four">${cells.join('')}</div>
+            <div class="rp-slate-foot"><span>${esc(cadence)}</span>${right ? `<span>${right}</span>` : ''}</div></section>`;
     }
 
-    // Offered while the chat still has the older 剧情状态 or 表格 data and no import has been done.
-    function renderImport(state, facts) {
+    function renderControls(state, facts) {
+        const pending = controller.pendingSummaries(state).length;
+        const queued = (state.taskQueue || []).some(task => task.kind === 'facts' && ['queued', 'running'].includes(task.status));
+        const latest = [...facts.history].reverse().find(item => !item.undone && item.trigger !== 'user');
+        if (!facts.settings.enabled) return `<div class="rp-controls">${button('enable', '开始记录剧情事实', '', true)}<span class="rp-cost is-paid">之后每次整理 +1 次请求</span></div>`;
+        return `<div class="rp-controls">${button('run', pending ? `整理事实（${pending} 条摘要）` : '整理事实', pending && !queued ? '' : 'disabled', true)}<span class="rp-cost is-paid">+1 次请求</span>
+            ${latest ? link('undo', '撤回上一次') : ''}</div>`;
+    }
+
+    // Things that need a word: a batch given up on, a chat shorter than the progress, old data to import.
+    function renderNotices(state, facts) {
+        const notes = [];
+        const blocked = controller.blockedBatch?.(state);
+        if (blocked) notes.push(['alert', `第 ${blocked.floorFrom}–${blocked.floorTo} 楼这批整理失败了 ${blocked.failures} 次`, '没再自动重试；在队列里重试，或点“整理事实”']);
+        const shorter = controller.chatShorterThanProgress?.(state);
+        if (shorter) notes.push(['alert', `已整理到第 ${shorter.cursor} 楼，聊天只有 ${shorter.lastFloor + 1} 楼`, '分支或删过楼层：卡片里可能有之后才发生的事，可以在“变化”里逐次撤回']);
         const legacy = controller.legacySummary(state);
-        if (!legacy.available) return '';
-        const imported = facts.history.some(entry => entry.trigger === 'import' && !entry.undone);
-        const what = [legacy.people ? `剧情状态 ${legacy.people} 个人物` : '', legacy.rows ? `表格 ${legacy.rows} 行` : ''].filter(Boolean).join('、');
-        return `<div class="rp-controls">${button('import', imported ? '再次导入以前的数据' : '从剧情状态和表格导入')}<span class="rp-cost is-free">不花钱</span></div>
-            <p class="rp-note">这个聊天还有以前记下的${esc(what)}。导入只补充卡片，不动原数据；导入后点一次“整理事实”，卡片会更顺。</p>`;
+        if (legacy.available) {
+            const what = [legacy.people ? `剧情状态 ${legacy.people} 个人物` : '', legacy.rows ? `表格 ${legacy.rows} 行` : ''].filter(Boolean).join('、');
+            const imported = facts.history.some(entry => entry.trigger === 'import' && !entry.undone);
+            notes.push(['', `这个聊天还有以前记下的${what}`, `${imported ? '已经导入过；' : ''}导入只补充卡片，不动原数据`, link('import', imported ? '再次导入' : '导入成卡片')]);
+        }
+        return notes.map(([tone, title, detail, action = '']) => `<div class="rp-notice${tone ? ` is-${tone}` : ''}"><i class="rp-notice-dot"></i><div><strong>${esc(title)}</strong><small>${esc(detail)}</small></div>${action}</div>`).join('');
+    }
+
+    function renderSettings(state, facts) {
+        const settings = facts.settings;
+        const summary = [`每 ${settings.everySummaries} 条`, settings.idleMinutes ? `空闲 ${settings.idleMinutes} 分钟` : '不按空闲', settings.review ? '先审再用' : '', settings.injectReflection ? '' : '不注入反思'].filter(Boolean).join(' · ');
+        return `<details class="rp-set-details" data-facts-settings ${nav(state).settings ? 'open' : ''}><summary>设置<small>${esc(summary)}</small></summary>
+            <div class="rp-set-list">${switchRow('enabled', '记录剧情事实', '关掉后不再整理，也不注入；已有卡片保留', settings.enabled)}
+            ${switchRow('auto', '自动整理', '攒够一批摘要就整理一次，每次 1 次请求', settings.auto)}
+            ${numberRow('everySummaries', '每攒几条摘要整理一次', '越小越新鲜、请求越多；最新一楼会等下一条消息后再算', settings.everySummaries, 1, 50)}
+            ${numberRow('idleMinutes', '空闲几分钟后把剩下的整理掉', '0 表示不按空闲整理', settings.idleMinutes, 0, 240)}
+            ${switchRow('review', '先审再用', '整理结果先进“待确认”，看过改了什么再应用', settings.review)}
+            ${switchRow('injectReflection', '把主线与伏笔一起注入', '卡片之外，再给模型一段当前主线和未回收的伏笔', settings.injectReflection)}</div></details>`;
     }
 
     // What the model could not settle: the card's current value against what the material said; the user picks.
     function renderConflicts(state) {
         const open = controller.openConflicts?.(state) || [];
         if (!open.length) return '';
-        return `<section class="rp-set-group"><span class="rp-label">待裁决 · ${open.length}</span><p class="rp-note">整理时材料和卡片对不上，模型没有改动，等你决定。</p>${open.map(item => `<div class="rp-event" data-facts-conflict="${esc(item.id)}"><div class="rp-row-main"><strong>${esc(item.name)} · ${esc(item.field)}</strong><small>现在：${esc(item.current || '（空）')}</small><small>材料：${esc(item.says)}</small></div><div class="rp-controls">${item.field === '身份' ? '' : link('conflict-accept', '采用材料')}${link('conflict-dismiss', item.field === '身份' ? '知道了' : '保留现状')}</div></div>`).join('')}</section>`;
+        return `<section class="rp-sec"><div class="rp-sec-head"><h3>待裁决${label('', 'OPEN').replace(' · ', '')}</h3></div>
+            <div class="rp-list is-top">${open.map(item => `<div class="rp-event" data-facts-conflict="${esc(item.id)}"><span class="rp-verb">${esc(item.field)}</span>
+                <div class="rp-row-main"><strong>${esc(item.name)}</strong><small>现在：${esc(item.current || '（空）')}</small><small>材料：${esc(item.says)}</small>
+                <div class="rp-entry-actions">${item.field === '身份' ? '' : link('conflict-accept', '采用材料')}${link('conflict-dismiss', item.field === '身份' ? '知道了' : '保留现状')}</div></div></div>`).join('')}</div></section>`;
     }
 
     function renderReflection(facts) {
         const threads = facts.cards.some(card => card.kind === 'thread') ? renderOpenThreads(facts.cards) : facts.reflection.threads;
-        const parts = [['主线', facts.reflection.mainline], ['伏笔与约定', threads], ['人物弧线', facts.reflection.arcs]].filter(([, value]) => value);
+        const parts = [['主线', facts.reflection.mainline], ['伏笔', threads], ['弧线', facts.reflection.arcs]].filter(([, value]) => value);
         if (!parts.length) return '';
-        return `<section class="rp-set-group"><span class="rp-label">反思 · REFLECTION</span>${parts.map(([label, value]) => `<h4>${esc(label)}</h4><p>${esc(value)}</p>`).join('')}</section>`;
+        return `<section class="rp-sec"><div class="rp-sec-head"><h3>主线与伏笔 ${label('', 'REFLECTION').replace(' · ', '')}</h3></div>
+            <dl class="rp-facts">${parts.map(([key, value]) => `<dt>${esc(key)}</dt><dd>${esc(value)}</dd>`).join('')}</dl></section>`;
     }
 
     function matches(card, search) {
@@ -87,7 +113,7 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
 
     function renderMergeForm(card, facts) {
         const others = facts.cards.filter(item => item.kind === card.kind && item.id !== card.id);
-        if (!others.length) return '<p class="rp-note">没有同类型的其他卡片可以合并。</p>';
+        if (!others.length) return `<p class="rp-note">没有同类型的其他卡片可以合并。</p><div class="rp-controls">${button('merge-cancel', '返回')}</div>`;
         return `<form class="rp-edit-form rp-facts-form" data-facts-form="merge" data-facts-card-id="${esc(card.id)}">
             <label class="rp-edit-field"><span>把「${esc(card.name)}」并入</span><select data-facts-merge-target>${others.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}</select></label>
             <p class="rp-note">并入后这张卡删除，名字变成对方的别名；对方空着的字段用这张卡的内容补上。</p>
@@ -101,24 +127,25 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
             <div class="rp-controls">${button('add-save', '添加', '', true)}${button('add-cancel', '取消')}</div></form>`;
     }
 
+    // One card: a closed row shows the name and its first field; open, the fields as a sheet, then 经过, then the
+    // two actions (编辑 and ⋯).
     function renderCard(card, state, facts) {
         const current = nav(state);
         const fields = factFields[card.kind].filter(key => card.fields[key]);
-        const first = fields.length ? `${fields[0]} ${card.fields[fields[0]]}` : '还没有内容';
+        const first = fields.length ? card.fields[fields[0]] : '还没有内容';
         const retired = card.status === 'retired';
         let body;
         if (current.editing === card.id) body = renderEditForm(card);
         else if (current.merging === card.id) body = renderMergeForm(card, facts);
         else {
-            const history = controller.cardHistory(card.id, state).slice(0, 5);
-            body = `${fields.map(key => `<h4>${esc(key)}${card.userFields.includes(key) ? ' <small>你改过</small>' : ''}</h4><p>${esc(card.fields[key])}</p>`).join('') || '<p class="rp-note">还没有内容</p>'}
-                ${card.timeline?.length ? `<h4>经过</h4>${[...card.timeline].reverse().map(item => `<p class="rp-note">${item.floor != null ? `第 ${item.floor} 楼 · ` : ''}${esc(item.field === '已结束' ? '已结束' : `${item.field}：${item.from || '（空）'} → ${item.to || '（清空）'}`)}</p>`).join('')}` : ''}
-                ${card.aliases.length ? `<p class="rp-note">别名：${esc(card.aliases.join('、'))}</p>` : ''}
-                <p class="rp-note">${esc(triggerLabel[card.updatedBy] || '整理')}于 ${esc(when(card.updatedAt) || '未知')}${retired ? ' · 已结束，不再注入' : card.pinned ? ' · 固定注入' : ''}</p>
-                <div class="rp-controls">${link('edit', '编辑')}${link('pin', card.pinned ? '取消固定' : '固定注入')}${link(retired ? 'restore' : 'retire', retired ? '恢复' : '标记结束')}${link('merge', '合并到…')}${link('delete', '删除')}</div>
-                ${history.length ? `<details class="rp-set-details"><summary>变化<small>${history.length} 次</small></summary>${history.map(entry => `<p class="rp-note">${esc(when(entry.at))} · ${esc(triggerLabel[entry.trigger] || entry.trigger)}${entry.undone ? ' · 已撤回' : ''}</p>${renderFactsChanges({ ...entry, reflectionAfter: null, warnings: [] }, esc)}`).join('')}</details>` : ''}`;
+            const past = [...(card.timeline || [])].reverse().slice(0, 6);
+            body = `${fields.length ? `<dl class="rp-facts">${fields.map(key => `<dt>${esc(key)}</dt><dd>${esc(card.fields[key])}${card.userFields.includes(key) ? '<span class="rp-tag is-hint">你改过</span>' : ''}</dd>`).join('')}</dl>` : '<p class="rp-note">还没有内容</p>'}
+                ${past.length ? `<ol class="rp-past">${past.map(item => `<li><span class="rp-mono">${item.floor != null ? esc(floorNo(item.floor)) : '—'}</span>${esc(item.field === '已结束' ? '已结束' : `${item.field}：${item.from || '（空）'} → ${item.to || '（清空）'}`)}</li>`).join('')}</ol>` : ''}
+                <p class="rp-note">${card.aliases.length ? `别名 ${esc(card.aliases.join('、'))} · ` : ''}${esc(triggerLabel[card.updatedBy] || '整理')}于 ${esc(when(card.updatedAt) || '未知')}${retired ? ' · 已结束，只在被点名时注入' : card.pinned ? ' · 固定注入' : ''}</p>
+                <div class="rp-entry-actions">${link('edit', '编辑')}<button type="button" class="rp-more" data-facts-action="more" aria-label="更多操作">⋯</button></div>`;
         }
-        return `<details class="rp-set-details" data-facts-card="${esc(card.id)}" ${current.open.has(card.id) ? 'open' : ''}><summary><span class="rp-set-text"><strong>${esc(card.name)}${card.pinned ? ' · 固定' : ''}${retired ? ' · 已结束' : ''}</strong><small>${esc(factKindLabels[card.kind])} · ${esc(first.slice(0, 80))}</small></span></summary>${body}</details>`;
+        const tags = [card.pinned ? '固定' : '', retired ? '已结束' : ''].filter(Boolean).join(' · ');
+        return `<details class="rp-set-details" data-facts-card="${esc(card.id)}" ${current.open.has(card.id) ? 'open' : ''}><summary><span class="rp-card-sum"><strong>${esc(card.name)}</strong><span>${esc(first)}</span></span>${tags ? `<small>${esc(tags)}</small>` : ''}</summary>${body}</details>`;
     }
 
     function renderCards(state, facts) {
@@ -126,21 +153,31 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         const counts = countCardsByKind(facts.cards);
         const active = facts.cards.filter(card => card.status === 'active');
         const retired = facts.cards.filter(card => card.status === 'retired');
-        const filters = [['', '全部', active.length], ...factKinds.map(kind => [kind, factKindLabels[kind], counts[kind]]), ['retired', '已结束', retired.length]];
+        const filters = [['', '全部', active.length], ...factKinds.filter(kind => counts[kind]).map(kind => [kind, factKindLabels[kind], counts[kind]]), ...(retired.length ? [['retired', '已结束', retired.length]] : [])];
         const shown = (current.filter === 'retired' ? retired : active.filter(card => !current.filter || card.kind === current.filter)).filter(card => matches(card, current.search));
         const search = `<form class="rp-search" data-facts-form="search"><label><span class="rp-label">搜索</span><input type="search" data-facts-search placeholder="名字、别名、字段里的词……" value="${esc(current.search)}" autocomplete="off"></label><button type="submit" class="rp-more">查找</button></form>`;
-        const index = `<nav class="rp-index" aria-label="卡片类型">${filters.map(([key, label, count], i) => `${i ? '<span class="rp-index-sep" aria-hidden="true">/</span>' : ''}<button type="button" data-facts-action="filter" data-facts-filter="${key}" aria-pressed="${current.filter === key}">${esc(label)}<span class="rp-count">${count}</span></button>`).join('')}</nav>`;
+        const index = filters.length > 1 ? `<nav class="rp-index" aria-label="卡片类型">${filters.map(([key, name, count], i) => `${i ? '<span class="rp-index-sep" aria-hidden="true">/</span>' : ''}<button type="button" data-facts-action="filter" data-facts-filter="${key}" aria-pressed="${current.filter === key}">${esc(name)}<span class="rp-count">${count}</span></button>`).join('')}</nav>` : '';
+        // Grouped by kind when nothing narrows the list; a sticky kind title per group.
+        const grouped = !current.filter && !current.search.trim();
+        const list = grouped
+            ? factKinds.map(kind => shown.filter(card => card.kind === kind)).filter(group => group.length)
+                .map(group => `<div class="rp-group-head"><h4>${esc(factKindLabels[group[0].kind])}</h4><span class="rp-count">${group.length}</span></div>${group.map(card => renderCard(card, state, facts)).join('')}`).join('')
+            : shown.map(card => renderCard(card, state, facts)).join('');
         const add = current.adding ? renderAddForm(current.adding)
             : `<p class="rp-add">添加：${factKinds.map(kind => `<button type="button" class="rp-more" data-facts-action="add" data-facts-kind="${kind}">${esc(factKindLabels[kind])}</button>`).join('<span class="rp-index-sep" aria-hidden="true">/</span>')}</p>`;
-        return `<section class="rp-directory-page">${search}${index}${shown.map(card => renderCard(card, state, facts)).join('') || '<p class="rp-empty">没有匹配的卡片</p>'}${add}</section>`;
+        const empty = facts.cards.length ? '<p class="rp-empty">没有匹配的卡片</p>' : `<p class="rp-empty">${facts.settings.enabled ? '还没有卡片。攒够一批剧情摘要后会自动整理出来，也可以点“整理事实”或在下面手动添加。' : '还没有卡片。'}</p>`;
+        return `<section class="rp-sec rp-directory-page"><div class="rp-sec-head"><h3>卡片 ${label('', 'CARDS').replace(' · ', '')}</h3>${facts.history.length ? link('view-history', `变化 ${facts.history.length}`) : ''}</div>
+            ${facts.cards.length ? search + index : ''}${list || empty}${add}</section>`;
     }
 
+    // The history as a timeline: one take per 整理, newest first; the latest one can be undone.
     function renderHistory(state, facts) {
         const entries = [...facts.history].reverse();
-        const latest = entries.find(entry => !entry.undone);
-        if (!entries.length) return '<section class="rp-history-page"><p class="rp-empty">还没有整理过</p></section>';
-        return `<section class="rp-history-page">${entries.map(entry => `<details class="rp-set-details"><summary><span class="rp-set-text"><strong>${esc(when(entry.at))}${entry.undone ? ' · 已撤回' : ''}</strong><small>${esc(triggerLabel[entry.trigger] || entry.trigger)} · ${esc(summarizeFactsChanges(entry))}</small></span></summary>
-            ${renderFactsChanges(entry, esc)}${entry === latest && entry.trigger !== 'user' ? `<div class="rp-controls">${button('undo', '撤回这一次')}</div>` : ''}</details>`).join('')}</section>`;
+        const latest = entries.find(entry => !entry.undone && entry.trigger !== 'user');
+        return `<section class="rp-sec rp-history-page"><div class="rp-sec-head"><h3>变化 ${label('', 'HISTORY').replace(' · ', '')}</h3>${link('view-cards', '卡片')}</div>
+            ${entries.length ? `<div class="rp-timeline">${entries.map(entry => `<div class="rp-take"><div class="rp-take-head"><h4>${esc(when(entry.at))}${entry.undone ? ' · 已撤回' : ''}</h4>
+                <p class="rp-take-sub">${esc(triggerLabel[entry.trigger] || entry.trigger)}${entry.floorTo != null ? ` · 到第 ${entry.floorTo} 楼` : ''} · ${esc(summarizeFactsChanges(entry))}</p></div>
+                ${renderFactsChanges(entry, esc)}${entry === latest ? `<div class="rp-controls">${button('undo', '撤回这一次')}</div>` : ''}</div>`).join('')}</div>` : '<p class="rp-empty">还没有整理过</p>'}</section>`;
     }
 
     function render(state = getState()) {
@@ -148,8 +185,8 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         if (!root) return;
         const facts = controller.facts(state);
         const current = nav(state);
-        const views = `<nav class="rp-index" aria-label="视图"><button type="button" data-facts-action="view" data-facts-view="cards" aria-pressed="${current.view === 'cards'}">卡片</button><span class="rp-index-sep" aria-hidden="true">/</span><button type="button" data-facts-action="view" data-facts-view="history" aria-pressed="${current.view === 'history'}">变化<span class="rp-count">${facts.history.length}</span></button></nav>`;
-        root.innerHTML = renderStatus(state, facts) + renderConflicts(state) + renderReflection(facts) + views + (current.view === 'history' ? renderHistory(state, facts) : renderCards(state, facts));
+        root.innerHTML = renderSlate(state, facts) + renderControls(state, facts) + renderNotices(state, facts) + renderSettings(state, facts)
+            + renderConflicts(state) + renderReflection(facts) + (current.view === 'history' ? renderHistory(state, facts) : renderCards(state, facts));
     }
 
     function readForm(form) {
@@ -157,6 +194,29 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         const name = form.querySelector('[data-facts-name]')?.value || '';
         const aliases = String(form.querySelector('[data-facts-aliases]')?.value || '').split(/[,，、\n]/).map(alias => alias.trim()).filter(Boolean);
         return { name, aliases, fields };
+    }
+
+    // “⋯” on an open card: pin, end/restore, merge, delete (asked again inside the sheet).
+    function openCardSheet(card, trigger, current) {
+        const retired = card.status === 'retired';
+        const menu = () => [
+            sheetAction('pin', card.pinned ? '取消固定' : '固定注入', card.pinned ? '只在被点名时注入' : '每一轮都注入这张卡', { escapeHtml: esc }),
+            sheetAction(retired ? 'restore' : 'retire', retired ? '恢复' : '标记结束', retired ? '重新算作在场' : '死亡、了结、永久离场；只在被点名时注入', { escapeHtml: esc }),
+            sheetAction('merge', '合并到…', '和另一张同类型的卡是一回事', { escapeHtml: esc }),
+            sheetAction('delete', '删除', '会再确认一次', { escapeHtml: esc, danger: true, view: true }),
+        ].join('');
+        const run = async name => {
+            if (name === 'pin') controller.saveCard(card.id, { pinned: !card.pinned });
+            else if (name === 'retire') controller.saveCard(card.id, { status: 'retired' });
+            else if (name === 'restore') controller.saveCard(card.id, { status: 'active' });
+            else if (name === 'merge') { current.merging = card.id; current.editing = null; current.open.add(card.id); }
+            else if (name === 'delete') { if (await controller.deleteCard(card.id, { confirmed: true })) current.open.delete(card.id); }
+            render(getState());
+        };
+        if (!sheet) return run('merge');
+        sheet.open({ title: card.name, subtitle: factKindLabels[card.kind], trigger,
+            render: view => view === 'delete' ? sheetConfirm('这张卡片会从剧情事实里去掉，之后的整理可能会按材料重新建一张。想暂时不注入的话，用“标记结束”就够了。', 'delete', '删除', { escapeHtml: esc }) : menu(),
+            run });
     }
 
     function bind(root = document.getElementById('bakemono-facts-root')) {
@@ -171,7 +231,9 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
             const action = target.dataset.factsAction;
             const show = () => render(state);
             if (action === 'filter') { current.filter = target.dataset.factsFilter || ''; show(); }
-            else if (action === 'view') { current.view = target.dataset.factsView || 'cards'; show(); }
+            else if (action === 'view-history') { current.view = 'history'; show(); }
+            else if (action === 'view-cards') { current.view = 'cards'; show(); }
+            else if (action === 'enable') { controller.updateSettings({ enabled: true }); show(); }
             else if (action === 'run') { target.disabled = true; await controller.runManual(); refresh(); }
             else if (action === 'undo') { await controller.undoLast(); refresh(); }
             else if (action === 'conflict-accept' || action === 'conflict-dismiss') {
@@ -193,10 +255,10 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
             else if (action === 'edit') { current.editing = cardId; current.merging = null; current.open.add(cardId); show(); }
             else if (action === 'edit-cancel') { current.editing = null; show(); }
             else if (action === 'edit-save') { controller.saveCard(cardId, readForm(target.closest('form'))); current.editing = null; show(); }
-            else if (action === 'pin') { const card = controller.facts(state).cards.find(item => item.id === cardId); if (card) controller.saveCard(cardId, { pinned: !card.pinned }); show(); }
-            else if (action === 'retire') { controller.saveCard(cardId, { status: 'retired' }); show(); }
-            else if (action === 'restore') { controller.saveCard(cardId, { status: 'active' }); show(); }
-            else if (action === 'merge') { current.merging = cardId; current.editing = null; current.open.add(cardId); show(); }
+            else if (action === 'more') {
+                const card = controller.facts(state).cards.find(item => item.id === cardId);
+                if (card) openCardSheet(card, target, current);
+            }
             else if (action === 'merge-cancel') { current.merging = null; show(); }
             else if (action === 'merge-save') {
                 const keepId = target.closest('form').querySelector('[data-facts-merge-target]')?.value;
@@ -204,7 +266,6 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
                 current.merging = null;
                 show();
             }
-            else if (action === 'delete') { if (await controller.deleteCard(cardId)) { current.open.delete(cardId); } render(getState()); }
         });
         root.addEventListener('submit', event => {
             const form = event.target.closest('form[data-facts-form]');
@@ -215,9 +276,12 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         });
         root.addEventListener('toggle', event => {
             const card = event.target.closest?.('[data-facts-card]');
-            if (!card || event.target !== card) return;
-            const open = nav(getState()).open;
-            if (card.open) open.add(card.dataset.factsCard); else open.delete(card.dataset.factsCard);
+            if (card && event.target === card) {
+                const open = nav(getState()).open;
+                if (card.open) open.add(card.dataset.factsCard); else open.delete(card.dataset.factsCard);
+                return;
+            }
+            if (event.target.matches?.('[data-facts-settings]')) nav(getState()).settings = event.target.open;
         }, true);
         root.addEventListener('change', event => {
             const input = event.target.closest('[data-facts-setting]');

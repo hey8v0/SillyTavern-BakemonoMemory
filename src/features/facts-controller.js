@@ -392,11 +392,12 @@ export function createFactsController({
         if (card) afterCardChange(`已合并到「${card.name}」。`);
         return card;
     }
-    async function deleteCard(cardId) {
+    // `confirmed`: the page already asked (in its action sheet).
+    async function deleteCard(cardId, { confirmed = false } = {}) {
         const current = facts(getState());
         const card = current.cards.find(item => item.id === cardId);
         if (!card) return false;
-        if (!await confirm(`删除「${card.name}」？`, ['这张卡片会从剧情事实里去掉，之后的整理可能会按材料重新建一张。', '想暂时不注入的话，用"标记结束"就够了。'])) return false;
+        if (!confirmed && !await confirm(`删除「${card.name}」？`, ['这张卡片会从剧情事实里去掉，之后的整理可能会按材料重新建一张。', '想暂时不注入的话，用"标记结束"就够了。'])) return false;
         const removed = removeCard(current, cardId);
         if (removed) afterCardChange(`已删除「${card.name}」。`);
         return removed;

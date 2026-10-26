@@ -3245,6 +3245,26 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .rp-core-ui .rp-note { margin: 12px 0 0; font-size: .82em; color: var(--rp-faint); }
 #bakemono-workbench-root .rp-core-ui .rp-diff-before { text-decoration: line-through; opacity: .65; }
 #bakemono-workbench-root .rp-core-ui .rp-facts-form .rp-controls { margin-top: 12px; }
+#bakemono-workbench-root .rp-core-ui .rp-slate-grid.is-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#bakemono-workbench-root .rp-core-ui .rp-slate-grid.is-four .rp-cell { padding-left: 14px; border-left: 1px solid var(--rp-rule); }
+#bakemono-workbench-root .rp-core-ui .rp-slate-grid.is-four .rp-cell:first-child { padding-left: 0; border-left: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-slate-value.is-small { font-size: 1.05em; }
+#bakemono-workbench-root .rp-core-ui .rp-facts dd .rp-tag { margin-left: 8px; }
+#bakemono-workbench-root .rp-core-ui .rp-facts dd .rp-tag.is-hint { color: var(--rp-faint); font-weight: 400; }
+#bakemono-workbench-root .rp-core-ui .rp-past { margin: 6px 0 0; padding: 0 0 0 14px; list-style: none; border-left: 1px solid var(--rp-rule-strong); }
+#bakemono-workbench-root .rp-core-ui .rp-past li { position: relative; padding: 4px 0; font-size: .9em; color: var(--rp-muted); }
+#bakemono-workbench-root .rp-core-ui .rp-past li::before { content: ""; position: absolute; left: -18px; top: 11px; width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--rp-rule-strong); background: var(--rp-surface); }
+#bakemono-workbench-root .rp-core-ui .rp-past .rp-mono { margin-right: 8px; font-size: .85em; color: var(--rp-faint); }
+#bakemono-workbench-root .rp-core-ui .rp-card-sum { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+#bakemono-workbench-root .rp-core-ui .rp-card-sum strong { flex: none; font: 600 1em/1.4 var(--rp-serif); }
+#bakemono-workbench-root .rp-core-ui .rp-card-sum span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .86em; color: var(--rp-faint); }
+#bakemono-workbench-root .rp-core-ui .rp-take-sub { margin: 0; font-size: .84em; color: var(--rp-muted); }
+#bakemono-workbench-root .rp-core-ui .rp-list.is-top .rp-event { align-items: flex-start; }
+#bakemono-workbench-root .rp-core-ui .rp-list.is-top .rp-verb { padding-top: 3px; }
+@container (max-width: 480px) {
+  #bakemono-workbench-root .rp-core-ui .rp-slate-grid.is-four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #bakemono-workbench-root .rp-core-ui .rp-slate-grid.is-four .rp-cell:nth-child(odd) { padding-left: 0; border-left: 0; }
+}
 #bakemono-workbench-root .rp-core-ui .rp-empty { margin: 0; padding: 14px 0; color: var(--rp-faint); }
 #bakemono-workbench-root .rp-core-ui .rp-more { color: var(--rp-accent); font-size: .9em; white-space: nowrap; border-bottom: 1px solid transparent; transition: border-color .2s; }
 #bakemono-workbench-root .rp-core-ui .rp-more:hover { border-bottom-color: currentColor; }

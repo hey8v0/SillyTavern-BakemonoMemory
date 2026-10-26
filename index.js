@@ -1975,6 +1975,7 @@ const factsUi = createFactsUi({
     getState: ensureState,
     controller: factsController,
     escapeHtml,
+    sheet: actionSheet,
     refresh: () => renderWorkbenchScope(workbenchRenderScopes.DRAFTS),
     navigate: tab => switchWorkbenchTab(tab),
 });
