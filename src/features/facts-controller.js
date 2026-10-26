@@ -5,10 +5,13 @@ import { buildLegacyImport, importCards } from '../facts/migration.js';
 import { buildFactsPrompt, defaultFactsPrompt } from '../facts/prompt.js';
 import { storyTimeContext as defaultStoryTimeContext } from '../memory/story-state.js';
 
-// 整理事实: one request per saved stage summary, run through the summary task queue. The result rewrites the
-// cards the stage touched; the diff goes into facts.history so it can be undone.
+// 整理事实 runs on its own cadence, not the chapter's: once `everySummaries` new 剧情摘要 have gathered, or after
+// the chat has been idle for `idleMinutes` with anything pending. Each run reads the summaries past
+// `lastIntegratedFloor` (the latest reply left out while it can still be rerolled), rewrites the cards they touch,
+// and moves the cursor. Results go through the summary task queue; the diff lands in facts.history for undo.
 export function createFactsController({
     getState,
+    getChat = () => [],
     saveState,
     enqueueSummaryTask,
     blockTypes,
@@ -21,87 +24,143 @@ export function createFactsController({
     confirm = async () => true,
     persistSharedConfigurationFromState = () => {},
     createDraft = null,
+    isChatReady = () => true,
     // The older 剧情状态 projection and 表格 rows of the chat, for the one-time import.
     getLegacy = () => ({ projection: null, information: [], tables: [] }),
+    setTimer = (fn, ms) => setTimeout(fn, ms),
+    clearTimer = id => clearTimeout(id),
     now = () => new Date().toISOString(),
 } = {}) {
+    const maxBatch = 20;
+    let idleTimer = null;
+
     function facts(state = getState()) {
         if (!state.facts || state.facts.version !== 1 || !Array.isArray(state.facts.cards)) state.facts = normalizeFacts(state.facts);
-        return state.facts;
+        const current = state.facts;
+        // Chats consolidated per stage (v1.29–v1.33) carry the stages done, not a floor: the cursor starts after them.
+        if (current.lastIntegratedFloor < 0 && current.doneStages.length) {
+            const done = new Set(current.doneStages);
+            const ends = (state.stageSummaries || []).filter(stage => done.has(stage.hash))
+                .flatMap(stage => (stage.sourceMessageIds || []).map(Number).filter(Number.isInteger));
+            if (ends.length) current.lastIntegratedFloor = Math.max(...ends);
+        }
+        return current;
     }
 
-    // The stage's own material: the story summaries it was made from. Longer than the budget, the stage text stands in.
-    function stageMaterial(state, stage) {
-        const hashes = new Set(stage.sourceHashes || []);
-        const sources = [...(state.storySummaries || []), ...(state.blocks || []).filter(block => block.type === blockTypes.STORY)]
-            .filter(item => hashes.has(item.hash));
+    const floorsOf = item => [...new Set([...(Array.isArray(item.sourceMessageIds) ? item.sourceMessageIds : []), item.messageId]
+        .map(Number).filter(value => Number.isInteger(value) && value >= 0 && value < Number.MAX_SAFE_INTEGER))];
+    // The last reply can still be rerolled (SillyTavern swipes only the last message), so its summary waits.
+    function openFloor(state) {
+        const chat = getChat() || [];
+        const last = chat.length - 1;
+        return last > 0 && chat[last] && !chat[last].is_user ? last : -1;
+    }
+
+    // 剧情摘要 not yet consolidated, oldest first: saved summaries and the summary blocks read from replies.
+    function pendingSummaries(state = getState()) {
+        const current = facts(state);
+        const open = openFloor(state);
+        const queuedTo = Math.max(-1, ...(state.taskQueue || []).filter(task => task.kind === blockTypes.FACTS && ['queued', 'running'].includes(task.status)).map(task => Number(task.metadata?.factsFloorTo ?? -1)),
+            ...(state.drafts || []).filter(draft => draft.kind === blockTypes.FACTS).map(draft => Number(draft.metadata?.factsFloorTo ?? -1)));
+        const cursor = Math.max(current.lastIntegratedFloor, queuedTo);
         const seen = new Set();
-        const texts = sources.filter(item => !seen.has(item.hash) && seen.add(item.hash)).map(item => getBlockPlainText(item.content)).filter(Boolean);
-        const joined = texts.join('\n\n');
-        if (texts.length && joined.length <= facts(state).settings.materialChars) return { text: joined, kind: 'story', count: texts.length };
-        return { text: getBlockPlainText(stage.content), kind: 'stage', count: 1 };
+        return [...(state.storySummaries || []), ...(state.blocks || []).filter(block => block.type === blockTypes.STORY && !block.isGeneratedSummary && block.sourceKind !== 'raw')]
+            .filter(item => item?.hash && item.content && !seen.has(item.hash) && seen.add(item.hash))
+            .map(item => { const floors = floorsOf(item); return { item, floors, floorStart: Math.min(...floors), floorEnd: Math.max(...floors) }; })
+            .filter(entry => entry.floors.length && entry.floorEnd > cursor && entry.floorEnd !== open)
+            .sort((a, b) => a.floorEnd - b.floorEnd || a.floorStart - b.floorStart);
     }
 
-    function stagesToIntegrate(state = getState()) {
-        const done = new Set(facts(state).doneStages);
-        const queued = new Set((state.taskQueue || []).filter(task => task.kind === blockTypes.FACTS && ['queued', 'running'].includes(task.status)).map(task => task.metadata?.factsStageHash));
-        const held = new Set((state.drafts || []).filter(draft => draft.kind === blockTypes.FACTS).map(draft => draft.metadata?.factsStageHash));
-        return [...(state.stageSummaries || [])]
-            .sort((a, b) => (a.sourceSortKey ?? 0) - (b.sourceSortKey ?? 0))
-            .filter(stage => stage?.hash && !done.has(stage.hash) && !queued.has(stage.hash) && !held.has(stage.hash));
+    // `exceptTaskId`: the task whose result is being written is still marked running while the next batch is decided.
+    function hasOpenTask(state = getState(), exceptTaskId = null) {
+        return (state.taskQueue || []).some(task => task.kind === blockTypes.FACTS && task.id !== exceptTaskId && ['queued', 'running'].includes(task.status));
     }
 
     // What one result would change, computed on a copy; shown in 待确认 when results are held for review.
-    function previewUpdate(current, parsed, { stageHash = null, taskId = null } = {}) {
+    function previewUpdate(current, parsed, { floorTo = null, taskId = null } = {}) {
         const copy = structuredClone(current);
-        return applyFactsUpdate(copy, parsed, { trigger: 'review', stageHash, taskId, now: now() }) || { changes: [], warnings: [], reflectionAfter: null, stageHash };
+        return applyFactsUpdate(copy, parsed, { trigger: 'review', floorTo, taskId, now: now() }) || { changes: [], warnings: [], reflectionAfter: null, floorTo };
     }
 
-    function enqueueStage(stage, { trigger = 'auto', silent = trigger === 'auto' } = {}) {
+    // One request over a run of pending summaries. Material longer than the budget is cut at a summary boundary.
+    function enqueueBatch(entries, { trigger = 'auto' } = {}) {
         const state = getState();
-        const material = stageMaterial(state, stage);
-        if (!material.text.trim()) return null;
-        const { prompt, systemPrompt, cardIds } = buildFactsPrompt(facts(state), material.text, {
+        const settings = facts(state).settings;
+        const taken = [];
+        let text = '';
+        for (const entry of entries.slice(0, maxBatch)) {
+            const plain = getBlockPlainText(entry.item.content).trim();
+            if (!plain) continue;
+            if (taken.length && text.length + plain.length + 2 > settings.materialChars) break;
+            text += (text ? '\n\n' : '') + plain;
+            taken.push(entry);
+        }
+        if (!taken.length) return null;
+        const floorFrom = Math.min(...taken.map(entry => entry.floorStart)), floorTo = Math.max(...taken.map(entry => entry.floorEnd));
+        const { prompt, systemPrompt, cardIds } = buildFactsPrompt(facts(state), text, {
             template: state.generationPrompts?.facts || defaultFactsPrompt, timeContext: storyTimeContext(state) });
         return enqueueSummaryTask({
             kind: blockTypes.FACTS,
-            label: `整理事实 · ${stage.title || '阶段总结'}`,
+            label: `整理事实 · 第 ${floorFrom === floorTo ? floorFrom : `${floorFrom}–${floorTo}`} 楼 · ${taken.length} 条摘要`,
             prompt, systemPrompt,
-            sourceHashes: [stage.hash],
-            sourceMessageIds: Array.isArray(stage.sourceMessageIds) ? [...stage.sourceMessageIds] : [],
-            trigger: trigger === 'auto' ? 'facts_auto' : 'facts_manual',
-            metadata: { factsStageHash: stage.hash, factsCardIds: cardIds, factsMaterial: material.kind, factsMaterialCount: material.count },
-            silent,
+            sourceHashes: taken.map(entry => entry.item.hash),
+            sourceMessageIds: [...new Set(taken.flatMap(entry => entry.floors))].sort((a, b) => a - b),
+            trigger: `facts_${trigger}`,
+            metadata: { factsFloorFrom: floorFrom, factsFloorTo: floorTo, factsCount: taken.length, factsCardIds: cardIds },
+            silent: trigger !== 'manual',
         });
     }
 
-    // Called after a stage summary is saved; nothing happens unless 自动整理事实 is on.
-    function onSummaryCommitted(summary) {
+    // The automatic cadence: enough new summaries (auto), or anything pending once the chat went quiet (idle).
+    function maybeRun({ trigger = 'auto', exceptTaskId = null } = {}) {
+        if (!isChatReady()) return null;
         const state = getState();
         const settings = facts(state).settings;
-        if (summary?.type !== blockTypes.STAGE || !settings.enabled || !settings.auto) return null;
-        if (!stagesToIntegrate(state).some(stage => stage.hash === summary.hash)) return null;
-        return enqueueStage(summary, { trigger: 'auto' });
+        if (!settings.enabled || !settings.auto || hasOpenTask(state, exceptTaskId)) return null;
+        const pending = pendingSummaries(state);
+        if (!pending.length) return null;
+        if (trigger === 'auto' && pending.length < settings.everySummaries) return null;
+        const task = enqueueBatch(trigger === 'auto' ? pending.slice(0, Math.max(settings.everySummaries, 1)) : pending, { trigger });
+        if (task && getState() === state) saveState();
+        return task;
     }
 
-    async function runManual({ stageHash = null } = {}) {
+    // Any message is activity: the idle timer starts over, and fires only for the chat it was set in.
+    function noteActivity() {
+        if (idleTimer != null) { clearTimer(idleTimer); idleTimer = null; }
+        const state = getState();
+        const settings = facts(state).settings;
+        if (!settings.enabled || !settings.auto || !(settings.idleMinutes > 0)) return;
+        idleTimer = setTimer(() => {
+            idleTimer = null;
+            if (getState() !== state) return;
+            maybeRun({ trigger: 'idle' });
+        }, settings.idleMinutes * 60 * 1000);
+    }
+
+    // A summary saved through the plugin (per-turn, inline, backfill, stage) may complete a batch.
+    function onSummaryCommitted() {
+        return maybeRun({ trigger: 'auto' });
+    }
+
+    async function runManual() {
         const state = getState();
         if (!facts(state).settings.enabled) {
             toastr.info?.('先在这一页打开"记录剧情事实"。', '剧情剪辑台');
-            return [];
+            return null;
         }
-        const pending = stageHash ? (state.stageSummaries || []).filter(stage => stage.hash === stageHash) : stagesToIntegrate(state);
+        if (hasOpenTask(state)) { toastr.info?.('已经有一个整理任务在队列里。', '剧情剪辑台'); return null; }
+        const pending = pendingSummaries(state);
         if (!pending.length) {
-            toastr.info?.(stageHash ? '这个阶段已经整理过。' : '所有阶段总结都已经整理过了；保存新的阶段总结后会自动整理。', '剧情剪辑台');
-            return [];
+            toastr.info?.('没有新的剧情摘要要整理；最新一楼会等下一条消息后再算。', '剧情剪辑台');
+            return null;
         }
-        if (pending.length > 1 && !await confirm(`整理 ${pending.length} 个阶段的事实？`, [`每个阶段 1 次请求，共 ${pending.length} 次。`, '会按阶段先后顺序逐个整理，结果直接写入卡片，可以撤回。'])) return [];
-        const tasks = pending.map(stage => enqueueStage(stage, { trigger: 'manual', silent: true })).filter(Boolean);
-        if (getState() === state) {
+        const task = enqueueBatch(pending, { trigger: 'manual' });
+        if (task && getState() === state) {
             saveState();
-            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `已加入 ${tasks.length} 个整理事实任务。`);
+            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `已加入整理事实任务：${task.metadata.factsCount} 条摘要。`);
         }
-        return tasks;
+        return task;
     }
 
     // The queue hands the model's reply here; a parse failure fails the task and changes nothing.
@@ -109,17 +168,17 @@ export function createFactsController({
         const state = getState();
         const parsed = parseFactCards(rawResult);
         const current = facts(state);
-        const stageHash = task.metadata?.factsStageHash || null;
+        const floorTo = Number.isInteger(task.metadata?.factsFloorTo) ? task.metadata.factsFloorTo : null;
         if (current.settings.review && createDraft) {
-            const preview = previewUpdate(current, parsed, { stageHash, taskId: task.id });
+            const preview = previewUpdate(current, parsed, { floorTo, taskId: task.id });
             const draft = createDraft({ kind: blockTypes.FACTS, content: rawResult, sourceHashes: task.sourceHashes || [], sourceMessageIds: [], prompt: task.prompt,
-                trigger: task.trigger, metadata: { factsStageHash: stageHash, factsPreview: preview, suggestedTitle: task.label, lockTitle: true } });
+                trigger: task.trigger, metadata: { factsFloorFrom: task.metadata?.factsFloorFrom ?? null, factsFloorTo: floorTo, factsPreview: preview, suggestedTitle: task.label, lockTitle: true } });
             task.metadata = { ...(task.metadata || {}), factsDraftId: draft.id, factsChanges: preview.changes.length };
             saveState();
             renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `整理结果已进入待确认：${summarizeFactsChanges(preview)}。`);
             return draft;
         }
-        const entry = applyFactsUpdate(current, parsed, { trigger: task.trigger === 'facts_manual' ? 'manual' : 'facts', stageHash, taskId: task.id, now: now() });
+        const entry = applyFactsUpdate(current, parsed, { trigger: task.trigger === 'facts_manual' ? 'manual' : 'facts', floorTo, taskId: task.id, now: now() });
         task.metadata = { ...(task.metadata || {}), factsChanges: entry?.changes.length || 0, factsWarnings: entry?.warnings || [] };
         saveState();
         syncInjection();
@@ -129,6 +188,8 @@ export function createFactsController({
             : `整理完成：${created ? `新建 ${created} 张，` : ''}改动 ${changed - created} 张${entry.reflectionAfter ? '，反思已更新' : ''}。`;
         renderWorkbenchScope(workbenchRenderScopes.DRAFTS, message);
         if (entry?.warnings.length) toastr.warning?.(entry.warnings.slice(0, 3).join('；'), '整理事实');
+        // A backlog (an older chat, a long run with 整理 off) is worked through one batch at a time.
+        if (task.trigger !== 'facts_manual') maybeRun({ trigger: 'auto', exceptTaskId: task.id });
         return entry;
     }
 
@@ -137,7 +198,7 @@ export function createFactsController({
         const latest = [...facts(state).history].reverse().find(item => !item.undone);
         if (!latest) { toastr.info?.('没有可以撤回的整理。', '剧情剪辑台'); return null; }
         const summary = `${latest.changes.length} 张卡片${latest.reflectionAfter ? '和反思' : ''}会回到整理前的样子`;
-        if (!await confirm('撤回上一次整理？', [summary + '。', latest.stageHash ? '这个阶段会重新算作未整理。' : ''])) return null;
+        if (!await confirm('撤回上一次整理？', [summary + '。', latest.floorTo != null ? '这些摘要会重新算作没整理。' : ''])) return null;
         const entry = undoFactsUpdate(facts(state), latest.id, now());
         if (!entry) return null;
         saveState();
@@ -155,7 +216,8 @@ export function createFactsController({
         let parsed;
         try { parsed = parseFactCards(draft.content); }
         catch (error) { toastr.warning?.(error.message, '整理事实'); return null; }
-        const entry = applyFactsUpdate(facts(state), parsed, { trigger: 'review', stageHash: draft.metadata?.factsStageHash || null, taskId: null, now: now() });
+        const floorTo = Number.isInteger(draft.metadata?.factsFloorTo) ? draft.metadata.factsFloorTo : null;
+        const entry = applyFactsUpdate(facts(state), parsed, { trigger: 'review', floorTo, taskId: null, now: now() });
         state.drafts.splice(index, 1);
         saveState();
         syncInjection();
@@ -172,7 +234,7 @@ export function createFactsController({
         state.drafts = (state.drafts || []).filter(draft => !(draft.id === draftId && draft.kind === blockTypes.FACTS));
         if (state.drafts.length === before) return false;
         saveState();
-        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '整理结果已丢弃；那个阶段可以重新整理。');
+        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '整理结果已丢弃；这些摘要可以重新整理。');
         return true;
     }
 
@@ -243,9 +305,10 @@ export function createFactsController({
         saveState();
         persistSharedConfigurationFromState(state);
         syncInjection();
+        noteActivity();
         return current.settings;
     }
 
-    return { facts, stageMaterial, stagesToIntegrate, enqueueStage, onSummaryCommitted, runManual, handleTaskResult, previewUpdate, applyDraft, discardDraft,
+    return { facts, pendingSummaries, enqueueBatch, maybeRun, noteActivity, onSummaryCommitted, runManual, handleTaskResult, previewUpdate, applyDraft, discardDraft,
         undoLast, updateSettings, saveCard, addCard, mergeInto, deleteCard, cardHistory, legacySummary, importLegacy };
 }

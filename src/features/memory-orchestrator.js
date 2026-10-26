@@ -23,6 +23,9 @@ export function createMemoryOrchestrator({
     scheduleRenderAll,
     shouldRunTurnProcessing,
     isChatReady = () => true,
+    // 剧情事实: a message resets its idle timer; after the per-turn work it may consolidate a batch of summaries.
+    noteFactsActivity = () => {},
+    consolidateFacts = () => {},
 } = {}) {
     const pendingAutoSummaries = new WeakSet();
     async function maybeRunAutoSummary() {
@@ -88,6 +91,7 @@ export function createMemoryOrchestrator({
         if (options.scan !== false) {
             scanBakemonoBlocks({ persist: false, render: false });
         }
+        noteFactsActivity();
         let state = ensureState();
         let floorIndex = getCurrentFloorMemoryIndex(state);
         let plan = getMemoryOrchestrationPlan(state, floorIndex);
@@ -96,6 +100,7 @@ export function createMemoryOrchestrator({
 
         if (options.turnOnly) {
             if (triggerMatches) await maybeRunTurnSummary();
+            if (ensureState() === state) await consolidateFacts();
             syncInjection();
             if (options.render) scheduleRenderAll();
             return { index: floorIndex, plan };
@@ -122,6 +127,7 @@ export function createMemoryOrchestrator({
         if (plan.actions.runStageAutomation) {
             await maybeRunAutoSummary();
         }
+        if (ensureState() === state) await consolidateFacts();
         if (plan.actions.balanceHiddenFloors) {
             scheduleAutoHideRecent(reason);
         }

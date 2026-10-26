@@ -27,17 +27,18 @@ export const factFieldHints = Object.freeze({
     rule: { 说明: '设定内容', 影响范围: '影响哪些人、地方或事' },
     note: { 内容: '只由你填写，模型只读' },
 });
-export const factSettingKeys = Object.freeze(['version', 'enabled', 'auto', 'review', 'budgetChars', 'maxCards', 'recentFloors', 'materialChars', 'injectReflection']);
+export const factSettingKeys = Object.freeze(['version', 'enabled', 'auto', 'review', 'everySummaries', 'idleMinutes', 'budgetChars', 'maxCards', 'recentFloors', 'materialChars', 'injectReflection']);
 
 // settings.version 2: on by default (v1.32.0). Settings saved before that carry no version and get the new default once.
 export const factSettingsVersion = 2;
 export function createDefaultFactSettings() {
-    return { version: factSettingsVersion, enabled: true, auto: true, review: false, budgetChars: 6000, maxCards: 40, recentFloors: 6, materialChars: 24000, injectReflection: true };
+    // everySummaries: 整理 runs once this many new 剧情摘要 have gathered; idleMinutes: or after this long without a message (0 = off).
+    return { version: factSettingsVersion, enabled: true, auto: true, review: false, everySummaries: 6, idleMinutes: 10, budgetChars: 6000, maxCards: 40, recentFloors: 6, materialChars: 24000, injectReflection: true };
 }
 
 export function createDefaultFacts() {
     return { version: 1, revision: 0, cards: [], reflection: { mainline: '', threads: '', arcs: '', updatedAt: null },
-        history: [], doneStages: [], settings: createDefaultFactSettings(), lastRunAt: null };
+        history: [], doneStages: [], settings: createDefaultFactSettings(), lastRunAt: null, lastIntegratedFloor: -1 };
 }
 
 const text = (value, max = 4000) => String(value ?? '').replace(/\r\n/g, '\n').trim().slice(0, max);
@@ -49,6 +50,7 @@ export function normalizeFactSettings(value) {
     const number = (key, min, max) => Math.max(min, Math.min(max, Number(source[key] ?? defaults[key]) || defaults[key]));
     const current = Number(source.version) >= factSettingsVersion;
     return { version: factSettingsVersion, enabled: current ? !!source.enabled : defaults.enabled, auto: source.auto !== false, review: !!source.review,
+        everySummaries: number('everySummaries', 1, 50), idleMinutes: Math.max(0, Math.min(240, Number(source.idleMinutes ?? defaults.idleMinutes) || 0)),
         budgetChars: number('budgetChars', 500, 60000), maxCards: number('maxCards', 5, 200), recentFloors: number('recentFloors', 1, 50),
         materialChars: number('materialChars', 2000, 120000), injectReflection: source.injectReflection !== false };
 }
@@ -90,6 +92,8 @@ export function normalizeFacts(value) {
         doneStages: [...new Set((Array.isArray(source.doneStages) ? source.doneStages : []).filter(hash => typeof hash === 'string'))],
         settings: normalizeFactSettings(source.settings),
         lastRunAt: typeof source.lastRunAt === 'string' ? source.lastRunAt : defaults.lastRunAt,
+        // Every 剧情摘要 whose last floor is at or below this has been consolidated into the cards.
+        lastIntegratedFloor: Number.isInteger(source.lastIntegratedFloor) ? source.lastIntegratedFloor : -1,
     };
 }
 
@@ -136,7 +140,8 @@ const cleanIncoming = (kind, fields) => {
 
 // Writes one 整理事实 result into the cards. Fields the model leaves out or empties are unchanged (省略=保持);
 // fields the user edited are kept unless `overrideUser`. Returns the history entry, or null when nothing changed.
-export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash = null, taskId = null, now = new Date().toISOString(), overrideUser = false } = {}) {
+export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash = null, taskId = null, floorTo = null, now = new Date().toISOString(), overrideUser = false } = {}) {
+    const floorBefore = facts.lastIntegratedFloor ?? -1;
     const changes = [], warnings = [];
     const touched = new Set();
     (Array.isArray(parsed?.cards) ? parsed.cards : []).forEach((incoming, index) => {
@@ -198,10 +203,15 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
     }
     if (reflectionChanged) facts.reflection.updatedAt = now;
     if (stageHash && !facts.doneStages.includes(stageHash)) facts.doneStages.push(stageHash);
+    if (Number.isInteger(floorTo) && floorTo > floorBefore) facts.lastIntegratedFloor = floorTo;
     facts.lastRunAt = now;
-    if (!changes.length && !reflectionChanged) return null;
+    if (!changes.length && !reflectionChanged) {
+        // Nothing to undo, but the floors still count as read: remember that without a history entry.
+        return null;
+    }
     facts.revision += 1;
     const entry = { id: `facts-${getHash(`${now}|${facts.revision}|${stageHash || ''}`)}`, at: now, trigger, stageHash, taskId, changes,
+        floorBefore, floorTo: Number.isInteger(floorTo) ? floorTo : null,
         reflectionBefore, reflectionAfter: reflectionChanged ? { ...facts.reflection } : null, warnings, undone: false };
     facts.history.push(entry);
     facts.history = facts.history.slice(-60);
@@ -224,6 +234,7 @@ export function undoFactsUpdate(facts, entryId = null, now = new Date().toISOStr
     }
     if (entry.reflectionAfter) facts.reflection = { ...entry.reflectionBefore };
     if (entry.stageHash) facts.doneStages = facts.doneStages.filter(hash => hash !== entry.stageHash);
+    if (Number.isInteger(entry.floorBefore) && entry.floorTo != null) facts.lastIntegratedFloor = entry.floorBefore;
     entry.undone = true;
     entry.undoneAt = now;
     facts.revision += 1;

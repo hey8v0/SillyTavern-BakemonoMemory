@@ -9,28 +9,34 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
     const button = (action, label, extra = '', primary = false) => `<button type="button" class="menu_button${primary ? ' rp-primary' : ''}" data-facts-action="${action}" ${extra}><span>${esc(label)}</span></button>`;
     const link = (action, label, extra = '') => `<button type="button" class="rp-more" data-facts-action="${action}" ${extra}>${esc(label)} <span class="rp-chevron" aria-hidden="true">›</span></button>`;
     const switchRow = (key, title, detail, checked) => `<label class="rp-set-row"><span class="rp-set-text"><strong>${esc(title)}</strong>${detail ? `<small>${esc(detail)}</small>` : ''}</span><input type="checkbox" role="switch" class="rp-switch" data-facts-setting="${key}" ${checked ? 'checked' : ''}></label>`;
+    const numberRow = (key, title, detail, value, min, max) => `<label class="rp-set-row"><span class="rp-set-text"><strong>${esc(title)}</strong>${detail ? `<small>${esc(detail)}</small>` : ''}</span><input type="number" class="text_pole" style="width:5em;flex:none" data-facts-setting="${key}" min="${min}" max="${max}" step="1" value="${esc(value)}"></label>`;
     const field = (name, label, value, { rows = 2, hint = '' } = {}) => `<label class="rp-edit-field"><span>${esc(label)}${hint ? ` <small>${esc(hint)}</small>` : ''}</span><textarea rows="${rows}" data-facts-field="${esc(name)}" spellcheck="false">${esc(value || '')}</textarea></label>`;
     const when = value => value ? new Date(value).toLocaleString() : '';
     const triggerLabel = { facts: '自动整理', manual: '手动整理', review: '审阅后应用', user: '你的修改', import: '导入' };
 
     function renderStatus(state, facts) {
-        const pending = controller.stagesToIntegrate(state).length;
+        const pending = controller.pendingSummaries(state).length;
+        const every = facts.settings.everySummaries;
         const queued = (state.taskQueue || []).filter(task => task.kind === 'facts' && ['queued', 'running'].includes(task.status)).length;
         const held = (state.drafts || []).filter(draft => draft.kind === 'facts').length;
         const total = facts.cards.filter(card => card.status === 'active').length;
         const lines = [];
-        if (!facts.settings.enabled) lines.push('还没开始记录。打开后，每保存一个阶段总结，插件会把这段剧情里的人物、关系、物品和线索整理成卡片。');
+        if (!facts.settings.enabled) lines.push(`还没开始记录。打开后，每攒够 ${every} 条剧情摘要，插件会把这段剧情里的人物、关系、物品和线索整理成卡片；聊天空闲时也会把剩下的整理掉。`);
         else {
             lines.push(`${total} 张卡片${facts.lastRunAt ? ` · 上次整理 ${when(facts.lastRunAt)}` : ' · 还没整理过'}`);
-            lines.push(held ? `${held} 个整理结果在"待确认"等你看` : queued ? `${queued} 个整理任务在队列里` : pending ? `${pending} 个阶段总结还没整理` : facts.settings.auto ? '保存新的阶段总结后会自动整理' : '自动整理已关，需要时点"整理事实"');
+            lines.push(held ? `${held} 个整理结果在"待确认"等你看` : queued ? `${queued} 个整理任务在队列里`
+                : pending ? `${pending} 条摘要还没整理${facts.settings.auto ? `，攒够 ${every} 条自动整理${facts.settings.idleMinutes ? `，空闲 ${facts.settings.idleMinutes} 分钟也会整理` : ''}` : ''}`
+                : facts.settings.auto ? `摘要都整理过了，攒够 ${every} 条新摘要再整理` : '自动整理已关，需要时点"整理事实"');
         }
         const latest = [...facts.history].reverse().find(item => !item.undone && item.trigger !== 'user');
         return `<section class="rp-overview"><p class="rp-note">${lines.map(esc).join('<br>')}</p>
             <div class="rp-set-list">${switchRow('enabled', '记录剧情事实', '关掉后不再整理，也不注入；已有卡片保留', facts.settings.enabled)}
-            ${switchRow('auto', '自动整理', '每保存一个阶段总结整理一次，每次 1 次请求', facts.settings.auto)}
+            ${switchRow('auto', '自动整理', '攒够一批摘要就整理一次，每次 1 次请求', facts.settings.auto)}
+            ${numberRow('everySummaries', '每攒几条摘要整理一次', '越小越新鲜、请求越多；最新一楼会等下一条消息后再算', facts.settings.everySummaries, 1, 50)}
+            ${numberRow('idleMinutes', '空闲几分钟后把剩下的整理掉', '0 表示不按空闲整理', facts.settings.idleMinutes, 0, 240)}
             ${switchRow('review', '先审再用', '整理结果先进"待确认"，看过改了什么再应用', facts.settings.review)}
             ${switchRow('injectReflection', '把主线与伏笔一起注入', '卡片之外，再给模型一段当前主线和未回收的伏笔', facts.settings.injectReflection)}</div>
-            <div class="rp-controls">${button('run', pending ? `整理事实（${pending} 个阶段）` : '整理事实', facts.settings.enabled && pending && !queued ? '' : 'disabled', true)}<span class="rp-cost is-paid">每个阶段 +1 次请求</span>${latest ? button('undo', '撤回上一次整理') : ''}</div>
+            <div class="rp-controls">${button('run', pending ? `整理事实（${pending} 条摘要）` : '整理事实', facts.settings.enabled && pending && !queued ? '' : 'disabled', true)}<span class="rp-cost is-paid">+1 次请求</span>${latest ? button('undo', '撤回上一次整理') : ''}</div>
             ${renderImport(state, facts)}
             ${latest ? `<p class="rp-note">上一次整理：${esc(when(latest.at))}，${esc(summarizeFactsChanges(latest))}${latest.warnings?.length ? `；${esc(latest.warnings.slice(0, 2).join('；'))}` : ''}</p>` : ''}
             </section>`;
@@ -43,7 +49,7 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         const imported = facts.history.some(entry => entry.trigger === 'import' && !entry.undone);
         const what = [legacy.people ? `剧情状态 ${legacy.people} 个人物` : '', legacy.rows ? `表格 ${legacy.rows} 行` : ''].filter(Boolean).join('、');
         return `<div class="rp-controls">${button('import', imported ? '再次导入以前的数据' : '从剧情状态和表格导入')}<span class="rp-cost is-free">不花钱</span></div>
-            <p class="rp-note">这个聊天还有以前记下的${esc(what)}。导入只补充卡片，不动原数据；导入后对最近的阶段整理一次，卡片会更顺。</p>`;
+            <p class="rp-note">这个聊天还有以前记下的${esc(what)}。导入只补充卡片，不动原数据；导入后点一次“整理事实”，卡片会更顺。</p>`;
     }
 
     function renderReflection(facts) {
@@ -198,7 +204,7 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         root.addEventListener('change', event => {
             const input = event.target.closest('[data-facts-setting]');
             if (!input) return;
-            controller.updateSettings({ [input.dataset.factsSetting]: input.checked });
+            controller.updateSettings({ [input.dataset.factsSetting]: input.type === 'number' ? Number(input.value) : input.checked });
             render(getState());
         });
     }

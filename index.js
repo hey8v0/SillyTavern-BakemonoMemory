@@ -1503,6 +1503,7 @@ const turnSummaryUi = createTurnSummaryUi({
 const { render: renderTurnSummaryPanel } = turnSummaryUi;
 
 const hubAutomationUi = createHubAutomationUi({
+    getFactsPending: state => ({ pending: factsController.pendingSummaries(state).length, every: factsController.facts(state).settings.everySummaries }),
     getAutoStageTargets,
     getIsBusy: () => isBusy,
     documentRef: document,
@@ -1841,6 +1842,8 @@ const {
 } = turnProcessingController;
 
 const memoryOrchestrator = createMemoryOrchestrator({
+    noteFactsActivity: () => factsController.noteActivity(),
+    consolidateFacts: () => factsController.maybeRun({ trigger: 'auto' }),
     isChatReady,
     ensureState,
     isBusy: () => isBusy,
@@ -1940,6 +1943,8 @@ const {
 
 const factsController = createFactsController({
     getState: ensureState,
+    getChat: () => chat,
+    isChatReady,
     saveState,
     enqueueSummaryTask,
     blockTypes,

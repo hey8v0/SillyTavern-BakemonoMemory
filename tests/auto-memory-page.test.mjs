@@ -52,19 +52,20 @@ test('自动与数据 frames say each tool’s state and colour it', async () =>
         tableDatabase: { enabled: false, tables: [{ rows: [[1], [2]] }], editDrafts: [{ operations: [{}] }], history: [] },
         vectorMemory: { enabled: true, dirty: false, records: [{ messageId: 1 }, { messageId: 2 }], lastHits: [{}, {}] },
         drafts: [{ id: 'x' }], scanRules: {}, autoHideRecent: { enabled: true, preserveRecent: 3 },
-        facts: { settings: { enabled: true }, cards: [{ status: 'active' }, { status: 'retired' }], doneStages: ['s1'] }, stageSummaries: [{ hash: 's1' }, { hash: 's2' }],
+        facts: { settings: { enabled: true }, cards: [{ status: 'active' }, { status: 'retired' }] },
     };
     const ui = createHubAutomationUi({ query, getState: () => state, documentRef: { getElementById: () => null, querySelectorAll: () => [] },
         getCurrentFloorMemoryIndex: () => ({ aggregates: { pendingDraftCount: 1, total: 2 }, latest: { id: 2, summaryState: 'saved' }, records: [] }),
         getStageMaterialOverview: () => ({ targets: Array.from({ length: 7 }, (_, i) => ({ hash: `b${i}`, content: '摘要' })), issues: [] }),
         getInjectionHeaderStatus: () => ({ short: '注入 1,000 字' }), getAppearanceSettings: () => ({}), getActiveGlobalConfig: () => null,
-        getPromptPresets: () => [], getSelectedPromptPresetId: () => '', defaultAutomation: { triggerType: 'floors', floorInterval: 10 }, defaultScanRules: { mode: 'tags' } });
+        getPromptPresets: () => [], getSelectedPromptPresetId: () => '', defaultAutomation: { triggerType: 'floors', floorInterval: 10 }, defaultScanRules: { mode: 'tags' },
+        getFactsPending: () => ({ pending: 2, every: 6 }) });
     ui.renderHubPanels();
     assert.equal(texts.get('#bakemono-memory-data-hub-title'), '1 条内容待确认');
     assert.equal(texts.get('#bakemono-memory-data-hub-turn-line'), '第 2 楼已记好');
     assert.equal(texts.get('#bakemono-memory-data-hub-auto-line'), '再攒 3 条摘要就整理成下一章');
     assert.equal(texts.get('#bakemono-memory-data-hub-facts-line'), '1 张卡片');
-    assert.equal(texts.get('#bakemono-memory-data-hub-facts-copy'), '1 个阶段还没整理');
+    assert.equal(texts.get('#bakemono-memory-data-hub-facts-copy'), '2 条摘要待整理 · 攒够 6 条自动整理');
     assert.equal(texts.get('#bakemono-memory-data-hub-vector-line'), '2 楼都已建索引');
     assert.deepEqual(['turn', 'auto', 'facts', 'vector'].map(key => tones.get(`[data-hub-frame="${key}"]`)), ['ok', 'wait', 'wait', 'ok']);
     assert.equal(texts.get('#bakemono-memory-settings-hub-archive'), '自动 · 保留 3 楼');

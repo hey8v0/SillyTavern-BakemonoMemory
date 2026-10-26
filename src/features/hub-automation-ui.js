@@ -19,6 +19,7 @@ export function createHubAutomationUi({
     getStageSourceModeLabel,
     defaultAutomation,
     defaultScanRules,
+    getFactsPending = () => ({ pending: 0, every: 6 }),
     describeSummary,
     escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]),
 }) {
@@ -98,16 +99,14 @@ export function createHubAutomationUi({
         // 剧情事实: cards so far, and how many saved stages are still to be integrated.
         const facts = state.facts || {};
         const factCards = (facts.cards || []).filter(card => card.status === 'active').length;
-        const stageHashes = (state.stageSummaries || []).map(stage => stage.hash);
-        const integrated = stageHashes.filter(hash => (facts.doneStages || []).includes(hash)).length;
-        const factsPending = stageHashes.length - integrated;
+        const { pending: factsPending, every: factsEvery } = getFactsPending(state);
         const factsQueued = (state.taskQueue || []).some(task => task.kind === 'facts' && ['queued', 'running'].includes(task.status));
         const factsHeld = (state.drafts || []).some(draft => draft.kind === 'facts');
         setFrame('facts', {
             line: factCards ? `${factCards} 张卡片` : facts.settings?.enabled ? '还没有卡片' : '没开',
-            copy: !facts.settings?.enabled ? '打开后按阶段整理人物、关系和线索' : factsHeld ? '整理结果等你确认' : factsQueued ? '正在整理' : factsPending ? `${factsPending} 个阶段还没整理` : stageHashes.length ? '所有阶段都整理过了' : '保存阶段总结后开始整理',
-            bar: stageHashes.length ? integrated / stageHashes.length * 100 : 0,
-            state: !facts.settings?.enabled ? '没开' : factsHeld ? '要处理' : factsQueued || factsPending ? '在整理' : '正常',
+            copy: !facts.settings?.enabled ? '打开后按摘要整理人物、关系和线索' : factsHeld ? '整理结果等你确认' : factsQueued ? '正在整理' : factsPending ? `${factsPending} 条摘要待整理 · 攒够 ${factsEvery} 条自动整理` : '摘要都整理过了',
+            bar: Math.min(100, factsPending / Math.max(1, factsEvery) * 100),
+            state: !facts.settings?.enabled ? '没开' : factsHeld ? '要处理' : factsQueued ? '在整理' : factsPending ? '在攒' : '正常',
             tone: !facts.settings?.enabled ? 'off' : factsHeld ? 'alert' : factsQueued || factsPending ? 'wait' : 'ok',
         });
 
