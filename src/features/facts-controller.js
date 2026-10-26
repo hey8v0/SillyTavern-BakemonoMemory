@@ -1,4 +1,4 @@
-import { applyFactsUpdate, createCard, editCard, mergeCards, normalizeFacts, pruneIntegrated, removeCard, undoFactsUpdate } from '../facts/model.js';
+import { applyFactsUpdate, createCard, editCard, mergeCards, normalizeFacts, pruneIntegrated, removeCard, resolveConflict as settleConflict, undoFactsUpdate } from '../facts/model.js';
 import { parseFactCards } from '../facts/parser.js';
 import { summarizeFactsChanges } from '../facts/diff.js';
 import { buildLegacyImport, importCards } from '../facts/migration.js';
@@ -399,6 +399,15 @@ export function createFactsController({
         if (removed) afterCardChange(`已删除「${card.name}」。`);
         return removed;
     }
+    function openConflicts(state = getState()) {
+        return (facts(state).conflicts || []).filter(item => item.status === 'open');
+    }
+    // 采用材料 / 保留现状 for one conflict the model left to the user.
+    function resolveConflict(conflictId, choice) {
+        const conflict = settleConflict(facts(getState()), conflictId, choice, now());
+        if (conflict) afterCardChange(choice === 'accept' ? `已采用材料的说法：「${conflict.name}」的${conflict.field}。` : `已保留「${conflict.name}」的现状。`);
+        return conflict;
+    }
     function cardHistory(cardId, state = getState()) {
         return [...facts(state).history].reverse().filter(entry => entry.changes?.some(change => change.cardId === cardId))
             .map(entry => ({ ...entry, changes: entry.changes.filter(change => change.cardId === cardId) }));
@@ -442,5 +451,6 @@ export function createFactsController({
     }
 
     return { facts, pendingSummaries, enqueueBatch, runBatch, maybeRun, noteActivity, resume, onSummaryCommitted, runManual, handleTaskResult, previewUpdate, applyDraft, discardDraft,
-        undoLast, updateSettings, saveCard, addCard, mergeInto, deleteCard, cardHistory, legacySummary, importLegacy, sourceSignature, blockedBatch, chatShorterThanProgress };
+        undoLast, updateSettings, saveCard, addCard, mergeInto, deleteCard, cardHistory, legacySummary, importLegacy, sourceSignature, blockedBatch, chatShorterThanProgress,
+        openConflicts, resolveConflict };
 }

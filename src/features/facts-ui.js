@@ -56,6 +56,13 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
             <p class="rp-note">这个聊天还有以前记下的${esc(what)}。导入只补充卡片，不动原数据；导入后点一次“整理事实”，卡片会更顺。</p>`;
     }
 
+    // What the model could not settle: the card's current value against what the material said; the user picks.
+    function renderConflicts(state) {
+        const open = controller.openConflicts?.(state) || [];
+        if (!open.length) return '';
+        return `<section class="rp-set-group"><span class="rp-label">待裁决 · ${open.length}</span><p class="rp-note">整理时材料和卡片对不上，模型没有改动，等你决定。</p>${open.map(item => `<div class="rp-event" data-facts-conflict="${esc(item.id)}"><div class="rp-row-main"><strong>${esc(item.name)} · ${esc(item.field)}</strong><small>现在：${esc(item.current || '（空）')}</small><small>材料：${esc(item.says)}</small></div><div class="rp-controls">${item.field === '身份' ? '' : link('conflict-accept', '采用材料')}${link('conflict-dismiss', item.field === '身份' ? '知道了' : '保留现状')}</div></div>`).join('')}</section>`;
+    }
+
     function renderReflection(facts) {
         const parts = [['mainline', '主线'], ['threads', '伏笔与约定'], ['arcs', '人物弧线']].filter(([key]) => facts.reflection[key]);
         if (!parts.length) return '';
@@ -139,7 +146,7 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         const facts = controller.facts(state);
         const current = nav(state);
         const views = `<nav class="rp-index" aria-label="视图"><button type="button" data-facts-action="view" data-facts-view="cards" aria-pressed="${current.view === 'cards'}">卡片</button><span class="rp-index-sep" aria-hidden="true">/</span><button type="button" data-facts-action="view" data-facts-view="history" aria-pressed="${current.view === 'history'}">变化<span class="rp-count">${facts.history.length}</span></button></nav>`;
-        root.innerHTML = renderStatus(state, facts) + renderReflection(facts) + views + (current.view === 'history' ? renderHistory(state, facts) : renderCards(state, facts));
+        root.innerHTML = renderStatus(state, facts) + renderConflicts(state) + renderReflection(facts) + views + (current.view === 'history' ? renderHistory(state, facts) : renderCards(state, facts));
     }
 
     function readForm(form) {
@@ -164,6 +171,10 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
             else if (action === 'view') { current.view = target.dataset.factsView || 'cards'; show(); }
             else if (action === 'run') { target.disabled = true; await controller.runManual(); refresh(); }
             else if (action === 'undo') { await controller.undoLast(); refresh(); }
+            else if (action === 'conflict-accept' || action === 'conflict-dismiss') {
+                controller.resolveConflict(target.closest('[data-facts-conflict]')?.dataset.factsConflict, action === 'conflict-accept' ? 'accept' : 'dismiss');
+                show();
+            }
             else if (action === 'import') { target.disabled = true; await controller.importLegacy(); render(getState()); }
             else if (action === 'add') { current.adding = target.dataset.factsKind; show(); }
             else if (action === 'add-cancel') { current.adding = null; show(); }

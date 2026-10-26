@@ -16,7 +16,7 @@ export function renderFactsChanges(entry, esc = value => String(value ?? '')) {
     const changes = entry?.changes || [];
     const parts = changes.map(change => {
         const { verb, fields } = describeChange(change);
-        const rows = fields.map(({ key, before, after }) => `<div class="rp-event"><div class="rp-row-main"><strong>${esc(key)}</strong>${before ? `<small class="rp-diff-before">${esc(before)}</small>` : ''}<small>${esc(after)}</small></div></div>`).join('');
+        const rows = fields.map(({ key, before, after }) => `<div class="rp-event"><div class="rp-row-main"><strong>${esc(key)}</strong>${before ? `<small class="rp-diff-before">${esc(before)}</small>` : ''}<small>${after ? esc(after) : '（已清除）'}</small></div></div>`).join('');
         const kept = change.kept?.length ? `<p class="rp-note">保留了你改过的：${esc(change.kept.join('、'))}</p>` : '';
         return `<section class="rp-entry-sec"><h4><span class="rp-verb">${esc(verb)}</span> ${esc(factKindLabels[change.kind] || change.kind)} · ${esc(change.name)}</h4>${rows}${kept}</section>`;
     });
@@ -35,6 +35,7 @@ export function summarizeFactsChanges(entry) {
     const created = changes.filter(change => change.created).length;
     const retired = changes.filter(change => change.statusAfter === 'retired' && change.statusBefore !== 'retired').length;
     const edited = changes.length - created - retired;
-    const bits = [created ? `新建 ${created} 张` : '', edited ? `修改 ${edited} 张` : '', retired ? `结束 ${retired} 张` : '', entry?.reflectionAfter ? '反思更新' : ''].filter(Boolean);
+    const bits = [created ? `新建 ${created} 张` : '', edited ? `修改 ${edited} 张` : '', retired ? `结束 ${retired} 张` : '', entry?.reflectionAfter ? '反思更新' : '',
+        entry?.conflicts?.length ? `${entry.conflicts.length} 处待裁决` : ''].filter(Boolean);
     return bits.join('，') || '没有变化';
 }

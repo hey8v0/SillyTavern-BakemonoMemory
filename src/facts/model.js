@@ -38,7 +38,7 @@ export function createDefaultFactSettings() {
 
 export function createDefaultFacts() {
     return { version: 1, revision: 0, cards: [], reflection: { mainline: '', threads: '', arcs: '', updatedAt: null },
-        history: [], doneStages: [], settings: createDefaultFactSettings(), lastRunAt: null, lastIntegratedFloor: -1, integrated: {}, lastActivityAt: null };
+        history: [], doneStages: [], settings: createDefaultFactSettings(), lastRunAt: null, lastIntegratedFloor: -1, integrated: {}, lastActivityAt: null, conflicts: [] };
 }
 
 const text = (value, max = 4000) => String(value ?? '').replace(/\r\n/g, '\n').trim().slice(0, max);
@@ -103,6 +103,9 @@ export function normalizeFacts(value) {
             : null,
         // When the last message was sent or received, for the idle check after a reload or a return to the foreground.
         lastActivityAt: typeof source.lastActivityAt === 'string' ? source.lastActivityAt : null,
+        // What the model could not settle, for the user to pick (see addConflict).
+        conflicts: (Array.isArray(source.conflicts) ? source.conflicts : []).filter(item => item && typeof item === 'object' && typeof item.id === 'string')
+            .map(item => ({ ...item, status: ['open', 'accepted', 'dismissed'].includes(item.status) ? item.status : 'open' })).slice(-40),
     };
 }
 
@@ -120,11 +123,37 @@ export function cardMatchesName(card, name) {
     return !!key && (normalizeName(card.name) === key || card.aliases.some(alias => normalizeName(alias) === key));
 }
 
-// A name names one card. Same kind first; a card of another kind with that name is still the same thing
-// (the model may call a 约定 a thread one time and a rule the next), and keeps its kind.
+// Kinds that name the same sort of thing: a 约定 the model calls a thread one time and a rule the next is one card.
+// A person, a place and an item with the same name are three.
+const kindGroup = { person: 'person', relationship: 'relationship', place: 'place', item: 'item', thread: 'thread', rule: 'thread', note: 'note' };
+export function findCards(cards, name, kind = null) {
+    const group = kind ? kindGroup[kind] : null;
+    return cards.filter(card => cardMatchesName(card, name) && (!group || kindGroup[card.kind] === group));
+}
+// A name names one card within its kind's group; without a kind, any card of that name.
 export function findCard(cards, name, kind = null) {
-    const matches = cards.filter(card => cardMatchesName(card, name));
+    const matches = findCards(cards, name, kind);
     return matches.find(card => card.kind === kind) || matches.find(card => card.status === 'active') || matches[0] || null;
+}
+
+// Fields that state what is the case now. Anything a character says, believes or guesses goes to the note field
+// instead, marked, so the model sees it as hearsay and the current state is not rewritten by it.
+export const currentStateFields = Object.freeze({ person: ['处境', '目标', '持有'], item: ['持有者'], relationship: ['当前关系'], thread: ['状态'], place: ['常在此处'] });
+export const noteFieldOf = Object.freeze({ person: '备注', item: '描述', relationship: '态度', thread: '内容', place: '描述', rule: '说明', note: '内容' });
+export const hearsayMarker = /【(?:声称|猜测|传闻|已推翻)】|【[^】\n]{1,12}认为】/;
+const clearMarker = /^【?清除】?$/;
+const appendLine = (base, line) => !line ? base : String(base || '').includes(line) ? base : base ? `${base}\n${line}` : line;
+
+// Something the model could not settle: the material contradicts a card and it cannot tell which is right, or one
+// name may be two things. Kept open until the user picks; the card is not changed meanwhile.
+function addConflict(facts, data, { now, taskId = null, floorTo = null }) {
+    facts.conflicts ||= [];
+    const same = facts.conflicts.find(item => item.status === 'open' && item.cardId === data.cardId && item.field === data.field && item.says === data.says);
+    if (same) return null;
+    const conflict = { id: `conflict-${getHash(`${now}|${data.cardId}|${data.field}|${data.says}|${facts.conflicts.length}`)}`, ...data, at: now, taskId, floorTo, status: 'open' };
+    facts.conflicts.push(conflict);
+    facts.conflicts = facts.conflicts.slice(-40);
+    return conflict;
 }
 
 const occurrences = (haystack, needle) => {
@@ -147,13 +176,17 @@ export function selectRelevantCards(cards, textValue, { max = 40, includeNotes =
     return scored.filter(item => item.score > 0).sort((a, b) => b.score - a.score).slice(0, Math.max(1, max)).map(item => item.card);
 }
 
+// Incoming field values: a string replaces, null (or 【清除】) clears, an omitted or empty one keeps.
 const cleanIncoming = (kind, fields) => {
-    const result = {};
+    const set = {}, clear = [];
     for (const key of factFields[kind]) {
-        const value = text(fields?.[key]);
-        if (value) result[key] = value;
+        const raw = fields?.[key];
+        if (raw === null) { clear.push(key); continue; }
+        const value = text(raw);
+        if (clearMarker.test(value)) clear.push(key);
+        else if (value) set[key] = value;
     }
-    return result;
+    return { set, clear };
 };
 
 // Writes one 整理事实 result into the cards. Fields the model leaves out or empties are unchanged (省略=保持);
@@ -163,20 +196,39 @@ const cleanIncoming = (kind, fields) => {
 // anything, so "checked" and "changed" are both on record. Null only when there was nothing at all to record.
 export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash = null, taskId = null, floorTo = null, sources = [], now = new Date().toISOString(), overrideUser = false } = {}) {
     const floorBefore = facts.lastIntegratedFloor ?? -1;
-    const changes = [], warnings = [];
+    const changes = [], warnings = [], conflictIds = [];
     const touched = new Set();
+    const conflict = data => { const made = addConflict(facts, data, { now, taskId, floorTo }); if (made) conflictIds.push(made.id); };
     (Array.isArray(parsed?.cards) ? parsed.cards : []).forEach((incoming, index) => {
         const name = text(incoming?.name, 200);
         const kind = factKinds.includes(incoming?.kind) ? incoming.kind : null;
         if (!name) { warnings.push(`第 ${index + 1} 张卡没有名字，已跳过`); return; }
         if (kind === 'note') { warnings.push(`「${name}」是便签，模型不能修改，已跳过`); return; }
         const aliases = (Array.isArray(incoming.aliases) ? incoming.aliases : []).map(alias => text(alias, 200)).filter(Boolean);
-        // The model may lead with a new spelling and give the recorded name as an alias.
-        let card = findCard(facts.cards, name) || aliases.map(alias => findCard(facts.cards, alias)).find(Boolean) || null;
+        // The model may lead with a new spelling and give the recorded name as an alias. A name (or the names
+        // together) that could mean two cards is not guessed at: the cards stay and the user decides.
+        const candidates = [...new Set([name, ...aliases].flatMap(value => findCards(facts.cards, value, kind)))];
+        if (candidates.length > 1) {
+            const names = candidates.map(item => item.name);
+            warnings.push(`「${name}」可能指 ${names.join('、')} 中的哪一个不明确，没有改动`);
+            conflict({ cardId: candidates[0].id, name: candidates[0].name, kind: candidates[0].kind, field: '身份', current: names.join(' / '),
+                says: `材料里的「${name}」${aliases.length ? `（别名 ${aliases.join('、')}）` : ''}同时对上了 ${names.join(' 和 ')}，可能是同一个，也可能不是` });
+            return;
+        }
+        let card = candidates[0] || null;
         if (!card && !kind) { warnings.push(`「${name}」类型不明（${String(incoming?.kind || '')}），已跳过`); return; }
         if (card?.kind === 'note') { warnings.push(`「${name}」是便签，模型不能修改，已跳过`); return; }
         if (card && touched.has(card.id)) return;
-        const fields = cleanIncoming(card?.kind || kind, incoming.fields);
+        const targetKind = card?.kind || kind;
+        const { set: fields, clear } = cleanIncoming(targetKind, incoming.fields);
+        // Hearsay in a current-state field moves to the note field, marked as it came.
+        const note = noteFieldOf[targetKind];
+        for (const key of currentStateFields[targetKind] || []) {
+            if (!fields[key] || !hearsayMarker.test(fields[key]) || !note || key === note) continue;
+            fields[note] = appendLine(fields[note] ?? card?.fields[note] ?? '', fields[key]);
+            delete fields[key];
+            warnings.push(`「${name}」的${key}写的是传闻或猜测，已移到${note}`);
+        }
         if (!card) {
             if (!Object.keys(fields).length) { warnings.push(`「${name}」没有任何内容，已跳过`); return; }
             card = normalizeCard({ id: `fact-${getHash(`${kind}|${name}|${now}|${index}`)}`, kind, name, aliases, fields, updatedAt: now, sourceStage: stageHash }, index);
@@ -191,6 +243,11 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
         for (const [key, value] of Object.entries(fields)) {
             if (!overrideUser && card.userFields.includes(key) && card.fields[key] && card.fields[key] !== value) { kept.push(key); continue; }
             after[key] = value;
+        }
+        for (const key of clear) {
+            if (!card.fields[key]) continue;
+            if (!overrideUser && card.userFields.includes(key)) { kept.push(key); continue; }
+            after[key] = '';
         }
         const statusBefore = card.status;
         // A new spelling the model led with becomes an alias; the recorded name stays the name.
@@ -215,6 +272,14 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
         touched.add(card.id);
         changes.push({ cardId: card.id, kind: card.kind, name: card.name, created: false, before: { ...card.fields }, after: { ...card.fields }, statusBefore: 'active', statusAfter: 'retired', kept: [], metaBefore });
     }
+    for (const raw of Array.isArray(parsed?.conflicts) ? parsed.conflicts : []) {
+        const name = text(raw?.name, 200), field = text(raw?.field, 50), says = text(raw?.says, 1000);
+        if (!name || !says) continue;
+        const card = findCard(facts.cards, name);
+        if (!card) { warnings.push(`冲突里的「${name}」没有对应的卡片，已跳过`); continue; }
+        const key = factFields[card.kind].includes(field) ? field : noteFieldOf[card.kind];
+        conflict({ cardId: card.id, name: card.name, kind: card.kind, field: key, current: card.fields[key] || '', says });
+    }
     const reflectionBefore = { ...facts.reflection };
     const incomingReflection = parsed?.reflection && typeof parsed.reflection === 'object' ? parsed.reflection : {};
     let reflectionChanged = false;
@@ -232,10 +297,10 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
         for (const source of read) facts.integrated[source.hash] = source.revision;
     }
     facts.lastRunAt = now;
-    if (!changes.length && !reflectionChanged && !read.length && !stageHash) return null;
+    if (!changes.length && !reflectionChanged && !read.length && !stageHash && !conflictIds.length) return null;
     facts.revision += 1;
     const entry = { id: `facts-${getHash(`${now}|${facts.revision}|${stageHash || ''}`)}`, at: now, trigger, stageHash, taskId, changes,
-        floorBefore, floorTo: Number.isInteger(floorTo) ? floorTo : null, sources: read,
+        floorBefore, floorTo: Number.isInteger(floorTo) ? floorTo : null, sources: read, conflicts: conflictIds,
         reflectionBefore, reflectionAfter: reflectionChanged ? { ...facts.reflection } : null, warnings, undone: false };
     facts.history.push(entry);
     facts.history = facts.history.slice(-60);
@@ -268,10 +333,24 @@ export function undoFactsUpdate(facts, entryId = null, now = new Date().toISOStr
     if (entry.stageHash) facts.doneStages = facts.doneStages.filter(hash => hash !== entry.stageHash);
     if (Number.isInteger(entry.floorBefore) && entry.floorTo != null) facts.lastIntegratedFloor = entry.floorBefore;
     if (facts.integrated) for (const source of entry.sources || []) delete facts.integrated[source.hash];
+    if (entry.conflicts?.length) facts.conflicts = (facts.conflicts || []).filter(item => !entry.conflicts.includes(item.id));
     entry.undone = true;
     entry.undoneAt = now;
     facts.revision += 1;
     return entry;
+}
+
+// The user settles a conflict: `accept` writes what the material said into the field (protected like an edit);
+// `dismiss` keeps the card. An identity conflict (field 身份) has nothing to write and is only closed.
+export function resolveConflict(facts, conflictId, choice, now = new Date().toISOString()) {
+    const conflict = (facts.conflicts || []).find(item => item.id === conflictId);
+    if (!conflict || conflict.status !== 'open') return null;
+    const card = facts.cards.find(item => item.id === conflict.cardId);
+    if (choice === 'accept' && card && factFields[card.kind].includes(conflict.field)) editCard(facts, card.id, { fields: { [conflict.field]: conflict.says } }, now);
+    conflict.status = choice === 'accept' ? 'accepted' : 'dismissed';
+    conflict.resolvedAt = now;
+    facts.revision += 1;
+    return conflict;
 }
 
 // A user edit of one card: fields are the new values; a changed field is protected from later 整理.
