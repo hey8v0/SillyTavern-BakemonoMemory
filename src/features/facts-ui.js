@@ -1,5 +1,6 @@
 import { countCardsByKind, factFieldHints, factFields, factKindLabels, factKinds } from '../facts/model.js';
 import { renderFactsChanges, summarizeFactsChanges } from '../facts/diff.js';
+import { renderOpenThreads } from '../facts/injection.js';
 
 // 剧情事实 page: switches and the 整理 buttons, the reflection, then the cards (searchable, by kind, editable
 // in place) or the history of every 整理. Same film-slate classes as 剧情状态.
@@ -64,9 +65,10 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
     }
 
     function renderReflection(facts) {
-        const parts = [['mainline', '主线'], ['threads', '伏笔与约定'], ['arcs', '人物弧线']].filter(([key]) => facts.reflection[key]);
+        const threads = facts.cards.some(card => card.kind === 'thread') ? renderOpenThreads(facts.cards) : facts.reflection.threads;
+        const parts = [['主线', facts.reflection.mainline], ['伏笔与约定', threads], ['人物弧线', facts.reflection.arcs]].filter(([, value]) => value);
         if (!parts.length) return '';
-        return `<section class="rp-set-group"><span class="rp-label">反思 · REFLECTION</span>${parts.map(([key, label]) => `<h4>${esc(label)}</h4><p>${esc(facts.reflection[key])}</p>`).join('')}</section>`;
+        return `<section class="rp-set-group"><span class="rp-label">反思 · REFLECTION</span>${parts.map(([label, value]) => `<h4>${esc(label)}</h4><p>${esc(value)}</p>`).join('')}</section>`;
     }
 
     function matches(card, search) {
@@ -110,6 +112,7 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         else {
             const history = controller.cardHistory(card.id, state).slice(0, 5);
             body = `${fields.map(key => `<h4>${esc(key)}${card.userFields.includes(key) ? ' <small>你改过</small>' : ''}</h4><p>${esc(card.fields[key])}</p>`).join('') || '<p class="rp-note">还没有内容</p>'}
+                ${card.timeline?.length ? `<h4>经过</h4>${[...card.timeline].reverse().map(item => `<p class="rp-note">${item.floor != null ? `第 ${item.floor} 楼 · ` : ''}${esc(item.field === '已结束' ? '已结束' : `${item.field}：${item.from || '（空）'} → ${item.to || '（清空）'}`)}</p>`).join('')}` : ''}
                 ${card.aliases.length ? `<p class="rp-note">别名：${esc(card.aliases.join('、'))}</p>` : ''}
                 <p class="rp-note">${esc(triggerLabel[card.updatedBy] || '整理')}于 ${esc(when(card.updatedAt) || '未知')}${retired ? ' · 已结束，不再注入' : card.pinned ? ' · 固定注入' : ''}</p>
                 <div class="rp-controls">${link('edit', '编辑')}${link('pin', card.pinned ? '取消固定' : '固定注入')}${link(retired ? 'restore' : 'retire', retired ? '恢复' : '标记结束')}${link('merge', '合并到…')}${link('delete', '删除')}</div>

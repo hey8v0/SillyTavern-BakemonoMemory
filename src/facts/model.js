@@ -38,7 +38,7 @@ export function createDefaultFactSettings() {
 
 export function createDefaultFacts() {
     return { version: 1, revision: 0, cards: [], reflection: { mainline: '', threads: '', arcs: '', updatedAt: null },
-        history: [], doneStages: [], settings: createDefaultFactSettings(), lastRunAt: null, lastIntegratedFloor: -1, integrated: {}, lastActivityAt: null, conflicts: [] };
+        history: [], doneStages: [], settings: createDefaultFactSettings(), lastRunAt: null, lastIntegratedFloor: -1, integrated: {}, lastActivityAt: null, conflicts: [], timelineVersion: 1 };
 }
 
 const text = (value, max = 4000) => String(value ?? '').replace(/\r\n/g, '\n').trim().slice(0, max);
@@ -73,8 +73,50 @@ export function normalizeCard(value, index = 0) {
         updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : null,
         updatedBy: ['user', 'import', 'facts'].includes(value.updatedBy) ? value.updatedBy : 'facts',
         sourceStage: typeof value.sourceStage === 'string' ? value.sourceStage : null,
+        // Key transitions of this card (see recordTransition): where it was, who held it, how the relationship stood.
+        timeline: (Array.isArray(value.timeline) ? value.timeline : []).filter(item => item && typeof item === 'object' && typeof item.field === 'string')
+            .map(item => ({ field: item.field, from: text(item.from, 400), to: text(item.to, 400), floor: Number.isInteger(item.floor) ? item.floor : null,
+                at: typeof item.at === 'string' ? item.at : null, entryId: typeof item.entryId === 'string' ? item.entryId : null })).slice(-timelineCap),
     };
 }
+
+// The transitions worth keeping per card: the current-state fields changing from one value to another, and the
+// card ending. Capped; the oldest give way. The first value of a field is not a transition.
+export const timelineCap = 12;
+export function recordTransition(card, { field, from = '', to = '', floor = null, at = null, entryId = null }) {
+    if (field !== '已结束' && !from) return null;
+    const item = { field, from: text(from, 400), to: text(to, 400), floor: Number.isInteger(floor) ? floor : null, at, entryId };
+    card.timeline = [...(card.timeline || []), item].slice(-timelineCap);
+    return item;
+}
+const transitionFields = kind => currentStateFields[kind] || [];
+function recordChangeTransitions(card, change, { floor, at, entryId }) {
+    if (change.created) return;
+    for (const field of transitionFields(card.kind)) {
+        const from = change.before?.[field] || '', to = change.after?.[field] || '';
+        if (from !== to) recordTransition(card, { field, from, to, floor, at, entryId });
+    }
+    if (change.statusAfter === 'retired' && change.statusBefore !== 'retired') recordTransition(card, { field: '已结束', floor, at, entryId });
+}
+// Chats from before v1.36.0 have the diffs in their history but no timelines: build them once from what is there.
+export function seedTimelines(facts) {
+    if (facts.timelineVersion === 1) return 0;
+    let count = 0;
+    for (const entry of facts.history || []) {
+        if (entry.undone || entry.trigger === 'user') continue;
+        for (const change of entry.changes || []) {
+            const card = facts.cards.find(item => item.id === change.cardId);
+            if (!card) continue;
+            const before = card.timeline?.length || 0;
+            recordChangeTransitions(card, change, { floor: entry.floorTo ?? null, at: entry.at, entryId: entry.id });
+            count += (card.timeline?.length || 0) - before;
+        }
+    }
+    facts.timelineVersion = 1;
+    return count;
+}
+// A 线索 still standing: its 状态 does not say it ended.
+export const isOpenThread = card => card.kind === 'thread' && card.status === 'active' && !/已了|失效|完成|结束|放弃|作废|取消/.test(card.fields.状态 || '');
 
 export function normalizeFacts(value) {
     const defaults = createDefaultFacts();
@@ -106,6 +148,8 @@ export function normalizeFacts(value) {
         // What the model could not settle, for the user to pick (see addConflict).
         conflicts: (Array.isArray(source.conflicts) ? source.conflicts : []).filter(item => item && typeof item === 'object' && typeof item.id === 'string')
             .map(item => ({ ...item, status: ['open', 'accepted', 'dismissed'].includes(item.status) ? item.status : 'open' })).slice(-40),
+        // 0 = card timelines not built yet from the history (chats from before v1.36.0); seedTimelines sets 1.
+        timelineVersion: source.timelineVersion === 1 ? 1 : 0,
     };
 }
 
@@ -168,11 +212,12 @@ export function cardMentions(card, textValue) {
 }
 
 // Cards to send or inject for a piece of text: the ones it names, pinned ones, and open 线索. Notes are the
-// user's own guidance and come along too. Ordered by how often the text names them.
+// user's own guidance and come along too. A card that ended (a death, a closed 约定) comes only when the text
+// names it. Ordered by how often the text names them.
 export function selectRelevantCards(cards, textValue, { max = 40, includeNotes = true } = {}) {
-    const scored = cards.filter(card => card.status === 'active').map(card => ({ card,
-        score: cardMentions(card, textValue) + (card.pinned ? 1000 : 0) + (card.kind === 'thread' && !/已了|失效|完成|结束/.test(card.fields.状态) ? 100 : 0)
-            + (includeNotes && card.kind === 'note' ? 500 : 0) }));
+    const scored = cards.map(card => ({ card,
+        score: cardMentions(card, textValue) + (card.status !== 'active' ? 0
+            : (card.pinned ? 1000 : 0) + (isOpenThread(card) ? 100 : 0) + (includeNotes && card.kind === 'note' ? 500 : 0)) }));
     return scored.filter(item => item.score > 0).sort((a, b) => b.score - a.score).slice(0, Math.max(1, max)).map(item => item.card);
 }
 
@@ -197,6 +242,7 @@ const cleanIncoming = (kind, fields) => {
 export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash = null, taskId = null, floorTo = null, sources = [], now = new Date().toISOString(), overrideUser = false } = {}) {
     const floorBefore = facts.lastIntegratedFloor ?? -1;
     const changes = [], warnings = [], conflictIds = [];
+    const entryId = `facts-${getHash(`${now}|${(facts.revision || 0) + 1}|${stageHash || ''}`)}`;
     const touched = new Set();
     const conflict = data => { const made = addConflict(facts, data, { now, taskId, floorTo }); if (made) conflictIds.push(made.id); };
     (Array.isArray(parsed?.cards) ? parsed.cards : []).forEach((incoming, index) => {
@@ -265,7 +311,10 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
     });
     for (const name of Array.isArray(parsed?.retired) ? parsed.retired : []) {
         const card = findCard(facts.cards, text(name, 200));
-        if (!card || card.kind === 'note' || card.status === 'retired' || touched.has(card.id)) continue;
+        if (!card || card.kind === 'note' || card.status === 'retired') continue;
+        // The same result may give a card its last state and end it (a death with where it happened).
+        const same = changes.find(change => change.cardId === card.id);
+        if (same) { card.status = 'retired'; same.statusAfter = 'retired'; continue; }
         const metaBefore = { updatedAt: card.updatedAt, updatedBy: card.updatedBy, sourceStage: card.sourceStage, aliases: [...card.aliases] };
         card.status = 'retired';
         card.updatedAt = now;
@@ -299,7 +348,11 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
     facts.lastRunAt = now;
     if (!changes.length && !reflectionChanged && !read.length && !stageHash && !conflictIds.length) return null;
     facts.revision += 1;
-    const entry = { id: `facts-${getHash(`${now}|${facts.revision}|${stageHash || ''}`)}`, at: now, trigger, stageHash, taskId, changes,
+    for (const change of changes) {
+        const card = facts.cards.find(item => item.id === change.cardId);
+        if (card) recordChangeTransitions(card, change, { floor: Number.isInteger(floorTo) ? floorTo : null, at: now, entryId });
+    }
+    const entry = { id: entryId, at: now, trigger, stageHash, taskId, changes,
         floorBefore, floorTo: Number.isInteger(floorTo) ? floorTo : null, sources: read, conflicts: conflictIds,
         reflectionBefore, reflectionAfter: reflectionChanged ? { ...facts.reflection } : null, warnings, undone: false };
     facts.history.push(entry);
@@ -328,6 +381,7 @@ export function undoFactsUpdate(facts, entryId = null, now = new Date().toISOStr
         card.status = change.statusBefore || card.status;
         if (change.metaBefore && !editedSince) Object.assign(card, change.metaBefore, { aliases: [...change.metaBefore.aliases] });
         else if (!editedSince) card.updatedAt = now;
+        card.timeline = (card.timeline || []).filter(item => item.entryId !== entry.id);
     }
     if (entry.reflectionAfter) facts.reflection = { ...entry.reflectionBefore };
     if (entry.stageHash) facts.doneStages = facts.doneStages.filter(hash => hash !== entry.stageHash);
@@ -346,7 +400,14 @@ export function resolveConflict(facts, conflictId, choice, now = new Date().toIS
     const conflict = (facts.conflicts || []).find(item => item.id === conflictId);
     if (!conflict || conflict.status !== 'open') return null;
     const card = facts.cards.find(item => item.id === conflict.cardId);
-    if (choice === 'accept' && card && factFields[card.kind].includes(conflict.field)) editCard(facts, card.id, { fields: { [conflict.field]: conflict.says } }, now);
+    if (choice === 'accept' && card && factFields[card.kind].includes(conflict.field)) {
+        const from = card.fields[conflict.field] || '';
+        editCard(facts, card.id, { fields: { [conflict.field]: conflict.says } }, now);
+        // What the user accepted is a change in the story, not a correction: it counts as a transition.
+        if (transitionFields(card.kind).includes(conflict.field) && from !== card.fields[conflict.field]) {
+            recordTransition(card, { field: conflict.field, from, to: card.fields[conflict.field], floor: conflict.floorTo ?? null, at: now, entryId: facts.history.at(-1)?.id || null });
+        }
+    }
     conflict.status = choice === 'accept' ? 'accepted' : 'dismissed';
     conflict.resolvedAt = now;
     facts.revision += 1;

@@ -33,8 +33,9 @@ test('场景 2 事实变化：目标完成后 null 清空字段，省略或空�
     assert.deepEqual(describeChange(change).fields.map(field => [field.key, field.after]), [['目标', ''], ['备注', '曾经：寻找失踪的姐姐（第 40 楼找到）']]);
     assert.match(summarizeFactsChanges(entry), /修改 1 张/);
     const injected = renderFactsSection(facts, '林晚').text;
-    assert.doesNotMatch(injected, /目标 寻找失踪的姐姐/);
+    assert.doesNotMatch(injected, /(^|；)目标 寻找失踪的姐姐/, 'not as the current goal');
     assert.match(injected, /备注 曾经：寻找失踪的姐姐/);
+    assert.match(injected, /曾经：目标 寻找失踪的姐姐（到第 40 楼）/, 'but kept as a past one');
     undoFactsUpdate(facts, entry.id, at(2));
     assert.equal(findCard(facts.cards, '林晚').fields.目标, '寻找失踪的姐姐', 'undo brings a cleared field back');
     // The literal marker works too, and a user-edited field is not cleared.

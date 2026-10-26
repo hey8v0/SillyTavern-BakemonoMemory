@@ -1,4 +1,4 @@
-import { applyFactsUpdate, createCard, editCard, mergeCards, normalizeFacts, pruneIntegrated, removeCard, resolveConflict as settleConflict, undoFactsUpdate } from '../facts/model.js';
+import { applyFactsUpdate, createCard, editCard, mergeCards, normalizeFacts, pruneIntegrated, removeCard, resolveConflict as settleConflict, seedTimelines, undoFactsUpdate } from '../facts/model.js';
 import { parseFactCards } from '../facts/parser.js';
 import { summarizeFactsChanges } from '../facts/diff.js';
 import { buildLegacyImport, importCards } from '../facts/migration.js';
@@ -70,6 +70,8 @@ export function createFactsController({
                 for (const entry of summaryEntries(state)) if (entry.floorEnd <= current.lastIntegratedFloor) current.integrated[entry.item.hash] = entry.revision;
             }
         }
+        // Cards from before v1.36.0 get their 经过 from the history already there, once.
+        if (current.timelineVersion !== 1) seedTimelines(current);
         return current;
     }
 
