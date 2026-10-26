@@ -33,6 +33,7 @@ export function createOverviewTokenManifest({
         if (parts.rpMaintenance) ruleSections.push(parts.rpMaintenance);
         return {
             rpState: mainInjectionContent ? String(parts.sources?.rpState || '') : '',
+            facts: mainInjectionContent ? String(parts.sources?.facts || '') : '',
             summary: mainInjectionContent ? String(parts.sources?.summary || '') : '',
             memory: mainInjectionContent ? String(parts.sources?.memory || '') : '',
             table: mainInjectionContent ? String(parts.sources?.table || '') : '',
@@ -99,7 +100,7 @@ export function createOverviewTokenManifest({
     async function renderOverviewTokenManifest(state = getState()) {
         const revision = ++renderRevision;
         const sourceTexts = getOverviewInjectionSources(state);
-        const sourceKeys = ['rule', 'summary', 'memory', 'rpState', 'table', 'vector'];
+        const sourceKeys = ['rule', 'summary', 'memory', 'rpState', 'facts', 'table', 'vector'];
         const sourceCounts = await Promise.all(sourceKeys.map(key => getOverviewTokenCount(sourceTexts[key])));
         const lastPromptUsage = await getLastPromptUsage();
         if (revision !== renderRevision || getActiveTab() !== 'overview' || getState() !== state) return;

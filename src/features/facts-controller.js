@@ -1,6 +1,7 @@
 import { applyFactsUpdate, createCard, editCard, mergeCards, normalizeFacts, removeCard, undoFactsUpdate } from '../facts/model.js';
 import { parseFactCards } from '../facts/parser.js';
 import { summarizeFactsChanges } from '../facts/diff.js';
+import { buildLegacyImport, importCards } from '../facts/migration.js';
 import { buildFactsPrompt, defaultFactsPrompt } from '../facts/prompt.js';
 import { storyTimeContext as defaultStoryTimeContext } from '../memory/story-state.js';
 
@@ -20,6 +21,8 @@ export function createFactsController({
     confirm = async () => true,
     persistSharedConfigurationFromState = () => {},
     createDraft = null,
+    // The older 剧情状态 projection and 表格 rows of the chat, for the one-time import.
+    getLegacy = () => ({ projection: null, information: [], tables: [] }),
     now = () => new Date().toISOString(),
 } = {}) {
     function facts(state = getState()) {
@@ -207,6 +210,32 @@ export function createFactsController({
             .map(entry => ({ ...entry, changes: entry.changes.filter(change => change.cardId === cardId) }));
     }
 
+    function legacySummary(state = getState()) {
+        let legacy;
+        try { legacy = getLegacy(state) || {}; } catch { legacy = {}; }
+        const people = legacy.projection?.people?.length || 0;
+        const rows = (legacy.tables || []).reduce((sum, table) => sum + (table.rows || []).filter(row => Array.isArray(row) && row.some(value => String(value ?? '').trim())).length, 0);
+        return { people, rows, available: people > 0 || rows > 0, legacy };
+    }
+
+    async function importLegacy() {
+        const state = getState();
+        const { people, rows, available, legacy } = legacySummary(state);
+        if (!available) { toastr.info?.('这个聊天没有旧的剧情状态或表格内容可以导入。', '剧情剪辑台'); return null; }
+        const cards = buildLegacyImport(legacy);
+        if (!cards.length) { toastr.info?.('旧数据里没有能变成卡片的内容。', '剧情剪辑台'); return null; }
+        const ok = await confirm(`把旧的剧情状态和表格导入成 ${cards.length} 张卡片？`, [
+            [people ? `剧情状态里有 ${people} 个人物` : '', rows ? `表格里有 ${rows} 行` : ''].filter(Boolean).join('，') + '。',
+            '已有同名卡片只补上空着的字段，不会覆盖。旧的剧情状态和表格本身不动。',
+            '自定义表格每行变成一张设定卡，列名和内容逐项写在说明里。']);
+        if (!ok) return null;
+        const entry = importCards(facts(state), cards, now());
+        saveState();
+        syncInjection();
+        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, entry ? `已导入：${summarizeFactsChanges(entry)}。` : '没有新内容需要导入。');
+        return entry;
+    }
+
     function updateSettings(patch) {
         const state = getState();
         const current = facts(state);
@@ -218,5 +247,5 @@ export function createFactsController({
     }
 
     return { facts, stageMaterial, stagesToIntegrate, enqueueStage, onSummaryCommitted, runManual, handleTaskResult, previewUpdate, applyDraft, discardDraft,
-        undoLast, updateSettings, saveCard, addCard, mergeInto, deleteCard, cardHistory };
+        undoLast, updateSettings, saveCard, addCard, mergeInto, deleteCard, cardHistory, legacySummary, importLegacy };
 }

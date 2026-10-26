@@ -1,6 +1,6 @@
 const labels = Object.freeze({
     rule: '模板／规则', summary: '阶段／多次总结', memory: '长期记忆',
-    rpState: '剧情状态', table: '表格记忆', vector: '向量召回',
+    rpState: '剧情状态', facts: '剧情事实', table: '表格记忆', vector: '向量召回',
 });
 
 // Display sections only: boundaries never rewrite or truncate the injected text.

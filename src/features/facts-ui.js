@@ -31,8 +31,19 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
             ${switchRow('review', '先审再用', '整理结果先进"待确认"，看过改了什么再应用', facts.settings.review)}
             ${switchRow('injectReflection', '把主线与伏笔一起注入', '卡片之外，再给模型一段当前主线和未回收的伏笔', facts.settings.injectReflection)}</div>
             <div class="rp-controls">${button('run', pending ? `整理事实（${pending} 个阶段）` : '整理事实', facts.settings.enabled && pending && !queued ? '' : 'disabled', true)}<span class="rp-cost is-paid">每个阶段 +1 次请求</span>${latest ? button('undo', '撤回上一次整理') : ''}</div>
+            ${renderImport(state, facts)}
             ${latest ? `<p class="rp-note">上一次整理：${esc(when(latest.at))}，${esc(summarizeFactsChanges(latest))}${latest.warnings?.length ? `；${esc(latest.warnings.slice(0, 2).join('；'))}` : ''}</p>` : ''}
             </section>`;
+    }
+
+    // Offered while the chat still has the older 剧情状态 or 表格 data and no import has been done.
+    function renderImport(state, facts) {
+        const legacy = controller.legacySummary(state);
+        if (!legacy.available) return '';
+        const imported = facts.history.some(entry => entry.trigger === 'import' && !entry.undone);
+        const what = [legacy.people ? `剧情状态 ${legacy.people} 个人物` : '', legacy.rows ? `表格 ${legacy.rows} 行` : ''].filter(Boolean).join('、');
+        return `<div class="rp-controls">${button('import', imported ? '再次导入旧数据' : '从旧剧情状态和表格导入')}<span class="rp-cost is-free">不花钱</span></div>
+            <p class="rp-note">这个聊天还有${esc(what)}。导入只补充卡片，不动旧数据；导入后对最近的阶段整理一次，卡片会更顺。</p>`;
     }
 
     function renderReflection(facts) {
@@ -143,6 +154,7 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
             else if (action === 'view') { current.view = target.dataset.factsView || 'cards'; show(); }
             else if (action === 'run') { target.disabled = true; await controller.runManual(); refresh(); }
             else if (action === 'undo') { await controller.undoLast(); refresh(); }
+            else if (action === 'import') { target.disabled = true; await controller.importLegacy(); render(getState()); }
             else if (action === 'add') { current.adding = target.dataset.factsKind; show(); }
             else if (action === 'add-cancel') { current.adding = null; show(); }
             else if (action === 'add-save') {

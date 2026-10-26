@@ -2,6 +2,7 @@ import { getHash } from '../shared/text.js';
 import { messageRevision, replayChronicle } from './story-state.js';
 import { exportRpBackup, importRpBackup, validateRpBackup } from '../rp-core/backup.js';
 import { summaryDiagnostic, captureSummaryInputs } from './summary-provenance.js';
+import { normalizeFacts } from '../facts/model.js';
 
 const arrays = ['storySummaries', 'stageSummaries', 'epicSummaries', 'drafts', 'coveredBlockHashes', 'coveredStageHashes'];
 const recordFields = ['id', 'hash', 'contentHash', 'provenance', 'title', 'content', 'type', 'kind', 'level', 'sourceKind', 'sourceMessageIds', 'sourceHashes', 'sourceStageHashes', 'sourceStart', 'sourceEnd', 'messageId', 'createdAt', 'trigger'];
@@ -47,6 +48,7 @@ export function createMemoryBackup(state, { chatKey = '', chat = [], scanned = [
     memory.tableDatabase.profileRows[`chat:default:${memory.tableDatabase.activeProfileId}`] = memory.tableDatabase.tables;
     if (state.chronicle) memory.chronicle = state.chronicle;
     if (state.rpCore) memory.rpCore = exportRpBackup(state.rpCore);
+    if (state.facts?.cards?.length || state.facts?.history?.length) memory.facts = normalizeFacts(state.facts);
     const hasProvenance = arrays.some(key => (memory[key] || []).some(item => item?.provenance || item?.metadata?.inputSnapshot));
     const payload = clone({ format: 'bakemono-memory-backup', formatVersion: hasProvenance ? 3 : state.rpCore ? 2 : 1, pluginVersion: version,
         createdAt: new Date().toISOString(), chatKeyHash: getHash(chatKey), sources: chat.map(messageRevision), memory });
@@ -113,6 +115,8 @@ export function validateMemoryBackup(raw) {
         if (data.formatVersion < 2) throw new Error('剧情账本需要新版恢复包');
         validateRpBackup(memory.rpCore);
     }
+    if (memory.facts !== undefined && (!object(memory.facts) || !Array.isArray(memory.facts.cards)
+        || !memory.facts.cards.every(card => object(card) && typeof card.name === 'string' && typeof card.kind === 'string'))) throw new Error('剧情事实格式无效');
     if (memory.chronicle) {
         const c = memory.chronicle;
         if (c.version !== 1 || !Array.isArray(c.events) || !Array.isArray(c.entities) || !Array.isArray(c.sources) || !c.clock || !c.links || !c.baseline) throw new Error('剧情账本格式无效');
@@ -142,7 +146,7 @@ export function previewMemoryBackup(data, { chatKey = '', chat = [] } = {}) {
         summaries: ['storySummaries', 'stageSummaries', 'epicSummaries'].reduce((n, key) => n + data.memory[key].length, 0),
         drafts: data.memory.drafts.length, tableRows: rowsCount(data.memory.tableDatabase.tables), events: data.memory.chronicle?.events.length || 0,
         rpFacts: data.memory.rpCore?.facts.length || 0, rpClaims: data.memory.rpCore?.claims.length || 0,
-        rpObservations: data.memory.rpCore?.observations.length || 0 };
+        rpObservations: data.memory.rpCore?.observations.length || 0, factCards: data.memory.facts?.cards?.length || 0 };
 }
 
 export function restoreMemoryBackup(state, validated) {
@@ -154,6 +158,8 @@ export function restoreMemoryBackup(state, validated) {
     if (memory.chronicle) state.chronicle = memory.chronicle;
     else delete state.chronicle;
     if (memory.rpCore !== undefined) state.rpCore = importRpBackup(memory.rpCore);
+    // Cards come back whole; the settings stay the chat's own (they follow the configuration, not the memory).
+    if (memory.facts !== undefined) state.facts = { ...normalizeFacts(memory.facts), settings: normalizeFacts(state.facts).settings };
     state.blocks = []; state.scanPreview = []; state.memoryRecords = [];
     state.generatedMemory = '';
     state.taskQueue = []; state.taskQueuePaused = true; state.autoSummaryTransactions = [];
@@ -172,6 +178,7 @@ export function createDiagnosticReport(state, { version = '1.7.1', storage = {} 
             rpFacts: state.rpCore?.facts?.length || 0, rpClaims: state.rpCore?.claims?.length || 0,
             rpObservations: state.rpCore?.observations?.length || 0,
             rpPending: state.rpCore?.candidates?.filter(item => item.status === 'pending').length || 0,
+            factCards: state.facts?.cards?.length || 0, factRuns: state.facts?.history?.length || 0,
             staleMemories: summaryDiagnostic(state).records.filter(item => item.status !== 'valid').length,
             vectorRecords: state.vectorMemory?.records?.length || 0 },
         persistenceRevision: Number(state.persistenceRevision) || 0,

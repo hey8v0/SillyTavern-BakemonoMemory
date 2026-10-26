@@ -96,6 +96,7 @@ import { createFactsController } from './src/features/facts-controller.js';
 import { createFactsUi } from './src/features/facts-ui.js';
 import { renderFactsSection } from './src/facts/injection.js';
 import { normalizeFactSettings } from './src/facts/model.js';
+import { currentInformation } from './src/rp-core/current-information.js';
 import { defaultFactsPrompt } from './src/facts/prompt.js';
 import { createReviewQueueEvents } from './src/features/review-queue-events.js';
 import { createMaintenanceUi } from './src/features/maintenance-ui.js';
@@ -2253,6 +2254,11 @@ const factsController = createFactsController({
     confirm: confirmDanger,
     persistSharedConfigurationFromState,
     createDraft: (...args) => summaryDraftService.createDraft(...args),
+    getLegacy: state => {
+        const view = state.rpCore ? rpCoreService.view(state) : null;
+        return { projection: view?.projection || null, information: view && state.rpCore ? currentInformation(state.rpCore, view) : [],
+            tables: state.tableDatabase?.tables || [] };
+    },
 });
 const factsUi = createFactsUi({
     documentRef: document,

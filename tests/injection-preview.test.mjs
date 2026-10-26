@@ -25,7 +25,7 @@ test('module previews split tables, recall hits and paragraphs without changing 
 
 test('preview and token totals use the prepared inline instructions including appended table guidance', () => {
     const state = { injection: { enabled: true, template: '规则{{memory}}' }, inlineGeneration: { tableEnabled: true, summaryEnabled: true } };
-    const sources = { rpState: '状态', summary: '总结', memory: '摘要', table: '表格', vector: '召回' };
+    const sources = { rpState: '状态', facts: '事实', summary: '总结', memory: '摘要', table: '表格', vector: '召回' };
     const manifest = createOverviewTokenManifest({ getState: () => state,
         getInjectionMemoryParts: () => ({ sources, rpMaintenance: 'RP规则', inlineValues: { summaryValue: '摘要指令', tableValue: '表格指令+状态填写指南' } }),
         renderInjectionContent: () => '规则正文', renderInlinePrompt: () => { throw new Error('must use prepared instructions'); } });
