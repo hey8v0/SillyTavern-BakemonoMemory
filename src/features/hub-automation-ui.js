@@ -100,15 +100,20 @@ export function createHubAutomationUi({
             tone: !automationEnabled ? 'off' : stageAlert ? 'alert' : ['waiting', 'holding', 'draft'].includes(stage.runtime.code) ? 'wait' : 'ok',
         });
 
-        const lastFloor = ids => Math.max(-1, ...(ids || []).map(Number).filter(Number.isFinite));
-        const appliedFloor = lastFloor((state.tableDatabase?.history || [])[0]?.sourceMessageIds);
-        const pendingOps = tableDrafts.reduce((sum, draft) => sum + (Array.isArray(draft.operations) ? draft.operations.length : 0), 0);
-        setFrame('table', {
-            line: tables.length ? `${tables.length} 张表 · ${tableRows.toLocaleString()} 行` : '还没有表格',
-            copy: tableDrafts.length ? `${pendingOps || tableDrafts.length} 处修改等你应用` : appliedFloor >= 0 ? `跟到第 ${appliedFloor} 楼` : `填表${tableName}`,
-            bar: latest && appliedFloor >= 0 ? appliedFloor / Math.max(1, latest.id) * 100 : 0,
-            state: !tables.length ? '没有表格' : tableDrafts.length ? '有待应用' : tableOn ? '正常' : '只手动',
-            tone: !tables.length ? 'off' : tableDrafts.length ? 'wait' : tableOn ? 'ok' : 'off',
+        // 剧情事实: cards so far, and how many saved stages are still to be integrated.
+        const facts = state.facts || {};
+        const factCards = (facts.cards || []).filter(card => card.status === 'active').length;
+        const stageHashes = (state.stageSummaries || []).map(stage => stage.hash);
+        const integrated = stageHashes.filter(hash => (facts.doneStages || []).includes(hash)).length;
+        const factsPending = stageHashes.length - integrated;
+        const factsQueued = (state.taskQueue || []).some(task => task.kind === 'facts' && ['queued', 'running'].includes(task.status));
+        const factsHeld = (state.drafts || []).some(draft => draft.kind === 'facts');
+        setFrame('facts', {
+            line: factCards ? `${factCards} 张卡片` : facts.settings?.enabled ? '还没有卡片' : '没开',
+            copy: !facts.settings?.enabled ? '打开后按阶段整理人物、关系和线索' : factsHeld ? '整理结果等你确认' : factsQueued ? '正在整理' : factsPending ? `${factsPending} 个阶段还没整理` : stageHashes.length ? '所有阶段都整理过了' : '保存阶段总结后开始整理',
+            bar: stageHashes.length ? integrated / stageHashes.length * 100 : 0,
+            state: !facts.settings?.enabled ? '没开' : factsHeld ? '要处理' : factsQueued || factsPending ? '在整理' : '正常',
+            tone: !facts.settings?.enabled ? 'off' : factsHeld ? 'alert' : factsQueued || factsPending ? 'wait' : 'ok',
         });
 
         const indexedFloors = new Set(vectorRecords.filter(record => !record.isSavedSummary).map(record => String(record.messageId))).size;

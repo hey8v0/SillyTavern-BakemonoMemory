@@ -33,7 +33,8 @@ test('I02 P04 P05: production service→flow→orchestrator→injection with sum
     assert.equal(h.prompts.get('rp'), ''); assert.ok(h.injection.getInjectionMemoryParts().rpContext.blocked);
     h.state.injection.memoryBudgetChars = 60000; h.state.tableDatabase.injectMemory = true;
     await h.service.configure({ enabled: false }); h.injection.syncInjection();
-    assert.equal(h.prompts.get('rp'), ''); assert.doesNotMatch(h.prompts.get('memory'), /当前剧情状态/); assert.match(h.prompts.get('memory'), /旧表独立/);
+    // Since v1.32.0 the tables no longer inject either (剧情事实 took over); the wiring slice returns '' for them.
+    assert.equal(h.prompts.get('rp'), ''); assert.doesNotMatch(h.prompts.get('memory'), /当前剧情状态/); assert.doesNotMatch(h.prompts.get('memory'), /旧表独立/);
 });
 
 test('I05: actual MESSAGE_SENT callback honors RP delayed timing with legacy delayed processing disabled', async () => {

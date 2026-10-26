@@ -201,6 +201,9 @@ export function createChatStateService({
         ensureTableProfileForScope(state.tableDatabase.schemaScope, state);
         mergeScopedTableSchemasIntoState(state);
         ensureObjectField(state, 'inlineGeneration', defaultState.inlineGeneration);
+        // v1.32.0: tables are no longer written per turn; 剧情事实 records facts per stage instead.
+        state.inlineGeneration.tableEnabled = false;
+        if (state.turnSummary && ['table', 'both'].includes(state.turnSummary.processingMode)) state.turnSummary.processingMode = 'summary';
         fillMissingDefaults(state.inlineGeneration, defaultState.inlineGeneration);
         migrateInlineSummaryPrompt(state.inlineGeneration, defaultInlineSummaryPrompt, migrateBuiltInStructuredPrompt);
         if (state.inlineGeneration.hideTableEditMigratedToRegex !== true) {

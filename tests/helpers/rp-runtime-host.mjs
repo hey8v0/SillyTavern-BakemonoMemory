@@ -40,7 +40,8 @@ export function runtimeHost() {
         captureInlineGenerationFromLatestMessage: noop, scheduleInlineGenerationCapture: noop, scheduleAutoHideRecent: noop, markVectorIndexDirty: noop,
         scheduleVectorAutoIndex: noop, shouldRunTurnProcessing: () => false,
     });
-    const code = [binding('rpCoreService', 'createRpCoreService'), binding('rpExtractionFlow', 'createRpExtractionFlow'),
+    // These tests exercise the per-turn 剧情状态 pipeline itself, so the frozen flow index.js wires since v1.32.0 is the real one here.
+    const code = [binding('rpCoreService', 'createRpCoreService'), binding('rpExtractionFlow', 'createRpExtractionFlow'), 'const rpFrozenFlow = rpExtractionFlow;',
         binding('injectionService', 'createInjectionService'), 'const { syncInjection } = injectionService;', binding('memoryOrchestrator', 'createMemoryOrchestrator'),
         '({ service: rpCoreService, flow: rpExtractionFlow, injection: injectionService, orchestrator: memoryOrchestrator })'].join('\n');
     const runtime = vm.runInContext(code, context);

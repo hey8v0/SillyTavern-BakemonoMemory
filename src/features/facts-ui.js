@@ -3,7 +3,7 @@ import { renderFactsChanges, summarizeFactsChanges } from '../facts/diff.js';
 
 // 剧情事实 page: switches and the 整理 buttons, the reflection, then the cards (searchable, by kind, editable
 // in place) or the history of every 整理. Same film-slate classes as 剧情状态.
-export function createFactsUi({ documentRef: document, getState, controller, escapeHtml: esc, refresh = () => {} }) {
+export function createFactsUi({ documentRef: document, getState, controller, escapeHtml: esc, refresh = () => {}, navigate = () => {} }) {
     const navigation = new WeakMap();
     const nav = state => navigation.get(state) || navigation.set(state, { view: 'cards', filter: '', search: '', open: new Set(), editing: null, merging: null, adding: null }).get(state);
     const button = (action, label, extra = '', primary = false) => `<button type="button" class="menu_button${primary ? ' rp-primary' : ''}" data-facts-action="${action}" ${extra}><span>${esc(label)}</span></button>`;
@@ -42,8 +42,8 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         if (!legacy.available) return '';
         const imported = facts.history.some(entry => entry.trigger === 'import' && !entry.undone);
         const what = [legacy.people ? `剧情状态 ${legacy.people} 个人物` : '', legacy.rows ? `表格 ${legacy.rows} 行` : ''].filter(Boolean).join('、');
-        return `<div class="rp-controls">${button('import', imported ? '再次导入旧数据' : '从旧剧情状态和表格导入')}<span class="rp-cost is-free">不花钱</span></div>
-            <p class="rp-note">这个聊天还有${esc(what)}。导入只补充卡片，不动旧数据；导入后对最近的阶段整理一次，卡片会更顺。</p>`;
+        return `<div class="rp-controls">${button('import', imported ? '再次导入以前的数据' : '从剧情状态和表格导入')}<span class="rp-cost is-free">不花钱</span></div>
+            <p class="rp-note">这个聊天还有以前记下的${esc(what)}。导入只补充卡片，不动原数据；导入后对最近的阶段整理一次，卡片会更顺。以前的页面不再自动记录，也不再注入，但还能看：${legacy.people ? link('open-rp', '打开以前的剧情状态') : ''}${legacy.rows ? link('open-tables', '打开以前的表格') : ''}</p>`;
     }
 
     function renderReflection(facts) {
@@ -155,6 +155,8 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
             else if (action === 'run') { target.disabled = true; await controller.runManual(); refresh(); }
             else if (action === 'undo') { await controller.undoLast(); refresh(); }
             else if (action === 'import') { target.disabled = true; await controller.importLegacy(); render(getState()); }
+            else if (action === 'open-rp') navigate('rp-state');
+            else if (action === 'open-tables') navigate('tables');
             else if (action === 'add') { current.adding = target.dataset.factsKind; show(); }
             else if (action === 'add-cancel') { current.adding = null; show(); }
             else if (action === 'add-save') {

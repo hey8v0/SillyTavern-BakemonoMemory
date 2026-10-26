@@ -1018,6 +1018,11 @@ const rpPromptLibrary = createRpPromptLibrary({
     },
     confirmSave: value => confirmRpPromptConfiguration(value),
 });
+// v1.32.0: 剧情状态 no longer records or injects per turn; 剧情事实 took that over. Per-turn callers get this
+// frozen flow; the 剧情状态 page keeps the real one for reading and manual use.
+const rpFrozenMethods = { channel: () => null, prompt: () => '', context: () => null, runIndependent: async () => null,
+    captureInline: async () => null, reconcilePending: async () => null, scheduleCapture: () => {} };
+const rpFrozenFlow = new Proxy(rpFrozenMethods, { get: (target, key) => key in target ? target[key] : rpExtractionFlow[key] });
 const rpExtractionFlow = createRpExtractionFlow({
     onBackgroundResult: () => { syncInjection(); scheduleRenderAll(); },
     onBackgroundError: () => {
@@ -1043,7 +1048,7 @@ const rpExtractionFlow = createRpExtractionFlow({
 });
 
 const tableWorkflowController = createTableWorkflowController({
-    rpExtractionFlow,
+    rpExtractionFlow: rpFrozenFlow,
     getState: ensureState,
     findLatestAssistantTurn: (...args) => findLatestAssistantTurn(...args),
     toastr,
@@ -1478,8 +1483,8 @@ const {
 } = archiveController;
 
 const injectionService = createInjectionService({
-    renderRpStateMemory: state => state.rpCore ? renderRpStateMemory(state, rpCoreService.memoryView(state), String(chat.at(-1)?.mes || '')) : '',
-    rpExtractionFlow,
+    renderRpStateMemory: () => '',
+    rpExtractionFlow: rpFrozenFlow,
     getChat: () => chat,
     ensureState,
     getActiveEpicMemoryBlocks,
@@ -1487,7 +1492,8 @@ const injectionService = createInjectionService({
     getActiveCoveredStageHashes,
     getStageMemoryBlocks,
     memoryStrategies,
-    renderInjectedTablesSection,
+    // v1.32.0: tables and 剧情状态 no longer inject; 剧情事实 does.
+    renderInjectedTablesSection: () => '',
     renderVectorMemorySection,
     renderFactsSection: (state, recentText) => renderFactsSection(factsController.facts(state), recentText),
     setExtensionPrompt,
@@ -2083,7 +2089,7 @@ const summaryActionSheet = createSummaryActionSheet({
 
 const turnProcessingController = createTurnProcessingController({
     summarySources,
-    rpExtractionFlow,
+    rpExtractionFlow: rpFrozenFlow,
     getContext,
     getChat: () => chat,
     getChatMetadata: () => chat_metadata,
@@ -2142,7 +2148,7 @@ const {
 } = turnProcessingController;
 
 const memoryOrchestrator = createMemoryOrchestrator({
-    rpExtractionFlow,
+    rpExtractionFlow: rpFrozenFlow,
     isChatReady,
     ensureState,
     isBusy: () => isBusy,
@@ -2266,7 +2272,7 @@ const factsUi = createFactsUi({
     controller: factsController,
     escapeHtml,
     refresh: () => renderWorkbenchScope(workbenchRenderScopes.DRAFTS),
-    getChat: () => chat,
+    navigate: tab => switchWorkbenchTab(tab),
 });
 
 const reviewQueueEvents = createReviewQueueEvents({
@@ -2683,7 +2689,7 @@ async function init() {
     if (event_types.MESSAGE_SENT) {
         eventSource.on(event_types.MESSAGE_SENT, async () => {
             const state = ensureState();
-            if (!shouldRunTurnProcessing(state.turnSummary, 'user') && !rpExtractionFlow.channel(state)) return;
+            if (!shouldRunTurnProcessing(state.turnSummary, 'user') && !rpFrozenFlow.channel(state)) return;
             await runMemoryOrchestrator('开始新一轮', {
                 scan: false,
                 turnOnly: true,
@@ -2715,7 +2721,7 @@ async function init() {
                 state.inlineGeneration.lastProcessedMessageId = null;
                 state.inlineGeneration.lastProcessedSignature = '';
                 scheduleInlineGenerationCapture('消息更新');
-                rpExtractionFlow.scheduleCapture();
+                rpFrozenFlow.scheduleCapture();
             } else {
                 rollbackLatestTableOperationForDeletedMessages(messageIds, ensureState());
             }

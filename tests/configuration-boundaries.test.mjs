@@ -13,11 +13,14 @@ test('RP state, tables and vectors have sidebar entries and stay reachable from 
     assert.equal(navigation.getMenuTab('automation'), 'data-hub');
     assert.equal(navigation.getMenuTab('rp-state'), 'rp-state');
     const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
-    assert.match(html, /data-bakemono-tab="tables"/);
+    // v1.32.0: 剧情事实 has the sidebar entry and the data-hub frame; 剧情状态 and 表格 keep their panels but no entry.
+    assert.match(html, /data-bakemono-tab="facts"/);
     assert.match(html, /data-bakemono-tab="vector"/);
-    assert.match(html, /data-bakemono-nav="tables"/);
+    assert.match(html, /data-bakemono-nav="facts"/);
     assert.match(html, /data-bakemono-nav="vector"/);
-    assert.match(html, /data-bakemono-tab="rp-state"/);
+    assert.doesNotMatch(html, /data-bakemono-tab="tables"|data-bakemono-tab="rp-state"|data-bakemono-nav="tables"/);
+    assert.match(html, /data-bakemono-panel="rp-state"/);
+    assert.match(html, /data-bakemono-panel="turn-summary"/);
     assert.doesNotMatch(html, /id="bakemono-story-state"/);
     assert.match(html, /id="bakemono-story-backup"/);
     assert.match(html, /id="bakemono-memory-table-list"/);

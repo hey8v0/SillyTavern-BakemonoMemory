@@ -4,7 +4,7 @@
 
 ## 1. 接手约定
 
-- 当前版本 **1.31.0**，分支 `main`，远端 `hey8v0/SillyTavern-BakemonoMemory`。先看 `git status` / `git log`，不要从旧对话推断现状。
+- 当前版本 **1.32.0**，分支 `main`，远端 `hey8v0/SillyTavern-BakemonoMemory`。先看 `git status` / `git log`，不要从旧对话推断现状。
 - 源码就在本仓库。任务工作区、酒馆安装目录都不是源码；不要默认同步本机酒馆、调用模型。
 - 不覆盖用户未提交的修改，不强推。提交与推送以当次授权为准。
 - **用户的测试方式**：用户在手机上的酒馆里更新插件来实测，所以每完成一批改动，经用户同意后发布一个小版本并推送（见第 8 节）。一次一批，便于定位问题。
@@ -155,6 +155,7 @@
 - 开场白判断（`shared/opening.js` 的 `openingFloors`）要传插件隐藏的楼层（`hidden`），否则被收纳的开场白会被当成系统消息、变成普通楼层；楼层索引与补写缺失摘要都这样传，补写不把开场白列为目标（范围写明时除外）。扫描在读取标签之外还读补写写回的 `<bakemono>` 块（与已读块重叠的不重复读），与补写的“已有摘要”判断一致（v1.28.3）。
 - 生成用自定义接口可选“经酒馆后端转发”（`customApi.viaTavern`）：请求发给酒馆 `/api/backends/chat-completions/generate`（拉模型走 `/status`），`chat_completion_source: 'custom'`，`custom_url` 为去掉 `/chat/completions` 的根地址，插件密钥放在 `custom_include_headers` 的 Authorization 里覆盖酒馆自存的 custom 密钥；没填密钥时发空值，不让酒馆自存密钥流向别的地址。酒馆把上游失败回成 200 + `{ error }`（拉模型是 `{ error: true }`），要当错误处理；流式失败会把 401 改成 400。向量嵌入接口不走转发（v1.28.4，已在 1.19 临时实例上实测）。
 - 剧情事实（v1.29.0 起）：`state.facts` 每聊天一份，`facts.settings` 随整套配置同步（`getConfigPayloadFromState` 的 `facts`、提示词 `factsPrompt`）。整理任务 kind 为 `blockTypes.FACTS`，走摘要任务队列的 `resultHandlers`，不生成草稿；来源校验只按 `sourceMessageIds` 指纹。`applyFactsUpdate` 按名字/别名对应卡片，省略=保持，`userFields` 不被模型覆盖，每次结果写一条 `history`，`undoFactsUpdate` 按条逆向。阶段保存钩子是 `summary-draft-service` 的 `onSummaryCommitted`（持久化成功后才调）。被 data: URL 内联加载的模块（`configuration-controller`、`turn-processing-controller` 等，见 `tests/state-config-sync`、`tt-runtime-regressions`）不能有相对 import，事实相关的默认值和函数要作为参数注入；`tests/helpers/rp-runtime-host.mjs` 的 vm 上下文要提供 `renderFactsSection`、`factsController`。
+- v1.32.0 起剧情状态和表格冻结：`index.js` 的 `rpFrozenFlow`（Proxy，覆盖 channel/prompt/context/runIndependent/captureInline/reconcilePending/scheduleCapture，其余委托真实 flow）接给编排器、注入、正文处理和事件回调；`rpStateUi` 仍拿真实 flow。注入里 `renderInjectedTablesSection`/`renderRpStateMemory` 接成空；`chat-state-service` 把 `inlineGeneration.tableEnabled` 置 false、`turnSummary.processingMode` 的 table/both 改成 summary；自动记忆向导只剩摘要一问。侧栏去掉两个入口，面板保留（`switchTab('rp-state'|'tables')` 仍可达，剧情事实页提供入口）。`facts.settings.version` 2 表示用过新默认（开启）；`tests/helpers/rp-runtime-host.mjs` 里 `rpFrozenFlow` 绑定为真实 flow，旧 RP 测试继续验证旧管线直到第五批删除。
 - 摘要来源选择写入旧配置字段，保留旧手动及组合方式（“旧版组合设置”）；运行错误不进全局预设。
 
 ## 6. 测试与界面检查
@@ -213,9 +214,9 @@ node scripts/ui-harness/server.mjs
 
 ## 9. 后续工作
 
-- 手机实测：v1.8.8 – v1.31.0 的改动都只在模拟页面验证过，需要用户在真实酒馆（尤其手机、iOS Safari）确认；宿主保存、后台冻结、重 roll、流式协议隐藏同样需要实机。
+- 手机实测：v1.8.8 – v1.32.0 的改动都只在模拟页面验证过，需要用户在真实酒馆（尤其手机、iOS Safari）确认；宿主保存、后台冻结、重 roll、流式协议隐藏同样需要实机。
 - 新样式推广到其他页面（见第 5 节“新样式”）。已完成：剧情状态（v1.10.0）、首页（v1.11.0）、顶栏与侧栏（v1.12.0：电脑上 264px 细线侧栏，手机 ≤900px 为左侧抽屉 + 遮罩 `[data-bakemono-menu-close]`，布局尺寸与旧版一致，顶栏由 82px 收到 70px）、总结页（v1.13.0）、待确认（v1.14.0）、摘要树（v1.15.0）、表格（v1.16.0）、向量记忆（v1.17.0）、自动记忆（v1.18.0）、自动总结（v1.20.0）、自动与数据和设置中心（v1.21.0）。设置中心第一组子页（摘要方式、扫描与识别、楼层收纳，v1.22.0）、第二组（生成模型、生成提示词、注入内容，v1.23.0）、第三组（外观、整套配置、撤回与事务，v1.24.0）和提示词检查器（v1.25.0）。所有页面都已换成新样式。用户给的每页参考：首页 Magic Bento + 编辑式仪表盘；总结 时间线 + 卡片堆叠；摘要树 嵌套时间线；待确认 审阅队列；提示词检查器 文档阅读器；设置中心 系统设置列表；电脑导航 细线侧栏；手机导航 抽屉 + 分段标签。React 组件库（React Bits、Aceternity）不能直接用，只借效果、用 CSS 和原生 JS 实现。
-- 剧情事实替换剧情状态和表格，分五批（`docs/FACT_CARDS_DESIGN.md` §9）：① 数据模型 + 整理 + 注入（v1.29.0）；② 卡片编辑、历史、待确认 diff（v1.30.0）；③ 旧状态/旧表导入与各处改口（v1.31.0）；④ 默认开启、隐藏旧入口；⑤ 删旧代码。第一批未用真实模型验证卡片质量，是整个方案的前提。
+- 剧情事实替换剧情状态和表格，分五批（`docs/FACT_CARDS_DESIGN.md` §9）：① 数据模型 + 整理 + 注入（v1.29.0）；② 卡片编辑、历史、待确认 diff（v1.30.0）；③ 旧状态/旧表导入与各处改口（v1.31.0）；④ 默认开启、隐藏旧入口（v1.32.0）；⑤ 删旧代码。第一批未用真实模型验证卡片质量，是整个方案的前提。
 - RP P1（剧情事实替换后作废）：历史范围重建、精细依赖纠错、丰富人物/历法、大账本增量缓存（RP 目前仍完整重放，大档有主线程耗时风险）。
 - 固定模型输出的测试不证明真实模型语义准确率。
 

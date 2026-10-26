@@ -98,7 +98,8 @@ test('a memory backup carries the cards and history; restore keeps the chat\'s o
     importCards(state.facts, buildLegacyImport({ projection }), '2026-10-26T00:00:00.000Z');
     const backup = createMemoryBackup(state, { chatKey: 'chat' });
     assert.equal(previewMemoryBackup(backup, { chatKey: 'chat' }).factCards, state.facts.cards.length);
-    const target = { storySummaries: [], stageSummaries: [], epicSummaries: [], drafts: [], coveredBlockHashes: [], coveredStageHashes: [], tableDatabase: { tables: [] }, facts: createDefaultFacts() };
+    const target = { storySummaries: [], stageSummaries: [], epicSummaries: [], drafts: [], coveredBlockHashes: [], coveredStageHashes: [], tableDatabase: { tables: [] },
+        facts: { ...createDefaultFacts(), settings: { ...createDefaultFacts().settings, enabled: false } } };
     restoreMemoryBackup(target, validateMemoryBackup(JSON.parse(JSON.stringify(backup))));
     assert.equal(target.facts.cards.length, state.facts.cards.length);
     assert.equal(target.facts.history.length, 1);

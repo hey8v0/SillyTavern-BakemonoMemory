@@ -78,17 +78,17 @@ export function createTurnSummaryUi({
                   <span class="bk-auto-radio" aria-hidden="true"></span><span><span class="bk-auto-choice-name">${name}</span>${price ? `<span class="bk-tbl-cost">${price}</span>` : ''}<small>${allowed ? note : '摘要是“只手动”时不能自动单独填表'}</small></span></button>`;
             }).join('')}</div>` : ''}
           </div>`;
-        container.innerHTML = row('summary', '摘要', summaryChoices, source)
-            + row('table', '表格', tableChoices, table, choice => tableModeAvailable(draftState, choice));
+        // Tables are no longer filled per turn (剧情事实 records facts per stage), so only the summary question remains.
+        container.innerHTML = row('summary', '摘要', summaryChoices, source);
         const separateSummary = ['independent', 'manual'].includes(source);
         const when = {
-            after: source === 'independent' || table === 'after',
+            after: source === 'independent',
             'summary-separate': separateSummary,
             'summary-inline': source === 'inline',
-            'table-inline': table === 'inline',
-            'table-after': table === 'after',
-            'table-auto': table !== 'manual',
-            'no-prompt': source === 'existing' && table !== 'inline',
+            'table-inline': false,
+            'table-after': false,
+            'table-auto': false,
+            'no-prompt': source === 'existing',
         };
         for (const [key, visible] of Object.entries(when)) query(`[data-bk-auto-when="${key}"]`).prop('hidden', !visible);
     }
@@ -107,7 +107,7 @@ export function createTurnSummaryUi({
             : latest.summaryState === 'draft' ? `第 ${latest.id} 楼的摘要等你确认`
             : summaryText ? `第 ${latest.id} 楼已记好`
             : source === 'existing' || source === 'inline' ? `第 ${latest.id} 楼没有写摘要` : `第 ${latest.id} 楼还没记`;
-        query('#bakemono-memory-turn-source-label').text(`摘要：${choiceName(summaryChoices, source)} · 表格：${choiceName(tableChoices, tableMode)}`);
+        query('#bakemono-memory-turn-source-label').text(`摘要：${choiceName(summaryChoices, source)}`);
         query('#bakemono-memory-turn-runtime-title').text(title);
         const steps = latest ? [
             summaryText ? `摘要 <b>${summaryText.replace(/^摘要/, '')}</b>` : '摘要 <b class="is-alert">没有</b>',

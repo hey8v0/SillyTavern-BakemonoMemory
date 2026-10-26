@@ -105,7 +105,7 @@ test('the reader escapes tag examples, links page names and pages through the ar
     const guide = createHelpGuide({ escapeHtml, documentRef });
     guide.render();
     assert.match(node('bakemono-memory-help-list').innerHTML, /从这里开始[\s\S]*按页面[\s\S]*遇到问题/);
-    assert.equal(node('bakemono-workbench-section-title').textContent, '使用说明 · 20 篇');
+    assert.equal(node('bakemono-workbench-section-title').textContent, '使用说明 · 19 篇');
     guide.openArticle('not-recognized');
     assert.equal(node('bakemono-memory-help-article-title').textContent, helpGuideArticles['not-recognized'].title);
     assert.match(node('bakemono-memory-help-article-steps').innerHTML, /&lt;bakemono&gt;/);

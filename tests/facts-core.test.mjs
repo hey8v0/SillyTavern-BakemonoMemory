@@ -279,3 +279,10 @@ test('undoLast reverts the latest 整理 after confirmation and reopens its stag
     assert.deepEqual(r.controller.stagesToIntegrate().map(stage => stage.hash), ['st1', 'st2']);
     assert.equal(await r.controller.undoLast(), null);
 });
+
+test('settings saved before v1.32.0 get the new default (on) once; a deliberate off afterwards stays off', () => {
+    assert.equal(normalizeFacts({ settings: { enabled: false } }).settings.enabled, true, 'no version: pre-1.32 defaults');
+    assert.equal(normalizeFacts({ settings: { version: 2, enabled: false } }).settings.enabled, false);
+    assert.equal(normalizeFacts({}).settings.enabled, true);
+    assert.equal(normalizeFacts(createDefaultFacts()).settings.version, 2);
+});

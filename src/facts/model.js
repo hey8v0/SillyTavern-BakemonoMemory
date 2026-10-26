@@ -27,10 +27,12 @@ export const factFieldHints = Object.freeze({
     rule: { 说明: '设定内容', 影响范围: '影响哪些人、地方或事' },
     note: { 内容: '只由你填写，模型只读' },
 });
-export const factSettingKeys = Object.freeze(['enabled', 'auto', 'review', 'budgetChars', 'maxCards', 'recentFloors', 'materialChars', 'injectReflection']);
+export const factSettingKeys = Object.freeze(['version', 'enabled', 'auto', 'review', 'budgetChars', 'maxCards', 'recentFloors', 'materialChars', 'injectReflection']);
 
+// settings.version 2: on by default (v1.32.0). Settings saved before that carry no version and get the new default once.
+export const factSettingsVersion = 2;
 export function createDefaultFactSettings() {
-    return { enabled: false, auto: true, review: false, budgetChars: 6000, maxCards: 40, recentFloors: 6, materialChars: 24000, injectReflection: true };
+    return { version: factSettingsVersion, enabled: true, auto: true, review: false, budgetChars: 6000, maxCards: 40, recentFloors: 6, materialChars: 24000, injectReflection: true };
 }
 
 export function createDefaultFacts() {
@@ -45,7 +47,8 @@ export function normalizeFactSettings(value) {
     const defaults = createDefaultFactSettings();
     const source = value && typeof value === 'object' ? value : {};
     const number = (key, min, max) => Math.max(min, Math.min(max, Number(source[key] ?? defaults[key]) || defaults[key]));
-    return { enabled: !!source.enabled, auto: source.auto !== false, review: !!source.review,
+    const current = Number(source.version) >= factSettingsVersion;
+    return { version: factSettingsVersion, enabled: current ? !!source.enabled : defaults.enabled, auto: source.auto !== false, review: !!source.review,
         budgetChars: number('budgetChars', 500, 60000), maxCards: number('maxCards', 5, 200), recentFloors: number('recentFloors', 1, 50),
         materialChars: number('materialChars', 2000, 120000), injectReflection: source.injectReflection !== false };
 }
