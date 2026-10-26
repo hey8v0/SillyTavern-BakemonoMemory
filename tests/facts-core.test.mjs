@@ -4,6 +4,7 @@ import { applyFactsUpdate, createCard, createDefaultFacts, editCard, findCard, m
 import { parseFactCards } from '../src/facts/parser.js';
 import { buildFactsPrompt, defaultFactsPrompt } from '../src/facts/prompt.js';
 import { renderFactsSection } from '../src/facts/injection.js';
+import { renderFactsChanges, summarizeFactsChanges } from '../src/facts/diff.js';
 import { createFactsController } from '../src/features/facts-controller.js';
 import { createSummaryTaskQueue } from '../src/features/summary-task-queue.js';
 import { getHash } from '../src/shared/text.js';
@@ -141,9 +142,9 @@ test('the injected section fits the budget, names what the recent floors name, a
     assert.equal(renderFactsSection(facts, '林晚').text, '');
 });
 
-function runtime({ enabled = true, auto = true } = {}) {
+function runtime({ enabled = true, auto = true, review = false } = {}) {
     const stage = (hash, title, floors, sourceHashes) => ({ hash, type: 'stage', title, content: `阶段 ${title}`, sourceMessageIds: floors, sourceSortKey: floors[0], sourceHashes });
-    const state = { facts: { ...createDefaultFacts(), settings: { ...createDefaultFacts().settings, enabled, auto } }, generationPrompts: {}, taskQueue: [], drafts: [],
+    const state = { facts: { ...createDefaultFacts(), settings: { ...createDefaultFacts().settings, enabled, auto, review } }, generationPrompts: {}, taskQueue: [], drafts: [],
         storySummaries: [{ hash: 's1', content: '<bakemono>林晚在书店找到旧信。</bakemono>' }, { hash: 's2', content: '林晚约沈砚明天去码头。' }],
         blocks: [{ hash: 's3', type: 'story', content: '沈砚答应了。' }], stageSummaries: [stage('st1', '第一章', [1, 2, 3], ['s1', 's2', 's3']), stage('st2', '第二章', [4, 5], ['s9'])],
         storyRecords: [], epicSummaries: [], automation: {} };
@@ -156,9 +157,69 @@ function runtime({ enabled = true, auto = true } = {}) {
         resultHandlers: { facts: (...args) => controller.handleTaskResult(...args) } });
     const controller = createFactsController({ getState: () => state, saveState: () => {}, enqueueSummaryTask: task => queue.enqueueSummaryTask({ ...task, autoStart: false }),
         blockTypes, getBlockPlainText: text => String(text).replace(/<[^>]+>/g, ''), toastr, renderWorkbenchScope: (s, t) => scopes.push(t), workbenchRenderScopes: { DRAFTS: 'drafts' },
-        confirm: async () => true, storyTimeContext: () => '' });
+        confirm: async () => true, storyTimeContext: () => '',
+        createDraft: data => { const draft = { id: 'draft-' + state.drafts.length, title: data.metadata?.suggestedTitle || '', ...data }; state.drafts.unshift(draft); return draft; } });
     return { state, queue, controller, toasts, scopes, setResult: value => { result = value; } };
 }
+
+test('with 先审再用 the result waits in 待确认 as a diff; applying it changes the cards, discarding reopens the stage', async () => {
+    const r = runtime({ review: true });
+    const task = r.controller.onSummaryCommitted(r.state.stageSummaries[0]);
+    r.setResult(reply([lin()], { reflection: { mainline: '旧信之谜' } }));
+    await r.queue.processTaskQueue();
+    assert.equal(task.status, 'done');
+    assert.equal(r.state.facts.cards.length, 0, 'nothing applied yet');
+    assert.equal(r.state.drafts.length, 1);
+    const draft = r.state.drafts[0];
+    assert.equal(draft.kind, 'facts');
+    assert.equal(draft.title, '整理事实 · 第一章');
+    assert.deepEqual(draft.sourceMessageIds, []);
+    assert.equal(draft.metadata.factsPreview.changes.length, 1);
+    assert.equal(summarizeFactsChanges(draft.metadata.factsPreview), '新建 1 张，反思更新');
+    assert.match(renderFactsChanges(draft.metadata.factsPreview), /新建<\/span> 人物 · 林晚/);
+    assert.deepEqual(r.controller.stagesToIntegrate().map(stage => stage.hash), ['st2'], 'a held stage is not queued again');
+    assert.equal(r.controller.onSummaryCommitted(r.state.stageSummaries[0]), null);
+    const entry = await r.controller.applyDraft(draft.id);
+    assert.equal(entry.changes.length, 1);
+    assert.equal(r.state.drafts.length, 0);
+    assert.equal(r.state.facts.cards[0].name, '林晚');
+    assert.equal(r.state.facts.reflection.mainline, '旧信之谜');
+    assert.deepEqual(r.state.facts.doneStages, ['st1']);
+    // A second result held, then discarded: the stage is pending again.
+    r.state.facts.doneStages = [];
+    r.controller.onSummaryCommitted(r.state.stageSummaries[0]);
+    await r.queue.processTaskQueue();
+    assert.equal(r.state.drafts.length, 1);
+    assert.equal(r.controller.discardDraft(r.state.drafts[0].id), true);
+    assert.deepEqual(r.controller.stagesToIntegrate().map(stage => stage.hash), ['st1', 'st2']);
+});
+
+test('card actions through the controller: edit protects fields, pin, retire, merge, delete, history per card', async () => {
+    const r = runtime();
+    r.controller.onSummaryCommitted(r.state.stageSummaries[0]);
+    r.setResult(reply([lin(), { kind: 'person', name: '林小晚', fields: { 外貌: '短发' } }]));
+    await r.queue.processTaskQueue();
+    const facts = r.state.facts;
+    const linwan = facts.cards.find(card => card.name === '林晚'), twin = facts.cards.find(card => card.name === '林小晚');
+    r.controller.saveCard(linwan.id, { fields: { 处境: '在码头', 目标: '找到旧信的主人' }, aliases: ['小晚'] });
+    assert.deepEqual(linwan.userFields, ['处境']);
+    assert.deepEqual(linwan.aliases, ['小晚']);
+    r.controller.saveCard(linwan.id, { pinned: true });
+    assert.equal(linwan.pinned, true);
+    r.controller.saveCard(linwan.id, { status: 'retired' });
+    assert.equal(linwan.status, 'retired');
+    r.controller.saveCard(linwan.id, { status: 'active' });
+    assert.equal(r.controller.cardHistory(linwan.id).length, 5, 'the 整理 that created the card, then four edits');
+    assert.ok(r.controller.cardHistory(linwan.id).every(entry => entry.changes.every(change => change.cardId === linwan.id)));
+    assert.equal(r.controller.mergeInto(linwan.id, twin.id).fields.外貌, '短发');
+    assert.ok(linwan.aliases.includes('林小晚'));
+    assert.equal(facts.cards.length, 1);
+    const note = r.controller.addCard({ kind: 'note', name: '写作要求', fields: { 内容: '少写环境' } });
+    assert.equal(note.kind, 'note');
+    assert.equal(await r.controller.deleteCard(note.id), true);
+    assert.equal(facts.cards.length, 1);
+    assert.equal(await r.controller.deleteCard('missing'), false);
+});
 
 test('a saved stage summary queues one 整理 task whose material is the stage\'s own story summaries', async () => {
     const r = runtime();

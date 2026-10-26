@@ -1,32 +1,37 @@
-import { countCardsByKind, factFields, factKindLabels, factKinds } from '../facts/model.js';
+import { countCardsByKind, factFieldHints, factFields, factKindLabels, factKinds } from '../facts/model.js';
+import { renderFactsChanges, summarizeFactsChanges } from '../facts/diff.js';
 
-// 剧情事实 page: switches, the 整理 buttons, the reflection, and the cards by kind. Same film-slate classes as
-// 剧情状态, so it needs no styles of its own yet.
-export function createFactsUi({ documentRef: document, getState, controller, escapeHtml: esc, refresh = () => {}, getChat = () => [] }) {
+// 剧情事实 page: switches and the 整理 buttons, the reflection, then the cards (searchable, by kind, editable
+// in place) or the history of every 整理. Same film-slate classes as 剧情状态.
+export function createFactsUi({ documentRef: document, getState, controller, escapeHtml: esc, refresh = () => {} }) {
     const navigation = new WeakMap();
-    const nav = state => navigation.get(state) || navigation.set(state, { filter: '', open: new Set() }).get(state);
+    const nav = state => navigation.get(state) || navigation.set(state, { view: 'cards', filter: '', search: '', open: new Set(), editing: null, merging: null, adding: null }).get(state);
     const button = (action, label, extra = '', primary = false) => `<button type="button" class="menu_button${primary ? ' rp-primary' : ''}" data-facts-action="${action}" ${extra}><span>${esc(label)}</span></button>`;
+    const link = (action, label, extra = '') => `<button type="button" class="rp-more" data-facts-action="${action}" ${extra}>${esc(label)} <span class="rp-chevron" aria-hidden="true">›</span></button>`;
     const switchRow = (key, title, detail, checked) => `<label class="rp-set-row"><span class="rp-set-text"><strong>${esc(title)}</strong>${detail ? `<small>${esc(detail)}</small>` : ''}</span><input type="checkbox" role="switch" class="rp-switch" data-facts-setting="${key}" ${checked ? 'checked' : ''}></label>`;
+    const field = (name, label, value, { rows = 2, hint = '' } = {}) => `<label class="rp-edit-field"><span>${esc(label)}${hint ? ` <small>${esc(hint)}</small>` : ''}</span><textarea rows="${rows}" data-facts-field="${esc(name)}" spellcheck="false">${esc(value || '')}</textarea></label>`;
     const when = value => value ? new Date(value).toLocaleString() : '';
+    const triggerLabel = { facts: '自动整理', manual: '手动整理', review: '审阅后应用', user: '你的修改', import: '导入' };
 
     function renderStatus(state, facts) {
         const pending = controller.stagesToIntegrate(state).length;
         const queued = (state.taskQueue || []).filter(task => task.kind === 'facts' && ['queued', 'running'].includes(task.status)).length;
-        const counts = countCardsByKind(facts.cards);
-        const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+        const held = (state.drafts || []).filter(draft => draft.kind === 'facts').length;
+        const total = facts.cards.filter(card => card.status === 'active').length;
         const lines = [];
         if (!facts.settings.enabled) lines.push('还没开始记录。打开后，每保存一个阶段总结，插件会把这段剧情里的人物、关系、物品和线索整理成卡片。');
         else {
             lines.push(`${total} 张卡片${facts.lastRunAt ? ` · 上次整理 ${when(facts.lastRunAt)}` : ' · 还没整理过'}`);
-            lines.push(queued ? `${queued} 个整理任务在队列里` : pending ? `${pending} 个阶段总结还没整理` : facts.settings.auto ? '保存新的阶段总结后会自动整理' : '自动整理已关，需要时点"整理事实"');
+            lines.push(held ? `${held} 个整理结果在"待确认"等你看` : queued ? `${queued} 个整理任务在队列里` : pending ? `${pending} 个阶段总结还没整理` : facts.settings.auto ? '保存新的阶段总结后会自动整理' : '自动整理已关，需要时点"整理事实"');
         }
         const latest = [...facts.history].reverse().find(item => !item.undone && item.trigger !== 'user');
         return `<section class="rp-overview"><p class="rp-note">${lines.map(esc).join('<br>')}</p>
             <div class="rp-set-list">${switchRow('enabled', '记录剧情事实', '关掉后不再整理，也不注入；已有卡片保留', facts.settings.enabled)}
             ${switchRow('auto', '自动整理', '每保存一个阶段总结整理一次，每次 1 次请求', facts.settings.auto)}
+            ${switchRow('review', '先审再用', '整理结果先进"待确认"，看过改了什么再应用', facts.settings.review)}
             ${switchRow('injectReflection', '把主线与伏笔一起注入', '卡片之外，再给模型一段当前主线和未回收的伏笔', facts.settings.injectReflection)}</div>
             <div class="rp-controls">${button('run', pending ? `整理事实（${pending} 个阶段）` : '整理事实', facts.settings.enabled && pending && !queued ? '' : 'disabled', true)}<span class="rp-cost is-paid">每个阶段 +1 次请求</span>${latest ? button('undo', '撤回上一次整理') : ''}</div>
-            ${latest ? `<p class="rp-note">上一次整理：${esc(when(latest.at))}，${latest.changes.length} 张卡片${latest.reflectionAfter ? '，反思已更新' : ''}${latest.warnings?.length ? `；${esc(latest.warnings.slice(0, 2).join('；'))}` : ''}</p>` : ''}
+            ${latest ? `<p class="rp-note">上一次整理：${esc(when(latest.at))}，${esc(summarizeFactsChanges(latest))}${latest.warnings?.length ? `；${esc(latest.warnings.slice(0, 2).join('；'))}` : ''}</p>` : ''}
             </section>`;
     }
 
@@ -36,30 +41,91 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         return `<section class="rp-set-group"><span class="rp-label">反思 · REFLECTION</span>${parts.map(([key, label]) => `<h4>${esc(label)}</h4><p>${esc(facts.reflection[key])}</p>`).join('')}</section>`;
     }
 
+    function matches(card, search) {
+        const needle = search.trim().toLowerCase();
+        if (!needle) return true;
+        return [card.name, ...card.aliases, ...Object.values(card.fields)].some(value => String(value || '').toLowerCase().includes(needle));
+    }
+
+    function renderEditForm(card) {
+        return `<form class="rp-edit-form rp-facts-form" data-facts-form="edit" data-facts-card-id="${esc(card.id)}">
+            <label class="rp-edit-field"><span>名字</span><input type="text" data-facts-name value="${esc(card.name)}"></label>
+            <label class="rp-edit-field"><span>别名 <small>用逗号分开</small></span><input type="text" data-facts-aliases value="${esc(card.aliases.join('、'))}"></label>
+            ${factFields[card.kind].map(key => field(key, key, card.fields[key], { hint: factFieldHints[card.kind][key] })).join('')}
+            <div class="rp-controls">${button('edit-save', '保存', '', true)}${button('edit-cancel', '取消')}</div></form>`;
+    }
+
+    function renderMergeForm(card, facts) {
+        const others = facts.cards.filter(item => item.kind === card.kind && item.id !== card.id);
+        if (!others.length) return '<p class="rp-note">没有同类型的其他卡片可以合并。</p>';
+        return `<form class="rp-edit-form rp-facts-form" data-facts-form="merge" data-facts-card-id="${esc(card.id)}">
+            <label class="rp-edit-field"><span>把「${esc(card.name)}」并入</span><select data-facts-merge-target>${others.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}</select></label>
+            <p class="rp-note">并入后这张卡删除，名字变成对方的别名；对方空着的字段用这张卡的内容补上。</p>
+            <div class="rp-controls">${button('merge-save', '合并', '', true)}${button('merge-cancel', '取消')}</div></form>`;
+    }
+
+    function renderAddForm(kind) {
+        return `<form class="rp-edit-form rp-facts-form" data-facts-form="add" data-facts-kind="${esc(kind)}"><h3>新建${esc(factKindLabels[kind])}</h3>
+            <label class="rp-edit-field"><span>名字</span><input type="text" data-facts-name placeholder="${kind === 'note' ? '便签标题' : '名字或称呼'}"></label>
+            ${factFields[kind].map(key => field(key, key, '', { hint: factFieldHints[kind][key] })).join('')}
+            <div class="rp-controls">${button('add-save', '添加', '', true)}${button('add-cancel', '取消')}</div></form>`;
+    }
+
+    function renderCard(card, state, facts) {
+        const current = nav(state);
+        const fields = factFields[card.kind].filter(key => card.fields[key]);
+        const first = fields.length ? `${fields[0]} ${card.fields[fields[0]]}` : '还没有内容';
+        const retired = card.status === 'retired';
+        let body;
+        if (current.editing === card.id) body = renderEditForm(card);
+        else if (current.merging === card.id) body = renderMergeForm(card, facts);
+        else {
+            const history = controller.cardHistory(card.id, state).slice(0, 5);
+            body = `${fields.map(key => `<h4>${esc(key)}${card.userFields.includes(key) ? ' <small>你改过</small>' : ''}</h4><p>${esc(card.fields[key])}</p>`).join('') || '<p class="rp-note">还没有内容</p>'}
+                ${card.aliases.length ? `<p class="rp-note">别名：${esc(card.aliases.join('、'))}</p>` : ''}
+                <p class="rp-note">${esc(triggerLabel[card.updatedBy] || '整理')}于 ${esc(when(card.updatedAt) || '未知')}${retired ? ' · 已结束，不再注入' : card.pinned ? ' · 固定注入' : ''}</p>
+                <div class="rp-controls">${link('edit', '编辑')}${link('pin', card.pinned ? '取消固定' : '固定注入')}${link(retired ? 'restore' : 'retire', retired ? '恢复' : '标记结束')}${link('merge', '合并到…')}${link('delete', '删除')}</div>
+                ${history.length ? `<details class="rp-set-details"><summary>变化<small>${history.length} 次</small></summary>${history.map(entry => `<p class="rp-note">${esc(when(entry.at))} · ${esc(triggerLabel[entry.trigger] || entry.trigger)}${entry.undone ? ' · 已撤回' : ''}</p>${renderFactsChanges({ ...entry, reflectionAfter: null, warnings: [] }, esc)}`).join('')}</details>` : ''}`;
+        }
+        return `<details class="rp-set-details" data-facts-card="${esc(card.id)}" ${current.open.has(card.id) ? 'open' : ''}><summary><span class="rp-set-text"><strong>${esc(card.name)}${card.pinned ? ' · 固定' : ''}${retired ? ' · 已结束' : ''}</strong><small>${esc(factKindLabels[card.kind])} · ${esc(first.slice(0, 80))}</small></span></summary>${body}</details>`;
+    }
+
     function renderCards(state, facts) {
         const current = nav(state);
         const counts = countCardsByKind(facts.cards);
         const active = facts.cards.filter(card => card.status === 'active');
         const retired = facts.cards.filter(card => card.status === 'retired');
         const filters = [['', '全部', active.length], ...factKinds.map(kind => [kind, factKindLabels[kind], counts[kind]]), ['retired', '已结束', retired.length]];
-        const shown = current.filter === 'retired' ? retired : active.filter(card => !current.filter || card.kind === current.filter);
+        const shown = (current.filter === 'retired' ? retired : active.filter(card => !current.filter || card.kind === current.filter)).filter(card => matches(card, current.search));
+        const search = `<form class="rp-search" data-facts-form="search"><label><span class="rp-label">搜索</span><input type="search" data-facts-search placeholder="名字、别名、字段里的词……" value="${esc(current.search)}" autocomplete="off"></label><button type="submit" class="rp-more">查找</button></form>`;
         const index = `<nav class="rp-index" aria-label="卡片类型">${filters.map(([key, label, count], i) => `${i ? '<span class="rp-index-sep" aria-hidden="true">/</span>' : ''}<button type="button" data-facts-action="filter" data-facts-filter="${key}" aria-pressed="${current.filter === key}">${esc(label)}<span class="rp-count">${count}</span></button>`).join('')}</nav>`;
-        const rows = shown.map(card => {
-            const fields = factFields[card.kind].filter(key => card.fields[key]);
-            const first = fields.length ? `${fields[0]} ${card.fields[fields[0]]}` : '还没有内容';
-            return `<details class="rp-set-details" data-facts-card="${esc(card.id)}" ${current.open.has(card.id) ? 'open' : ''}><summary><span class="rp-set-text"><strong>${esc(card.name)}${card.pinned ? ' · 固定' : ''}</strong><small>${esc(factKindLabels[card.kind])} · ${esc(first.slice(0, 80))}</small></span></summary>
-                ${fields.map(key => `<h4>${esc(key)}${card.userFields.includes(key) ? ' <small>你改过</small>' : ''}</h4><p>${esc(card.fields[key])}</p>`).join('') || '<p class="rp-note">还没有内容</p>'}
-                ${card.aliases.length ? `<p class="rp-note">别名：${esc(card.aliases.join('、'))}</p>` : ''}
-                <p class="rp-note">${card.updatedBy === 'user' ? '你' : card.updatedBy === 'import' ? '导入' : '整理'}于 ${esc(when(card.updatedAt) || '未知')}</p></details>`;
-        }).join('');
-        return `<section class="rp-directory-page">${index}${rows || '<p class="rp-empty">还没有这一类卡片</p>'}</section>`;
+        const add = current.adding ? renderAddForm(current.adding)
+            : `<p class="rp-add">添加：${factKinds.map(kind => `<button type="button" class="rp-more" data-facts-action="add" data-facts-kind="${kind}">${esc(factKindLabels[kind])}</button>`).join('<span class="rp-index-sep" aria-hidden="true">/</span>')}</p>`;
+        return `<section class="rp-directory-page">${search}${index}${shown.map(card => renderCard(card, state, facts)).join('') || '<p class="rp-empty">没有匹配的卡片</p>'}${add}</section>`;
+    }
+
+    function renderHistory(state, facts) {
+        const entries = [...facts.history].reverse();
+        const latest = entries.find(entry => !entry.undone);
+        if (!entries.length) return '<section class="rp-history-page"><p class="rp-empty">还没有整理过</p></section>';
+        return `<section class="rp-history-page">${entries.map(entry => `<details class="rp-set-details"><summary><span class="rp-set-text"><strong>${esc(when(entry.at))}${entry.undone ? ' · 已撤回' : ''}</strong><small>${esc(triggerLabel[entry.trigger] || entry.trigger)} · ${esc(summarizeFactsChanges(entry))}</small></span></summary>
+            ${renderFactsChanges(entry, esc)}${entry === latest && entry.trigger !== 'user' ? `<div class="rp-controls">${button('undo', '撤回这一次')}</div>` : ''}</details>`).join('')}</section>`;
     }
 
     function render(state = getState()) {
         const root = document.getElementById('bakemono-facts-root');
         if (!root) return;
         const facts = controller.facts(state);
-        root.innerHTML = renderStatus(state, facts) + renderReflection(facts) + renderCards(state, facts);
+        const current = nav(state);
+        const views = `<nav class="rp-index" aria-label="视图"><button type="button" data-facts-action="view" data-facts-view="cards" aria-pressed="${current.view === 'cards'}">卡片</button><span class="rp-index-sep" aria-hidden="true">/</span><button type="button" data-facts-action="view" data-facts-view="history" aria-pressed="${current.view === 'history'}">变化<span class="rp-count">${facts.history.length}</span></button></nav>`;
+        root.innerHTML = renderStatus(state, facts) + renderReflection(facts) + views + (current.view === 'history' ? renderHistory(state, facts) : renderCards(state, facts));
+    }
+
+    function readForm(form) {
+        const fields = Object.fromEntries([...form.querySelectorAll('[data-facts-field]')].map(input => [input.dataset.factsField, input.value]));
+        const name = form.querySelector('[data-facts-name]')?.value || '';
+        const aliases = String(form.querySelector('[data-facts-aliases]')?.value || '').split(/[,，、\n]/).map(alias => alias.trim()).filter(Boolean);
+        return { name, aliases, fields };
     }
 
     function bind(root = document.getElementById('bakemono-facts-root')) {
@@ -67,16 +133,53 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         root.dataset.factsBound = '1';
         root.addEventListener('click', async event => {
             const target = event.target.closest('[data-facts-action]');
-            if (!target) return;
+            if (!target || !root.contains(target)) return;
             const state = getState();
+            const current = nav(state);
+            const cardId = target.closest('[data-facts-card]')?.dataset.factsCard || target.closest('[data-facts-card-id]')?.dataset.factsCardId;
             const action = target.dataset.factsAction;
-            if (action === 'filter') { nav(state).filter = target.dataset.factsFilter || ''; render(state); }
+            const show = () => render(state);
+            if (action === 'filter') { current.filter = target.dataset.factsFilter || ''; show(); }
+            else if (action === 'view') { current.view = target.dataset.factsView || 'cards'; show(); }
             else if (action === 'run') { target.disabled = true; await controller.runManual(); refresh(); }
             else if (action === 'undo') { await controller.undoLast(); refresh(); }
+            else if (action === 'add') { current.adding = target.dataset.factsKind; show(); }
+            else if (action === 'add-cancel') { current.adding = null; show(); }
+            else if (action === 'add-save') {
+                const form = target.closest('form');
+                const data = readForm(form);
+                if (!data.name.trim()) { form.querySelector('[data-facts-name]')?.focus(); return; }
+                const card = controller.addCard({ kind: form.dataset.factsKind, ...data });
+                current.adding = null;
+                if (card) current.open.add(card.id);
+                show();
+            }
+            else if (action === 'edit') { current.editing = cardId; current.merging = null; current.open.add(cardId); show(); }
+            else if (action === 'edit-cancel') { current.editing = null; show(); }
+            else if (action === 'edit-save') { controller.saveCard(cardId, readForm(target.closest('form'))); current.editing = null; show(); }
+            else if (action === 'pin') { const card = controller.facts(state).cards.find(item => item.id === cardId); if (card) controller.saveCard(cardId, { pinned: !card.pinned }); show(); }
+            else if (action === 'retire') { controller.saveCard(cardId, { status: 'retired' }); show(); }
+            else if (action === 'restore') { controller.saveCard(cardId, { status: 'active' }); show(); }
+            else if (action === 'merge') { current.merging = cardId; current.editing = null; current.open.add(cardId); show(); }
+            else if (action === 'merge-cancel') { current.merging = null; show(); }
+            else if (action === 'merge-save') {
+                const keepId = target.closest('form').querySelector('[data-facts-merge-target]')?.value;
+                if (keepId) { controller.mergeInto(keepId, cardId); current.open.add(keepId); }
+                current.merging = null;
+                show();
+            }
+            else if (action === 'delete') { if (await controller.deleteCard(cardId)) { current.open.delete(cardId); } render(getState()); }
+        });
+        root.addEventListener('submit', event => {
+            const form = event.target.closest('form[data-facts-form]');
+            if (!form) return;
+            event.preventDefault();
+            if (form.dataset.factsForm === 'search') { nav(getState()).search = form.querySelector('[data-facts-search]')?.value || ''; render(getState()); }
+            else form.querySelector('[data-facts-action$="-save"]')?.click();
         });
         root.addEventListener('toggle', event => {
             const card = event.target.closest?.('[data-facts-card]');
-            if (!card) return;
+            if (!card || event.target !== card) return;
             const open = nav(getState()).open;
             if (card.open) open.add(card.dataset.factsCard); else open.delete(card.dataset.factsCard);
         }, true);

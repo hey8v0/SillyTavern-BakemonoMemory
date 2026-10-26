@@ -1,5 +1,6 @@
-import { applyFactsUpdate, normalizeFacts, undoFactsUpdate } from '../facts/model.js';
+import { applyFactsUpdate, createCard, editCard, mergeCards, normalizeFacts, removeCard, undoFactsUpdate } from '../facts/model.js';
 import { parseFactCards } from '../facts/parser.js';
+import { summarizeFactsChanges } from '../facts/diff.js';
 import { buildFactsPrompt, defaultFactsPrompt } from '../facts/prompt.js';
 import { storyTimeContext as defaultStoryTimeContext } from '../memory/story-state.js';
 
@@ -18,6 +19,7 @@ export function createFactsController({
     syncInjection = () => {},
     confirm = async () => true,
     persistSharedConfigurationFromState = () => {},
+    createDraft = null,
     now = () => new Date().toISOString(),
 } = {}) {
     function facts(state = getState()) {
@@ -40,9 +42,16 @@ export function createFactsController({
     function stagesToIntegrate(state = getState()) {
         const done = new Set(facts(state).doneStages);
         const queued = new Set((state.taskQueue || []).filter(task => task.kind === blockTypes.FACTS && ['queued', 'running'].includes(task.status)).map(task => task.metadata?.factsStageHash));
+        const held = new Set((state.drafts || []).filter(draft => draft.kind === blockTypes.FACTS).map(draft => draft.metadata?.factsStageHash));
         return [...(state.stageSummaries || [])]
             .sort((a, b) => (a.sourceSortKey ?? 0) - (b.sourceSortKey ?? 0))
-            .filter(stage => stage?.hash && !done.has(stage.hash) && !queued.has(stage.hash));
+            .filter(stage => stage?.hash && !done.has(stage.hash) && !queued.has(stage.hash) && !held.has(stage.hash));
+    }
+
+    // What one result would change, computed on a copy; shown in 待确认 when results are held for review.
+    function previewUpdate(current, parsed, { stageHash = null, taskId = null } = {}) {
+        const copy = structuredClone(current);
+        return applyFactsUpdate(copy, parsed, { trigger: 'review', stageHash, taskId, now: now() }) || { changes: [], warnings: [], reflectionAfter: null, stageHash };
     }
 
     function enqueueStage(stage, { trigger = 'auto', silent = trigger === 'auto' } = {}) {
@@ -96,8 +105,18 @@ export function createFactsController({
     async function handleTaskResult(rawResult, task) {
         const state = getState();
         const parsed = parseFactCards(rawResult);
-        const entry = applyFactsUpdate(facts(state), parsed, { trigger: task.trigger === 'facts_manual' ? 'manual' : 'facts',
-            stageHash: task.metadata?.factsStageHash || null, taskId: task.id, now: now() });
+        const current = facts(state);
+        const stageHash = task.metadata?.factsStageHash || null;
+        if (current.settings.review && createDraft) {
+            const preview = previewUpdate(current, parsed, { stageHash, taskId: task.id });
+            const draft = createDraft({ kind: blockTypes.FACTS, content: rawResult, sourceHashes: task.sourceHashes || [], sourceMessageIds: [], prompt: task.prompt,
+                trigger: task.trigger, metadata: { factsStageHash: stageHash, factsPreview: preview, suggestedTitle: task.label, lockTitle: true } });
+            task.metadata = { ...(task.metadata || {}), factsDraftId: draft.id, factsChanges: preview.changes.length };
+            saveState();
+            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `整理结果已进入待确认：${summarizeFactsChanges(preview)}。`);
+            return draft;
+        }
+        const entry = applyFactsUpdate(current, parsed, { trigger: task.trigger === 'facts_manual' ? 'manual' : 'facts', stageHash, taskId: task.id, now: now() });
         task.metadata = { ...(task.metadata || {}), factsChanges: entry?.changes.length || 0, factsWarnings: entry?.warnings || [] };
         saveState();
         syncInjection();
@@ -124,6 +143,70 @@ export function createFactsController({
         return entry;
     }
 
+    // 待确认 → 应用到卡片. The cards may have moved on since the preview, so the result is applied afresh.
+    async function applyDraft(draftId, options = {}) {
+        const state = getState();
+        const index = (state.drafts || []).findIndex(draft => draft.id === draftId && draft.kind === blockTypes.FACTS);
+        if (index < 0) return null;
+        const draft = state.drafts[index];
+        let parsed;
+        try { parsed = parseFactCards(draft.content); }
+        catch (error) { toastr.warning?.(error.message, '整理事实'); return null; }
+        const entry = applyFactsUpdate(facts(state), parsed, { trigger: 'review', stageHash: draft.metadata?.factsStageHash || null, taskId: null, now: now() });
+        state.drafts.splice(index, 1);
+        saveState();
+        syncInjection();
+        if (!options.silent) {
+            renderWorkbenchScope(workbenchRenderScopes.DRAFTS, `已应用到卡片：${summarizeFactsChanges(entry)}。`);
+            toastr.success?.(`已应用到卡片：${summarizeFactsChanges(entry)}。`, '剧情剪辑台');
+        }
+        return entry || { changes: [] };
+    }
+
+    function discardDraft(draftId) {
+        const state = getState();
+        const before = (state.drafts || []).length;
+        state.drafts = (state.drafts || []).filter(draft => !(draft.id === draftId && draft.kind === blockTypes.FACTS));
+        if (state.drafts.length === before) return false;
+        saveState();
+        renderWorkbenchScope(workbenchRenderScopes.DRAFTS, '整理结果已丢弃；那个阶段可以重新整理。');
+        return true;
+    }
+
+    function afterCardChange(message) {
+        saveState();
+        syncInjection();
+        if (message) renderWorkbenchScope(workbenchRenderScopes.DRAFTS, message);
+    }
+    function saveCard(cardId, patch) {
+        const card = editCard(facts(getState()), cardId, patch, now());
+        if (card) afterCardChange(`已保存「${card.name}」。`);
+        return card;
+    }
+    function addCard(data) {
+        const card = createCard(facts(getState()), data, now());
+        if (card) afterCardChange(`已添加「${card.name}」。`);
+        return card;
+    }
+    function mergeInto(keepId, removeId) {
+        const card = mergeCards(facts(getState()), keepId, removeId, now());
+        if (card) afterCardChange(`已合并到「${card.name}」。`);
+        return card;
+    }
+    async function deleteCard(cardId) {
+        const current = facts(getState());
+        const card = current.cards.find(item => item.id === cardId);
+        if (!card) return false;
+        if (!await confirm(`删除「${card.name}」？`, ['这张卡片会从剧情事实里去掉，之后的整理可能会按材料重新建一张。', '想暂时不注入的话，用"标记结束"就够了。'])) return false;
+        const removed = removeCard(current, cardId);
+        if (removed) afterCardChange(`已删除「${card.name}」。`);
+        return removed;
+    }
+    function cardHistory(cardId, state = getState()) {
+        return [...facts(state).history].reverse().filter(entry => entry.changes?.some(change => change.cardId === cardId))
+            .map(entry => ({ ...entry, changes: entry.changes.filter(change => change.cardId === cardId) }));
+    }
+
     function updateSettings(patch) {
         const state = getState();
         const current = facts(state);
@@ -134,5 +217,6 @@ export function createFactsController({
         return current.settings;
     }
 
-    return { facts, stageMaterial, stagesToIntegrate, enqueueStage, onSummaryCommitted, runManual, handleTaskResult, undoLast, updateSettings };
+    return { facts, stageMaterial, stagesToIntegrate, enqueueStage, onSummaryCommitted, runManual, handleTaskResult, previewUpdate, applyDraft, discardDraft,
+        undoLast, updateSettings, saveCard, addCard, mergeInto, deleteCard, cardHistory };
 }

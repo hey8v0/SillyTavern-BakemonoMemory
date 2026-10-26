@@ -1,3 +1,5 @@
+import { renderFactsChanges, summarizeFactsChanges } from '../facts/diff.js';
+
 // 待确认: drafts wait here before they reach long-term memory, next to the task queue and the save history.
 // Same look as the 总结 page: a row of levels, ruled lists, one “⋯” per draft; only 保存 sits outside it.
 const statusLabels = { queued: '等待中', running: '生成中', done: '已完成', partial: '部分完成', failed: '失败' };
@@ -98,8 +100,10 @@ export function createReviewQueueUi({
     function draftItem(draft) {
         const metadata = draft.metadata || {};
         const open = openDrafts.has(draft.id);
+        // A 整理事实 result held for review: the diff is the document, there is no text to edit.
+        const isFacts = draft.kind === blockTypes.FACTS;
         const block = { content: draft.content || '', type: draft.kind || blockTypes.STORY, title: draft.title, isGeneratedSummary: true, metadata: {} };
-        const { title, lead } = describeSummary(block);
+        const { title, lead } = isFacts ? { title: draft.title, lead: summarizeFactsChanges(metadata.factsPreview) } : describeSummary(block);
         const name = String(draft.title || '').trim() || title || getKindLabel(draft.kind);
         const where = [draftFloors(draft), metadata.batchIndex ? `第 ${metadata.batchIndex}/${metadata.batchTotal || '?'} 批` : '', shortTime(draft.createdAt)].filter(Boolean).join(' · ');
         const item = documentRef.createElement('article');
@@ -129,9 +133,9 @@ export function createReviewQueueUi({
                 </div>
             </div>
             <div class="bk-rev-foot">
-                <button type="button" class="bk-sum-link" data-bakemono-draft-toggle>${open ? '收起 ↑' : '展开全文 ›'}</button>
+                <button type="button" class="bk-sum-link" data-bakemono-draft-toggle>${open ? '收起 ↑' : isFacts ? '看改了什么 ›' : '展开全文 ›'}</button>
                 <span class="bk-rev-spacer"></span>
-                <button type="button" class="menu_button bk-sum-primary" data-bakemono-draft-action="commit">保存</button>
+                <button type="button" class="menu_button bk-sum-primary" data-bakemono-draft-action="commit">${isFacts ? '应用到卡片' : '保存'}</button>
             </div>`;
         item.querySelector('.bakemono-memory-draft-title').value = draft.title || '';
         item.querySelector('.bakemono-memory-draft-editor').value = draft.content || '';
@@ -142,6 +146,10 @@ export function createReviewQueueUi({
     function fillDocument(item, draft) {
         const full = item.querySelector('.bk-rev-full');
         if (!full || full.childElementCount) return;
+        if (draft.kind === blockTypes.FACTS) {
+            full.innerHTML = `<div class="rp-core-ui">${renderFactsChanges(draft.metadata?.factsPreview, esc)}</div>`;
+            return;
+        }
         const block = { content: draft.content || '', type: draft.kind || blockTypes.STORY };
         if (createSummaryDocument) full.append(createSummaryDocument(block));
         else full.textContent = draft.content || '';

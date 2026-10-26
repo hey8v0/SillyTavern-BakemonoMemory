@@ -40,6 +40,7 @@ export function createSummaryDraftService({
     removeExactTextBlock,
     confirm,
     onSummaryCommitted = null,
+    applyFactsDraft = null,
 } = {}) {
     const durableSummaryStateKeys = [
         'blocks',
@@ -437,6 +438,8 @@ export function createSummaryDraftService({
         if (draft.metadata?.appendMode === 'missing_summary') {
             return await commitMissingSummaryDraft(draftIndex, editedContent, options);
         }
+        // A 整理事实 result held for review: applying it is the facts controller's job, not a summary save.
+        if (draft.kind === blockTypes.FACTS) return await applyFactsDraft?.(draft.id, options);
 
         try { summarySources?.validate(draft.metadata?.inputSnapshot,state); }
         catch(error){

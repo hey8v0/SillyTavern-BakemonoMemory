@@ -1922,6 +1922,7 @@ const summaryDraftService = createSummaryDraftService({
     removeExactTextBlock,
     confirm: confirmMessage,
     onSummaryCommitted: summary => factsController.onSummaryCommitted(summary),
+    applyFactsDraft: (draftId, options) => factsController.applyDraft(draftId, options),
 });
 const {
     clearStuckMissingSummaryTasks,
@@ -2251,6 +2252,7 @@ const factsController = createFactsController({
     syncInjection: () => syncInjection(),
     confirm: confirmDanger,
     persistSharedConfigurationFromState,
+    createDraft: (...args) => summaryDraftService.createDraft(...args),
 });
 const factsUi = createFactsUi({
     documentRef: document,
