@@ -6,6 +6,8 @@ import { runChatSwitchFlow } from './src/core/chat-switch.js';
 import { createChatGate } from './src/core/chat-ready.js';
 import { captureChronicle } from './src/memory/story-state.js';
 import { getSummaryStatus } from './src/memory/summary-provenance.js';
+// Read as a namespace: helpers that older SillyTavern versions do not export must not stop the plugin from loading.
+import * as hostScript from '../../../../script.js';
 import { factsRecallHints } from './src/facts/recall.js';
 import {createSummarySourceService} from './src/features/summary-source-service.js';
 import { createStoryToolsUi } from './src/features/story-tools-ui.js';
@@ -1258,7 +1260,11 @@ const injectionService = createInjectionService({
     memoryStrategies,
     // v1.32.0: tables and 剧情状态 no longer inject; 剧情事实 does.
     renderVectorMemorySection,
-    renderFactsSection: (state, recentText) => renderFactsSection(factsController.facts(state), recentText),
+    renderFactsSection: (state, recentParts) => {
+        const result = renderFactsSection(factsController.facts(state), recentParts, { budgetChars: factsController.injectionBudget(state).chars });
+        factsController.noteInjection(state, result);
+        return result;
+    },
     setExtensionPrompt,
     injectionKey: INJECTION_KEY,
     extensionPromptTypes: extension_prompt_types,
@@ -1949,8 +1955,21 @@ const {
     retryQueueTask,
 } = summaryTaskQueue;
 
+// The current model's context window in tokens: SillyTavern 1.19 has getMaxContextTokens; older versions have
+// getMaxContextSize (the window minus the reply length, close enough). 0 when neither is there.
+function hostContextTokens() {
+    for (const name of ['getMaxContextTokens', 'getMaxContextSize']) {
+        try {
+            const value = typeof hostScript[name] === 'function' ? Number(hostScript[name]()) : 0;
+            if (value > 0) return value;
+        } catch { /* try the next one */ }
+    }
+    return 0;
+}
+
 const factsController = createFactsController({
     getState: ensureState,
+    getContextTokens: hostContextTokens,
     getChat: () => chat,
     isChatReady,
     summaryStatus: (state, item) => getSummaryStatus(state, item),

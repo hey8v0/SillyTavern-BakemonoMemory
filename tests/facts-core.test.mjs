@@ -306,7 +306,7 @@ test('settings saved before v1.32.0 get the new default (on) once; a deliberate 
     assert.equal(normalizeFacts({ settings: { enabled: false } }).settings.enabled, true, 'no version: pre-1.32 defaults');
     assert.equal(normalizeFacts({ settings: { version: 2, enabled: false } }).settings.enabled, false);
     assert.equal(normalizeFacts({}).settings.enabled, true);
-    assert.equal(normalizeFacts(createDefaultFacts()).settings.version, 2);
+    assert.equal(normalizeFacts(createDefaultFacts()).settings.version, 3, 'v1.40.0: the budget follows the model context');
     assert.deepEqual([normalizeFacts({}).settings.everySummaries, normalizeFacts({}).settings.idleMinutes], [6, 10]);
     assert.deepEqual([normalizeFacts({ settings: { everySummaries: 0, idleMinutes: -5 } }).settings.everySummaries, normalizeFacts({ settings: { idleMinutes: 0 } }).settings.idleMinutes], [6, 0], '0 批次大小回到默认；0 分钟是关');
 });

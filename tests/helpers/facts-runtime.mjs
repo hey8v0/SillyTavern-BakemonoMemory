@@ -9,7 +9,7 @@ export const lin = (处境 = '在书店') => ({ kind: 'person', name: '林晚', 
 
 // A chat with one 剧情摘要 per reply (even floors; saved and read-from-reply in turn), the facts controller and
 // the real task queue around a fake model. The last floor is the open reply.
-export function factsRuntime({ enabled = true, auto = true, review = false, every = 3, idleMinutes = 10, floors = 12, summaries = 3 } = {}) {
+export function factsRuntime({ enabled = true, auto = true, review = false, every = 3, idleMinutes = 10, floors = 12, summaries = 3, contextTokens = 0 } = {}) {
     const chat = Array.from({ length: floors }, (_, i) => ({ mes: `正文 ${i}`, is_user: i % 2 === 1 }));
     const state = { facts: { ...createDefaultFacts(), settings: { ...createDefaultFacts().settings, enabled, auto, review, everySummaries: every, idleMinutes } },
         generationPrompts: {}, taskQueue: [], drafts: [], storySummaries: [], blocks: [], stageSummaries: [], epicSummaries: [], automation: {} };
@@ -45,7 +45,7 @@ export function factsRuntime({ enabled = true, auto = true, review = false, ever
     const controller = createFactsController({ getState: () => current, getChat: () => chat, saveState: () => {}, enqueueSummaryTask: task => queue.enqueueSummaryTask({ ...task, autoStart: false }),
         blockTypes, getBlockPlainText: text => String(text).replace(/<[^>]+>/g, ''), toastr, renderWorkbenchScope: (s, t) => scopes.push(t), workbenchRenderScopes: { DRAFTS: 'drafts' },
         confirm: async () => true, storyTimeContext: () => '', isChatReady: () => ready, now: () => new Date(clock.now).toISOString(),
-        summaryStatus: (s, item) => ({ valid: !invalid.has(item.hash) }),
+        summaryStatus: (s, item) => ({ valid: !invalid.has(item.hash) }), getContextTokens: () => contextTokens,
         setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimer: id => { if (timers[id - 1]) timers[id - 1].cleared = true; },
         createDraft: data => { const draft = { id: 'draft-' + current.drafts.length, title: data.metadata?.suggestedTitle || '', ...data }; current.drafts.unshift(draft); return draft; } });
     const factsTasks = () => current.taskQueue.filter(task => task.kind === 'facts');

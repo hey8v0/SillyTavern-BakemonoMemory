@@ -27,14 +27,30 @@ export const factFieldHints = Object.freeze({
     rule: { 说明: '设定内容', 影响范围: '影响哪些人、地方或事' },
     note: { 内容: '只由你填写，模型只读' },
 });
-export const factSettingKeys = Object.freeze(['version', 'enabled', 'auto', 'review', 'everySummaries', 'idleMinutes', 'budgetChars', 'maxCards', 'recentFloors', 'materialChars', 'injectReflection']);
+export const factSettingKeys = Object.freeze(['version', 'enabled', 'auto', 'review', 'everySummaries', 'idleMinutes', 'budgetAuto', 'budgetRatio', 'budgetChars', 'maxCards', 'recentFloors', 'materialChars', 'injectReflection']);
 
 // settings.version 2: on by default (v1.32.0). Settings saved before that carry no version and get the new default once.
-export const factSettingsVersion = 2;
+// settings.version 3: the injection budget follows the model's context (v1.40.0).
+export const factSettingsVersion = 3;
 export function createDefaultFactSettings() {
     // everySummaries: 整理 runs once this many new 剧情摘要 have gathered; idleMinutes: or after this long without a message (0 = off).
-    return { version: factSettingsVersion, enabled: true, auto: true, review: false, everySummaries: 6, idleMinutes: 10, budgetChars: 6000, maxCards: 40, recentFloors: 6, materialChars: 24000, injectReflection: true };
+    // budgetAuto: inject up to budgetRatio % of the model's context; off: up to budgetChars characters.
+    return { version: factSettingsVersion, enabled: true, auto: true, review: false, everySummaries: 6, idleMinutes: 10, budgetAuto: true, budgetRatio: 6, budgetChars: 6000,
+        maxCards: 40, recentFloors: 6, materialChars: 24000, injectReflection: true };
 }
+// The automatic budget in characters (Chinese text runs close to one token per character): never below `min`, never
+// above `max`, and `unknown` when the model's context cannot be read.
+export const budgetLimits = Object.freeze({ min: 800, max: 30000, unknown: 4000 });
+export function injectionBudget(settings = {}, contextTokens = 0) {
+    const ratio = Number(settings.budgetRatio) || 6;
+    const context = Number(contextTokens) > 0 ? Math.round(Number(contextTokens)) : 0;
+    if (settings.budgetAuto === false) return { chars: Number(settings.budgetChars) || 6000, auto: false, ratio, contextTokens: context };
+    const chars = context ? Math.max(budgetLimits.min, Math.min(budgetLimits.max, Math.round(context * ratio / 100))) : budgetLimits.unknown;
+    return { chars, auto: true, ratio, contextTokens: context };
+}
+// How long a card's text is: a card past `compactLimit` is asked to be rewritten shorter at the next 整理.
+export const compactLimit = 200;
+export const cardTextLength = card => Object.values(card?.fields || {}).reduce((sum, value) => sum + String(value || '').length, 0);
 
 export function createDefaultFacts() {
     return { version: 1, revision: 0, cards: [], reflection: { mainline: '', threads: '', arcs: '', updatedAt: null },
@@ -48,9 +64,13 @@ export function normalizeFactSettings(value) {
     const defaults = createDefaultFactSettings();
     const source = value && typeof value === 'object' ? value : {};
     const number = (key, min, max) => Math.max(min, Math.min(max, Number(source[key] ?? defaults[key]) || defaults[key]));
-    const current = Number(source.version) >= factSettingsVersion;
-    return { version: factSettingsVersion, enabled: current ? !!source.enabled : defaults.enabled, auto: source.auto !== false, review: !!source.review,
+    const version = Number(source.version) || 0;
+    // Before v1.40 the budget was a fixed 6000 nobody could change: that moves to the automatic budget once; another
+    // number someone set (an imported configuration) stays as a fixed budget.
+    const budgetAuto = version >= 3 ? source.budgetAuto !== false : !(Number(source.budgetChars) && Number(source.budgetChars) !== 6000);
+    return { version: factSettingsVersion, enabled: version >= 2 ? !!source.enabled : defaults.enabled, auto: source.auto !== false, review: !!source.review,
         everySummaries: number('everySummaries', 1, 50), idleMinutes: Math.max(0, Math.min(240, Number(source.idleMinutes ?? defaults.idleMinutes) || 0)),
+        budgetAuto, budgetRatio: number('budgetRatio', 1, 30),
         budgetChars: number('budgetChars', 500, 60000), maxCards: number('maxCards', 5, 200), recentFloors: number('recentFloors', 1, 50),
         materialChars: number('materialChars', 2000, 120000), injectReflection: source.injectReflection !== false };
 }

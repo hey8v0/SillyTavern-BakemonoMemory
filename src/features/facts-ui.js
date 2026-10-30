@@ -67,16 +67,42 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         return notes.map(([tone, title, detail, action = '']) => `<div class="rp-notice${tone ? ` is-${tone}` : ''}"><i class="rp-notice-dot"></i><div><strong>${esc(title)}</strong><small>${esc(detail)}</small></div>${action}</div>`).join('');
     }
 
+    const number = value => Number(value || 0).toLocaleString();
+    // How much may go in each round: a share of the model's context, or a fixed number.
+    function budgetRows(state, settings) {
+        const budget = controller.injectionBudget?.(state) || { chars: settings.budgetChars, auto: settings.budgetAuto, contextTokens: 0 };
+        const detail = !settings.budgetAuto ? '关掉后按下面的固定字数'
+            : budget.contextTokens ? `现在每轮最多约 ${number(budget.chars)} 字（模型上下文 ${number(budget.contextTokens)} 的 ${settings.budgetRatio}%）`
+            : `读不到模型上下文，先按 ${number(budget.chars)} 字`;
+        return `${switchRow('budgetAuto', '注入量跟着模型上下文', detail, settings.budgetAuto)}
+            ${settings.budgetAuto ? numberRow('budgetRatio', '占上下文的百分比', '越大写得越全，也越占 token', settings.budgetRatio, 1, 30)
+                : numberRow('budgetChars', '每轮最多注入多少字', '中文大约一字一 token', settings.budgetChars, 500, 60000)}`;
+    }
+
+    // What the last round injected: which cards went in full, in one line, by name only, or not at all.
+    function renderInjection(state) {
+        const plan = controller.lastInjection?.(state);
+        if (!plan || !(plan.full.length + plan.short.length + plan.named.length + plan.dropped.length)) return '';
+        const groups = [['完整', plan.full], ['一行', plan.short], ['只列名字', plan.named], ['没放进去', plan.dropped]].filter(([, list]) => list.length);
+        const counts = groups.map(([label, list]) => `${label} ${list.length}`).join(' · ');
+        return `<details class="rp-set-details" data-facts-injection><summary>这一轮注入<small>${esc(number(plan.used))} / ${esc(number(plan.budget))} 字 · ${esc(counts)}</small></summary>
+            <dl class="rp-facts">${groups.map(([label, list]) => `<dt>${esc(label)}</dt><dd>${esc(list.join('、'))}</dd>`).join('')}</dl>
+            ${plan.over ? '<p class="rp-note">便签和主线已经超过预算，卡片都没放进去；调大注入量，或精简便签。</p>' : ''}</details>`;
+    }
+
     function renderSettings(state, facts) {
         const settings = facts.settings;
-        const summary = [`每 ${settings.everySummaries} 条`, settings.idleMinutes ? `空闲 ${settings.idleMinutes} 分钟` : '不按空闲', settings.review ? '先审再用' : '', settings.injectReflection ? '' : '不注入反思'].filter(Boolean).join(' · ');
+        const budget = controller.injectionBudget?.(state);
+        const summary = [`每 ${settings.everySummaries} 条`, settings.idleMinutes ? `空闲 ${settings.idleMinutes} 分钟` : '不按空闲', settings.review ? '先审再用' : '',
+            budget ? `注入至多 ${number(budget.chars)} 字` : '', settings.injectReflection ? '' : '不注入反思'].filter(Boolean).join(' · ');
         return `<details class="rp-set-details" data-facts-settings ${nav(state).settings ? 'open' : ''}><summary>设置<small>${esc(summary)}</small></summary>
             <div class="rp-set-list">${switchRow('enabled', '记录剧情事实', '关掉后不再整理，也不注入；已有卡片保留', settings.enabled)}
             ${switchRow('auto', '自动整理', '攒够一批摘要就整理一次，每次 1 次请求', settings.auto)}
             ${numberRow('everySummaries', '每攒几条摘要整理一次', '越小越新鲜、请求越多；最新一楼会等下一条消息后再算', settings.everySummaries, 1, 50)}
             ${numberRow('idleMinutes', '空闲几分钟后把剩下的整理掉', '0 表示不按空闲整理', settings.idleMinutes, 0, 240)}
             ${switchRow('review', '先审再用', '整理结果先进“待确认”，看过改了什么再应用', settings.review)}
-            ${switchRow('injectReflection', '把主线与伏笔一起注入', '卡片之外，再给模型一段当前主线和未回收的伏笔', settings.injectReflection)}</div></details>`;
+            ${switchRow('injectReflection', '把主线与伏笔一起注入', '卡片之外，再给模型一段当前主线和未回收的伏笔', settings.injectReflection)}
+            ${budgetRows(state, settings)}</div></details>`;
     }
 
     // What the model could not settle: the card's current value against what the material said; the user picks.
@@ -186,7 +212,7 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         if (!root) return;
         const facts = controller.facts(state);
         const current = nav(state);
-        root.innerHTML = renderSlate(state, facts) + renderControls(state, facts) + renderNotices(state, facts) + renderSettings(state, facts)
+        root.innerHTML = renderSlate(state, facts) + renderControls(state, facts) + renderNotices(state, facts) + renderInjection(state) + renderSettings(state, facts)
             + renderConflicts(state) + renderReflection(facts) + (current.view === 'history' ? renderHistory(state, facts) : renderCards(state, facts));
     }
 

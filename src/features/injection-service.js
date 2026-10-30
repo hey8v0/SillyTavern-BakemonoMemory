@@ -68,10 +68,13 @@ export function createInjectionService({
         // 剧情事实: cards the recent floors name, and the ones the recalled old summaries name (so a memory the
         // vector recall brought back comes with who and what it is about). Not budgeted against the summaries;
         // it has its own character budget.
+        // The scene is the latest two floors (full cards); a few floors back and the recalled text bring one-line cards.
         const recentFloors = Math.max(1, Number(state.facts?.settings?.recentFloors) || 6);
-        const recalled = state.vectorMemory?.enabled ? recallText(state.vectorMemory.lastHits || []) : '';
-        const recentText = state.injection?.enabled === false ? '' : [(getChat?.() || []).slice(-recentFloors).map(message => String(message?.mes || '')).join('\n'), recalled].filter(Boolean).join('\n');
-        sources.facts = state.injection?.enabled === false ? '' : (renderFactsSection(state, recentText)?.text || '');
+        const messages = getChat?.() || [];
+        const join = list => list.map(message => String(message?.mes || '')).join('\n');
+        const recentParts = { scene: join(messages.slice(-2)), recent: join(messages.slice(-recentFloors)),
+            recalled: state.vectorMemory?.enabled ? recallText(state.vectorMemory.lastHits || []) : '' };
+        sources.facts = state.injection?.enabled === false ? '' : (renderFactsSection(state, recentParts)?.text || '');
         const sections = [sources.summary, sources.memory, sources.facts, sources.time, sources.vector].filter(Boolean);
         const memory = sections.join('\n\n').trim();
         const savedSummaries = (state.stageSummaries?.length || 0) + (state.epicSummaries?.length || 0);

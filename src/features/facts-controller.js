@@ -1,4 +1,4 @@
-import { applyFactsUpdate, cardMentions, createCard, editCard, mergeCards, normalizeFacts, pruneIntegrated, removeCard, resolveConflict as settleConflict, seedTimelines, undoFactsUpdate } from '../facts/model.js';
+import { applyFactsUpdate, cardMentions, createCard, injectionBudget as budgetFor, editCard, mergeCards, normalizeFacts, pruneIntegrated, removeCard, resolveConflict as settleConflict, seedTimelines, undoFactsUpdate } from '../facts/model.js';
 import { parseFactCards } from '../facts/parser.js';
 import { summarizeFactsChanges } from '../facts/diff.js';
 import { buildLegacyImport, importCards } from '../facts/migration.js';
@@ -32,6 +32,8 @@ export function createFactsController({
     summaryStatus = () => ({ valid: true }),
     // The older 剧情状态 projection and 表格 rows of the chat, for the one-time import.
     getLegacy = () => ({ projection: null, information: [], tables: [] }),
+    // The model's context size in tokens (0 when it cannot be read), for the automatic injection budget.
+    getContextTokens = () => 0,
     setTimer = (fn, ms) => setTimeout(fn, ms),
     clearTimer = id => clearTimeout(id),
     now = () => new Date().toISOString(),
@@ -444,6 +446,17 @@ export function createFactsController({
         if (removed) afterCardChange(`已删除「${card.name}」。`);
         return removed;
     }
+    // How much the facts may inject this round: a share of the model's context, or the fixed number the user set.
+    function injectionBudget(state = getState()) {
+        let context = 0;
+        try { context = Number(getContextTokens()) || 0; } catch { context = 0; }
+        return budgetFor(facts(state).settings, context);
+    }
+    // What the last round injected (full, one line, by name, left out), for the page to show. Not saved.
+    const injections = new WeakMap();
+    function noteInjection(state, result) { if (state && result?.plan) injections.set(state, result.plan); }
+    function lastInjection(state = getState()) { return injections.get(state) || null; }
+
     function openConflicts(state = getState()) {
         return (facts(state).conflicts || []).filter(item => item.status === 'open');
     }
@@ -497,5 +510,5 @@ export function createFactsController({
 
     return { facts, pendingSummaries, enqueueBatch, runBatch, maybeRun, noteActivity, resume, onSummaryCommitted, runManual, handleTaskResult, previewUpdate, applyDraft, discardDraft,
         undoLast, updateSettings, saveCard, addCard, mergeInto, deleteCard, cardHistory, legacySummary, importLegacy, sourceSignature, blockedBatch, chatShorterThanProgress,
-        openConflicts, resolveConflict };
+        openConflicts, resolveConflict, injectionBudget, noteInjection, lastInjection };
 }

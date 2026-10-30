@@ -85,6 +85,7 @@ if (typeof location !== 'undefined' && new URLSearchParams(location.search).has(
   },
  });
 }
+export function getMaxContextTokens(){ return 32768; }
 export async function generateRaw(){ throw new Error('模拟环境：未连接模型'); }
 export async function saveChatConditional(){ return true; }
 export async function saveChat(){ return true; }

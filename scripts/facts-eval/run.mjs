@@ -175,6 +175,9 @@ export async function runEval({ api = '', key = '', model = '', temperature = 0.
     const unknownCards = facts.cards.filter(c => !known.some(n => c.name.includes(n) || n.includes(c.name))).map(c => `${c.kind}:${c.name}`);
     const keys = judge(facts, m.findCard, keyFacts), wrongs = judge(facts, m.findCard, wrongFacts);
     const injected = inject('林晚和沈砚在青石镇的铺子里说话。');
+    // One round as the plugin builds it: the latest two floors as the scene, a few floors back, a 32k model's budget.
+    const round = m.renderFactsSection(facts, { scene: '林晚和沈砚在青石镇的铺子里说话。', recent: '阿砚和林霜去了北方，青石的手指断了。', recalled: '' },
+        { budgetChars: m.injectionBudget(facts.settings, 32000).chars });
     const report = {
         name: name || (dry ? 'dry-run' : offline ? 'offline' : model), model: dry ? `${model || '?'}（未发送）` : offline ? 'scripted' : model, at: new Date().toISOString(), every, floors: 122 + gap,
         passed: results.filter(r => r.ok).length, total: results.length, results,
@@ -185,6 +188,7 @@ export async function runEval({ api = '', key = '', model = '', temperature = 0.
         cards: facts.cards.length, unknownCards, conflicts: (facts.conflicts || []).filter(c => c.status === 'open').length,
         warnings: facts.history.flatMap(h => h.warnings || []).length, pending: p.controller.pendingSummaries(p.state).length,
         injectedChars: injected.length,
+        injection: { budget: round.plan.budget, used: round.plan.used, full: round.plan.full.length, short: round.plan.short.length, named: round.plan.named.length, dropped: round.plan.dropped.length },
         metrics: { ...metrics, failures: p.failures, tokensEstimated: metrics.promptTokens ? null : Math.round((metrics.promptChars + metrics.replyChars) / 1.6) },
         cardsSnapshot: facts.cards.map(c => ({ kind: c.kind, name: c.name, status: c.status, fields: c.fields, timeline: c.timeline, floors: c.floors })),
     };
@@ -202,6 +206,7 @@ export function formatReport(report) {
         ...report.recall.rows.filter(row => row.baseHit !== row.factsHit || !row.factsHit).map(row => `   ${row.factsHit ? '↑' : '·'} ${row.query} 期望第 ${row.expected.join('/')} 楼，不用卡片 ${row.base.join(',')}，用卡片 ${row.withFacts.join(',')}`),
         ...report.flows.map(flow => `${flow.ok ? '✔' : '✖'} 流程 · ${flow.name}`),
         `卡片 ${report.cards} 张 · 待裁决 ${report.conflicts} · 整理警告 ${report.warnings} · 未整理 ${report.pending} · 一轮注入约 ${report.injectedChars} 字`,
+        ...(report.injection ? [`分层注入（32k 模型）：${report.injection.used} / ${report.injection.budget} 字 · 完整 ${report.injection.full} · 一行 ${report.injection.short} · 只列名字 ${report.injection.named} · 没放进去 ${report.injection.dropped}`] : []),
         `请求 ${report.metrics.requests} 次（平均每次 ${Math.round(report.metrics.promptChars / Math.max(1, report.metrics.requests))} 字提示词）· 失败 ${report.metrics.failures.length} · Token ${report.metrics.promptTokens ? `${report.metrics.promptTokens}+${report.metrics.completionTokens}` : `约 ${report.metrics.tokensEstimated}（按字数估）`} · 耗时 ${(report.metrics.ms / 1000).toFixed(1)} 秒`,
         `关键事实命中率 ${pct(report.keyFacts.hit, report.keyFacts.total)} · 错误率 ${pct(report.wrongFacts.hit, report.wrongFacts.total)}`];
     return lines.join('\n');

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyFactsUpdate, createDefaultFacts, editCard, findCard, resolveConflict, undoFactsUpdate } from '../src/facts/model.js';
-import { renderFactsSection } from '../src/facts/injection.js';
+import { renderFactCardLine, renderFactsSection } from '../src/facts/injection.js';
 import { buildFactsPrompt, defaultFactsPrompt } from '../src/facts/prompt.js';
 import { parseFactCards } from '../src/facts/parser.js';
 import { factsRuntime, reply } from './helpers/facts-runtime.mjs';
@@ -85,7 +85,10 @@ test('a backfilled old floor keeps the current holder: the old value goes into �
     assert.match(entry.warnings.join(' '), /铜钥匙.*持有者.*第 12 楼/);
     const line = renderFactsSection(facts, '铜钥匙').text;
     assert.match(line, /物品 铜钥匙：持有者 阿砚/);
-    assert.match(line, /曾经：持有者 林晚（第 12 楼时）/, 'the old value reads as what held then, not as a new change');
+    // v1.40.0: the injected line carries only the latest change; the card's full line shows the older ones.
+    assert.match(line, /曾经：持有者 林晚（到第 108 楼）/);
+    assert.doesNotMatch(line, /第 12 楼时/);
+    assert.match(renderFactCardLine(key), /曾经：持有者 林晚（第 12 楼时）、林晚（到第 108 楼）/, 'the old value reads as what held then, not as a new change');
     assert.match(JSON.stringify(buildFactsPrompt(facts, '铜钥匙').prompt), /第 12 楼 持有者：林晚（当时）/);
 });
 
