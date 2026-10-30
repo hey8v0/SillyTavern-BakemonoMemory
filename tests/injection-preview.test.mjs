@@ -30,8 +30,9 @@ test('preview and token totals use the prepared inline instructions', () => {
         getInjectionMemoryParts: () => ({ sources, inlineValues: { summaryValue: '摘要指令', tableValue: '' } }),
         renderInjectionContent: () => '规则正文', renderInlinePrompt: () => { throw new Error('must use prepared instructions'); } });
     assert.deepEqual(manifest.getOverviewInjectionSources(), { ...sources, rule: '规则\n\n摘要指令' });
-    assert.equal(manifest.doesLastPromptMatchCurrentInjection('规则正文 摘要指令'), true);
-    assert.equal(manifest.doesLastPromptMatchCurrentInjection('规则正文 别的指令'), false);
+    assert.equal(manifest.doesLastPromptMatchCurrentInjection('规则正文 摘要指令 【剧情剪辑台：当前局面】上一轮的卡片'), true);
+    assert.equal(manifest.doesLastPromptMatchCurrentInjection('规则正文 别的指令 【剧情剪辑台：当前局面】上一轮的卡片'), false);
+    assert.equal(manifest.doesLastPromptMatchCurrentInjection('规则正文 摘要指令'), false, 'there are cards, and the block is not in the prompt');
     state.injection.enabled = false;
     assert.equal(manifest.getOverviewInjectionSources().time, '');
     assert.match(manifest.getOverviewInjectionSources().rule, /摘要指令/);

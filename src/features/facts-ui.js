@@ -1,4 +1,4 @@
-import { countCardsByKind, describeTransition, factFieldHints, factFields, factKindLabels, factKinds, storyOrder } from '../facts/model.js';
+import { budgetLimits, countCardsByKind, describeTransition, factFieldHints, factFields, factKindLabels, factKinds, storyOrder } from '../facts/model.js';
 import { renderFactsChanges, summarizeFactsChanges } from '../facts/diff.js';
 import { renderOpenThreads } from '../facts/injection.js';
 import { sheetAction, sheetConfirm } from '../ui/action-sheet.js';
@@ -55,7 +55,8 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
     function renderNotices(state, facts) {
         const notes = [];
         const blocked = controller.blockedBatch?.(state);
-        if (blocked) notes.push(['alert', `第 ${blocked.floorFrom}–${blocked.floorTo} 楼这批整理失败了 ${blocked.failures} 次`, '没再自动重试；在队列里重试，或点“整理事实”']);
+        if (blocked?.reason === 'output_limit') notes.push(['alert', `第 ${blocked.floorFrom}–${blocked.floorTo} 楼这批超过了模型的输出上限`, '没有自动重试，重试还会一样超限。点“整理事实”会把这批减半；模型带思考的话，先在接口设置里关掉思考']);
+        else if (blocked) notes.push(['alert', `第 ${blocked.floorFrom}–${blocked.floorTo} 楼这批整理失败了 ${blocked.failures} 次`, '没再自动重试；在队列里重试，或点“整理事实”']);
         const shorter = controller.chatShorterThanProgress?.(state);
         if (shorter) notes.push(['alert', `已整理到第 ${shorter.cursor} 楼，聊天只有 ${shorter.lastFloor + 1} 楼`, '分支或删过楼层：卡片里可能有之后才发生的事，可以在“变化”里逐次撤回']);
         const legacy = controller.legacySummary(state);
@@ -68,15 +69,27 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
     }
 
     const number = value => Number(value || 0).toLocaleString();
+    // What the last 整理 took, in the API's tokens when it reports them.
+    function renderLastRequest(state) {
+        const last = controller.lastRequest?.(state);
+        if (!last) return '';
+        const where = last.floorTo == null ? '' : `（第 ${last.floorFrom === last.floorTo ? last.floorTo : `${last.floorFrom}–${last.floorTo}`} 楼）`;
+        const numbers = last.estimated
+            ? `输入约 ${number(last.input)} 字${last.output ? ` · 输出约 ${number(last.output)} 字` : ''}（接口没有返回 token 用量）`
+            : `输入 ${number(last.input)} · 输出 ${number(last.output)}${last.reasoning ? `（思考 ${number(last.reasoning)}）` : ''} token`;
+        return `<p class="rp-note">上次整理${esc(where)}${last.status === 'failed' ? '没有保存' : ''}：${esc(numbers)}</p>`;
+    }
+
     // How much may go in each round: a share of the model's context, or a fixed number.
     function budgetRows(state, settings) {
         const budget = controller.injectionBudget?.(state) || { chars: settings.budgetChars, auto: settings.budgetAuto, contextTokens: 0 };
+        const capped = budget.chars === budgetLimits.max ? `，自动最多 ${number(budgetLimits.max)} 字，要更多就关掉这里填固定字数` : '';
         const detail = !settings.budgetAuto ? '关掉后按下面的固定字数'
-            : budget.contextTokens ? `现在每轮最多约 ${number(budget.chars)} 字（模型上下文 ${number(budget.contextTokens)} 的 ${settings.budgetRatio}%）`
+            : budget.contextTokens ? `现在每轮最多约 ${number(budget.chars)} 字（模型上下文 ${number(budget.contextTokens)} 的 ${settings.budgetRatio}%${capped}）`
             : `读不到模型上下文，先按 ${number(budget.chars)} 字`;
         return `${switchRow('budgetAuto', '注入量跟着模型上下文', detail, settings.budgetAuto)}
             ${settings.budgetAuto ? numberRow('budgetRatio', '占上下文的百分比', '越大写得越全，也越占 token', settings.budgetRatio, 1, 30)
-                : numberRow('budgetChars', '每轮最多注入多少字', '中文大约一字一 token', settings.budgetChars, 500, 60000)}`;
+                : numberRow('budgetChars', '每轮最多注入多少字', '中文大约一字一 token，最多 60,000', settings.budgetChars, 500, 60000)}`;
     }
 
     // What the last round injected: which cards went in full, in one line, by name only, or not at all.
@@ -102,7 +115,8 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
             ${numberRow('idleMinutes', '空闲几分钟后把剩下的整理掉', '0 表示不按空闲整理', settings.idleMinutes, 0, 240)}
             ${switchRow('review', '先审再用', '整理结果先进“待确认”，看过改了什么再应用', settings.review)}
             ${switchRow('injectReflection', '把主线与伏笔一起注入', '卡片之外，再给模型一段当前主线和未回收的伏笔', settings.injectReflection)}
-            ${budgetRows(state, settings)}</div></details>`;
+            ${budgetRows(state, settings)}
+            ${numberRow('injectDepth', '放在最新消息往前第几条', '默认 2，靠近最新消息。0 是最后面，999 放回聊天最前面', settings.injectDepth, 0, 999)}</div></details>`;
     }
 
     // What the model could not settle: the card's current value against what the material said; the user picks.
@@ -212,7 +226,7 @@ export function createFactsUi({ documentRef: document, getState, controller, esc
         if (!root) return;
         const facts = controller.facts(state);
         const current = nav(state);
-        root.innerHTML = renderSlate(state, facts) + renderControls(state, facts) + renderNotices(state, facts) + renderInjection(state) + renderSettings(state, facts)
+        root.innerHTML = renderSlate(state, facts) + renderControls(state, facts) + renderLastRequest(state) + renderNotices(state, facts) + renderInjection(state) + renderSettings(state, facts)
             + renderConflicts(state) + renderReflection(facts) + (current.view === 'history' ? renderHistory(state, facts) : renderCards(state, facts));
     }
 

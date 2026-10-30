@@ -27,7 +27,7 @@ export const factFieldHints = Object.freeze({
     rule: { 说明: '设定内容', 影响范围: '影响哪些人、地方或事' },
     note: { 内容: '只由你填写，模型只读' },
 });
-export const factSettingKeys = Object.freeze(['version', 'enabled', 'auto', 'review', 'everySummaries', 'idleMinutes', 'budgetAuto', 'budgetRatio', 'budgetChars', 'maxCards', 'recentFloors', 'materialChars', 'injectReflection']);
+export const factSettingKeys = Object.freeze(['version', 'enabled', 'auto', 'review', 'everySummaries', 'idleMinutes', 'budgetAuto', 'budgetRatio', 'budgetChars', 'maxCards', 'recentFloors', 'materialChars', 'injectReflection', 'injectDepth']);
 
 // settings.version 2: on by default (v1.32.0). Settings saved before that carry no version and get the new default once.
 // settings.version 3: the injection budget follows the model's context (v1.40.0).
@@ -35,12 +35,14 @@ export const factSettingsVersion = 3;
 export function createDefaultFactSettings() {
     // everySummaries: 整理 runs once this many new 剧情摘要 have gathered; idleMinutes: or after this long without a message (0 = off).
     // budgetAuto: inject up to budgetRatio % of the model's context; off: up to budgetChars characters.
+    // injectDepth: how many messages before the latest one the section goes (0 = after the last, 999 = before the whole chat).
     return { version: factSettingsVersion, enabled: true, auto: true, review: false, everySummaries: 6, idleMinutes: 10, budgetAuto: true, budgetRatio: 6, budgetChars: 6000,
-        maxCards: 40, recentFloors: 6, materialChars: 24000, injectReflection: true };
+        maxCards: 40, recentFloors: 6, materialChars: 24000, injectReflection: true, injectDepth: 2 };
 }
 // The automatic budget in characters (Chinese text runs close to one token per character): never below `min`, never
-// above `max`, and `unknown` when the model's context cannot be read.
-export const budgetLimits = Object.freeze({ min: 800, max: 30000, unknown: 4000 });
+// above `max`, and `unknown` when the model's context cannot be read. A context slider at a million says nothing about
+// how much a section should take of it; more than `max` is a fixed number the user sets.
+export const budgetLimits = Object.freeze({ min: 800, max: 8000, unknown: 4000 });
 export function injectionBudget(settings = {}, contextTokens = 0) {
     const ratio = Number(settings.budgetRatio) || 6;
     const context = Number(contextTokens) > 0 ? Math.round(Number(contextTokens)) : 0;
@@ -48,8 +50,20 @@ export function injectionBudget(settings = {}, contextTokens = 0) {
     const chars = context ? Math.max(budgetLimits.min, Math.min(budgetLimits.max, Math.round(context * ratio / 100))) : budgetLimits.unknown;
     return { chars, auto: true, ratio, contextTokens: context };
 }
-// How long a card's text is: a card past `compactLimit` is asked to be rewritten shorter at the next 整理.
-export const compactLimit = 200;
+// How long a field should be, told to the model. Nothing is cut when written: a field well past its limit is asked to
+// be rewritten at the next 整理. Fields the user wrote and cards just imported are left as they are.
+export const factFieldLimits = Object.freeze({
+    person: { 处境: 60, 目标: 60, 持有: 40, 性格: 40, 外貌: 40, 备注: 120 },
+    relationship: { 双方: 20, 当前关系: 40, 态度: 60, 基础关系: 20 },
+    place: { 描述: 60, 常在此处: 30 },
+    item: { 持有者: 20, 描述: 40, 意义: 40 },
+    thread: { 内容: 60, 状态: 20, 参与者: 30, 期限: 20 },
+    rule: { 说明: 100, 影响范围: 30 },
+    note: {},
+});
+const pastLimit = (kind, key, value) => { const limit = factFieldLimits[kind]?.[key]; return !!limit && String(value || '').length > limit * 1.3; };
+export const overlongFields = card => card.updatedBy === 'import' ? []
+    : factFields[card.kind].filter(key => !card.userFields?.includes(key) && pastLimit(card.kind, key, card.fields[key]));
 export const cardTextLength = card => Object.values(card?.fields || {}).reduce((sum, value) => sum + String(value || '').length, 0);
 
 export function createDefaultFacts() {
@@ -58,6 +72,7 @@ export function createDefaultFacts() {
 }
 
 const text = (value, max = 4000) => String(value ?? '').replace(/\r\n/g, '\n').trim().slice(0, max);
+export const clip = (value, max) => { const source = String(value ?? ''); return source.length > max ? `${source.slice(0, max)}…` : source; };
 export const normalizeName = value => text(value, 200).toLowerCase().replace(/[\s「」『』“”"'·・,，。.、()（）]/g, '');
 
 export function normalizeFactSettings(value) {
@@ -68,11 +83,13 @@ export function normalizeFactSettings(value) {
     // Before v1.40 the budget was a fixed 6000 nobody could change: that moves to the automatic budget once; another
     // number someone set (an imported configuration) stays as a fixed budget.
     const budgetAuto = version >= 3 ? source.budgetAuto !== false : !(Number(source.budgetChars) && Number(source.budgetChars) !== 6000);
+    const depth = source.injectDepth === '' || source.injectDepth == null ? NaN : Number(source.injectDepth);
     return { version: factSettingsVersion, enabled: version >= 2 ? !!source.enabled : defaults.enabled, auto: source.auto !== false, review: !!source.review,
         everySummaries: number('everySummaries', 1, 50), idleMinutes: Math.max(0, Math.min(240, Number(source.idleMinutes ?? defaults.idleMinutes) || 0)),
         budgetAuto, budgetRatio: number('budgetRatio', 1, 30),
         budgetChars: number('budgetChars', 500, 60000), maxCards: number('maxCards', 5, 200), recentFloors: number('recentFloors', 1, 50),
-        materialChars: number('materialChars', 2000, 120000), injectReflection: source.injectReflection !== false };
+        materialChars: number('materialChars', 2000, 120000), injectReflection: source.injectReflection !== false,
+        injectDepth: Number.isFinite(depth) ? Math.max(0, Math.min(999, Math.round(depth))) : defaults.injectDepth };
 }
 
 export function normalizeCard(value, index = 0) {
@@ -117,11 +134,13 @@ export function floorList(values, max = cardFloorCap) {
 }
 
 // The transitions worth keeping per card: the current-state fields changing from one value to another, and the
-// card ending. Capped; the oldest give way. The first value of a field is not a transition.
+// card ending. Capped; the oldest give way. The first value of a field is not a transition. A value is kept short:
+// the whole of it is in the history entry, and 经过 goes into every request and injected line.
 export const timelineCap = 12;
+const transitionChars = 80;
 export function recordTransition(card, { field, from = '', to = '', floor = null, at = null, entryId = null, past = false, floors = [] }) {
     if (field !== '已结束' && field !== '恢复' && !from) return null;
-    const item = { field, from: text(from, 400), to: text(to, 400), floor: Number.isInteger(floor) ? floor : null, at, entryId, ...(past ? { past: true } : {}),
+    const item = { field, from: clip(text(from), transitionChars), to: clip(text(to), transitionChars), floor: Number.isInteger(floor) ? floor : null, at, entryId, ...(past ? { past: true } : {}),
         ...(floors.length ? { floors: floorList(floors, 8) } : {}) };
     card.timeline = [...(card.timeline || []), item].slice(-timelineCap);
     return item;
@@ -130,6 +149,8 @@ const transitionFields = kind => currentStateFields[kind] || [];
 function recordChangeTransitions(card, change, { floor, at, entryId, floors = [] }) {
     if (change.created) return;
     for (const field of transitionFields(card.kind)) {
+        // A long value rewritten short (请精简) says the same thing: nothing happened in the story.
+        if (change.compacted?.includes(field)) continue;
         const from = change.before?.[field] || '', to = change.after?.[field] || '';
         if (from !== to) recordTransition(card, { field, from, to, floor, at, entryId, floors });
     }
@@ -175,13 +196,16 @@ export function seedTimelines(facts) {
 // item reads: a change (from → to), a value that held at an older floor (past), an end or a return.
 export const storyOrder = timeline => (timeline || []).map((item, index) => ({ item, index }))
     .sort((a, b) => (a.item.floor ?? Infinity) - (b.item.floor ?? Infinity) || a.index - b.index).map(({ item }) => item);
-export function describeTransition(item) {
+export function describeTransition(item, { max = 0 } = {}) {
     if (item.field === '已结束' || item.field === '恢复') return item.field;
-    if (item.past) return `${item.field}：${item.from}（当时）`;
-    return `${item.field}：${item.from || '（空）'} → ${item.to || '（清空）'}`;
+    const show = value => max ? clip(value, max) : value;
+    if (item.past) return `${item.field}：${show(item.from)}（当时）`;
+    return `${item.field}：${show(item.from) || '（空）'} → ${show(item.to) || '（清空）'}`;
 }
 // A 线索 still standing: its 状态 does not say it ended.
 export const isOpenThread = card => card.kind === 'thread' && card.status === 'active' && !/已了|失效|完成|结束|放弃|作废|取消/.test(card.fields.状态 || '');
+// The latest floor a card was touched at, for putting recent threads first.
+export const latestFloor = card => Math.max(-1, ...(card.floors || []), ...Object.values(card.asOf || {}).filter(Number.isInteger), ...(card.timeline || []).map(item => item.floor).filter(Number.isInteger));
 
 export function normalizeFacts(value) {
     const defaults = createDefaultFacts();
@@ -267,7 +291,8 @@ export function reportedSpeech(value, people = []) {
     return belief ? `【${belief[1]}认为】` : '';
 }
 const clearMarker = /^【?清除】?$/;
-const appendLine = (base, line) => !line ? base : String(base || '').includes(line) ? base : base ? `${base}\n${line}` : line;
+// Added text joins the field on one line: an injected card is one line.
+const appendText = (base, piece) => !piece ? base : String(base || '').includes(piece) ? base : base ? `${base}；${piece}` : piece;
 
 // Something the model could not settle: the material contradicts a card and it cannot tell which is right, or one
 // name may be two things. Kept open until the user picks; the card is not changed meanwhile.
@@ -294,15 +319,16 @@ export function cardMentions(card, textValue) {
 
 // Cards to send or inject for a piece of text: the ones it names, pinned ones, and open 线索. Notes are the
 // user's own guidance and come along too. A card that ended (a death, a closed 约定) comes only when the text
-// names it. Ordered by how often the text names them.
-export function selectRelevantCards(cards, textValue, { max = 40, includeNotes = true } = {}) {
+// names it. Ordered by how often the text names them. `namedOnly`: just the ones it names (a 整理 request).
+export function selectRelevantCards(cards, textValue, { max = 40, includeNotes = true, namedOnly = false } = {}) {
     const scored = cards.map(card => ({ card,
-        score: cardMentions(card, textValue) + (card.status !== 'active' ? 0
+        score: cardMentions(card, textValue) + (namedOnly || card.status !== 'active' ? 0
             : (card.pinned ? 1000 : 0) + (isOpenThread(card) ? 100 : 0) + (includeNotes && card.kind === 'note' ? 500 : 0)) }));
     return scored.filter(item => item.score > 0).sort((a, b) => b.score - a.score).slice(0, Math.max(1, max)).map(item => item.card);
 }
 
-// Incoming field values: a string replaces, null (or 【清除】) clears, an omitted or empty one keeps.
+// Incoming field values: a string replaces, null (or 【清除】) clears, an omitted or empty one keeps. `add` holds
+// sentences to append instead, so a model that has one thing to add need not copy the field to say it.
 const cleanIncoming = (kind, fields) => {
     const set = {}, clear = [];
     for (const key of factFields[kind]) {
@@ -361,17 +387,23 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
         if (card && touched.has(card.id)) return;
         const targetKind = card?.kind || kind;
         const { set: fields, clear } = cleanIncoming(targetKind, incoming.fields);
+        const { set: added } = cleanIncoming(targetKind, incoming.add);
         // Hearsay in a current-state field moves to the note field, marked as it came.
         const note = noteFieldOf[targetKind];
         for (const key of currentStateFields[targetKind] || []) {
-            if (!fields[key] || !note || key === note) continue;
-            const mark = hearsayMarker.test(fields[key]) ? '' : reportedSpeech(fields[key], people);
-            if (!mark && !hearsayMarker.test(fields[key])) continue;
-            fields[note] = appendLine(fields[note] ?? card?.fields[note] ?? '', mark + fields[key]);
-            delete fields[key];
-            warnings.push(`「${name}」的${key}写的是传闻或猜测，已移到${note}`);
+            if (!note || key === note) continue;
+            for (const incomingFields of [fields, added]) {
+                if (!incomingFields[key]) continue;
+                const mark = hearsayMarker.test(incomingFields[key]) ? '' : reportedSpeech(incomingFields[key], people);
+                if (!mark && !hearsayMarker.test(incomingFields[key])) continue;
+                if (incomingFields === fields) fields[note] = appendText(fields[note] ?? card?.fields[note] ?? '', mark + fields[key]);
+                else added[note] = appendText(added[note], mark + added[key]);
+                delete incomingFields[key];
+                warnings.push(`「${name}」的${key}写的是传闻或猜测，已移到${note}`);
+            }
         }
         if (!card) {
+            for (const [key, value] of Object.entries(added)) fields[key] = appendText(fields[key], value);
             if (!Object.keys(fields).length) { warnings.push(`「${name}」没有任何内容，已跳过`); return; }
             card = normalizeCard({ id: `fact-${getHash(`${kind}|${name}|${now}|${index}`)}`, kind, name, aliases, fields, updatedAt: now, sourceStage: stageHash }, index);
             markState(card, transitionFields(kind).filter(key => card.fields[key]));
@@ -403,22 +435,29 @@ export function applyFactsUpdate(facts, parsed, { trigger = 'facts', stageHash =
             if (stale(key, '')) continue;
             after[key] = '';
         }
+        for (const [key, value] of Object.entries(added)) {
+            if (String(after[key] || '').includes(value)) continue;
+            if (!overrideUser && card.userFields.includes(key) && card.fields[key]) { kept.push(key); continue; }
+            if (stale(key, value)) continue;
+            after[key] = appendText(after[key], value);
+        }
         // A new spelling the model led with becomes an alias; the recorded name stays the name.
         const newAliases = [...new Set([name, ...aliases])].filter(alias => !cardMatchesName(card, alias));
         const changed = Object.keys(after).some(key => after[key] !== before[key]) || newAliases.length;
         if (!changed) return;
+        const moved = Object.keys(after).filter(key => after[key] !== before[key]);
+        const compacted = moved.filter(key => after[key] && pastLimit(card.kind, key, before[key]) && !pastLimit(card.kind, key, after[key]));
         card.fields = after;
         card.aliases = [...new Set([...card.aliases, ...newAliases])];
-        markState(card, stateKeys.filter(key => after[key] !== before[key]));
+        markState(card, stateKeys.filter(key => moved.includes(key) && !compacted.includes(key)));
         card.updatedAt = now;
         card.updatedBy = trigger === 'user' ? 'user' : 'facts';
         card.sourceStage = stageHash ?? card.sourceStage;
         touched.add(card.id);
         // Only the fields that changed are kept: undo, the diff and the timeline all read just those (history is part of
         // the chat file, which is written whole on every save).
-        const moved = Object.keys(after).filter(key => after[key] !== before[key]);
         changes.push({ cardId: card.id, kind: card.kind, name: card.name, created: false, before: Object.fromEntries(moved.map(key => [key, before[key]])),
-            after: Object.fromEntries(moved.map(key => [key, after[key]])), statusBefore: card.status, statusAfter: card.status, kept, metaBefore });
+            after: Object.fromEntries(moved.map(key => [key, after[key]])), statusBefore: card.status, statusAfter: card.status, kept, metaBefore, ...(compacted.length ? { compacted } : {}) });
     });
     // Status changes: an end or a return the result names, from material not older than the current status, and not
     // over a status the user set (that becomes a conflict for the user).

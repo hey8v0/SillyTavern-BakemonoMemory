@@ -88,6 +88,7 @@ export function createConfigurationService({
             maxTokens: Number(query('#bakemono-memory-custom-max-tokens').val() || defaultAutomation.customApi.maxTokens),
             stream: String(query('#bakemono-memory-custom-stream').val() || 'false') === 'true',
             viaTavern: !!query('#bakemono-memory-custom-via-tavern').prop('checked'),
+            disableThinking: !!query('#bakemono-memory-custom-no-thinking').prop('checked'),
             models: currentModels,
         };
         return state;

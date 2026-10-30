@@ -1,3 +1,5 @@
+import { effectiveFactsPrompt } from '../facts/prompt.js';
+
 export function createWorkbenchPageOverviews({
     documentRef,
     windowRef,
@@ -42,7 +44,7 @@ export function createWorkbenchPageOverviews({
             missing: ['#bakemono-memory-missing-prompt', state.generationPrompts.missing || defaultMissingSummaryPrompt],
             stage: ['#bakemono-memory-stage-prompt', state.generationPrompts.stage || defaultStageGenerationPrompt],
             epic: ['#bakemono-memory-epic-prompt', state.generationPrompts.epic || defaultEpicGenerationPrompt],
-            facts: ['#bakemono-memory-facts-prompt', state.generationPrompts.facts || defaultFactsPrompt],
+            facts: ['#bakemono-memory-facts-prompt', effectiveFactsPrompt(state.generationPrompts.facts)],
         }[type] || ['#bakemono-memory-stage-prompt', state.generationPrompts.stage || defaultStageGenerationPrompt];
         const editorValue = String(query(config[0]).val() || '').trim();
         return editorValue || String(config[1] || '').trim();
@@ -116,7 +118,7 @@ export function createWorkbenchPageOverviews({
     function configSheet(state) {
         const auto = state.automation || {};
         const tags = parseList(state.scanRules?.includeTags || defaultScanRules.includeTags);
-        const promptChanges = promptKeys.filter(key => !isDefaultPrompt(key, state.generationPrompts?.[key] || promptDefaults()[key][0])).length;
+        const promptChanges = promptKeys.filter(key => !isDefaultPrompt(key, key === 'facts' ? effectiveFactsPrompt(state.generationPrompts?.facts) : state.generationPrompts?.[key] || promptDefaults()[key][0])).length;
         const roles = ['系统', '用户', '助手'];
         const injection = state.injection || {};
         const source = { existing: '回复里本来就有', inline: '随正文写', independent: '回复后单独写', manual: '只手动' }[summarySourceChoice(state)] || '旧版组合设置';

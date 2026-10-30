@@ -38,7 +38,7 @@ export function factsRuntime({ enabled = true, auto = true, review = false, ever
     const toastr = { info: (m, t) => toasts.push(['info', m, t]), warning: m => toasts.push(['warning', m]), error: m => toasts.push(['error', m]), success: () => {}, clear: () => {} };
     let result = '', current = state, ready = true;
     const queue = createSummaryTaskQueue({ getState: () => current, getHash, getKindLabel: k => k, saveState: () => {}, renderWorkbenchScope: (s, t) => scopes.push(t), renderTaskQueueProgress: () => {},
-        workbenchRenderScopes: { DRAFTS: 'drafts' }, getIsBusy: () => false, setBusy: () => {}, toastr, callGenerationModel: async () => typeof result === 'function' ? result() : result, normalizeGeneratedBakemono: v => v,
+        workbenchRenderScopes: { DRAFTS: 'drafts' }, getIsBusy: () => false, setBusy: () => {}, toastr, callGenerationModel: async args => typeof result === 'function' ? result(args) : result, normalizeGeneratedBakemono: v => v,
         createDraft: () => { throw Error('facts never become drafts'); }, commitDraft: async () => null, blockTypes, defaultAutomation: {}, switchWorkbenchTab: () => {},
         getTaskSourceSignature: task => controller.sourceSignature(task, current),
         resultHandlers: { facts: (...args) => controller.handleTaskResult(...args) } });

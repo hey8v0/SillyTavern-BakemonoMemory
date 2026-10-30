@@ -110,8 +110,8 @@ test('the prompt carries only the cards the material names, the notes, the refle
     editCard(facts, findCard(facts.cards, '林晚').id, { fields: { 性格: '倔强' } });
     const { prompt, systemPrompt, cardIds } = buildFactsPrompt(facts, '林晚赴了码头之约。', { timeContext: '当前剧情时间：3月1日' });
     assert.ok(prompt.startsWith('当前剧情时间：3月1日'));
-    assert.match(prompt, /"name": "林晚"/);
-    assert.match(prompt, /"用户填写": \[\s*"性格"\s*\]/);
+    assert.match(prompt, /"name":"林晚"/);
+    assert.match(prompt, /"用户填写":\["性格"\]/);
     assert.match(prompt, /码头之约/);
     assert.doesNotMatch(prompt, /雾都/);
     assert.match(prompt, /写作要求：少写环境描写/);

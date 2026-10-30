@@ -7,7 +7,7 @@ import { factsRuntime, reply } from './helpers/facts-runtime.mjs';
 
 // v1.40.0: the facts section in layers. Cards in the scene (the latest floors) in full, others the story touches in
 // one line, the rest only by name when room runs out; the budget follows the model's context.
-import { recentParts, verboseWorld } from './helpers/facts-world.mjs';
+import { longCardsWorld, recentParts, verboseWorld } from './helpers/facts-world.mjs';
 
 test('the scene in full, what else the story touches in one line, nothing unrelated as a line, within the budget', () => {
     const facts = verboseWorld();
@@ -76,7 +76,7 @@ test('the budget follows the model: a share of its context, with a floor and a c
     assert.equal(injectionBudget(auto, 128000).chars, 7680);
     assert.equal(injectionBudget(auto, 32000).chars, 1920);
     assert.equal(injectionBudget(auto, 8000).chars, 800, 'never below 800');
-    assert.equal(injectionBudget(auto, 2000000).chars, 30000, 'never above 30000');
+    assert.equal(injectionBudget(auto, 2000000).chars, 8000, 'never above 8000');
     assert.deepEqual([injectionBudget(auto, 0).chars, injectionBudget(auto, 0).contextTokens], [4000, 0], 'context unknown: 4000');
     const fixed = normalizeFactSettings({ version: 3, budgetAuto: false, budgetChars: 2500 });
     assert.deepEqual([injectionBudget(fixed, 128000).chars, injectionBudget(fixed, 128000).auto], [2500, false]);
@@ -94,15 +94,17 @@ test('settings from v1.39 move to the automatic budget once; a deliberate off or
     assert.equal(normalizeFactSettings({ enabled: false }).enabled, true, 'no version (before v1.32): the default once, as before');
 });
 
-test('consolidation keeps cards short: long cards are marked to be rewritten, and up to two long ones come along unnamed', () => {
-    const facts = verboseWorld();
-    const lin = findCard(facts.cards, '林晚');
-    assert.equal(cardForPrompt(lin)['请精简'], true);
-    assert.equal(cardForPrompt(findCard(facts.cards, '铜钥匙'))['请精简'], undefined);
-    const { prompt, cardIds } = buildFactsPrompt(facts, '铜钥匙被阿砚收好了。');
-    const longOnes = facts.cards.filter(card => card.kind === 'person' && card.status === 'active' && card.name !== '阿砚' && cardIds.includes(card.id));
+test('consolidation keeps cards short: long fields are named to be rewritten, and up to two long cards come along unnamed', () => {
+    assert.equal(cardForPrompt(findCard(verboseWorld().cards, '铜钥匙'))['请精简'], undefined);
+    const facts = longCardsWorld();
+    assert.deepEqual(cardForPrompt(findCard(facts.cards, '严则'))['请精简'], ['处境', '目标', '备注']);
+    const { prompt, cardIds } = buildFactsPrompt(facts, '严则把灰饼收好了。');
+    const longOnes = facts.cards.filter(card => card.kind === 'person' && card.status === 'active' && card.name !== '严则' && cardIds.includes(card.id));
     assert.equal(longOnes.length, 2, 'two long cards the material does not name, for 精简');
-    assert.match(prompt, /"name": "阿砚"[\s\S]*?"请精简": true/);
+    assert.match(prompt, /"name":"严则"[^\n]*"请精简":\["处境","目标","备注"\]/);
+    const row = prompt.split('\n').find(line => line.includes(`"name":"${longOnes[0].name}"`));
+    assert.match(row, /"请精简":\["处境","目标","备注"\]/);
+    assert.doesNotMatch(row, /性格|经过/, 'along only to be rewritten: just those fields');
     for (const needle of ['请精简', '事件经过交给剧情摘要', '一两句']) assert.ok(defaultFactsPrompt.includes(needle), needle);
 });
 

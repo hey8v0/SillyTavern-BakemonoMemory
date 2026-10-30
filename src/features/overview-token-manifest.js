@@ -1,3 +1,5 @@
+import { factsInjectionOpening } from '../facts/injection.js';
+
 export function createOverviewTokenManifest({
     query,
     getState,
@@ -28,7 +30,7 @@ export function createOverviewTokenManifest({
             ruleSections.push(parts.inlineValues?.summaryValue ?? renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state));
         }
         return {
-            facts: mainInjectionContent ? String(parts.sources?.facts || '') : '',
+            facts: mainInjectionEnabled ? String(parts.sources?.facts || '') : '',
             summary: mainInjectionContent ? String(parts.sources?.summary || '') : '',
             memory: mainInjectionContent ? String(parts.sources?.memory || '') : '',
             time: mainInjectionContent ? String(parts.sources?.time || '') : '',
@@ -71,6 +73,8 @@ export function createOverviewTokenManifest({
         if (state.injection?.enabled) {
             const content = renderInjectionContent(state, parts);
             if (content) expectedSections.push(content);
+            // 剧情事实 follows the latest floors, so the last prompt holds last round's cards: its opening is what stays the same.
+            if (parts.sources?.facts) expectedSections.push(factsInjectionOpening);
         }
         if (state.inlineGeneration?.summaryEnabled) {
             expectedSections.push(parts.inlineValues?.summaryValue ?? renderInlinePrompt(state.inlineGeneration.summaryPrompt || defaultInlineSummaryPrompt, state));

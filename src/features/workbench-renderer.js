@@ -1,5 +1,5 @@
 import { resolveSummaryGraph } from '../memory/summary-provenance.js';
-import { defaultFactsPrompt } from '../facts/prompt.js';
+import { effectiveFactsPrompt } from '../facts/prompt.js';
 import { summarySourceChoice } from './turn-trigger-policy.js';
 
 export const workbenchRenderScopes = Object.freeze({
@@ -138,7 +138,7 @@ export function createWorkbenchRenderer({
             query('#bakemono-memory-missing-prompt').val(state.generationPrompts.missing || defaultMissingSummaryPrompt);
             query('#bakemono-memory-stage-prompt').val(state.generationPrompts.stage || defaultStageGenerationPrompt);
             query('#bakemono-memory-epic-prompt').val(state.generationPrompts.epic || defaultEpicGenerationPrompt);
-            query('#bakemono-memory-facts-prompt').val(state.generationPrompts.facts || defaultFactsPrompt);
+            query('#bakemono-memory-facts-prompt').val(effectiveFactsPrompt(state.generationPrompts.facts));
         } else if (activeTab === 'scan') {
             query('#bakemono-memory-scan-mode').val(state.scanRules.mode || defaultScanRules.mode);
             query('#bakemono-memory-include-tags').val(state.scanRules.includeTags || defaultScanRules.includeTags);
@@ -176,6 +176,7 @@ export function createWorkbenchRenderer({
             query('#bakemono-memory-custom-max-tokens').val(state.automation.customApi?.maxTokens ?? defaultAutomation.customApi.maxTokens);
             query('#bakemono-memory-custom-stream').val(String(!!state.automation.customApi?.stream));
             query('#bakemono-memory-custom-via-tavern').prop('checked', !!state.automation.customApi?.viaTavern);
+            query('#bakemono-memory-custom-no-thinking').prop('checked', state.automation.customApi?.disableThinking !== false);
         }
     }
 

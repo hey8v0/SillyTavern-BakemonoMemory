@@ -136,6 +136,7 @@ export function createSummaryTaskQueue({
                         prompt: task.prompt,
                         systemPrompt: task.systemPrompt,
                         signal: controller.signal,
+                        onUsage: usage => { task.metadata = { ...(task.metadata || {}), usage }; },
                     });
                     if (!isCurrentRun()) {
                         cancelledQueueTaskIds.delete(task.id);
@@ -256,6 +257,7 @@ export function createSummaryTaskQueue({
                     if (!isCurrentRun()) return;
                     task.status = 'failed';
                     task.error = error?.message || String(error);
+                    task.errorCode = error?.code || '';
                     task.updatedAt = new Date().toISOString();
                     toastr.error(task.error, '任务失败');
                 }

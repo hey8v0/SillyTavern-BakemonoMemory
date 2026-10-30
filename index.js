@@ -1279,6 +1279,7 @@ const injectionService = createInjectionService({
 const {
     getInjectionMemoryParts,
     renderInjectionContent,
+    renderInjectionDisplay,
     renderInlinePrompt,
     syncInjection,
     syncInlineGenerationPrompts,
@@ -1349,7 +1350,7 @@ contentConfigurationEvents = createContentConfigurationEvents({
     defaultEpicGenerationPrompt,
     defaultStoryGenerationPrompt,
     defaultMissingSummaryPrompt,
-    renderInjectionContent,
+    renderInjectionContent: renderInjectionDisplay,
 });
 
 automationConfigurationEvents = createAutomationConfigurationEvents({
@@ -1370,7 +1371,7 @@ const promptInspector = createPromptInspector({
         const text = Object.values(overviewTokenManifest.getOverviewInjectionSources(state)).filter(value => String(value || '').trim()).join('\n\n');
         const parts = getInjectionMemoryParts(state);
         // Each piece the plugin adds (memory, inline summary/table rules, state upkeep) is recognised by its first real line.
-        const pieces = [state.injection?.enabled ? renderInjectionContent(state, parts) : '', parts.inlineValues?.summaryValue, parts.inlineValues?.tableValue, parts.rpMaintenance];
+        const pieces = [state.injection?.enabled ? renderInjectionContent(state, parts) : '', parts.sources?.facts, parts.inlineValues?.summaryValue, parts.inlineValues?.tableValue, parts.rpMaintenance];
         const markers = pieces.map(piece => String(String(piece || '').split('\n').find(line => line.trim().length >= 6) || '').trim()).filter(Boolean);
         return { text, markers, found: promptText => overviewTokenManifest.doesLastPromptMatchCurrentInjection(promptText, state) };
     },
@@ -1452,7 +1453,7 @@ const workbenchHeaderUi = createWorkbenchHeaderUi({
     getState: ensureState,
     getChat: () => chat,
     getMemoryStrategyLabel,
-    renderInjectionContent,
+    renderInjectionContent: renderInjectionDisplay,
     defaultAutomation,
     getAppearanceSettings,
 });
@@ -1583,7 +1584,7 @@ const workbenchPageOverviews = createWorkbenchPageOverviews({
     defaultGenericEpicGenerationPrompt,
     defaultInjectionTemplate,
     getInjectionMemoryParts,
-    renderInjectionContent,
+    renderInjectionContent: renderInjectionDisplay,
     getActiveGlobalConfig,
     summarySourceChoice,
     toastr,
@@ -2087,7 +2088,7 @@ workbenchRenderer = createWorkbenchRenderer({
     getInjectionMemoryParts,
     getWorkflowStatusText,
     defaultInjectionTemplate,
-    renderInjectionContent,
+    renderInjectionContent: renderInjectionDisplay,
     defaultStoryGenerationPrompt,
     defaultMissingSummaryPrompt,
     defaultStageGenerationPrompt,

@@ -9,7 +9,12 @@
  * When the budget runs out, the least relevant cards step down one rung at a time (one line → name only → left out),
  * the scene last. A card is never cut in the middle.
  */
-import { cardMentions, describeCard, factFields, factKindLabels, injectionBudget, isOpenThread, storyOrder } from './model.js';
+import { cardMentions, clip, describeCard, factFields, factKindLabels, injectionBudget, isOpenThread, latestFloor, storyOrder } from './model.js';
+
+// The section goes near the latest message as a block of its own (it changes from round to round, and whatever follows
+// a changed block in a prompt cannot be cached), so it says what it is.
+export const factsInjectionOpening = '【剧情剪辑台：当前局面】';
+export const wrapFactsInjection = text => !text ? '' : `${factsInjectionOpening}\n以下是记录的现状，只作参考，不要复述给用户。\n\n${text}\n【剧情剪辑台：当前局面结束】`;
 
 // The last couple of transitions of a card, as one clause: 曾经：持有者 林晚（到第 24 楼）、沈砚（到第 51 楼）.
 export function describeTimeline(card, { max = 2 } = {}) {
@@ -18,7 +23,7 @@ export function describeTimeline(card, { max = 2 } = {}) {
     const byField = new Map();
     for (const item of items) byField.set(item.field, [...(byField.get(item.field) || []), item]);
     const when = item => item.floor == null ? '' : item.past ? `（第 ${item.floor} 楼时）` : `（到第 ${item.floor} 楼）`;
-    return '曾经：' + [...byField.entries()].map(([field, list]) => `${field} ${list.map(item => `${item.from}${when(item)}`).join('、')}`).join('；');
+    return '曾经：' + [...byField.entries()].map(([field, list]) => `${field} ${list.map(item => `${clip(item.from, 24)}${when(item)}`).join('、')}`).join('；');
 }
 
 const cardHead = card => `${factKindLabels[card.kind]} ${card.name}${card.aliases.length ? `（${card.aliases.join('、')}）` : ''}${card.status === 'retired' ? '（已结束）' : ''}`;
@@ -48,7 +53,6 @@ export function renderReflection(reflection, cards = []) {
     return lines.length ? '## 主线与伏笔\n' + lines.join('\n') : '';
 }
 
-const latestFloor = card => Math.max(-1, ...(card.floors || []), ...Object.values(card.asOf || {}).filter(Number.isInteger), ...(card.timeline || []).map(item => item.floor).filter(Number.isInteger));
 const marksLine = '（【】里是传闻、推测或只有部分人物知道的事，不是所有人物都知道的事实。）';
 const emptyPlan = budget => ({ budget, used: 0, full: [], short: [], named: [], dropped: [], over: false });
 

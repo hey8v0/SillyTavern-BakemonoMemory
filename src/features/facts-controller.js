@@ -2,7 +2,7 @@ import { applyFactsUpdate, cardMentions, createCard, injectionBudget as budgetFo
 import { parseFactCards } from '../facts/parser.js';
 import { summarizeFactsChanges } from '../facts/diff.js';
 import { buildLegacyImport, importCards } from '../facts/migration.js';
-import { buildFactsPrompt, defaultFactsPrompt } from '../facts/prompt.js';
+import { buildFactsPrompt, effectiveFactsPrompt } from '../facts/prompt.js';
 import { storyTimeContext as defaultStoryTimeContext } from '../memory/story-state.js';
 import { getHash } from '../shared/text.js';
 
@@ -141,15 +141,27 @@ export function createFactsController({
         const same = run < 0 ? pending : pending.slice(0, run);
         return same.slice(0, trigger === 'auto' ? Math.max(1, every) : maxBatch);
     };
-    // The automatic batch that is due but was given up on after repeated failures, for the page to explain.
+    // A request that ran into the output limit would run into it again, with a retry costing as much as the first try:
+    // that batch, or a longer one starting with it, is not sent on its own.
+    const overLimitTasks = state => (state.taskQueue || []).filter(task => task.kind === blockTypes.FACTS && task.status === 'failed' && task.errorCode === 'output_limit' && task.metadata?.factsBatch);
+    const overLimit = (state, signature) => overLimitTasks(state).some(task => signature.startsWith(task.metadata.factsBatch.slice(0, -1)));
+    // By hand it goes in half the size of what did not fit, when it starts where that batch did.
+    function shrunkBatchSize(state, pending) {
+        const start = `[${JSON.stringify([pending[0].item.hash, pending[0].revision])}`;
+        const sizes = overLimitTasks(state).filter(task => task.metadata.factsBatch.startsWith(start)).map(task => Number(task.metadata.factsCount)).filter(count => count > 0);
+        return sizes.length ? Math.max(1, Math.floor(Math.min(...sizes) / 2)) : 0;
+    }
+    // The automatic batch that is due but was given up on, for the page to explain: after the output limit, or repeated failures.
     function blockedBatch(state = getState()) {
         const current = facts(state);
         if (!current.integrated) return null;
         const pending = pendingSummaries(state);
-        if (!pending.length || pending.length < current.settings.everySummaries) return null;
-        const batch = selectBatch('auto', pending, current.settings.everySummaries);
-        const count = failures(state, batchSignature(batch));
-        return count >= maxAutoFailures ? { failures: count, summaries: batch.length, floorFrom: batch[0].floorStart, floorTo: batch.at(-1).floorEnd } : null;
+        if (!pending.length) return null;
+        const every = current.settings.everySummaries, due = pending.length >= every;
+        const batch = selectBatch(due ? 'auto' : 'idle', pending, every), signature = batchSignature(batch);
+        const count = failures(state, signature);
+        const reason = overLimit(state, signature) ? 'output_limit' : due && count >= maxAutoFailures ? 'failures' : '';
+        return reason ? { reason, failures: count, summaries: batch.length, floorFrom: batch[0].floorStart, floorTo: batch.at(-1).floorEnd } : null;
     }
     // A branch or deleted floors left the chat shorter than the consolidation got: the cards may hold what happened after.
     function chatShorterThanProgress(state = getState()) {
@@ -212,7 +224,7 @@ export function createFactsController({
         const material = note + taken.filter(entry => entry.plain)
             .map(entry => `第 ${range(entry)} 楼${entry.revised ? '（改过）' : entry.backfill ? '（补写）' : ''}：${entry.plain}`).join('\n\n');
         const { prompt, systemPrompt, cardIds } = buildFactsPrompt(current, material, {
-            template: state.generationPrompts?.facts || defaultFactsPrompt, timeContext: storyTimeContext(state) });
+            template: effectiveFactsPrompt(state.generationPrompts?.facts), timeContext: storyTimeContext(state) });
         const sources = taken.map(entry => ({ hash: entry.item.hash, revision: entry.revision, floorEnd: entry.floorEnd }));
         const remaining = Math.max(0, pendingTotal - taken.length);
         return enqueueSummaryTask({
@@ -222,17 +234,18 @@ export function createFactsController({
             sourceHashes: sources.map(source => source.hash),
             sourceMessageIds: [...new Set(taken.flatMap(entry => entry.floors))].sort((a, b) => a - b),
             trigger: `facts_${trigger}`,
-            metadata: { factsFloorFrom: floorFrom, factsFloorTo: floorTo, factsCount: taken.length, factsRemaining: remaining, factsCardIds: cardIds, factsSources: sources, factsBatch: batchSignature(taken) },
+            metadata: { factsFloorFrom: floorFrom, factsFloorTo: floorTo, factsCount: taken.length, factsRemaining: remaining, factsCardIds: cardIds, factsSources: sources, factsBatch: batchSignature(taken), promptChars: prompt.length + String(systemPrompt || '').length },
             silent: trigger !== 'manual',
         });
     }
 
     // Sends one batch of what is pending: `auto` exactly everySummaries of them, idle and manual up to maxBatch.
-    function runBatch(trigger, { state = getState(), exceptTaskId = null, pending = null } = {}) {
+    function runBatch(trigger, { state = getState(), exceptTaskId = null, pending = null, limit = 0 } = {}) {
         if (hasOpenTask(state, exceptTaskId)) return null;
         const list = pending || pendingSummaries(state);
         if (!list.length) return null;
-        const task = enqueueBatch(selectBatch(trigger, list, facts(state).settings.everySummaries), { trigger, pendingTotal: list.length });
+        const batch = selectBatch(trigger, list, facts(state).settings.everySummaries);
+        const task = enqueueBatch(limit ? batch.slice(0, limit) : batch, { trigger, pendingTotal: list.length });
         if (task && getState() === state) saveState();
         return task;
     }
@@ -246,7 +259,8 @@ export function createFactsController({
         const pending = pendingSummaries(state);
         if (!pending.length) return null;
         if (trigger === 'auto' && pending.length < settings.everySummaries) return null;
-        if (failures(state, batchSignature(selectBatch(trigger, pending, settings.everySummaries))) >= maxAutoFailures) return null;
+        const signature = batchSignature(selectBatch(trigger, pending, settings.everySummaries));
+        if (failures(state, signature) >= maxAutoFailures || overLimit(state, signature)) return null;
         return runBatch(trigger, { state, exceptTaskId, pending });
     }
 
@@ -307,7 +321,7 @@ export function createFactsController({
             toastr.info?.('没有新的剧情摘要要整理；最新一楼会等下一条消息后再算。', '剧情剪辑台');
             return null;
         }
-        const task = runBatch('manual', { state, pending });
+        const task = runBatch('manual', { state, pending, limit: shrunkBatchSize(state, pending) });
         if (task && getState() === state) {
             const { factsCount: count, factsRemaining: remaining } = task.metadata;
             const message = !remaining ? `已加入整理：${count} 条摘要。`
@@ -322,6 +336,7 @@ export function createFactsController({
     // The queue hands the model's reply here; a parse failure fails the task and changes nothing.
     async function handleTaskResult(rawResult, task) {
         const state = getState();
+        task.metadata = { ...(task.metadata || {}), replyChars: String(rawResult || '').length };
         const parsed = parseFactCards(rawResult);
         const current = facts(state);
         const floorTo = Number.isInteger(task.metadata?.factsFloorTo) ? task.metadata.factsFloorTo : null;
@@ -457,6 +472,18 @@ export function createFactsController({
     function noteInjection(state, result) { if (state && result?.plan) injections.set(state, result.plan); }
     function lastInjection(state = getState()) { return injections.get(state) || null; }
 
+    // What the latest finished 整理 cost: the API's numbers when it gave them, otherwise the text lengths. By time: a
+    // reload puts failed tasks ahead of finished ones in the queue.
+    function lastRequest(state = getState()) {
+        const finished = (state.taskQueue || []).filter(task => task.kind === blockTypes.FACTS && ['done', 'failed'].includes(task.status));
+        const task = finished.reduce((latest, item) => !latest || (Date.parse(item.updatedAt) || 0) >= (Date.parse(latest.updatedAt) || 0) ? item : latest, null);
+        if (!task) return null;
+        const { usage, promptChars, replyChars, factsFloorFrom, factsFloorTo } = task.metadata || {};
+        if (!usage && !Number(promptChars)) return null;
+        return { status: task.status, floorFrom: factsFloorFrom ?? null, floorTo: factsFloorTo ?? null, input: usage?.input ?? (Number(promptChars) || 0), output: usage?.output ?? (Number(replyChars) || 0),
+            reasoning: usage?.reasoning || 0, estimated: !usage };
+    }
+
     function openConflicts(state = getState()) {
         return (facts(state).conflicts || []).filter(item => item.status === 'open');
     }
@@ -510,5 +537,5 @@ export function createFactsController({
 
     return { facts, pendingSummaries, enqueueBatch, runBatch, maybeRun, noteActivity, resume, onSummaryCommitted, runManual, handleTaskResult, previewUpdate, applyDraft, discardDraft,
         undoLast, updateSettings, saveCard, addCard, mergeInto, deleteCard, cardHistory, legacySummary, importLegacy, sourceSignature, blockedBatch, chatShorterThanProgress,
-        openConflicts, resolveConflict, injectionBudget, noteInjection, lastInjection };
+        openConflicts, resolveConflict, injectionBudget, noteInjection, lastInjection, lastRequest };
 }

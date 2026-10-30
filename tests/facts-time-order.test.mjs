@@ -57,7 +57,7 @@ test('a card comes back only when the result says so (revived) and the material 
     assert.deepEqual(parseFactCards('<factCards>{"cards":[],"revived":["老看守",{"name":"码头之约"}]}</factCards>').revived, ['老看守', '码头之约']);
     assert.match(defaultFactsPrompt, /revived/);
     const { prompt } = buildFactsPrompt(facts, '老看守又出现了。');
-    assert.match(prompt, /"已结束": true/, 'the model sees which cards ended');
+    assert.match(prompt, /"已结束":true/, 'the model sees which cards ended');
 });
 
 test('a card the user ended by hand is not revived by the model: it becomes a conflict for the user', () => {

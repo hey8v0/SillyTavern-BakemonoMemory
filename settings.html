@@ -349,6 +349,8 @@
           <label class="bk-vec-row"><span>请求方式</span><select id="bakemono-memory-custom-stream"><option value="false">非流式</option><option value="true">流式</option></select></label>
           <label class="bk-tbl-switch bk-auto-row"><span class="bk-tbl-switch-copy">经酒馆后端转发</span><input type="checkbox" id="bakemono-memory-custom-via-tavern" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
           <p class="bk-tbl-set-note">提示 Failed to fetch 或跨域（CORS）时打开，比如智谱。请求改由酒馆服务器代发，用的还是上面的地址、密钥和模型，“拉取模型”也一样。</p>
+          <label class="bk-tbl-switch bk-auto-row"><span class="bk-tbl-switch-copy">关闭模型思考</span><input type="checkbox" id="bakemono-memory-custom-no-thinking" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
+          <p class="bk-tbl-set-note">带思考的模型（GLM、DeepSeek、Kimi、豆包、通义等）常把大半输出花在思考上，总结和整理用不着。接口不支持时会自动不带这个设置再发一次。走酒馆主模型时这里管不到，要在酒馆的预设里关。</p>
         </div>
         <section class="bk-tbl-settings bk-auto-settings" aria-label="生成模型设置">
           <span class="bk-tbl-settings-label">设置</span>
@@ -890,6 +892,7 @@
         <label class="bk-tbl-switch bk-auto-row"><span class="bk-tbl-switch-copy">注入剧情记忆</span><input type="checkbox" id="bakemono-memory-injection-enabled" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
         <label class="bk-vec-row bk-auto-row"><span>插入深度</span><input id="bakemono-memory-depth" type="number" min="0" max="10000" step="1"></label>
         <label class="bk-vec-row bk-auto-row"><span>消息角色</span><select id="bakemono-memory-role"><option value="0">系统</option><option value="1">用户</option><option value="2">助手</option></select></label>
+        <p class="bk-tbl-set-note">插入深度管总结这一块。剧情事实每轮都跟着场景变，单独放在靠近最新消息的位置，在剧情事实页的设置里改。</p>
         <details class="bk-tbl-set bk-inj-preview">
           <summary><span class="bk-tbl-set-copy">看这一轮会发出去的内容</span><span class="bk-vec-set-val" id="bakemono-memory-injection-char-count"></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
           <textarea id="bakemono-memory-injection-content" class="bk-inj-box" rows="10" spellcheck="false" readonly aria-label="这一轮会发出去的内容"></textarea>
@@ -1116,7 +1119,7 @@
             <button id="bakemono-memory-help-search-clear" type="button" class="bk-sum-link" hidden>清空</button>
           </label>
           <div id="bakemono-memory-help-list" class="bk-help-groups" aria-live="polite"></div>
-          <p class="bk-help-foot">v1.40.0 · 反馈问题时带上这个版本号</p>
+          <p class="bk-help-foot">v1.41.0 · 反馈问题时带上这个版本号</p>
         </div>
 
         <div data-bakemono-help-view="article" hidden>

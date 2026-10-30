@@ -9,6 +9,7 @@
 //   node scripts/facts-eval/run.mjs --long 1000                      # the story stretched over ~1000 floors
 //   node scripts/facts-eval/run.mjs --api https://host/v1 --model m --dry          # what a real run would send
 //   node scripts/facts-eval/run.mjs --api https://host/v1 --model m [--key sk-…]   # real model (key or FACTS_EVAL_KEY)
+//   … --keep-thinking                                               # leave the model's thinking on, as an API that refuses the switch needs
 //   node scripts/facts-eval/compare.mjs a.json b.json                # two runs side by side
 //
 // Nothing is sent unless --api is given and --dry is not. The key is read from --key or FACTS_EVAL_KEY only.
@@ -24,10 +25,10 @@ const mod = file => import(pathToFileURL(path.join(repo, 'src', file)).href);
 const fillerLines = ['雨停了又下，镇上一切照旧。', '集市上来了卖鱼的船，吵了一上午。', '风从海上吹来，屋檐滴着水。', '夜里有人唱歌，到天亮才停。', '码头的钟慢了半刻，没人去修。', '街角的面馆换了招牌。'];
 
 async function load() {
-    const [model, controllerModule, queueModule, injection, textModule, recall, hybrid, math] = await Promise.all([
+    const [model, controllerModule, queueModule, injection, textModule, recall, hybrid, math, generation] = await Promise.all([
         mod('facts/model.js'), mod('features/facts-controller.js'), mod('features/summary-task-queue.js'), mod('facts/injection.js'),
-        mod('shared/text.js'), mod('facts/recall.js'), mod('vector/hybrid-retrieval.js'), mod('vector/math.js')]);
-    return { ...model, ...controllerModule, ...queueModule, ...injection, ...textModule, ...recall, ...hybrid, ...math };
+        mod('shared/text.js'), mod('facts/recall.js'), mod('vector/hybrid-retrieval.js'), mod('vector/math.js'), mod('features/generation-client.js')]);
+    return { ...model, ...controllerModule, ...queueModule, ...injection, ...textModule, ...recall, ...hybrid, ...math, thinkingOffParams: generation.thinkingOffParams };
 }
 
 // One chat with the facts controller and the real task queue around `callModel`.
@@ -113,7 +114,7 @@ async function flowChecks(m) {
     return results;
 }
 
-export async function runEval({ api = '', key = '', model = '', temperature = 0.2, every = corpus.everySummaries, name = '', long = 0, dry = false, log = () => {} } = {}) {
+export async function runEval({ api = '', key = '', model = '', temperature = 0.2, every = corpus.everySummaries, name = '', long = 0, dry = false, keepThinking = false, log = () => {} } = {}) {
     const m = await load();
     const offline = !api || dry;
     // --long N stretches the story: neutral filler floors after floor 60 push the second half N floors further away.
@@ -121,7 +122,7 @@ export async function runEval({ api = '', key = '', model = '', temperature = 0.
     const shift = floor => floor > 60 ? floor + gap : floor;
     const story = corpus.summaries.map(([floor, text]) => [shift(floor), text]);
     const filler = Array.from({ length: gap / 2 }, (_, i) => [62 + i * 2, `第 ${62 + i * 2} 楼：${fillerLines[i % fillerLines.length]}`]);
-    const metrics = { requests: 0, promptChars: 0, replyChars: 0, promptTokens: 0, completionTokens: 0, ms: 0, batches: [] };
+    const metrics = { requests: 0, promptChars: 0, replyChars: 0, promptTokens: 0, completionTokens: 0, reasoningTokens: 0, ms: 0, batches: [] };
     const fillerFloors = new Set(filler.map(([floor]) => floor));
     const runningTask = state => state.taskQueue.find(task => task.status === 'running');
     async function callModel({ prompt, systemPrompt, signal }, state) {
@@ -143,14 +144,15 @@ export async function runEval({ api = '', key = '', model = '', temperature = 0.
             }
             const response = await fetch(`${api.replace(/\/+$/, '')}/chat/completions`, { method: 'POST', signal,
                 headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: `Bearer ${key}` } : {}) },
-                body: JSON.stringify({ model, temperature, stream: false, messages: [...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []), { role: 'user', content: prompt }] }) });
-            if (!response.ok) throw new Error(`接口返回 ${response.status} ${response.statusText}`);
+                body: JSON.stringify({ model, temperature, stream: false, ...(keepThinking ? {} : m.thinkingOffParams(model, api) || {}), messages: [...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []), { role: 'user', content: prompt }] }) });
+            if (!response.ok) throw new Error(`接口返回 ${response.status} ${response.statusText}${response.status === 400 && !keepThinking ? '；接口不认关闭思考的参数的话，加 --keep-thinking' : ''}`);
             const data = await response.json();
             if (data?.error) throw new Error(typeof data.error === 'string' ? data.error : data.error.message || '接口报错');
             const text = data?.choices?.[0]?.message?.content || '';
             metrics.replyChars += text.length;
             metrics.promptTokens += Number(data?.usage?.prompt_tokens) || 0;
             metrics.completionTokens += Number(data?.usage?.completion_tokens) || 0;
+            metrics.reasoningTokens += Number(data?.usage?.completion_tokens_details?.reasoning_tokens ?? data?.usage?.reasoning_tokens) || 0;
             return text;
         } finally { metrics.ms += Date.now() - started; }
     }
@@ -207,7 +209,7 @@ export function formatReport(report) {
         ...report.flows.map(flow => `${flow.ok ? '✔' : '✖'} 流程 · ${flow.name}`),
         `卡片 ${report.cards} 张 · 待裁决 ${report.conflicts} · 整理警告 ${report.warnings} · 未整理 ${report.pending} · 一轮注入约 ${report.injectedChars} 字`,
         ...(report.injection ? [`分层注入（32k 模型）：${report.injection.used} / ${report.injection.budget} 字 · 完整 ${report.injection.full} · 一行 ${report.injection.short} · 只列名字 ${report.injection.named} · 没放进去 ${report.injection.dropped}`] : []),
-        `请求 ${report.metrics.requests} 次（平均每次 ${Math.round(report.metrics.promptChars / Math.max(1, report.metrics.requests))} 字提示词）· 失败 ${report.metrics.failures.length} · Token ${report.metrics.promptTokens ? `${report.metrics.promptTokens}+${report.metrics.completionTokens}` : `约 ${report.metrics.tokensEstimated}（按字数估）`} · 耗时 ${(report.metrics.ms / 1000).toFixed(1)} 秒`,
+        `请求 ${report.metrics.requests} 次（平均每次 ${Math.round(report.metrics.promptChars / Math.max(1, report.metrics.requests))} 字提示词）· 失败 ${report.metrics.failures.length} · Token ${report.metrics.promptTokens ? `${report.metrics.promptTokens}+${report.metrics.completionTokens}${report.metrics.reasoningTokens ? `（思考 ${report.metrics.reasoningTokens}）` : ''}` : `约 ${report.metrics.tokensEstimated}（按字数估）`} · 耗时 ${(report.metrics.ms / 1000).toFixed(1)} 秒`,
         `关键事实命中率 ${pct(report.keyFacts.hit, report.keyFacts.total)} · 错误率 ${pct(report.wrongFacts.hit, report.wrongFacts.total)}`];
     return lines.join('\n');
 }
@@ -219,7 +221,7 @@ export function passed(report) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     const args = Object.fromEntries(process.argv.slice(2).map((arg, i, all) => arg.startsWith('--') ? [arg.slice(2), all[i + 1] && !all[i + 1].startsWith('--') ? all[i + 1] : 'true'] : null).filter(Boolean));
     const report = await runEval({ api: args.api || '', key: args.key || process.env.FACTS_EVAL_KEY || '', model: args.model || '', temperature: Number(args.temperature ?? 0.2),
-        every: Number(args.every) || corpus.everySummaries, name: args.name || '', long: Number(args.long) || 0, dry: args.dry === 'true', log: message => console.error(message) });
+        every: Number(args.every) || corpus.everySummaries, name: args.name || '', long: Number(args.long) || 0, dry: args.dry === 'true', keepThinking: args['keep-thinking'] === 'true', log: message => console.error(message) });
     if (args.dry === 'true') {
         console.log(`预估：会发 ${report.metrics.requests} 次请求，提示词共约 ${report.metrics.promptChars} 字（约 ${Math.round(report.metrics.promptChars / 1.6)} Token 输入，不含回复；真实运行时卡片越来越多，提示词会再长一些）。没有发送任何请求。`);
     } else console.log(formatReport(report));

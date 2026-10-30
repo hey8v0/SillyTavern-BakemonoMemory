@@ -2,6 +2,7 @@ import { isMemoryCurrent, storyTimeContext, refreshMemoryLinks, activeStoryCover
 import {resolveSummaryGraph} from '../memory/summary-provenance.js';
 import { isFirstReplyTurn, openingFloors, openingNote } from '../shared/opening.js';
 import { recallText } from '../facts/recall.js';
+import { wrapFactsInjection } from '../facts/injection.js';
 
 export function createInjectionService({
     ensureState,
@@ -74,12 +75,13 @@ export function createInjectionService({
         const join = list => list.map(message => String(message?.mes || '')).join('\n');
         const recentParts = { scene: join(messages.slice(-2)), recent: join(messages.slice(-recentFloors)),
             recalled: state.vectorMemory?.enabled ? recallText(state.vectorMemory.lastHits || []) : '' };
-        sources.facts = state.injection?.enabled === false ? '' : (renderFactsSection(state, recentParts)?.text || '');
-        const sections = [sources.summary, sources.memory, sources.facts, sources.time, sources.vector].filter(Boolean);
+        // It goes near the latest message on its own (see syncInjection), so it is not part of `memory`.
+        sources.facts = state.injection?.enabled === false ? '' : wrapFactsInjection(renderFactsSection(state, recentParts)?.text || '');
+        const sections = [sources.summary, sources.memory, sources.time, sources.vector].filter(Boolean);
         const memory = sections.join('\n\n').trim();
         const savedSummaries = (state.stageSummaries?.length || 0) + (state.epicSummaries?.length || 0);
         const diagnostic = state.injection?.enabled === false ? '长期记忆注入已关闭。'
-            : memory ? '当前有效记忆已组装；是否进入模型上下文，以“查看上一轮”核对为准。'
+            : memory || sources.facts ? '当前有效记忆已组装；是否进入模型上下文，以“查看上一轮”核对为准。'
             : savedSummaries ? `已有 ${savedSummaries} 条阶段／多次总结，但没有有效可选内容。请到“总结”页查看来源失效、空内容或覆盖状态；无需先删除总结。`
             : !shouldInjectStory && state.storySummaries?.length ? '摘要写在回复里时不单独注入普通摘要；当前没有有效的阶段／多次总结。'
             : '当前没有可注入的记忆内容。';
@@ -105,13 +107,24 @@ export function createInjectionService({
         const content = renderInjectionContent(state, parts);
         state.injection.content = content;
         const value = state.injection.enabled ? content : '';
+        const role = Number(state.injection.role ?? extensionPromptRoles.SYSTEM);
         setExtensionPrompt(
             injectionKey,
             value,
             extensionPromptTypes.IN_CHAT,
             Number(state.injection.depth ?? defaultState.injection.depth),
             false,
-            Number(state.injection.role ?? extensionPromptRoles.SYSTEM),
+            role,
+        );
+        // 剧情事实 changes with the scene, every round. Near the latest message the model reads it as what is going on now,
+        // and the summaries and the chat in front of it stay the same from round to round.
+        setExtensionPrompt(
+            `${injectionKey}_facts`,
+            state.injection.enabled ? parts.sources.facts : '',
+            extensionPromptTypes.IN_CHAT,
+            Number(state.facts?.settings?.injectDepth ?? 2),
+            false,
+            role,
         );
         syncInlineGenerationPrompts(state, parts);
     }
@@ -153,9 +166,16 @@ export function createInjectionService({
         return renderInjectionTemplate(parts.memory || '', template, defaultInjectionTemplate);
     }
 
+    // What the pages show and count: both blocks. A preview passes only the memory it renders.
+    function renderInjectionDisplay(state = ensureState(), parts = getInjectionMemoryParts(state)) {
+        const facts = (parts.sources ? parts : getInjectionMemoryParts(state)).sources.facts;
+        return [renderInjectionContent(state, parts), facts].filter(Boolean).join('\n\n');
+    }
+
     return {
         getInjectionMemoryParts,
         renderInjectionContent,
+        renderInjectionDisplay,
         renderInlinePrompt,
         syncInjection,
         syncInlineGenerationPrompts,
