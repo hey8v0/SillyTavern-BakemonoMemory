@@ -21,6 +21,7 @@ export function createWorkbenchPageOverviews({
     defaultInjectionTemplate = '',
     getInjectionMemoryParts,
     renderInjectionContent,
+    getStageOnDemandStatus = () => '',
     getActiveGlobalConfig = () => null,
     summarySourceChoice = () => '',
     toastr,
@@ -108,6 +109,7 @@ export function createWorkbenchPageOverviews({
         query('#bakemono-memory-injection-stack').html(shown.map(([key, , size]) => `<i data-bakemono-stack-source="${key}" style="flex-grow:${size}"></i>`).join('')).prop('hidden', !shown.length);
         query('#bakemono-memory-injection-legend').html(shown.map(([key, label, size]) => `<span data-bakemono-inj-source="${key}"><b>${size.toLocaleString()}</b>${label}</span>`).join('')).prop('hidden', !shown.length);
         query('#bakemono-memory-injection-char-count').text(`${content.length.toLocaleString()} 字`);
+        query('#bakemono-memory-stage-on-demand-status').text(getStageOnDemandStatus(state));
         const template = String(query('#bakemono-memory-injection-template').val() ?? state.injection.template ?? '');
         query('#bakemono-memory-injection-template-state').text(template.trim() === String(defaultInjectionTemplate || '').trim() ? '默认' : '已修改');
         renderPresetValues();

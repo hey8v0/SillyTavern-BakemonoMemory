@@ -132,6 +132,8 @@ export function createWorkbenchRenderer({
             query('#bakemono-memory-depth').val(state.injection.depth);
             query('#bakemono-memory-role').val(String(state.injection.role));
             query('#bakemono-memory-injection-template').val(state.injection.template || defaultInjectionTemplate);
+            query('#bakemono-memory-stage-on-demand').prop('checked', state.injection.stageOnDemand === true);
+            query('#bakemono-memory-recent-stages').val(state.injection.recentStages ?? 3);
             query('#bakemono-memory-injection-content').val(renderInjectionContent(state));
         } else if (activeTab === 'prompts') {
             query('#bakemono-memory-story-prompt').val(state.generationPrompts.story || defaultStoryGenerationPrompt);

@@ -184,6 +184,8 @@ export function createConfigurationService({
             depth: Math.max(0, Number(query('#bakemono-memory-depth').val() === '' ? defaultState.injection.depth : query('#bakemono-memory-depth').val() ?? defaultState.injection.depth)),
             role: Number(query('#bakemono-memory-role').val() || extensionPromptRoles.SYSTEM),
             template: String(query('#bakemono-memory-injection-template').val() || defaultInjectionTemplate),
+            stageOnDemand: !!query('#bakemono-memory-stage-on-demand').prop('checked'),
+            recentStages: Math.max(1, Math.min(50, Math.round(Number(query('#bakemono-memory-recent-stages').val())) || defaultState.injection.recentStages)),
         };
         return state;
     }

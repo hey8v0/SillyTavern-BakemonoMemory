@@ -750,6 +750,9 @@ export function createDefaultConfiguration({
             memoryBudgetChars: 60000,
             role: extensionPromptRoles.SYSTEM,
             template: defaultInjectionTemplate,
+            // Off for a chat from before; a new chat turns it on (see ensureState). Per chat, not part of a configuration.
+            stageOnDemand: false,
+            recentStages: 3,
             content: '',
         },
         generationPrompts: {

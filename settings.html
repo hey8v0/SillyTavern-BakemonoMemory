@@ -893,6 +893,9 @@
         <label class="bk-vec-row bk-auto-row"><span>插入深度</span><input id="bakemono-memory-depth" type="number" min="0" max="10000" step="1"></label>
         <label class="bk-vec-row bk-auto-row"><span>消息角色</span><select id="bakemono-memory-role"><option value="0">系统</option><option value="1">用户</option><option value="2">助手</option></select></label>
         <p class="bk-tbl-set-note">插入深度管总结这一块。剧情事实每轮都跟着场景变，单独放在靠近最新消息的位置，在剧情事实页的设置里改。</p>
+        <label class="bk-tbl-switch bk-auto-row"><span class="bk-tbl-switch-copy">旧阶段总结按需带上</span><input type="checkbox" id="bakemono-memory-stage-on-demand" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
+        <label class="bk-vec-row bk-auto-row"><span>常驻最近几段</span><input id="bakemono-memory-recent-stages" type="number" min="1" max="50" step="1"></label>
+        <p class="bk-tbl-set-note" id="bakemono-memory-stage-on-demand-status"></p>
         <details class="bk-tbl-set bk-inj-preview">
           <summary><span class="bk-tbl-set-copy">看这一轮会发出去的内容</span><span class="bk-vec-set-val" id="bakemono-memory-injection-char-count"></span><span class="bk-tbl-set-chev" aria-hidden="true">›</span></summary>
           <textarea id="bakemono-memory-injection-content" class="bk-inj-box" rows="10" spellcheck="false" readonly aria-label="这一轮会发出去的内容"></textarea>

@@ -120,6 +120,8 @@ export function createChatStateService({
         state.persistenceRevision = Math.max(0, Number(state.persistenceRevision || 0));
         if (isNewChatState) {
             applyGlobalActiveConfigToState(state);
+            // A new chat never gets used to every chapter going out. A chat from before keeps that until the user opts in.
+            state.injection.stageOnDemand = true;
         } else if (state.configInitialized === undefined) {
             state.configInitialized = true;
         }

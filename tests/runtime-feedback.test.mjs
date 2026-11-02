@@ -99,7 +99,7 @@ function saveAdapterFixture(globalSave, chatSave) {
     const host = Object.fromEntries(readerNames.map(name => [name, s => { assert.equal(s, state); calls.push(name); }]));
     f.save = vm.runInNewContext('(async function(tab, state) {' + body + '\n})', { ...host,
         ensureState: () => f.current, applyVectorMemorySettings: async () => true, summarySourceChoice: () => 'inline',
-        syncInjection: () => calls.push('sync'), scanBakemonoBlocks: () => calls.push('scan'),
+        syncInjection: () => calls.push('sync'), scanBakemonoBlocks: () => calls.push('scan'), markVectorIndexDirty: () => {},
         persistSharedConfigurationFromState: s => { s.activeConfigSignature = 'saved'; return {}; },
         confirmGlobalConfiguration: globalSave, saveChatConditional: chatSave });
     return f;

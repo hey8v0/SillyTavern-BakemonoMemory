@@ -1,5 +1,6 @@
 import { isMemoryCurrent } from '../memory/story-state.js';
 import {resolveSummaryGraph, getSummaryStatus} from '../memory/summary-provenance.js';
+import { planStageInjection } from '../memory/stage-on-demand.js';
 
 export function createSummaryMemoryModel({
     blockTypes,
@@ -98,10 +99,11 @@ export function createSummaryMemoryModel({
         const coveredStageHashes = getActiveCoveredStageHashes(state);
         const activeEpicHashes = new Set(getActiveEpicMemoryBlocks(state,graph).map(summary => summary.hash).filter(Boolean));
         const epicCoveredStageHashes = getActiveCoveredStageHashes(state);
-        const stageInjectedHashes = new Set(getStageMemoryBlocks(state,graph)
+        const stagePlan = planStageInjection(state, getStageMemoryBlocks(state,graph)
             .filter(summary => isMemoryCurrent(state, summary,graph))
-            .filter(summary => !epicCoveredStageHashes.has(summary.hash))
-            .map(summary => summary.hash));
+            .filter(summary => !epicCoveredStageHashes.has(summary.hash)));
+        const stageInjectedHashes = new Set(stagePlan.always.map(summary => summary.hash));
+        const stageOnDemandHashes = new Set(stagePlan.onDemand.map(summary => summary.hash));
         const storyInjectedHashes = new Set(state.memoryStrategy === memoryStrategies.GENERIC
             ? state.storySummaries.filter(summary => !coveredStoryHashes.has(summary.hash)).map(summary => summary.hash)
             : []);
@@ -167,8 +169,9 @@ export function createSummaryMemoryModel({
                 status,
                 validity: validity.code,
                 coveredBy: validity.coveredBy,
-                usage: status === memoryRecordStatuses.INJECTED ? 'selected' : injectionEnabled ? 'not_selected' : 'disabled',
-                reason: !validity.valid || validity.coveredBy.length ? validity.reason : !injectionEnabled ? '注入已关闭或模板未包含记忆' : '',
+                usage: status === memoryRecordStatuses.INJECTED ? 'selected' : !injectionEnabled ? 'disabled' : kind === blockTypes.STAGE && stageOnDemandHashes.has(summary.hash) ? 'on_demand' : 'not_selected',
+                reason: !validity.valid || validity.coveredBy.length ? validity.reason : !injectionEnabled ? '注入已关闭或模板未包含记忆'
+                    : kind === blockTypes.STAGE && stageOnDemandHashes.has(summary.hash) ? '更早的阶段总结：提到时才带上，不是每轮都发' : '',
                 source: summary.sourceKind === 'backfill' ? '插件补课' : '已保存摘要',
                 sourceMessageIds,
                 sourceRange: formatSourceRange(sourceMessageIds),

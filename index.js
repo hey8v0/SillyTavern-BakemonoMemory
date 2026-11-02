@@ -1059,6 +1059,7 @@ const {
 const vectorMemoryService = createVectorMemoryService({
     // 剧情事实: the cards the recent conversation names lend every name they go by to the recall keywords.
     getFactsHints: (state, text, options) => factsRecallHints(factsController.facts(state), text, options),
+    getStageMemoryBlocks: (...args) => getStageMemoryBlocks(...args),
     vectorSidecar: createVectorSidecar({ getHeaders: () => tavernHost.getRequestHeaders(), getChatKey: () => getSummaryRecoveryChatIdentity(), getHash,
         warn: (...args) => console.warn(...args) }),
     formatApiFailure,
@@ -1260,6 +1261,7 @@ const injectionService = createInjectionService({
     memoryStrategies,
     // v1.32.0: tables and 剧情状态 no longer inject; 剧情事实 does.
     renderVectorMemorySection,
+    isRecallReady: (...args) => vectorMemoryService.isRecallReady(...args),
     renderFactsSection: (state, recentParts) => {
         const result = renderFactsSection(factsController.facts(state), recentParts, { budgetChars: factsController.injectionBudget(state).chars });
         factsController.noteInjection(state, result);
@@ -1280,6 +1282,7 @@ const {
     getInjectionMemoryParts,
     renderInjectionContent,
     renderInjectionDisplay,
+    getStageOnDemandStatus,
     renderInlinePrompt,
     syncInjection,
     syncInlineGenerationPrompts,
@@ -1585,6 +1588,7 @@ const workbenchPageOverviews = createWorkbenchPageOverviews({
     defaultInjectionTemplate,
     getInjectionMemoryParts,
     renderInjectionContent: renderInjectionDisplay,
+    getStageOnDemandStatus,
     getActiveGlobalConfig,
     summarySourceChoice,
     toastr,
@@ -2175,6 +2179,8 @@ pageSettings = createPageSettings({
         if (!readers[tab]) throw new Error('当前页面没有可保存的设置。');
         const sourceBefore = summarySourceChoice(state);
         readers[tab](state);
+        // Which chapters go on demand decides which are in the index.
+        if (tab === 'injection' && state.vectorMemory?.enabled) markVectorIndexDirty('阶段总结的常驻范围变了', state);
         // 自动记忆 can change where summaries come from, which changes how the chat is read.
         if (tab === 'scan' || tab === 'settings' || summarySourceChoice(state) !== sourceBefore) scanBakemonoBlocks({ persist: false, render: false });
         syncInjection();

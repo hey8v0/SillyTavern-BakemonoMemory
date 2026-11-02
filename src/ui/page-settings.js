@@ -6,7 +6,7 @@ const pages = {
     automation: { label: '自动总结', fields: /^bakemono-memory-(auto-|backfill-batch-size$)/ },
     generation: { label: '生成接口', fields: /^bakemono-memory-(api-provider|custom-)/ },
     prompts: { label: '生成提示词', fields: /^bakemono-memory-((story|missing|stage|epic|facts)-prompt|summary-length)$/ },
-    injection: { label: '注入设置', fields: /^bakemono-memory-(injection-(template|enabled)|depth|role)$/ },
+    injection: { label: '注入设置', fields: /^bakemono-memory-(injection-(template|enabled)|depth|role|stage-on-demand|recent-stages)$/ },
     'turn-summary': { label: '摘要与表格设置', fields: /^bakemono-memory-(turn-|inline-|table-(prompt|enabled|inject-memory|auto-apply|schema-scope)$)/ },
 };
 const immediateFields = new Set(['bakemono-memory-vector-enabled', 'bakemono-memory-table-inject-memory', 'bakemono-memory-table-schema-scope']);

@@ -3,6 +3,7 @@ import {resolveSummaryGraph} from '../memory/summary-provenance.js';
 import { isFirstReplyTurn, openingFloors, openingNote } from '../shared/opening.js';
 import { recallText } from '../facts/recall.js';
 import { wrapFactsInjection } from '../facts/injection.js';
+import { planStageInjection, recentStageCount, stageIndexLine, stageOnDemandConfigured } from '../memory/stage-on-demand.js';
 
 export function createInjectionService({
     ensureState,
@@ -23,6 +24,8 @@ export function createInjectionService({
     defaultInjectionTemplate,
     renderInjectionTemplate,
     renderFactsSection = () => ({ text: '' }),
+    // Whether recall can stand in this round for the chapters it replaces (see stage-on-demand.js).
+    isRecallReady = () => false,
 } = {}) {
     function updateInjectionFromSummaries() {
         const state = ensureState();
@@ -38,9 +41,13 @@ export function createInjectionService({
         const activeEpicBlocks = getActiveEpicMemoryBlocks?.(state) || [];
         const epicContents = activeEpicBlocks.map(item => `## ${getMultiSummaryLabel(item)}\n${item.content}`);
         const epicCoveredStageHashes = getActiveCoveredStageHashes?.(state) || new Set();
-        const stageContents = (getStageMemoryBlocks?.(state) || [])
-            .filter(item => !epicCoveredStageHashes.has(item.hash))
-            .map(item => item.content);
+        const stageBlocks = (getStageMemoryBlocks?.(state) || []).filter(item => !epicCoveredStageHashes.has(item.hash));
+        // Recall first: rendering it may find the saved hits out of date, and then it did not work this round.
+        const vectorSection = renderVectorMemorySection?.(state) || '';
+        const stagePlan = planStageInjection(state, stageBlocks);
+        const onDemandNow = stagePlan.onDemand.length > 0 && !!isRecallReady(state);
+        const stageContents = (onDemandNow ? stagePlan.always : stageBlocks).map(item => item.content);
+        const stageIndex = onDemandNow ? stageIndexLine(stagePlan.onDemand) : '';
         const shouldInjectStory = state.memoryStrategy === memoryStrategies?.GENERIC;
         const storyContents = shouldInjectStory
             ? (state.storySummaries || [])
@@ -52,12 +59,12 @@ export function createInjectionService({
         const sources = {
             summary: [
                 epicContents.length ? epicContents.join('\n\n') : '',
-                stageContents.length ? '## 阶段总结\n' + stageContents.join('\n\n') : '',
+                stageContents.length || stageIndex ? '## 阶段总结\n' + [stageIndex, ...stageContents].filter(Boolean).join('\n\n') : '',
             ].filter(Boolean).join('\n\n'),
             memory: storyContents.length ? '## 普通剧情摘要\n' + storyContents.join('\n\n') : '',
             facts: '',
             time: storyTimeContext(state),
-            vector: renderVectorMemorySection?.(state) || '',
+            vector: vectorSection,
         };
         const memoryBudget = Number(state.injection?.memoryBudgetChars) > 0 ? Number(state.injection.memoryBudgetChars) : 60000;
         const otherMemory = state.injection?.enabled === false ? '' : [sources.summary, sources.memory, sources.time, sources.vector].filter(Boolean).join('\n\n');
@@ -131,6 +138,30 @@ export function createInjectionService({
         syncInlineGenerationPrompts(state, parts);
     }
     
+    // For the injection page: what the chapters are doing this round, and what turning this on would do.
+    function getStageOnDemandStatus(state = ensureState()) {
+        const covered = getActiveCoveredStageHashes?.(state) || new Set();
+        const stages = (getStageMemoryBlocks?.(state) || []).filter(item => !covered.has(item.hash));
+        const chars = list => list.reduce((sum, item) => sum + String(item.content || '').length, 0).toLocaleString('en-US');
+        const count = recentStageCount(state);
+        if (state.injection?.stageOnDemand !== true) {
+            const preview = planStageInjection({ ...state, injection: { ...state.injection, stageOnDemand: true }, vectorMemory: { ...state.vectorMemory, enabled: true, embeddingProvider: 'custom-openai' } }, stages);
+            return preview.onDemand.length
+                ? `现在 ${stages.length} 段全部常驻，约 ${chars(stages)} 字。打开后常驻最近 ${count} 段，约 ${chars(preview.always)} 字，更早的 ${preview.onDemand.length} 段靠向量召回。`
+                : `现在 ${stages.length} 段都常驻。段数超过 ${count} 段后，打开这个可以只留最近几段。`;
+        }
+        if (!stageOnDemandConfigured(state)) {
+            return state.vectorMemory?.enabled ? '要接上向量记忆的嵌入接口才生效，本地哈希向量只认相同的字词。现在阶段总结全部常驻。'
+                : '要打开向量记忆并接上嵌入接口才生效。现在阶段总结全部常驻。';
+        }
+        const plan = planStageInjection(state, stages);
+        if (!plan.onDemand.length) return `阶段总结没超过 ${count} 段，都常驻。`;
+        if (!isRecallReady(state)) return `索引还没就绪，或者这一轮召回没成功，这一轮 ${stages.length} 段全部带上了。`;
+        const waiting = new Set(plan.onDemand.map(item => item.hash));
+        const brought = new Set((state.vectorMemory?.lastHits || []).filter(hit => waiting.has(hit.memoryHash)).map(hit => hit.memoryHash)).size;
+        return `常驻最近 ${plan.always.length} 段，更早的 ${plan.onDemand.length} 段按需带上，这一轮带上了 ${brought} 段。`;
+    }
+
     function renderInlinePrompt(template, state = ensureState()) {
         return String(template || '')
     }
@@ -178,6 +209,7 @@ export function createInjectionService({
         getInjectionMemoryParts,
         renderInjectionContent,
         renderInjectionDisplay,
+        getStageOnDemandStatus,
         renderInlinePrompt,
         syncInjection,
         syncInlineGenerationPrompts,

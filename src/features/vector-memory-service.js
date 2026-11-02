@@ -1,4 +1,5 @@
 import { latestUserLines, splitRecallQueries } from '../vector/query-split.js';
+import { planStageInjection } from '../memory/stage-on-demand.js';
 import { createEmbeddingCache, getEmbeddingCacheKey } from '../vector/embedding-cache.js';
 import { runApiRequest } from '../shared/request-policy.js';
 import { createBm25Index } from '../vector/bm25-index.js';
@@ -60,6 +61,7 @@ export function createVectorMemoryService({
     // Or both hints at once: { keywords, floors }. Floors are where the promises a callback line reaches for were told;
     // records there count one keyword hit, so they become candidates and score a little higher (no extra request).
     getFactsHints = null,
+    getStageMemoryBlocks = null,
     formatApiFailure = response => `嵌入向量接口请求失败：${response.status} ${response.statusText}`,
     setTimer = globalThis.setTimeout,
     vectorSidecar = null,
@@ -524,6 +526,9 @@ export function createVectorMemoryService({
     function getInjectedSummaryHashesForVector(state = ensureState()) {
         const coveredStoryHashes = activeStoryCoverage(state);
         const coveredStageHashes = getActiveCoveredStageHashes(state);
+        // What may go on demand has to be in the index whether or not recall works this round, or the index would change with it.
+        const stageBlocks = (getStageMemoryBlocks ? getStageMemoryBlocks(state) : state.stageSummaries || []).filter(summary => !coveredStageHashes.has(summary.hash));
+        const onDemand = new Set(planStageInjection(state, stageBlocks).onDemand.map(summary => summary.hash));
         return new Set([
             ...(state.memoryStrategy === memoryStrategies.GENERIC
                 ? (state.storySummaries || [])
@@ -531,7 +536,7 @@ export function createVectorMemoryService({
                     .map(summary => summary.hash)
                 : []),
             ...(state.stageSummaries || [])
-                .filter(summary => summary.hash && isMemoryCurrent(state, summary) && !coveredStageHashes.has(summary.hash))
+                .filter(summary => summary.hash && isMemoryCurrent(state, summary) && !coveredStageHashes.has(summary.hash) && !onDemand.has(summary.hash))
                 .map(summary => summary.hash),
             ...getActiveEpicMemoryBlocks(state)
                 .map(summary => summary.hash)
@@ -1037,6 +1042,11 @@ export function createVectorMemoryService({
             if (state.vectorMemory.lastRecallSkippedReason === sourceUpdatingMessage) return [];
             return clearVectorRecall('正文或向量配置已变化，请先建立/刷新索引，避免混用旧向量。', state);
         }
+        // The index matches what is there: a mark left over from before says nothing any more.
+        if (state.vectorMemory.dirty) {
+            state.vectorMemory.dirty = false;
+            state.vectorMemory.dirtyReason = '';
+        }
         const configuration = indexConfigurationKey(state);
         const minAiMessages = Math.max(0, Number(state.vectorMemory.startAfterAiMessages || 0));
         if (minAiMessages > 0 && getAssistantMessageCount() < minAiMessages) {
@@ -1203,6 +1213,15 @@ export function createVectorMemoryService({
         return result.text;
     }
 
+    // Whether recall can stand in this round for the chapters it replaces. Finding nothing similar, or everything still
+    // being in view, is recall working; anything else that stopped it is not.
+    function isRecallReady(state = ensureState()) {
+        const vector = state.vectorMemory;
+        if (!vector?.enabled || !vector.records?.length || vector.dirty) return false;
+        const reason = String(vector.lastRecallSkippedReason || '');
+        return !reason || /没有找到够像|还在可见最近/.test(reason);
+    }
+
     function renderVectorMemorySection(state = ensureState()) {
         removeRpVectorCache(state.vectorMemory);
         if (!state.vectorMemory?.enabled) return '';
@@ -1270,5 +1289,6 @@ export function createVectorMemoryService({
         getVectorIndexProgress: () => (indexRun && !indexRun.finished && indexRun.state === ensureState() ? indexRun.progress : null) || null,
         retrieveVectorMemoryHits,
         renderVectorMemorySection,
+        isRecallReady,
     };
 }
