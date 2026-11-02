@@ -1,3 +1,4 @@
+import { splitRecallQueries } from '../vector/query-split.js';
 import { createEmbeddingCache, getEmbeddingCacheKey } from '../vector/embedding-cache.js';
 import { runApiRequest } from '../shared/request-policy.js';
 import { createBm25Index } from '../vector/bm25-index.js';
@@ -196,6 +197,15 @@ export function createVectorMemoryService({
             .trim();
     }
     
+    function getRecentRecallMessages(state = ensureState(), maxMessages = 8) {
+        const context = getContext();
+        const sourceChat = context.chat || getFallbackChat?.() || [];
+        return sourceChat
+            .filter(message => message?.mes && !message.is_system)
+            .slice(-Math.max(1, Number(maxMessages || 8)))
+            .map(message => ({ isUser: !!message.is_user, text: getVectorBodyText(message.mes, state) }));
+    }
+
     function getVectorQueryText(state = ensureState(), explicitQuery = '') {
         const current = String(explicitQuery || '').trim() || getRecentConversationQuery(8);
         const keywords = parseList(state.vectorMemory.keywordTriggers).join(' ');
@@ -256,7 +266,9 @@ export function createVectorMemoryService({
         return await rewriteWithTavern({ prompt, systemPrompt, signal: options.signal });
     }
     
-    async function prepareVectorQueries(explicitQuery = '', state = ensureState(), options = {}) {
+    // Queries as { text, weight }. A search by hand is one query; otherwise the latest lines one by one (see
+    // query-split.js), which needs no model, so a failed rewrite does not leave a round without recall.
+    async function prepareWeightedQueries(explicitQuery = '', state = ensureState(), options = {}) {
         const baseQuery = getVectorQueryText(state, explicitQuery);
         const mode = String(state.vectorMemory.queryMode || defaultVectorMemory.queryMode);
         state.vectorMemory.lastRewriteIntent = getVectorRewriteIntentText(baseQuery);
@@ -264,14 +276,15 @@ export function createVectorMemoryService({
         if (!baseQuery.trim()) {
             return [];
         }
+        const whole = text => ({ text, weight: 1 });
+        const distinct = (list, max) => { const seen = new Set(); return list.filter(query => query.text && !seen.has(query.text) && seen.add(query.text)).slice(0, max); };
+        const split = String(explicitQuery || '').trim() ? [] : splitRecallQueries(getRecentRecallMessages(state));
+        const lines = split.length ? split : [whole(baseQuery)];
         if (mode === 'off') {
-            return [baseQuery];
+            return lines;
         }
         if (mode === 'local') {
-            return unique([
-                baseQuery,
-                ...parseList(state.vectorMemory.keywordTriggers),
-            ]).filter(Boolean).slice(0, 6);
+            return distinct([...lines, ...parseList(state.vectorMemory.keywordTriggers).map(whole)], 8);
         }
         const systemPrompt = '你是剧情记忆检索的查询改写器。关闭思考过程。只输出 INTENT、Q1-Q5 与 KEYWORDS 七行中文，不输出解释、英文、JSON、Markdown 或分析。';
         const prompt = `${state.vectorMemory.queryRewritePrompt || defaultVectorMemory.queryRewritePrompt}
@@ -289,7 +302,15 @@ export function createVectorMemoryService({
     Q4: 第四条旧记忆检索线索
     Q5: 第五条旧记忆检索线索
     KEYWORDS: 这一轮最关键的人名、地名、物品，最多 6 个，用顿号分隔，只写最近剧情里原样出现过的词`;
-        const rewritten = await callVectorQueryRewriteModel(prompt, systemPrompt, state, options);
+        let rewritten;
+        try {
+            rewritten = await callVectorQueryRewriteModel(prompt, systemPrompt, state, options);
+        } catch (error) {
+            if (options.signal?.aborted || !split.length) throw error;
+            console.warn('[BakemonoMemory] vector query rewrite failed, searching the latest lines', error);
+            state.vectorMemory.lastRewriteIntent = '改写失败，这一轮直接用最新发言查';
+            return split;
+        }
         const payload = parseVectorQueryRewritePayload(rewritten);
         if (payload.intent) {
             state.vectorMemory.lastRewriteIntent = payload.intent;
@@ -305,9 +326,43 @@ export function createVectorMemoryService({
             .filter(Boolean)
             .slice(0, 6);
         if (!queries.length) {
+            if (split.length) {
+                state.vectorMemory.lastRewriteIntent = '改写没有结果，这一轮直接用最新发言查';
+                return split;
+            }
             throw new Error('查询重写没有生成有效检索句。');
         }
-        return queries;
+        // The user's own words stay a query: a rewrite can drift, the line itself cannot.
+        return distinct([...queries.map(whole), ...split.filter(query => query.weight === 1).slice(0, 2)], 8);
+    }
+
+    async function prepareVectorQueries(explicitQuery = '', state = ensureState(), options = {}) {
+        return (await prepareWeightedQueries(explicitQuery, state, options)).map(query => query.text);
+    }
+
+    // The queries of a round go in one request where the endpoint allows it; what was asked before costs nothing.
+    async function getQueryEmbeddings(queries, state, { signal } = {}) {
+        if (state.vectorMemory.embeddingProvider !== 'custom-openai' || queries.length < 2) {
+            const embeddings = [];
+            for (const query of queries) embeddings.push(await getEmbeddingForText(query, state, { signal }));
+            return embeddings;
+        }
+        const space = getEmbeddingSpaceKey(state);
+        const assertCurrent = () => {
+            if (ensureState() !== state || getEmbeddingSpaceKey(state) !== space) throw new Error('聊天或向量配置已变化，请在当前聊天重试。');
+        };
+        const items = [];
+        for (const text of queries) {
+            const key = await getEmbeddingCacheKey(space, text);
+            let embedding = vectorEmbeddingRuntimeCache.get(key);
+            if (!Array.isArray(embedding)) { try { embedding = await embeddingCache.get(key); } catch {} }
+            items.push({ key, text, embedding: Array.isArray(embedding) ? embedding : null });
+        }
+        await embedMissing(items.filter(item => !item.embedding), state, { signal, onBatch: async () => {}, check: assertCurrent });
+        assertCurrent();
+        for (const item of items) vectorEmbeddingRuntimeCache.set(item.key, item.embedding);
+        pruneVectorRuntimeCache();
+        return items.map(item => item.embedding);
     }
     
     function getAssistantMessageCount() {
@@ -995,27 +1050,25 @@ export function createVectorMemoryService({
             const contextWindowMessages = Math.max(0, Number(state.vectorMemory.contextWindowMessages ?? defaultVectorMemory.contextWindowMessages));
             return clearVectorRecall(`可召回内容都还在可见最近 ${contextWindowMessages} 楼内，已跳过向量召回。`, state);
         }
-        let queries = [];
+        let weighted = [];
         // Query preparation writes its diagnostics only into this request's draft.
         const requestState = { ...state, vectorMemory: JSON.parse(configKey) };
         try {
-            queries = await prepareVectorQueries(explicitQuery, requestState, { signal: controller.signal });
+            weighted = await prepareWeightedQueries(explicitQuery, requestState, { signal: controller.signal });
         } catch (error) {
             if (!isCurrent()) return [];
             console.warn('[BakemonoMemory] vector query rewrite failed', error);
             return clearVectorRecall(`查询重写失败，本轮不召回：${error?.message || error}`, state);
         }
         if (!isCurrent()) return [];
+        const queries = weighted.map(query => query.text);
         if (!queries.length) {
             return clearVectorRecall('查询重写没有生成有效检索句，本轮不召回。', state);
         }
     
-        const queryEmbeddings = [];
+        let queryEmbeddings = [];
         try {
-            for (const query of queries) {
-                queryEmbeddings.push(await getEmbeddingForText(query, state, { signal: controller.signal }));
-                if (!isCurrent()) return [];
-            }
+            queryEmbeddings = await getQueryEmbeddings(queries, state, { signal: controller.signal });
         } catch (error) {
             if (!isCurrent()) return [];
             return clearVectorRecall(`嵌入请求失败，本轮未使用旧召回：${error?.message || error}`, state);
@@ -1045,7 +1098,7 @@ export function createVectorMemoryService({
         const rerankCandidateCount = Math.max(1, Number(state.vectorMemory.rerankCandidateCount || state.vectorMemory.topK || defaultVectorMemory.rerankCandidateCount),
             (limits.maxSummary + limits.maxFull) * 3);
         const scored = recallRecords.map(record => {
-            const similarities = queryEmbeddings.map(embedding => cosineSimilarity(embedding, record.embedding || []));
+            const similarities = queryEmbeddings.map((embedding, index) => cosineSimilarity(embedding, record.embedding || []) * weighted[index].weight);
             const similarity = similarities.length ? Math.max(...similarities) : 0;
             // A floor 剧情事实 points at (where a promise the line reaches for was told) counts as one keyword match.
             const factsHint = !!factsFloors.length && [record.messageId, ...(record.sourceMessageIds || [])].some(floor => factsFloors.includes(Number(floor)));

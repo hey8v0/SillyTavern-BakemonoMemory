@@ -25,10 +25,10 @@ const mod = file => import(pathToFileURL(path.join(repo, 'src', file)).href);
 const fillerLines = ['雨停了又下，镇上一切照旧。', '集市上来了卖鱼的船，吵了一上午。', '风从海上吹来，屋檐滴着水。', '夜里有人唱歌，到天亮才停。', '码头的钟慢了半刻，没人去修。', '街角的面馆换了招牌。'];
 
 async function load() {
-    const [model, controllerModule, queueModule, injection, textModule, recall, hybrid, math, generation] = await Promise.all([
+    const [model, controllerModule, queueModule, injection, textModule, recall, hybrid, math, generation, querySplit] = await Promise.all([
         mod('facts/model.js'), mod('features/facts-controller.js'), mod('features/summary-task-queue.js'), mod('facts/injection.js'),
-        mod('shared/text.js'), mod('facts/recall.js'), mod('vector/hybrid-retrieval.js'), mod('vector/math.js'), mod('features/generation-client.js')]);
-    return { ...model, ...controllerModule, ...queueModule, ...injection, ...textModule, ...recall, ...hybrid, ...math, thinkingOffParams: generation.thinkingOffParams };
+        mod('shared/text.js'), mod('facts/recall.js'), mod('vector/hybrid-retrieval.js'), mod('vector/math.js'), mod('features/generation-client.js'), mod('vector/query-split.js')]);
+    return { ...model, ...controllerModule, ...queueModule, ...injection, ...textModule, ...recall, ...hybrid, ...math, ...querySplit, thinkingOffParams: generation.thinkingOffParams };
 }
 
 // One chat with the facts controller and the real task queue around `callModel`.
@@ -76,6 +76,25 @@ function recallEval(m, facts, summaries, shift) {
             keywordHits: m.countKeywordHits(record.text, hints.keywords || []), ...(floors.has(record.messageId) ? { factsHint: true } : {}) }));
         return m.selectHybridCandidates(scored, [query], hints.keywords || [], { candidateCount: 20 }).map(record => record.messageId);
     };
+    // The same lines as they come in a chat, after a long reply about the scene going on: one query made of everything
+    // against one query per line (what the plugin sends when no model rewrites the query).
+    const latest = summaries.slice(-6), scene = latest.map(([, text]) => text).join('\n');
+    // The floors of that reply are in the visible window, which recall leaves out.
+    const visible = new Set(latest.map(([floor]) => floor));
+    const rankQueries = (weighted, hints) => {
+        const embeddings = weighted.map(query => m.createLocalEmbedding(query.text));
+        const floors = new Set(hints.floors || []);
+        const scored = records.filter(record => !visible.has(record.messageId)).map(record => ({ ...record,
+            embeddingScore: Math.max(...embeddings.map((embedding, index) => m.cosineSimilarity(embedding, record.embedding) * weighted[index].weight)),
+            keywordHits: m.countKeywordHits(record.text, hints.keywords || []), ...(floors.has(record.messageId) ? { factsHint: true } : {}) }));
+        return m.selectHybridCandidates(scored, weighted.map(query => query.text), hints.keywords || [], { candidateCount: 20 }).map(record => record.messageId).slice(0, 3);
+    };
+    const inScene = recallQueries.map(([query, answers]) => {
+        const expected = answers.map(shift), hints = m.factsRecallHints(facts, query);
+        const hit = floors => floors.some(floor => expected.includes(floor));
+        return { query, blurred: hit(rankQueries([{ text: `助手 #1: ${scene}\n用户 #2: ${query}`, weight: 1 }], hints)),
+            split: hit(rankQueries(m.splitRecallQueries([{ isUser: false, text: scene }, { isUser: true, text: query }]), hints)) };
+    });
     const rows = recallQueries.map(([query, answers]) => {
         const expected = answers.map(shift);
         const base = rank(query, { keywords: [], floors: [] }).slice(0, 3);
@@ -83,7 +102,8 @@ function recallEval(m, facts, summaries, shift) {
         const withFacts = rank(query, hints).slice(0, 3);
         return { query, expected, base, withFacts, baseHit: base.some(floor => expected.includes(floor)), factsHit: withFacts.some(floor => expected.includes(floor)), hints };
     });
-    return { rows, base: rows.filter(row => row.baseHit).length, withFacts: rows.filter(row => row.factsHit).length, total: rows.length };
+    return { rows, base: rows.filter(row => row.baseHit).length, withFacts: rows.filter(row => row.factsHit).length, total: rows.length,
+        inScene: { blurred: inScene.filter(row => row.blurred).length, split: inScene.filter(row => row.split).length, rows: inScene } };
 }
 
 // Code paths that need no model: they run with scripted replies whatever --api says.
@@ -206,6 +226,7 @@ export function formatReport(report) {
         `错误事实 ${report.wrongFacts.hit}/${report.wrongFacts.total}${report.wrongFacts.found.length ? '：' + report.wrongFacts.found.map(w => `${w.name}${w.field ? '.' + w.field : ''}=${w.value}`).join('；') : ''} · 无据新增卡 ${report.unknownCards.length}${report.unknownCards.length ? `（${report.unknownCards.join('、')}）` : ''}`,
         `召回（本地嵌入，前 3 条命中）：不用卡片 ${report.recall.base}/${report.recall.total} · 用卡片 ${report.recall.withFacts}/${report.recall.total}`,
         ...report.recall.rows.filter(row => row.baseHit !== row.factsHit || !row.factsHit).map(row => `   ${row.factsHit ? '↑' : '·'} ${row.query} 期望第 ${row.expected.join('/')} 楼，不用卡片 ${row.base.join(',')}，用卡片 ${row.withFacts.join(',')}`),
+        `同样的话跟在一段长回复后面：拼成一条查 ${report.recall.inScene.blurred}/${report.recall.total} · 按句拆开 ${report.recall.inScene.split}/${report.recall.total}`,
         ...report.flows.map(flow => `${flow.ok ? '✔' : '✖'} 流程 · ${flow.name}`),
         `卡片 ${report.cards} 张 · 待裁决 ${report.conflicts} · 整理警告 ${report.warnings} · 未整理 ${report.pending} · 一轮注入约 ${report.injectedChars} 字`,
         ...(report.injection ? [`分层注入（32k 模型）：${report.injection.used} / ${report.injection.budget} 字 · 完整 ${report.injection.full} · 一行 ${report.injection.short} · 只列名字 ${report.injection.named} · 没放进去 ${report.injection.dropped}`] : []),

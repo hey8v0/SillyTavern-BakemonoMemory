@@ -8,6 +8,14 @@ import { keyFacts, recallQueries, wrongFacts } from '../scripts/facts-eval/measu
 
 // The evaluation corpus run offline with the scripted replies: a careful model's answers (and two careless ones the
 // code must stop) through the real pipeline. Keeps the corpus, the measures and the runner in step with the code.
+test('recall: lines that come after a long reply are found better one by one than in one query of everything', async () => {
+    for (const long of [0, 1000]) {
+        const { inScene, total } = (await runEval({ long })).recall;
+        assert.ok(inScene.split > inScene.blurred, `${long || 122} 楼：拆开 ${inScene.split}，拼成一条 ${inScene.blurred}`);
+        assert.ok(inScene.split >= Math.ceil(total / 2), `${inScene.split}/${total}`);
+    }
+});
+
 test('the RP memory corpus passes every scenario offline: all key facts, no wrong ones, the flows hold', async () => {
     assert.equal(summaries.length, 60);
     assert.equal(Object.keys(scriptedReplies).length, 12);

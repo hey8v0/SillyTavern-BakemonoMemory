@@ -775,9 +775,9 @@
             <div class="bk-tbl-set-body">
               <label class="bk-vec-row"><span>改写问题</span>
                 <select id="bakemono-memory-vector-query-mode">
-                  <option value="model-required">模型改写：多一次请求，失败则这一轮不召回</option>
-                  <option value="local">本地改写：最近对话 + 关键词</option>
-                  <option value="off">不改写：只用最近对话</option>
+                  <option value="model-required">模型改写：多一次请求，失败就直接用最新发言查</option>
+                  <option value="local">本地改写：最新发言逐句查 + 关键词</option>
+                  <option value="off">不改写：最新发言逐句查</option>
                 </select>
               </label>
               <div class="bk-vec-group" data-bk-vec-when="query-model">
