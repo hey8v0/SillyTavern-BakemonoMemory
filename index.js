@@ -1058,7 +1058,7 @@ const {
 
 const vectorMemoryService = createVectorMemoryService({
     // 剧情事实: the cards the recent conversation names lend every name they go by to the recall keywords.
-    getFactsHints: (state, text) => factsRecallHints(factsController.facts(state), text),
+    getFactsHints: (state, text, options) => factsRecallHints(factsController.facts(state), text, options),
     vectorSidecar: createVectorSidecar({ getHeaders: () => tavernHost.getRequestHeaders(), getChatKey: () => getSummaryRecoveryChatIdentity(), getHash,
         warn: (...args) => console.warn(...args) }),
     formatApiFailure,

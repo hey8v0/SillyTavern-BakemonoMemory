@@ -10,6 +10,18 @@ const sentenceEnd = /[。！？!?；;…\n]+/;
 const outerMarks = /^[\s*_~“”"'‘’「」『』（）()【】《》—-]+|[\s*_~“”"'‘’「」『』（）()【】《》—-]+$/gu;
 const meaningful = text => String(text || '').replace(/[\s\p{P}\p{S}]/gu, '');
 
+// The latest run of user messages, and the rest. A reply written after them (continue, swipe) does not hide them.
+export function latestUserLines(messages = [], { maxUserMessages = 3 } = {}) {
+    const list = messages.filter(message => String(message?.text || '').trim());
+    let end = list.length - 1;
+    while (end >= 0 && !list[end].isUser) end--;
+    if (end < 0) return { lines: [], before: list.map(message => String(message.text)) };
+    let start = end;
+    while (start > 0 && list[start - 1].isUser && end - start + 1 < maxUserMessages) start--;
+    return { lines: list.slice(start, end + 1).map(message => String(message.text)),
+        before: [...list.slice(0, start), ...list.slice(end + 1)].map(message => String(message.text)) };
+}
+
 // `messages`: [{ isUser, text }] in chat order, cleaned of tags. Returns [{ text, weight }], the newest line first.
 export function splitRecallQueries(messages = [], { maxQueries = 6, maxQueryChars = 300, contextChars = 600, minSentenceChars = 4, maxUserMessages = 3 } = {}) {
     const list = messages.filter(message => String(message?.text || '').trim());

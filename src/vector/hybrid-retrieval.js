@@ -90,10 +90,12 @@ export function selectHybridCandidates(records = [], queries = [], keywordTerms 
     const vectorRanks = rankOf(vectorRanked);
     const lexicalRanks = rankOf(lexicalRanked);
     const keywordRanks = rankOf(keywordRanked);
+    // A record the line names (see markNamedRecords) is a candidate however little it looks like the query.
     const candidateIds = new Set([
         ...vectorRanked.map(record => record.id),
         ...lexicalRanked.map(record => record.id),
         ...keywordRanked.map(record => record.id),
+        ...enriched.filter(record => record.guaranteed).map(record => record.id),
     ]);
     return enriched
         .filter(record => candidateIds.has(record.id))
@@ -115,7 +117,8 @@ export function selectHybridCandidates(records = [], queries = [], keywordTerms 
                 lexicalRank: lexicalRanks.get(record.id) || 0,
             };
         })
-        .sort((a, b) => Number(b.hybridScore || 0) - Number(a.hybridScore || 0)
+        .sort((a, b) => Number(!!b.guaranteed) - Number(!!a.guaranteed)
+            || Number(b.hybridScore || 0) - Number(a.hybridScore || 0)
             || Number(b.reciprocalRankScore || 0) - Number(a.reciprocalRankScore || 0)
             || Number(b.embeddingScore || 0) - Number(a.embeddingScore || 0)
             || Number(b.messageId || 0) - Number(a.messageId || 0))

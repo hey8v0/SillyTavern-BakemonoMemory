@@ -1,12 +1,35 @@
 import { getMatchedPhrases } from './matched-phrases.js';
 
 const score = item => Number(item.hybridScore ?? item.rerankScore ?? item.score ?? 0);
-const compare = (a, b) => score(b) - score(a)
+const compare = (a, b) => Number(!!b.guaranteed) - Number(!!a.guaranteed) || score(b) - score(a)
     || Number(b.embeddingScore ?? b.similarity ?? 0) - Number(a.embeddingScore ?? a.similarity ?? 0)
     || Number(b.messageId || 0) - Number(a.messageId || 0) || String(a.id).localeCompare(String(b.id));
 const sourceKey = item => item.isSavedSummary || item.memoryHash
     ? `memory:${item.memoryHash || item.id}` : `floor:${item.messageId}`;
 const normalText = text => String(text || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
+
+// The cards a line names (factsRecallHints): per card the closest sources among its floors are marked, so they come
+// back whatever the similarity says. Few on purpose: this makes sure the old story is there, it does not fill the slots.
+export function markNamedRecords(records, named, { perCard = 2, total = 3 } = {}) {
+    let left = Math.max(0, total);
+    const taken = new Set();
+    for (const { name, floors } of named || []) {
+        const wanted = new Set(floors);
+        const onCard = records.filter(record => [record.messageId, ...(record.sourceMessageIds || [])].some(floor => wanted.has(Number(floor))))
+            .sort((a, b) => Number(b.embeddingScore || 0) - Number(a.embeddingScore || 0));
+        let picked = 0;
+        for (const record of onCard) {
+            if (left <= 0 || picked >= perCard) break;
+            const key = sourceKey(record);
+            if (taken.has(key)) continue;
+            taken.add(key);
+            record.guaranteed = name;
+            picked++;
+            left--;
+        }
+    }
+    return records;
+}
 
 // One group per floor (or per saved summary): the floor's inline summary and its cleaned body travel together.
 export function groupRecallCandidates(candidates, records, bodies, limit, config = {}, queries = []) {
@@ -70,7 +93,8 @@ export function selectRecallPlan(groups, config = {}, { isCurrent = () => true }
         decisions.push(decision);
         const drop = reason => { decision.decisionReason = reason; };
         if (!isCurrent(group)) { drop('来源已变化'); continue; }
-        const closeEnough = !!group.bodyText && group.rerankScore >= threshold;
+        // A floor the line names and that has no summary comes with its body, or it would not come at all.
+        const closeEnough = !!group.bodyText && (group.rerankScore >= threshold || (!!group.guaranteed && !group.summaryText));
         const options = [];
         if (closeEnough && fulls < maxFull) options.push('full');
         if (group.summaryText && summaries < maxSummary) options.push('summary');
@@ -104,6 +128,7 @@ export function selectRecallPlan(groups, config = {}, { isCurrent = () => true }
             : !closeEnough ? '没到带正文的程度，带摘要'
             : fulls >= maxFull ? `正文已满 ${maxFull} 条，带摘要`
             : '正文放不下或重复，带摘要';
+        if (group.guaranteed) hit.decisionReason = `点名「${group.guaranteed}」，保底带上；${hit.decisionReason}`;
         hit.preview = hit.text.slice(0, 220);
         seen.add(chosen.identity);
         used += chosen.cost;

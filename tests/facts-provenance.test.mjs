@@ -93,5 +93,5 @@ test('“那天晚上你答应过我的事”: a callback without names brings t
     assert.deepEqual(factsRecallHints(facts, '今天的天气不错。').floors, []);
     assert.deepEqual(factsRecallHints(facts, '铜钥匙在哪？').floors, [], 'a named card already brings its summaries by name');
     facts.settings.enabled = false;
-    assert.deepEqual(factsRecallHints(facts, '那天晚上你答应过我的事情'), { keywords: [], floors: [] });
+    assert.deepEqual(factsRecallHints(facts, '那天晚上你答应过我的事情'), { keywords: [], floors: [], named: [] });
 });

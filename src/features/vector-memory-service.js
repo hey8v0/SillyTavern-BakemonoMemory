@@ -1,8 +1,8 @@
-import { splitRecallQueries } from '../vector/query-split.js';
+import { latestUserLines, splitRecallQueries } from '../vector/query-split.js';
 import { createEmbeddingCache, getEmbeddingCacheKey } from '../vector/embedding-cache.js';
 import { runApiRequest } from '../shared/request-policy.js';
 import { createBm25Index } from '../vector/bm25-index.js';
-import { groupRecallCandidates, recallLimits, selectRecallPlan } from '../vector/recall-plan.js';
+import { groupRecallCandidates, markNamedRecords, recallLimits, selectRecallPlan } from '../vector/recall-plan.js';
 import { vectorRuntimeFieldNames } from '../core/config-sync.js';
 import { isMemoryCurrent, activeStoryCoverage, summaryItems, storyTimeContext } from '../memory/story-state.js';
 import { isRpVectorRecord, removeRpVectorCache } from '../vector/source-policy.js';
@@ -491,6 +491,7 @@ export function createVectorMemoryService({
             isHidden: !!item.isHidden,
             isSavedSummary: !!item.isSavedSummary,
             summaryType: item.summaryType || '',
+            guaranteed: item.guaranteed || '',
             title: item.title || `楼层 ${item.messageId}`,
             text: getClippedVectorText(item.text || item.summary || '', Number(options.textLimit || 480)),
             preview: toPlainPreview(item.preview || item.text || item.summary || '', Number(options.previewLimit || 220)),
@@ -1084,12 +1085,17 @@ export function createVectorMemoryService({
         const inferredKeywords = requestState.vectorMemory.lastInferredKeywords || [];
         // 剧情事实: every name of the cards the recent conversation mentions, so an older summary that used
         // another name still scores on keywords (no extra request).
-        let factsKeywords = [], factsFloors = [];
+        let factsKeywords = [], factsFloors = [], factsNamed = [];
         try {
             const recent = getVectorQueryText(state, explicitQuery).split(/\n\n关键词提示：/)[0];
-            const hints = getFactsHints ? getFactsHints(state, recent) || {} : { keywords: getFactsKeywords(state, recent) };
+            const visibleCount = Math.max(0, Number(state.vectorMemory.contextWindowMessages ?? defaultVectorMemory.contextWindowMessages));
+            const { lines, before } = latestUserLines(getRecentRecallMessages(state, visibleCount + 3));
+            const hints = getFactsHints
+                ? getFactsHints(state, recent, { line: String(explicitQuery || '').trim() || lines.join('\n'), visible: (explicitQuery ? [...lines, ...before] : before).join('\n') }) || {}
+                : { keywords: getFactsKeywords(state, recent) };
             factsKeywords = unique(hints.keywords || []);
             factsFloors = [...new Set((hints.floors || []).filter(Number.isInteger))];
+            factsNamed = Array.isArray(hints.named) ? hints.named : [];
         }
         catch (error) { console.warn(`[BakemonoMemory] facts keywords failed`, error); }
         const keywords = unique([...parseList(state.vectorMemory.keywordTriggers), ...inferredKeywords, ...factsKeywords]);
@@ -1113,6 +1119,7 @@ export function createVectorMemoryService({
             };
         });
     
+        markNamedRecords(scored, factsNamed);
         const preparedLexicalIndex = getLexicalIndex(state);
         const prepared = await preparedLexicalIndex.prepare(scored, {
             yieldToUi, isCurrent: () => isCurrent() && lexicalState === state,
