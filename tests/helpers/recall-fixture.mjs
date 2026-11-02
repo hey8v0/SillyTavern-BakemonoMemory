@@ -4,6 +4,7 @@ import { compactEmbedding, getClippedVectorText } from '../../src/vector/storage
 import * as text from '../../src/shared/text.js';
 import * as math from '../../src/vector/math.js';
 import * as provider from '../../src/vector/provider-config.js';
+import * as sourceMeta from '../../src/summary/source-metadata.js';
 
 const noop = () => {};
 
@@ -17,7 +18,9 @@ export function recallFixture(chat, settings = {}, overrides = {}) {
         queryMode: 'off', skipIfAllInContext: true, contextWindowMessages: 2, autoIndex: true, recallSafetyChars: 12000, ...settings };
     const state = { vectorMemory: { ...defaults, records: [] }, scanRules: {}, storySummaries: [], stageSummaries: [], epicSummaries: [], memoryStrategy: 'bakemono' };
     const embedded = [];
-    const dependencies = { ...text, ...math, ...provider, defaultVectorMemory: defaults, getState: () => state, getContext: () => ({ chat }),
+    const kindLabels = { story: '剧情摘要', stage: '阶段总结', epic: '多次总结' };
+    const dependencies = { ...text, ...math, ...provider, ...sourceMeta, getKindLabel: kind => kindLabels[kind] || kind, getBlockTitle: (_, fallback) => fallback, getBlockPlainText: value => String(value || '').replace(/<[^>]*>/g, ''),
+        defaultVectorMemory: defaults, getState: () => state, getContext: () => ({ chat }),
         normalizeLineEndings: String, stripHtml: s => String(s).replace(/<[^>]*>/g, ''), unique: xs => [...new Set(xs)],
         toPlainPreview: (s, n) => String(s).slice(0, n), getClippedVectorText, getMessageVariantKey: () => 0,
         getActiveCoveredStageHashes: () => new Set(), getActiveEpicMemoryBlocks: () => [],

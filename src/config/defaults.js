@@ -656,6 +656,8 @@ export function createDefaultConfiguration({
         finalRecallCount: 5,
         maxSummaryRecall: 4,
         fullRecallCount: 2,
+        // A floor that matches well brings the chapter it belongs to, up to this many a round.
+        eventRecallCount: 2,
         maxRecallMessages: 5,
         maxPerMessage: 1,
         perMessageMaxChars: 1600,

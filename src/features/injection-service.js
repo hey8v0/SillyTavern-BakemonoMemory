@@ -73,8 +73,10 @@ export function createInjectionService({
         const recentFloors = Math.max(1, Number(state.facts?.settings?.recentFloors) || 6);
         const messages = getChat?.() || [];
         const join = list => list.map(message => String(message?.mes || '')).join('\n');
-        const recentParts = { scene: join(messages.slice(-2)), recent: join(messages.slice(-recentFloors)),
-            recalled: state.vectorMemory?.enabled ? recallText(state.vectorMemory.lastHits || []) : '' };
+        // A chapter that came with a recalled floor is context: it does not name cards or point at every 线索 in it.
+        const floorHits = state.vectorMemory?.enabled ? (state.vectorMemory.lastHits || []).filter(hit => hit.recallTier !== 'event') : [];
+        const recentParts = { scene: join(messages.slice(-2)), recent: join(messages.slice(-recentFloors)), recalled: recallText(floorHits),
+            recalledFloors: floorHits.filter(hit => !hit.memoryHash && Number.isInteger(hit.messageId)).map(hit => hit.messageId) };
         // It goes near the latest message on its own (see syncInjection), so it is not part of `memory`.
         sources.facts = state.injection?.enabled === false ? '' : wrapFactsInjection(renderFactsSection(state, recentParts)?.text || '');
         const sections = [sources.summary, sources.memory, sources.time, sources.vector].filter(Boolean);

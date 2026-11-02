@@ -65,7 +65,7 @@ export function groupRecallCandidates(candidates, records, bodies, limit, config
 
 const heading = '## 向量召回记忆\n';
 export function recallHitHeader(hit) {
-    const tier = hit.recallTier === 'full' ? '全文' : '摘要';
+    const tier = hit.recallTier === 'full' ? '全文' : hit.recallTier === 'event' ? '整段' : '摘要';
     return `- 来源：${hit.title}（${tier}，重排 ${hit.rerankScore ?? hit.score ?? 0}，相似度 ${hit.similarity ?? 0}）\n`;
 }
 export function renderRecallPlan(hits) {
@@ -79,15 +79,26 @@ export function recallLimits(config = {}) {
         maxFull: count(config.fullRecallCount, 2),
         threshold: Math.max(0, Number(config.rerankThreshold ?? .45)),
         cap: Math.max(1000, Number(config.recallSafetyChars ?? 12000) || 12000),
+        maxEvents: count(config.eventRecallCount, 2),
     };
 }
 
+// The chapter a floor belongs to: the one that lists it, or holds it in its range; the narrowest if several do.
+function chapterOf(events, floor) {
+    const span = event => Number(event.sourceEnd) - Number(event.sourceStart);
+    const listed = events.filter(event => event.sourceMessageIds?.includes(floor));
+    const pool = listed.length ? listed : events.filter(event => floor >= Number(event.sourceStart) && floor <= Number(event.sourceEnd));
+    return pool.slice().sort((a, b) => span(a) - span(b))[0] || null;
+}
+
 // Summaries and full texts have their own counts. Nothing is cut: an item that would push the injection over the
-// safety cap is left out whole (a full text first falls back to the floor's summary).
-export function selectRecallPlan(groups, config = {}, { isCurrent = () => true } = {}) {
-    const { maxSummary, maxFull, threshold, cap } = recallLimits(config);
+// safety cap is left out whole (a full text first falls back to the floor's summary). A saved chapter (阶段或多次总结) is
+// long, so it comes only when it matches well, with a count of its own. `events`: the saved chapters not injected every
+// round; a floor that matches well, or that the line names, brings its chapter once.
+export function selectRecallPlan(groups, config = {}, { isCurrent = () => true, events = [] } = {}) {
+    const { maxSummary, maxFull, threshold, cap, maxEvents } = recallLimits(config);
     const hits = [], decisions = [], seen = new Set();
-    let summaries = 0, fulls = 0, used = heading.length;
+    let summaries = 0, fulls = 0, chapters = 0, used = heading.length;
     for (const group of groups) {
         const decision = { ...group, recallTier: 'dropped', decisionReason: '' };
         decisions.push(decision);
@@ -95,11 +106,17 @@ export function selectRecallPlan(groups, config = {}, { isCurrent = () => true }
         if (!isCurrent(group)) { drop('来源已变化'); continue; }
         // A floor the line names and that has no summary comes with its body, or it would not come at all.
         const closeEnough = !!group.bodyText && (group.rerankScore >= threshold || (!!group.guaranteed && !group.summaryText));
+        const isChapter = !!group.isSavedSummary && ['stage', 'epic'].includes(group.summaryType);
+        const strongChapter = isChapter && (group.rerankScore >= threshold || !!group.guaranteed);
         const options = [];
-        if (closeEnough && fulls < maxFull) options.push('full');
-        if (group.summaryText && summaries < maxSummary) options.push('summary');
+        if (isChapter) { if (strongChapter && chapters < maxEvents) options.push('event'); }
+        else {
+            if (closeEnough && fulls < maxFull) options.push('full');
+            if (group.summaryText && summaries < maxSummary) options.push('summary');
+        }
         if (!options.length) {
-            drop(!group.summaryText && !group.bodyText ? '没有可用内容'
+            drop(isChapter ? (strongChapter ? `整段已满 ${maxEvents} 段` : '这段总结不够像')
+                : !group.summaryText && !group.bodyText ? '没有可用内容'
                 : !group.summaryText && seen.has(`text:${normalText(group.bodyText)}`) ? '相同内容已经带上'
                 : group.summaryText ? `摘要已满 ${maxSummary} 条`
                 : closeEnough ? `正文已满 ${maxFull} 条，这一楼没有摘要`
@@ -123,7 +140,8 @@ export function selectRecallPlan(groups, config = {}, { isCurrent = () => true }
         }
         if (!chosen) { drop(reason); continue; }
         const { hit } = chosen;
-        hit.decisionReason = hit.recallTier === 'full' ? '够像，带正文'
+        hit.decisionReason = hit.recallTier === 'event' ? '这段总结本身够像'
+            : hit.recallTier === 'full' ? '够像，带正文'
             : !group.bodyText ? (group.isSavedSummary || group.memoryHash ? '已存的总结' : '带摘要')
             : !closeEnough ? '没到带正文的程度，带摘要'
             : fulls >= maxFull ? `正文已满 ${maxFull} 条，带摘要`
@@ -134,7 +152,25 @@ export function selectRecallPlan(groups, config = {}, { isCurrent = () => true }
         used += chosen.cost;
         decision.recallTier = hit.recallTier; decision.decisionReason = hit.decisionReason; decision.truncated = false;
         hits.push(hit);
-        if (hit.recallTier === 'full') fulls++; else summaries++;
+        if (hit.recallTier === 'full') fulls++; else if (hit.recallTier === 'event') chapters++; else summaries++;
+    }
+    for (const hit of [...hits]) {
+        if (chapters >= maxEvents) break;
+        if (hit.memoryHash || hit.isSavedSummary || !(hit.guaranteed || hit.rerankScore >= threshold)) continue;
+        const event = chapterOf(events, Number(hit.messageId));
+        if (!event) continue;
+        const sourceGroup = `memory:${event.hash}`, identity = `${sourceGroup}:${normalText(event.text)}`;
+        if (seen.has(identity) || seen.has(`text:${normalText(event.text)}`)) continue;
+        seen.add(identity);
+        const item = { id: event.id, kind: 'summary', recallTier: 'event', messageId: event.messageId, memoryHash: event.hash, sourceGroup, isSavedSummary: true, summaryType: event.type,
+            sourceMessageIds: event.sourceMessageIds, sourceStart: event.sourceStart, sourceEnd: event.sourceEnd, title: event.title, text: event.text, matchedText: event.text, preview: event.text.slice(0, 220),
+            truncated: false, score: hit.rerankScore, rerankScore: hit.rerankScore, similarity: hit.similarity, decisionReason: `第 ${hit.messageId} 楼够像，带上它所在的整段` };
+        const cost = (hits.length ? 2 : 0) + recallHitHeader(item).length + event.text.length;
+        if (used + cost > cap) { decisions.push({ ...item, recallTier: 'dropped', decisionReason: `放不下：超过保险上限 ${cap} 字` }); continue; }
+        used += cost;
+        chapters++;
+        hits.push(item);
+        decisions.push({ ...item });
     }
     hits.sort((a, b) => Number(a.messageId) - Number(b.messageId) || String(a.id).localeCompare(String(b.id)));
     return { hits, decisions, text: renderRecallPlan(hits) };

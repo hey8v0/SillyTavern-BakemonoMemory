@@ -63,6 +63,8 @@ export function renderFactsSection(facts, recent, { budgetChars = injectionBudge
     if (!facts?.settings?.enabled) return { text: '', cards: [], omitted: 0, plan: emptyPlan(budgetChars) };
     const parts = recent && typeof recent === 'object' ? recent : { scene: String(recent || '') };
     const scene = String(parts.scene || ''), wide = [parts.scene, parts.recent, parts.recalled].filter(Boolean).join('\n');
+    // Floors recall brought back: the 线索 told there come along, closed ones too (a kept promise is still a memory).
+    const recalledFloors = new Set(parts.recalledFloors || []);
     const cards = facts.cards || [];
     const entries = new Map();
     const add = (card, tier, want, priority) => {
@@ -84,6 +86,7 @@ export function renderFactsSection(facts, recent, { budgetChars = injectionBudge
             else if (parties === 1) add(card, 'related', 'short', 3e4);
         }
         if (isOpenThread(card) && scenePeople.some(person => involves(person, card))) add(card, 'related', 'short', 2e4 + around);
+        if (card.kind === 'thread' && (card.floors || []).some(floor => recalledFloors.has(floor))) add(card, 'related', 'short', 1.1e4 + around);
         if (around) add(card, 'related', 'short', (active ? 1e4 : 5e3) + around);
     }
     const ordered = [...entries.values()].sort((a, b) => b.priority - a.priority);

@@ -1184,6 +1184,7 @@ export function createVectorMemoryService({
     function applyRecallPlan(state, plan) {
         const result = selectRecallPlan(plan.groups, { ...defaultVectorMemory, ...state.vectorMemory }, {
             isCurrent: hit => isRecallMemoryCurrent(hit, state),
+            events: getVectorSavedSummarySources(state).filter(source => source.type === blockTypes.STAGE),
         });
         state.vectorMemory.lastRerankCandidates = result.decisions.map(item => serializeVectorRecallItem(item, {
             recallTier: item.recallTier, previewLimit: 260, textLimit: 520,
@@ -1220,7 +1221,8 @@ export function createVectorMemoryService({
             // Rebuild the saved selection against verified current sources, not
             // a previously truncated preview. No new candidates are retrieved.
             const byId = new Map(state.vectorMemory.records.map(record => [record.id, record]));
-            const candidates = hits.filter(hit => byId.has(hit.id)).map(hit => ({ ...byId.get(hit.id), ...hit,
+            // A chapter brought by a floor comes again from that floor; it did not match on its own.
+            const candidates = hits.filter(hit => hit.recallTier !== 'event' && byId.has(hit.id)).map(hit => ({ ...byId.get(hit.id), ...hit,
                 kind: byId.get(hit.id).kind, text: byId.get(hit.id).text, summary: byId.get(hit.id).summary,
             }));
             const bodies = new Map(getVectorSourceMessages(state).map(item => [Number(item.messageId), item.cleanedText]));
