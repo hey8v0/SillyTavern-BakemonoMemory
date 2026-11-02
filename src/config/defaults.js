@@ -758,6 +758,7 @@ export function createDefaultConfiguration({
             stage: defaultStageGenerationPrompt,
             epic: defaultEpicGenerationPrompt,
             facts: defaultFactsPrompt,
+            summaryLength: 'balanced',
         },
         facts: createDefaultFacts(),
         automation: defaultAutomation,

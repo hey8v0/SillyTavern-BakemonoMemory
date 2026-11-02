@@ -184,7 +184,8 @@ export function createSummaryTargetController({
                 const count = info ? info.count : total;
                 field('[data-gen-meta]').innerHTML = rangeInvalid ? '<span class="is-alert">楼层范围没看懂，写成 0-20 或 0-20, 35-50</span>'
                     : [`<span><b>${count}</b> 条材料</span>`, info?.range ? `<span>${info.range.replace(/[<>&]/g, '')}</span>` : '',
-                        info?.textLength ? `<span>约 ${Number(info.textLength).toLocaleString()} 字</span>` : ''].filter(Boolean).join('');
+                        info?.textLength ? `<span>约 ${Number(info.textLength).toLocaleString()} 字</span>` : '',
+                        info?.targetChars ? `<span>总结写到 ${Number(info.targetChars).toLocaleString()} 字内</span>` : ''].filter(Boolean).join('');
                 const gaps = info?.gaps || [];
                 const gap = field('[data-gen-gap]');
                 gap.hidden = !gaps.length;

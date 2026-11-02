@@ -139,6 +139,7 @@ export function createWorkbenchRenderer({
             query('#bakemono-memory-stage-prompt').val(state.generationPrompts.stage || defaultStageGenerationPrompt);
             query('#bakemono-memory-epic-prompt').val(state.generationPrompts.epic || defaultEpicGenerationPrompt);
             query('#bakemono-memory-facts-prompt').val(effectiveFactsPrompt(state.generationPrompts.facts));
+            query('#bakemono-memory-summary-length').val(state.generationPrompts.summaryLength || 'balanced');
         } else if (activeTab === 'scan') {
             query('#bakemono-memory-scan-mode').val(state.scanRules.mode || defaultScanRules.mode);
             query('#bakemono-memory-include-tags').val(state.scanRules.includeTags || defaultScanRules.includeTags);

@@ -122,6 +122,7 @@ export function createConfigurationService({
         state.generationPrompts.stage = String(query('#bakemono-memory-stage-prompt').val() || defaultStageGenerationPrompt);
         state.generationPrompts.epic = String(query('#bakemono-memory-epic-prompt').val() || defaultEpicGenerationPrompt);
         if (query('#bakemono-memory-facts-prompt').length) state.generationPrompts.facts = String(query('#bakemono-memory-facts-prompt').val() || defaultFactsPrompt);
+        if (query('#bakemono-memory-summary-length').length) state.generationPrompts.summaryLength = String(query('#bakemono-memory-summary-length').val() || 'balanced');
         return state;
     }
 
@@ -206,6 +207,7 @@ export function createConfigurationService({
             stage: String(state.generationPrompts.stage || defaultStageGenerationPrompt),
             epic: String(state.generationPrompts.epic || defaultEpicGenerationPrompt),
             factsPrompt: String(state.generationPrompts.facts || defaultFactsPrompt),
+            summaryLength: String(state.generationPrompts.summaryLength || 'balanced'),
             facts: normalizeFactSettings(state.facts?.settings),
             scanRules: structuredClone(state.scanRules),
             classificationRules: structuredClone(state.classificationRules),

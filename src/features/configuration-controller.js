@@ -62,6 +62,7 @@ export function createConfigurationController({
         state.generationPrompts.stage = preset.stage || defaultStageGenerationPrompt;
         state.generationPrompts.epic = preset.epic || defaultEpicGenerationPrompt;
         state.generationPrompts.facts = preset.factsPrompt || defaultFactsPrompt;
+        state.generationPrompts.summaryLength = preset.summaryLength || 'balanced';
         if (preset.facts) state.facts = { ...(state.facts || {}), settings: normalizeFactSettings(preset.facts) };
         if (preset.scanRules) {
             state.scanRules = { ...structuredClone(defaultScanRules), ...structuredClone(preset.scanRules) };
@@ -253,6 +254,7 @@ export function createConfigurationController({
                 stage: String(state.generationPrompts.stage || defaultStageGenerationPrompt),
                 epic: String(state.generationPrompts.epic || defaultEpicGenerationPrompt),
                 factsPrompt: String(state.generationPrompts.facts || defaultFactsPrompt),
+                summaryLength: String(state.generationPrompts.summaryLength || 'balanced'),
                 turnSummary: {
                     includeCharacterContext: state.turnSummary.includeCharacterContext !== false,
                     includeWorldInfo: !!state.turnSummary.includeWorldInfo,
@@ -357,6 +359,7 @@ export function createConfigurationController({
             state.generationPrompts.stage = preset.stage || defaultStageGenerationPrompt;
             state.generationPrompts.epic = preset.epic || defaultEpicGenerationPrompt;
             state.generationPrompts.facts = preset.factsPrompt || state.generationPrompts.facts || defaultFactsPrompt;
+            state.generationPrompts.summaryLength = preset.summaryLength || state.generationPrompts.summaryLength || 'balanced';
             if (preset.turnSummary) {
                 state.turnSummary.includeCharacterContext = preset.turnSummary.includeCharacterContext !== false;
                 state.turnSummary.includeWorldInfo = !!preset.turnSummary.includeWorldInfo;

@@ -2,6 +2,7 @@ import { storyTimeContext } from '../memory/story-state.js';
 import {resolveSummaryGraph, getSummaryStatus} from '../memory/summary-provenance.js';
 import { inspectSummaryMaterials } from '../summary/material-quality.js';
 import { stageAutomationStatus } from '../summary/automation-status.js';
+import { summaryLengthChars, summaryLengthNote } from '../summary/length-target.js';
 export { inspectSummaryMaterials } from '../summary/material-quality.js';
 
 // 多次总结 only re-summarises 阶段总结 or earlier 多次总结; story summaries go through 阶段总结 first.
@@ -66,7 +67,7 @@ export function createSummaryGenerationController({
     const checkOnce = fn => summarySources?.once ? summarySources.once(fn) : fn();
     // What a selection in the generation panel will send: shown before anything is asked of the model.
     const plainText = text => String(text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-    function describeBatches(batches, { gaps = false } = {}) {
+    function describeBatches(batches, { gaps = false, kind = 'stage' } = {}) {
         const blocks = batches.flat();
         const report = inspectSummaryMaterials(blocks);
         const ids = getSourceMessageIdsFromBlocks(blocks);
@@ -77,18 +78,19 @@ export function createSummaryGenerationController({
             gaps: gaps && blocks.length ? findTargetContinuityGaps(blocks, getFloorMemoryIndex(getState())?.records || [], { includeLeading: true }).map(record => Number(record.id)) : [],
             samples: blocks.slice(0, 2).map(block => ({ where: formatSourceRange(getSourceMessageIdsFromBlocks([block])), text: plainText(block.content).slice(0, 160) })),
             requests: batches.filter(batch => batch.length).length,
+            targetChars: batches.reduce((sum, batch) => sum + summaryLengthChars(kind, inspectSummaryMaterials(batch).textLength, getState().generationPrompts?.summaryLength), 0),
         };
     }
     const describeStage = pool => config => {
         const blocks = filterCovered(pool, config);
-        return describeBatches(config.batch ? partitionGenerationTargets(blocks, 'stage', config) : [selectGenerationTargets(blocks, config)], { gaps: true });
+        return describeBatches(config.batch ? partitionGenerationTargets(blocks, 'stage', config) : [selectGenerationTargets(blocks, config)], { gaps: true, kind: 'stage' });
     };
     // What “阶段总结 N 条 / 全部没整理的 N 条” in the panel count: the same filter the selection uses, so a chapter
     // already in a 多次总结 is counted only when 重新整理 is ticked.
     const countEpicSources = pools => (config = {}) => ({ stage: filterCovered(pools.stage, config).length, epic: filterCovered(pools.epic, config).length });
     const describeEpic = pools => config => {
         const blocks = filterCovered(selectEpicSourcePool(pools, config.sourceMode), config);
-        return describeBatches(config.batch ? partitionGenerationTargets(blocks, 'epic', config) : [selectGenerationTargets(blocks, config)]);
+        return describeBatches(config.batch ? partitionGenerationTargets(blocks, 'epic', config) : [selectGenerationTargets(blocks, config)], { kind: 'epic' });
     };
     function filterCovered(blocks, config = {}) {
         const state=getState(), graph=resolveSummaryGraph(state);
@@ -107,14 +109,16 @@ export function createSummaryGenerationController({
 
     function buildStageUserPrompt(blocks) {
         summarySources?.assertMaterials(blocks);
-        validateSummaryMaterials(blocks);
-        return [storyTimeContext(getState()), renderGenerationPrompt(getState().generationPrompts.stage, blocks)].filter(Boolean).join('\n\n');
+        const { textLength } = validateSummaryMaterials(blocks);
+        const prompts = getState().generationPrompts;
+        return [storyTimeContext(getState()), renderGenerationPrompt(prompts.stage, blocks), summaryLengthNote('stage', textLength, prompts.summaryLength)].filter(Boolean).join('\n\n');
     }
 
     function buildEpicUserPrompt(blocks) {
         summarySources?.assertMaterials(blocks);
-        validateSummaryMaterials(blocks);
-        return [storyTimeContext(getState()), renderGenerationPrompt(getState().generationPrompts.epic, blocks)].filter(Boolean).join('\n\n');
+        const { textLength } = validateSummaryMaterials(blocks);
+        const prompts = getState().generationPrompts;
+        return [storyTimeContext(getState()), renderGenerationPrompt(prompts.epic, blocks), summaryLengthNote('epic', textLength, prompts.summaryLength)].filter(Boolean).join('\n\n');
     }
 
     function buildStoryUserPrompt(blocks, context = {}) {
