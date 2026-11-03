@@ -4400,6 +4400,7 @@ details[open] > summary > .bakemono-memory-help-trigger {
 #bakemono-workbench-root .bk-archive-reel i { display: block; min-width: 3px; flex-basis: 0; }
 #bakemono-workbench-root .bk-archive-reel .is-visible, #bakemono-workbench-root .bk-archive-legend .is-visible { background: var(--ns-c-people); }
 #bakemono-workbench-root .bk-archive-reel .is-hidden, #bakemono-workbench-root .bk-archive-legend .is-hidden { background: color-mix(in srgb, var(--ns-text) 16%, transparent); }
+#bakemono-workbench-root .bk-archive-reel .is-skipped, #bakemono-workbench-root .bk-archive-legend .is-skipped { background: color-mix(in srgb, var(--ns-c-people) 38%, transparent); }
 #bakemono-workbench-root .bk-archive-legend { display: flex; gap: 16px; margin-top: 6px; font: 11.5px var(--ns-mono); color: var(--ns-faint); }
 #bakemono-workbench-root .bk-archive-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; vertical-align: -1px; }
 #bakemono-workbench-root .bk-archive-options[hidden] { display: none; }

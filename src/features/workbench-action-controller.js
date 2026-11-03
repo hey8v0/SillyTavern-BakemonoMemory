@@ -34,6 +34,7 @@ export function createWorkbenchActionController({
     fetchVectorQueryModels,
     clearVectorMemoryIndex,
     runVisibleOperation,
+    enableSendTrim = () => {},
 } = {}) {
     async function run(action) {
         if (action === 'scan') {
@@ -102,6 +103,8 @@ export function createWorkbenchActionController({
             await runVisibleOperation('正在拉取查询改写模型...', () => fetchVectorQueryModels(), '查询模型列表已更新');
         } else if (action === 'vector-clear') {
             clearVectorMemoryIndex();
+        } else if (action === 'enable-send-trim') {
+            enableSendTrim();
         }
     }
 

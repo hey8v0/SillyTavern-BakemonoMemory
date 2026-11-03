@@ -116,6 +116,8 @@
             <button type="button" class="bk-home-src" data-bakemono-token-source="vector" aria-label="查看向量召回本轮注入内容" aria-haspopup="dialog" aria-expanded="false" aria-controls="bakemono-injection-preview"><span class="bk-home-swatch" aria-hidden="true"></span><span class="bk-home-row-main"><strong>向量召回</strong></span><span class="bk-home-row-value"><b id="bakemono-memory-token-vector">0</b><small id="bakemono-memory-token-pct-vector"></small></span><span class="bk-home-chevron" aria-hidden="true">›</span></button>
             </div>
             <p id="bakemono-memory-injection-diagnostic" class="bk-home-note" role="status"></p>
+            <p id="bakemono-memory-send-trim-note" class="bk-home-note" hidden></p>
+            <button type="button" class="bk-sum-link" data-bakemono-action="enable-send-trim" hidden>打开发送精简</button>
           </section>
 
           <section class="bk-home-cell bk-home-setup" aria-labelledby="bakemono-memory-config-title">
@@ -404,9 +406,16 @@
           <div class="bk-sum-kicker"><span>楼层收纳</span></div>
           <h3 id="bakemono-memory-archive-title">没有隐藏楼层</h3>
           <div id="bakemono-memory-archive-reel" class="bk-archive-reel" aria-hidden="true"></div>
-          <div class="bk-archive-legend" aria-hidden="true"><span><i class="is-visible"></i>在上下文里</span><span><i class="is-hidden"></i>已隐藏</span></div>
+          <div class="bk-archive-legend" aria-hidden="true"><span><i class="is-visible"></i>在上下文里</span><span id="bakemono-memory-archive-legend-skipped" hidden><i class="is-skipped"></i>发送时跳过</span><span><i class="is-hidden"></i>已隐藏</span></div>
           <p id="bakemono-memory-auto-hide-status" class="bk-auto-note"></p>
         </section>
+        <span class="bk-auto-label">发送时精简</span>
+        <label class="bk-tbl-switch bk-auto-row"><span class="bk-tbl-switch-copy">跳过已总结的旧楼层</span><input type="checkbox" id="bakemono-memory-send-trim-skip" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
+        <label class="bk-vec-row bk-auto-row"><span>最近几条总是发</span><input id="bakemono-memory-send-trim-keep" type="number" min="2" max="200" step="1"></label>
+        <label class="bk-tbl-switch bk-auto-row"><span class="bk-tbl-switch-copy">已总结楼层的摘要块不发</span><input type="checkbox" id="bakemono-memory-send-trim-strip" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
+        <p class="bk-tbl-set-note">只改每次发给模型的那一份。已经被阶段总结覆盖的楼层不发；还在发的已覆盖楼层不带摘要块（总结里有了，最近两楼留着当格式示例）。还没被覆盖的楼层，正文和摘要块都照发。聊天记录、隐藏标记都不动，关掉就全部照发。</p>
+        <p id="bakemono-memory-send-trim-status" class="bk-auto-note"></p>
+        <span class="bk-auto-label">隐藏楼层</span>
         <label class="bk-tbl-switch bk-auto-row"><span class="bk-tbl-switch-copy">自动收纳</span><input type="checkbox" id="bakemono-memory-auto-hide-enabled" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
         <div id="bakemono-memory-auto-hide-options" class="bk-archive-options" hidden>
           <label class="bk-vec-row bk-auto-row"><span>只保留最近几楼</span><input id="bakemono-memory-preserve-recent-input" type="number" min="0" step="1" value="5"></label>

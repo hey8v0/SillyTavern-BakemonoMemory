@@ -5,7 +5,8 @@ import { getImageSizeFromDataURL } from '../../../utils.js';
 import { runChatSwitchFlow } from './src/core/chat-switch.js';
 import { createChatGate } from './src/core/chat-ready.js';
 import { captureChronicle } from './src/memory/story-state.js';
-import { getSummaryStatus } from './src/memory/summary-provenance.js';
+import { getSummaryStatus, resolveSummaryGraph, summarySourceFloors } from './src/memory/summary-provenance.js';
+import { createSendTrim } from './src/features/send-trim.js';
 // Read as a namespace: helpers that older SillyTavern versions do not export must not stop the plugin from loading.
 import * as hostScript from '../../../../script.js';
 import { factsRecallHints } from './src/facts/recall.js';
@@ -1056,7 +1057,13 @@ const {
     usePromptPresetAsGlobalDefault,
 } = configurationController;
 
+// What a request sends of the chat: floors a summary covers leave the copy the host hands the generation interceptor,
+// and the covered floors that stay lose their summary blocks; the chat itself is not touched.
+const sendTrim = createSendTrim({ ensureState, getChat: () => chat, resolveSummaryGraph, summarySourceFloors, blockTypes,
+    parseList, stripConfiguredTags, extractConfiguredTagBlocks });
+
 const vectorMemoryService = createVectorMemoryService({
+    getSkippedFloorIds: () => sendTrim.skippedIds(),
     // 剧情事实: the cards the recent conversation names lend every name they go by to the recall keywords.
     getFactsHints: (state, text, options) => factsRecallHints(factsController.facts(state), text, options),
     getStageMemoryBlocks: (...args) => getStageMemoryBlocks(...args),
@@ -1212,6 +1219,8 @@ const {
 
 const archiveController = createArchiveController({
     query: $,
+    getSendTrimSummary: (sources, state) => sendTrim.summary(sources, state),
+    getSkippedFloorIds: state => sendTrim.skippedIds(state),
     getChat: () => chat,
     getContext,
     scanBakemonoBlocks,
@@ -1405,6 +1414,7 @@ const promptInspector = createPromptInspector({
 
 const overviewTokenManifest = createOverviewTokenManifest({
     query: $,
+    getSendTrimSummary: (sources, state) => sendTrim.summary(sources, state),
     getState: ensureState,
     getHash,
     countTokens: value => getTokenCountAsync(value, 0),
@@ -2108,6 +2118,12 @@ workbenchRenderer = createWorkbenchRenderer({
 });
 
 const workbenchActionController = createWorkbenchActionController({
+    enableSendTrim: () => {
+        const state = ensureState();
+        state.sendTrim = { ...state.sendTrim, skipCovered: true, stripBlocks: true };
+        saveState();
+        toastr.success('已打开发送精简：已经总结过的旧楼层不再发给模型，还没总结的照常发，聊天记录不变。在“设置中心 → 楼层收纳”里可以关掉。', '剧情剪辑台');
+    },
     pauseVectorIndex: () => vectorMemoryService.pauseVectorIndex(),
     testEmbeddingConnection,
     workbenchRenderScopes,
@@ -2354,7 +2370,11 @@ async function init() {
         syncGlobalActiveConfigToState(initialState, { force: true });
     }
     await initWorkbench();
-    globalThis.bakemonoMemoryRecallInterceptor = vectorAutoRecall.intercept;
+    globalThis.bakemonoMemoryRecallInterceptor = async (coreChat, contextSize, abort, type) => {
+        try { sendTrim.trim(coreChat, type); }
+        catch (error) { console.warn('[BakemonoMemory] send trim failed; the chat goes as it is', error); }
+        return vectorAutoRecall.intercept(coreChat, contextSize, abort, type);
+    };
     vectorAutoRecall.bind(eventSource, event_types);
     syncInjection();
     // A chat still loading gets all of this from CHAT_CHANGED.

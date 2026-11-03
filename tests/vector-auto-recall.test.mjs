@@ -19,7 +19,7 @@ test('real interceptor is wired in manifest and waits for recall before prompt a
     const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url)));
     const index = await readFile(new URL('../index.js', import.meta.url), 'utf8');
     assert.equal(manifest.generate_interceptor, 'bakemonoMemoryRecallInterceptor');
-    assert.match(index, /globalThis\.bakemonoMemoryRecallInterceptor\s*=\s*vectorAutoRecall\.intercept/);
+    assert.match(index, /globalThis\.bakemonoMemoryRecallInterceptor = async \(coreChat, contextSize, abort, type\) => \{[\s\S]{0,240}return vectorAutoRecall\.intercept\(coreChat, contextSize, abort, type\);/);
     assert.match(index, /cancelVectorRecall,\s*clearVectorRecall,\s*scheduleVectorAutoIndex/);
     const d = deferred(), f = setup(() => d.promise);
     let promptBuilt = false;

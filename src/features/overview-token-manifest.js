@@ -14,6 +14,8 @@ export function createOverviewTokenManifest({
     getLastPromptUsage,
     getActiveTab,
     logWarning,
+    // The line about what this round sends of the chat (send-trim): { text, canEnable }.
+    getSendTrimSummary = () => ({ text: '', canEnable: false }),
 }) {
     let renderRevision = 0;
     const tokenCache = new Map();
@@ -118,6 +120,9 @@ export function createOverviewTokenManifest({
         query('#bakemono-memory-overview-token-stack').html(sourceKeys.filter(key => counts[key]).map(key =>
             `<i data-bakemono-stack-source="${key}" style="flex-grow:${counts[key]}" title="${share(counts[key])}%"></i>`).join(''));
         query('#bakemono-memory-overview-token-readout').text(total ? '指向色条或某一行查看占比' : '本轮没有注入内容');
+        const trim = getSendTrimSummary(sourceTexts, state) || {};
+        query('#bakemono-memory-send-trim-note').text(trim.text || '').prop('hidden', !trim.text);
+        query('[data-bakemono-action="enable-send-trim"]').prop('hidden', !trim.canEnable);
     }
 
     return {

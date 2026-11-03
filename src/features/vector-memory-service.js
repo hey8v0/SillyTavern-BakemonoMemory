@@ -62,6 +62,8 @@ export function createVectorMemoryService({
     // records there count one keyword hit, so they become candidates and score a little higher (no extra request).
     getFactsHints = null,
     getStageMemoryBlocks = null,
+    // The floors this round leaves out of what it sends (send-trim): the model does not see them, so recall may bring them.
+    getSkippedFloorIds = () => new Set(),
     formatApiFailure = response => `嵌入向量接口请求失败：${response.status} ${response.statusText}`,
     setTimer = globalThis.setTimeout,
     vectorSidecar = null,
@@ -386,11 +388,13 @@ export function createVectorMemoryService({
         }
         const context = getContext();
         const sourceChat = context.chat || getFallbackChat?.() || [];
+        const skipped = getSkippedFloorIds() || new Set();
         return new Set(sourceChat
             .map((message, messageId) => ({ message, messageId }))
             .filter(({ message }) => message?.mes && !message.is_system)
             .slice(-max)
-            .map(({ messageId }) => Number(messageId)));
+            .map(({ messageId }) => Number(messageId))
+            .filter(messageId => !skipped.has(messageId)));
     }
     
     function getVectorRecallSourceRecords(state = ensureState()) {

@@ -740,6 +740,8 @@ export function createDefaultConfiguration({
             managedMessageIds: [],
             lastRunAt: null,
         },
+        // What a request sends of the chat (see features/send-trim.js). Off for a chat from before; a new chat turns both on.
+        sendTrim: { skipCovered: false, stripBlocks: false, keepRecent: 10 },
         memoryStrategy: memoryStrategies.BAKEMONO,
         workflowMode: workflowModes.BAKEMONO,
         stageSourceMode: stageSourceModes.SUMMARIES,

@@ -19,6 +19,9 @@ export function createArchiveController({
     memoryStrategies,
     confirm,
     logError,
+    // What this round sends of the chat (send-trim): the line under its switches.
+    getSendTrimSummary = () => ({ text: '' }),
+    getSkippedFloorIds = () => new Set(),
 } = {}) {
     let autoHideRecentTimer = null;
 
@@ -275,14 +278,34 @@ export function createArchiveController({
         return state;
     }
     
+    // 发送时精简: the switches save at once, like the rest of this page.
+    function readSendTrimFieldsFromUi(state = ensureState()) {
+        if (!query('#bakemono-memory-send-trim-skip').length) return state;
+        const keep = Math.round(Number(query('#bakemono-memory-send-trim-keep').val()));
+        state.sendTrim = { ...state.sendTrim, skipCovered: !!query('#bakemono-memory-send-trim-skip').prop('checked'), stripBlocks: !!query('#bakemono-memory-send-trim-strip').prop('checked'),
+            keepRecent: Math.max(2, Math.min(200, keep || defaultState.sendTrim?.keepRecent || 10)) };
+        return state;
+    }
+
+    function renderSendTrimPanel(state = ensureState()) {
+        const own = state.sendTrim || {};
+        query('#bakemono-memory-send-trim-skip').prop('checked', own.skipCovered === true);
+        query('#bakemono-memory-send-trim-strip').prop('checked', own.stripBlocks === true);
+        query('#bakemono-memory-send-trim-keep').val(own.keepRecent ?? defaultState.sendTrim?.keepRecent ?? 10);
+        query('#bakemono-memory-send-trim-status').text(getSendTrimSummary(null, state)?.text || '还没有可以精简的楼层。');
+    }
+
     function renderAutoHideRecentPanel(state = ensureState()) {
+        renderSendTrimPanel(state);
         query('#bakemono-memory-auto-hide-enabled').prop('checked', !!state.autoHideRecent.enabled);
         query('#bakemono-memory-preserve-recent-input').val(state.autoHideRecent.preserveRecent ?? defaultState.autoHideRecent.preserveRecent);
         query('#bakemono-memory-auto-hide-options').prop('hidden', !state.autoHideRecent.enabled);
         // A floor counts as hidden when the host marks it or the plugin recorded hiding it.
         const recorded = new Set(getFiniteMessageIds([...(state.hiddenMessageIds || []), ...(state.customHiddenMessageIds || []), ...(state.autoHideRecent.managedMessageIds || [])]));
+        // A floor 发送时精简 leaves out is in the chat but not in what the model is sent.
+        const skipped = getSkippedFloorIds(state) || new Set();
         const chat = (getContext()?.chat || getChat() || [])
-            .map((message, id) => message && String(message.mes || '').trim() ? { hidden: !!message.is_system || recorded.has(id) } : null)
+            .map((message, id) => message && String(message.mes || '').trim() ? { hidden: !!message.is_system || recorded.has(id), skipped: skipped.has(id) } : null)
             .filter(Boolean);
         const hiddenCount = chat.filter(message => message.hidden).length;
         query('#bakemono-memory-archive-title').text(state.autoHideRecent.enabled
@@ -291,11 +314,12 @@ export function createArchiveController({
         // Consecutive floors merge into one run, so a long chat is a few segments, not hundreds of cells.
         const runs = [];
         for (const message of chat) {
-            const hidden = message.hidden;
-            if (runs.at(-1)?.hidden === hidden) runs.at(-1).count++;
-            else runs.push({ hidden, count: 1 });
+            const kind = message.hidden ? 'is-hidden' : message.skipped ? 'is-skipped' : 'is-visible';
+            if (runs.at(-1)?.kind === kind) runs.at(-1).count++;
+            else runs.push({ kind, count: 1 });
         }
-        query('#bakemono-memory-archive-reel').html(runs.map(run => `<i class="${run.hidden ? 'is-hidden' : 'is-visible'}" style="flex-grow:${run.count}"></i>`).join(''));
+        query('#bakemono-memory-archive-reel').html(runs.map(run => `<i class="${run.kind}" style="flex-grow:${run.count}"></i>`).join(''));
+        query('#bakemono-memory-archive-legend-skipped').prop('hidden', !chat.some(message => message.skipped && !message.hidden));
         const managedCount = getFiniteMessageIds(state.autoHideRecent.managedMessageIds || []).length;
         query('#bakemono-memory-auto-hide-status').text(state.autoHideRecent.lastRunAt
             ? `自动收纳管着 ${managedCount} 楼 · 上次整理 ${new Date(state.autoHideRecent.lastRunAt).toLocaleString()}` : '');
@@ -536,6 +560,12 @@ export function createArchiveController({
 
     function bindEvents(rootSelector = '#bakemono-workbench-root') {
         const root = query(rootSelector);
+        root.off('change.bakemonoSendTrim').on('change.bakemonoSendTrim', '#bakemono-memory-send-trim-skip, #bakemono-memory-send-trim-strip, #bakemono-memory-send-trim-keep', () => {
+            const state = ensureState();
+            readSendTrimFieldsFromUi(state);
+            saveState();
+            renderSendTrimPanel(state);
+        });
         root.off('change.bakemonoAutoArchiveToggle').on('change.bakemonoAutoArchiveToggle', '#bakemono-memory-auto-hide-enabled', async () => {
             try {
                 await applyAutoHideRecentSettings();
@@ -575,7 +605,9 @@ export function createArchiveController({
         previewMessageRange,
         previewPreserveRecentMessages,
         readAutoHideRecentFieldsFromUi,
+        readSendTrimFieldsFromUi,
         renderAutoHideRecentPanel,
+        renderSendTrimPanel,
         restoreAutoHiddenMessages,
         restoreHiddenMessages,
         scheduleAutoHideRecent,
