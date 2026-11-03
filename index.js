@@ -1867,6 +1867,9 @@ const {
 } = turnProcessingController;
 
 const memoryOrchestrator = createMemoryOrchestrator({
+    getUnsummarizedStageBlocks: (...args) => getUnsummarizedStageBlocks(...args),
+    generateEpicDraft: (...args) => generateEpicDraft(...args),
+    getSortedTargetBlocks,
     noteFactsActivity: () => factsController.noteActivity(),
     resumeFacts: () => factsController.resume(),
     consolidateFacts: () => factsController.maybeRun({ trigger: 'auto' }),

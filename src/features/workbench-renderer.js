@@ -159,6 +159,8 @@ export function createWorkbenchRenderer({
             query('#bakemono-memory-auto-mode').val(state.automation.mode || defaultAutomation.mode);
             query('#bakemono-memory-auto-trigger').val(state.automation.triggerType || defaultAutomation.triggerType);
             query('#bakemono-memory-auto-floor-interval').val(state.automation.floorInterval ?? defaultAutomation.floorInterval);
+            query('#bakemono-memory-auto-epic-enabled').prop('checked', state.automation.epicEnabled !== false);
+            query('#bakemono-memory-auto-epic-after').val(state.automation.epicAfterStages ?? defaultAutomation.epicAfterStages ?? 6);
             query('#bakemono-memory-auto-char-interval').val(state.automation.charInterval ?? defaultAutomation.charInterval);
             query('#bakemono-memory-auto-hide-preserve-recent').val(state.automation.autoHidePreserveRecent ?? defaultAutomation.autoHidePreserveRecent);
         } else if (activeTab === 'preview') {

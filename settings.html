@@ -658,6 +658,9 @@
           </select>
           <div id="bakemono-memory-automation-ways"></div>
           <label class="bk-vec-row bk-auto-row" data-bk-stage-when="commit_hide"><span>隐藏时保留最近几楼</span><input id="bakemono-memory-auto-hide-preserve-recent" type="number" min="0" step="1"></label>
+          <label class="bk-tbl-switch bk-auto-row"><span class="bk-tbl-switch-copy">阶段总结攒多了合并成多次总结</span><input type="checkbox" id="bakemono-memory-auto-epic-enabled" role="switch"><span class="bk-tbl-toggle" aria-hidden="true"></span></label>
+          <label class="bk-vec-row bk-auto-row"><span>攒够几段就合并</span><input id="bakemono-memory-auto-epic-after" type="number" min="3" max="50" step="1"></label>
+          <p class="bk-tbl-set-note">合并最早的几段，最近 2 段不动。跟着上面的方式：只提醒，或者生成草稿等你确认；多次总结不会自己保存。</p>
         </section>
 
         <span class="bk-auto-label">最近整理</span>

@@ -29,8 +29,42 @@ export function createMemoryOrchestrator({
     noteFactsActivity = () => {},
     resumeFacts = () => {},
     consolidateFacts = () => {},
+    getUnsummarizedStageBlocks = () => [],
+    generateEpicDraft = async () => null,
+    // Chapters in story order (summary/target-selection.js).
+    getSortedTargetBlocks = blocks => [...blocks],
 } = {}) {
     const pendingAutoSummaries = new WeakSet();
+    const pendingAutoEpics = new WeakSet();
+    // Chapters no 多次总结 covers pile up with the chat. At `epicAfterStages` the older ones are offered as one, the way
+    // a 阶段总结 is offered: a reminder, or a draft that waits for the user. The latest two stay for their detail.
+    const epicKeepRecent = 2;
+    async function maybeRunAutoEpic() {
+        if (!isChatReady()) return;
+        const state = ensureState();
+        if (!state.automation?.enabled || state.automation.epicEnabled === false || isBusy() || pendingAutoEpics.has(state)) return;
+        const after = Math.max(3, Math.min(50, Math.round(Number(state.automation.epicAfterStages)) || 6));
+        const stages = getSortedTargetBlocks(getUnsummarizedStageBlocks() || []);
+        if (stages.length < after) return;
+        const older = stages.slice(0, stages.length - epicKeepRecent);
+        const mode = state.automation.mode || defaultAutomation.mode;
+        const signature = getHash(JSON.stringify({ epic: older.map(block => block.hash), mode }));
+        if (signature === state.automation.lastEpicSignature) return;
+        pendingAutoEpics.add(state);
+        try {
+            if (mode === 'draft' || mode === 'commit_hide') {
+                const task = await generateEpicDraft({ automatic: true, targetConfig: { mode: 'oldest', count: older.length } });
+                if (!task || ensureState() !== state) return;
+            } else {
+                renderWorkbenchScope(workbenchRenderScopes.AUTOMATION, `自动总结提醒：已有 ${stages.length} 段阶段总结没有合并成多次总结。`);
+                toastr.info(`阶段总结攒了 ${stages.length} 段，可以把最早的 ${older.length} 段合并成多次总结。`, '剧情剪辑台');
+            }
+            state.automation.lastEpicSignature = signature;
+            saveState();
+        } finally {
+            pendingAutoEpics.delete(state);
+        }
+    }
     async function maybeRunAutoSummary() {
         if (!isChatReady()) return;
         const state = ensureState();
@@ -132,6 +166,7 @@ export function createMemoryOrchestrator({
         if (plan.actions.runStageAutomation) {
             await maybeRunAutoSummary();
         }
+        if (ensureState() === state) await maybeRunAutoEpic();
         if (ensureState() === state) await consolidateFacts();
         if (plan.actions.balanceHiddenFloors) {
             scheduleAutoHideRecent(reason);
@@ -158,6 +193,7 @@ export function createMemoryOrchestrator({
 
     return {
         isAutoThresholdReached,
+        maybeRunAutoEpic,
         maybeRunAutoSummary,
         maybeRunTurnSummary,
         runMemoryOrchestrator,

@@ -355,7 +355,8 @@ export function createSummaryGenerationController({
             toastr.info('没有可用于生成多次总结的内容。');
             return;
         }
-        let targetConfig = state.generationTargets.epic;
+        // An automatic merge says which chapters (the oldest ones); a run by hand asks.
+        let targetConfig = options.automatic && options.targetConfig ? options.targetConfig : state.generationTargets.epic;
         if (!options.automatic) {
             readGenerationTargetSettings();
             targetConfig = options.targetConfig || await promptGenerationTargetSelection('epic', allStageTargets.length || allMultiTargets.length, { sourceCounts: countEpicSources({ stage: allStageTargets, epic: allMultiTargets }),
@@ -379,6 +380,14 @@ export function createSummaryGenerationController({
         }
 
         validateSummaryMaterials(targets);
+        if (options.automatic) {
+            const hashes = new Set(targets.map(block => block.hash));
+            const sameBatch = item => item.kind === blockTypes.EPIC && item.sourceHashes?.length === hashes.size && item.sourceHashes.every(hash => hashes.has(hash));
+            if ((state.taskQueue || []).some(task => sameBatch(task) && ['queued', 'running', 'failed'].includes(task.status)) || (state.drafts || []).some(sameBatch)) {
+                renderWorkbenchScope(workbenchRenderScopes.SUMMARY, '这几段阶段总结的多次总结已经在队列或待确认里。');
+                return;
+            }
+        }
         if (!options.automatic && !targetConfig.reviewed) {
             const latestEpicAt = state.epicSummaries.at(-1)?.createdAt;
             const confirmed = await confirm([
@@ -399,7 +408,7 @@ export function createSummaryGenerationController({
 
         const prompt = buildEpicUserPrompt(targets);
         const sourceMessageIds = getSourceMessageIdsFromBlocks(targets);
-        enqueueSummaryTask({
+        return enqueueSummaryTask({
             kind: blockTypes.EPIC,
             label: `${getMultiSummaryLabel(nextLevel)} · ${targets.length} 个片段`,
             prompt,

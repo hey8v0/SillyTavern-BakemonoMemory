@@ -232,6 +232,7 @@ export function createConfigurationController({
                 automation: {
                     ...createAutomationBehaviorConfig(state.automation),
                     lastSignature: '',
+                    lastEpicSignature: '',
                     lastAutoAt: null,
                 },
             };

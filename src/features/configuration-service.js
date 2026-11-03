@@ -109,6 +109,8 @@ export function createConfigurationService({
                 ? Math.max(1, Number(query('#bakemono-memory-backfill-batch-size').val() || state.automation.backfillBatchSize || defaultAutomation.backfillBatchSize))
                 : Math.max(1, Number(state.automation.backfillBatchSize || defaultAutomation.backfillBatchSize)),
             autoHidePreserveRecent: Math.max(0, Number(query('#bakemono-memory-auto-hide-preserve-recent').val() || defaultAutomation.autoHidePreserveRecent)),
+            epicEnabled: query('#bakemono-memory-auto-epic-enabled').length ? !!query('#bakemono-memory-auto-epic-enabled').prop('checked') : state.automation.epicEnabled !== false,
+            epicAfterStages: Math.max(3, Math.min(50, Math.round(Number(query('#bakemono-memory-auto-epic-after').val())) || state.automation.epicAfterStages || defaultAutomation.epicAfterStages || 6)),
         };
         return state;
     }
@@ -228,6 +230,7 @@ export function createConfigurationService({
             automation: {
                 ...structuredClone(state.automation),
                 lastSignature: '',
+                lastEpicSignature: '',
                 lastAutoAt: null,
             },
             turnSummary: {

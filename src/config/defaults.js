@@ -603,6 +603,10 @@ export function createDefaultConfiguration({
         summaryKind: 'stage',
         backfillBatchSize: 10,
         autoHidePreserveRecent: 2,
+        // Chapters left out of any 多次总结: at this many the older ones are offered as one (the latest two stay).
+        epicEnabled: true,
+        epicAfterStages: 6,
+        lastEpicSignature: '',
         apiProvider: 'tavern',
         customApi: {
             baseUrl: '',
