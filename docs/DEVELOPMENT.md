@@ -4,7 +4,7 @@
 
 ## 1. 接手约定
 
-- 当前版本 **1.43.0**，分支 `main`，远端 `hey8v0/SillyTavern-BakemonoMemory`。先看 `git status` / `git log`，不要从旧对话推断现状。
+- 当前版本 **1.43.1**，分支 `main`，远端 `hey8v0/SillyTavern-BakemonoMemory`。先看 `git status` / `git log`，不要从旧对话推断现状。
 - 源码就在本仓库。任务工作区、酒馆安装目录都不是源码；不要默认同步本机酒馆、调用模型。
 - 不覆盖用户未提交的修改，不强推。提交与推送以当次授权为准。
 - **用户的测试方式**：用户在手机上的酒馆里更新插件来实测，所以每完成一批改动，经用户同意后发布一个小版本并推送（见第 8 节）。一次一批，便于定位问题。
@@ -150,7 +150,8 @@
 - 总结篇幅（v1.42.0 起）：`src/summary/length-target.js`，`generationPrompts.summaryLength`（随提示词预设同步）。提示词末尾追加，不改模板，所以自定义提示词也生效。
 - 旧阶段总结按需（v1.42.0 起）：`src/memory/stage-on-demand.js`。`injection.stageOnDemand` 和 `recentStages` 按聊天存，不进整套配置；新聊天在 `ensureState` 里打开，老聊天靠默认值保持关闭。配置层（`planStageInjection`）决定哪些进索引，和这一轮召回成没成功无关，否则索引签名会跟着变；这一轮能不能省由 `isRecallReady` 决定，不能就全发。新增会让召回不能替代全发的跳过原因时，确认它不匹配 `isRecallReady` 里的正则。扫描自回复的阶段块不走按需：索引里没有完整的。
 - 发送时精简（v1.43.0 起）：`features/send-trim.js`，生成拦截器先跑它再跑召回。酒馆给拦截器的 `coreChat` 是这次请求专用的数组，每项是 `{ ...消息, mes, index }` 的副本（`index` 是它在可见消息里的位置），从数组里删、改副本的 `mes` 都不影响聊天；`extra` 是共用引用，不能往上打标记。按 `index` 对回真实楼层，`send_date`、`is_user`、`name` 有一项对不上就整轮不动。覆盖用 `resolveSummaryGraph` 的 `coveredStoryHashes`（剧情摘要被有效的阶段或多次总结覆盖），和楼层收纳同一套，另外把插件存下的剧情摘要也算上。摘要块也只去掉已覆盖楼层的（最近两个留作格式示例），同样要总结到得了模型：摘要写在回复里时普通摘要不单独注入（`getInjectionMemoryParts`），没覆盖的楼层只靠回复里的摘要块到达模型，用户的提示词正则还可能已经把旧楼层的正文去掉、只剩摘要块。`state.sendTrim` 按聊天存，不进整套配置；新聊天在 `ensureState` 里打开。`dryRun` 不跑拦截器，酒馆自己的 token 预估看不到精简。世界书按 `coreChat` 扫描，扫描深度超过保留条数时，只在被跳过楼层里出现的关键词不再触发。
-- 自动合并（v1.43.0 起）：`memory-orchestrator.maybeRunAutoEpic`，没被覆盖的阶段总结达到 `automation.epicAfterStages`（6）时，把最早的（留最近 2 段）交给 `generateEpicDraft({ automatic: true, targetConfig: { mode: 'oldest', count } })`；同一批记在 `lastEpicSignature`，不重复。任务队列只自动保存阶段总结，多次总结总是进待确认。`memory-orchestrator` 会被以 data: URL 加载，排序函数 `getSortedTargetBlocks` 由外面传进来。
+- 自动合并（v1.43.0 起）：`memory-orchestrator.maybeRunAutoEpic`，没被覆盖的阶段总结达到 `automation.epicAfterStages`（6）时，把最早的一批（留最近 2 段；一批 `epicAfterStages − 2` 段，v1.43.1 起还不超过一次请求能带的材料，至少 2 段）交给 `generateEpicDraft({ automatic: true, targetConfig: { mode: 'oldest', count } })`；同一批记在 `lastEpicSignature`，不重复，积压很多时这一批合并以后才轮到下一批。任务队列只自动保存阶段总结，多次总结总是进待确认。`memory-orchestrator` 会被以 data: URL 加载，排序函数 `getSortedTargetBlocks` 和材料上限 `getMaterialBudget` 由外面传进来。
+- 请求长度（v1.43.1 起）：`summary/length-target.summaryMaterialBudget` 估一次请求能带多少材料：模型上下文 token 的 40% 折成字，4,000–60,000；读不到上下文的自定义接口按 32k 算。`index.js summaryMaterialChars` 接到自动合并和生成面板（`describeBatches` 的 `tooLong`，最长的那一次请求超出时提醒）。酒馆的 `generateRaw` 不截断也不检查长度，太长的请求由服务商拒绝；`summary/request-overflow.js` 认出各家的说法，任务队列的 `explainFailure` 按任务种类换成该去哪里改，后面附接口原话。`runApiRequest` 把被拒请求的错误正文（最多 300 字）作为第二个参数交给 `formatError`，自定义接口的报错因此带上接口原话；以长度被拒时不再去掉关闭思考的字段重发。
 - v1.33.0 起剧情状态和表格的代码已删：`inlineGeneration.tableEnabled` 恒为 false、`turnSummary.processingMode` 恒为 summary（`chat-state-service` 归一化），注入来源键为 summary / memory / facts / time / vector（`time` 只有 `storyTimeContext`）。被 data: URL 内联加载的模块不能有相对 import（见上）。
 - 摘要来源选择写入旧配置字段，保留旧手动及组合方式（“旧版组合设置”）；运行错误不进全局预设。
 
@@ -227,7 +228,7 @@ node scripts/facts-eval/perf.mjs 500 1000 2000 5000               # 长聊天下
 
 ## 9. 后续工作
 
-- 手机实测：v1.8.8 – v1.43.0 的改动都只在模拟页面验证过，需要用户在真实酒馆（尤其手机、iOS Safari）确认；宿主保存、后台冻结、重 roll、流式协议隐藏同样需要实机。
+- 手机实测：v1.8.8 – v1.43.1 的改动都只在模拟页面验证过，需要用户在真实酒馆（尤其手机、iOS Safari）确认；宿主保存、后台冻结、重 roll、流式协议隐藏同样需要实机。
 - 新样式推广到其他页面（见第 5 节“新样式”）。已完成：剧情状态（v1.10.0）、首页（v1.11.0）、顶栏与侧栏（v1.12.0：电脑上 264px 细线侧栏，手机 ≤900px 为左侧抽屉 + 遮罩 `[data-bakemono-menu-close]`，布局尺寸与旧版一致，顶栏由 82px 收到 70px）、总结页（v1.13.0）、待确认（v1.14.0）、摘要树（v1.15.0）、表格（v1.16.0）、向量记忆（v1.17.0）、自动记忆（v1.18.0）、自动总结（v1.20.0）、自动与数据和设置中心（v1.21.0）。设置中心第一组子页（摘要方式、扫描与识别、楼层收纳，v1.22.0）、第二组（生成模型、生成提示词、注入内容，v1.23.0）、第三组（外观、整套配置、撤回与事务，v1.24.0）和提示词检查器（v1.25.0）。所有页面都已换成新样式。用户给的每页参考：首页 Magic Bento + 编辑式仪表盘；总结 时间线 + 卡片堆叠；摘要树 嵌套时间线；待确认 审阅队列；提示词检查器 文档阅读器；设置中心 系统设置列表；电脑导航 细线侧栏；手机导航 抽屉 + 分段标签。React 组件库（React Bits、Aceternity）不能直接用，只借效果、用 CSS 和原生 JS 实现。
 - 剧情事实替换剧情状态和表格，分五批（`docs/FACT_CARDS_DESIGN.md` §9）：① 数据模型 + 整理 + 注入（v1.29.0）；② 卡片编辑、历史、待确认 diff（v1.30.0）；③ 旧状态/旧表导入与各处改口（v1.31.0）；④ 默认开启、隐藏旧入口（v1.32.0）；⑤ 删旧代码（v1.33.0）。第一批未用真实模型验证卡片质量，是整个方案的前提。
 - 剧情事实整理的质量还没用真实模型验证过（五批都只跑了自动化测试和模拟页面）。质量不行时先调 `src/facts/prompt.js` 的提示词和 `model.js` 的字段粒度。
