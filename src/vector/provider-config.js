@@ -73,7 +73,7 @@ export function extractEmbeddingModelCandidates(payload) {
     return candidates.length ? candidates : all;
 }
 
-export function formatApiFailure(response, action = '接口请求失败') {
+export function formatApiFailure(response, action = '接口请求失败', detail = '') {
     const status = Number(response?.status);
     const advice = {
         401: '认证失败，请检查此接口的密钥；只填密钥本身，不要附加 Bearer。',
@@ -81,7 +81,7 @@ export function formatApiFailure(response, action = '接口请求失败') {
         404: '地址或模型不存在，请检查基础地址（通常以 /v1 结尾）和模型 ID。',
         429: '请求限流或额度不足，请检查服务商额度并稍后重试。',
     }[status] || (status >= 500 ? '服务商暂时异常，请稍后重试。' : '请检查接口配置和服务商状态。');
-    return `${action}：${status || '未知状态'}。${advice}`;
+    return `${action}：${status || '未知状态'}。${advice}${detail ? `接口原话：${detail}` : ''}`;
 }
 
 export function extractCustomModelIds(payload) {

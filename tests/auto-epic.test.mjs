@@ -7,17 +7,17 @@ import { createSummaryGenerationController } from '../src/features/summary-gener
 // Chapters pile up; a 多次总结 over the older ones keeps what goes with every message short. Automation offers it the
 // way it offers a 阶段总结: a reminder, or a draft that waits for the user. It is never saved on its own.
 const stage = i => ({ hash: `st${i}`, type: 'stage', content: `第${i}章的总结。`, sourceMessageIds: [i * 10, i * 10 + 2], sourceStart: i * 10, sourceEnd: i * 10 + 2 });
-function orchestrator({ mode = 'draft', count = 6, enabled = true, epic = true, after = 6 } = {}) {
+function orchestrator({ mode = 'draft', count = 6, enabled = true, epic = true, after = 6, budget = 13000 } = {}) {
     const state = { automation: { enabled, mode, epicEnabled: epic, epicAfterStages: after, lastEpicSignature: '' }, turnSummary: {} };
     const calls = [], toasts = [], scopes = [];
     let stages = Array.from({ length: count }, (_, i) => stage(i));
     const o = createMemoryOrchestrator({ ensureState: () => state, isBusy: () => false, getHash: value => String(value.length) + value.slice(-40), saveState: () => {},
         defaultAutomation: { mode: 'remind' }, toastr: { info: (...args) => toasts.push(args) }, renderWorkbenchScope: (scope, text) => scopes.push(text), workbenchRenderScopes: { AUTOMATION: 'automation' },
-        getUnsummarizedStageBlocks: () => stages, generateEpicDraft: async options => { calls.push(options); return { id: `task${calls.length}` }; } });
+        getUnsummarizedStageBlocks: () => stages, getMaterialBudget: () => budget, generateEpicDraft: async options => { calls.push(options); return { id: `task${calls.length}` }; } });
     return { o, state, calls, toasts, scopes, setStages: list => { stages = list; } };
 }
 
-test('enough chapters: the older ones go into a draft, the latest two stay as they are', async () => {
+test('enough chapters: the oldest go into a draft, a batch at a time; the latest two stay as they are', async () => {
     const f = orchestrator();
     await f.o.maybeRunAutoEpic();
     assert.equal(f.calls.length, 1);
@@ -26,8 +26,32 @@ test('enough chapters: the older ones go into a draft, the latest two stay as th
     assert.equal(f.calls.length, 1, 'the same chapters are not asked for twice');
     f.setStages([...Array.from({ length: 6 }, (_, i) => stage(i)), stage(6)]);
     await f.o.maybeRunAutoEpic();
-    assert.equal(f.calls.length, 2, 'one more chapter: a new batch');
-    assert.equal(f.calls[1].targetConfig.count, 5);
+    assert.equal(f.calls.length, 1, 'one more chapter: the oldest four are still the batch, and are not asked for again');
+    f.setStages(Array.from({ length: 6 }, (_, i) => stage(i + 4)));
+    await f.o.maybeRunAutoEpic();
+    assert.equal(f.calls.length, 2, 'once those four are in a 多次总结, the next four');
+    assert.equal(f.calls[1].targetConfig.count, 4);
+});
+
+test('a long backlog goes a batch at a time, each no longer than one request can carry', async () => {
+    // Forty chapters waiting, as on a long chat that had none merged: the oldest four, not thirty-eight at once.
+    const f = orchestrator({ count: 40 });
+    await f.o.maybeRunAutoEpic();
+    assert.deepEqual(f.calls[0].targetConfig, { mode: 'oldest', count: 4 });
+    // Long chapters: as many as the budget holds.
+    const long = i => ({ ...stage(i), content: '长'.repeat(6000) });
+    const g = orchestrator({ after: 10, budget: 13000 });
+    g.setStages(Array.from({ length: 12 }, (_, i) => long(i)));
+    await g.o.maybeRunAutoEpic();
+    assert.equal(g.calls[0].targetConfig.count, 2, 'two of 6,000 fit in 13,000, a third does not');
+    const h = orchestrator({ budget: 4000 });
+    h.setStages(Array.from({ length: 8 }, (_, i) => long(i)));
+    await h.o.maybeRunAutoEpic();
+    assert.equal(h.calls[0].targetConfig.count, 2, 'never fewer than two: one chapter alone is no merge');
+    // Only reminding: it says to do it in batches.
+    const remind = orchestrator({ mode: 'remind', count: 40 });
+    await remind.o.maybeRunAutoEpic();
+    assert.match(remind.toasts[0][0], /阶段总结攒了 40 段，可以分批合并成多次总结，每批 4 段（生成时选“分批”）/);
 });
 
 test('fewer than the number, automation off, merging off, or only reminding: no draft', async () => {

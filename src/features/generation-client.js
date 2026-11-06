@@ -1,4 +1,5 @@
 import { runApiRequest } from '../shared/request-policy.js';
+import { isContextOverflow } from '../summary/request-overflow.js';
 import { buildTavernCustomRequest, getQianfanPersonalModelCatalog, tavernChatCompletionsUrl, tavernModelsUrl } from '../vector/provider-config.js';
 
 // The request field that turns a model's thinking off, for the APIs known to have one. A thinking model spends most of
@@ -80,7 +81,7 @@ export function createGenerationClient({
             : '插件没法替这个接口关闭思考，请在服务商那边关掉，或换一个不带思考的模型。';
         const send = extraParams => runApiRequest({ url: viaTavern ? tavernChatCompletionsUrl : getCustomChatCompletionsUrl(baseUrl), fetchImpl, signal,
             timeoutMs: requestTimeoutMs,
-            formatError: response => { refused = [400, 422].includes(response.status); return formatApiFailure(response, action); },
+            formatError: (response, detail) => { refused = [400, 422].includes(response.status); return formatApiFailure(response, action, detail); },
             init: {
             method: 'POST',
             headers: viaTavern ? { ...getTavernHeaders(), 'Content-Type': 'application/json' } : {
@@ -122,7 +123,8 @@ export function createGenerationClient({
         try {
             return await send(thinkingOff);
         } catch (error) {
-            if (!thinkingOff || !refused || signal?.aborted) throw error;
+            // A prompt too long for the model is refused with the field or without it: asking again would only cost.
+            if (!thinkingOff || !refused || signal?.aborted || isContextOverflow(error?.message)) throw error;
             // Through the relay a rejected field looks like any other failure (200 with { error }, or 400 when streaming), so
             // only an answer without the field tells.
             const answer = await send(null);

@@ -33,11 +33,14 @@ export function createMemoryOrchestrator({
     generateEpicDraft = async () => null,
     // Chapters in story order (summary/target-selection.js).
     getSortedTargetBlocks = blocks => [...blocks],
+    // How much material one 多次总结 request can carry, in characters (summary/length-target.js).
+    getMaterialBudget = () => 13000,
 } = {}) {
     const pendingAutoSummaries = new WeakSet();
     const pendingAutoEpics = new WeakSet();
-    // Chapters no 多次总结 covers pile up with the chat. At `epicAfterStages` the older ones are offered as one, the way
-    // a 阶段总结 is offered: a reminder, or a draft that waits for the user. The latest two stay for their detail.
+    // Chapters no 多次总结 covers pile up with the chat. At `epicAfterStages` the oldest are offered as one, a batch at a
+    // time, the way a 阶段总结 is offered: a reminder, or a draft that waits for the user. The latest two stay for their
+    // detail.
     const epicKeepRecent = 2;
     async function maybeRunAutoEpic() {
         if (!isChatReady()) return;
@@ -47,17 +50,30 @@ export function createMemoryOrchestrator({
         const stages = getSortedTargetBlocks(getUnsummarizedStageBlocks() || []);
         if (stages.length < after) return;
         const older = stages.slice(0, stages.length - epicKeepRecent);
+        // As many as `epicAfterStages` leaves to merge, and only what one request can carry (two at least, or it is no
+        // merge). A long backlog goes batch by batch, the next once this one is saved; all of it at once would be longer
+        // than the model can read, and refused.
+        const batch = [], budget = getMaterialBudget();
+        let chars = 0;
+        for (const block of older.slice(0, Math.max(2, after - epicKeepRecent))) {
+            const length = String(block.content || '').length;
+            if (batch.length >= 2 && chars + length > budget) break;
+            batch.push(block);
+            chars += length;
+        }
         const mode = state.automation.mode || defaultAutomation.mode;
-        const signature = getHash(JSON.stringify({ epic: older.map(block => block.hash), mode }));
+        const signature = getHash(JSON.stringify({ epic: batch.map(block => block.hash), mode }));
         if (signature === state.automation.lastEpicSignature) return;
         pendingAutoEpics.add(state);
         try {
             if (mode === 'draft' || mode === 'commit_hide') {
-                const task = await generateEpicDraft({ automatic: true, targetConfig: { mode: 'oldest', count: older.length } });
+                const task = await generateEpicDraft({ automatic: true, targetConfig: { mode: 'oldest', count: batch.length } });
                 if (!task || ensureState() !== state) return;
             } else {
                 renderWorkbenchScope(workbenchRenderScopes.AUTOMATION, `自动总结提醒：已有 ${stages.length} 段阶段总结没有合并成多次总结。`);
-                toastr.info(`阶段总结攒了 ${stages.length} 段，可以把最早的 ${older.length} 段合并成多次总结。`, '剧情剪辑台');
+                toastr.info(older.length > batch.length
+                    ? `阶段总结攒了 ${stages.length} 段，可以分批合并成多次总结，每批 ${batch.length} 段（生成时选“分批”）。`
+                    : `阶段总结攒了 ${stages.length} 段，可以把最早的 ${batch.length} 段合并成多次总结。`, '剧情剪辑台');
             }
             state.automation.lastEpicSignature = signature;
             saveState();

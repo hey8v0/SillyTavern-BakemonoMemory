@@ -33,3 +33,11 @@ export function summaryLengthNote(kind, materialChars, mode) {
 - 琐事：合并成一句，或者不写。
 模板里哪一栏没有内容，就写一句话带过，不要凑字。`;
 }
+
+// How much material one summary request can carry, in characters. The model reads the prompt and writes the summary in
+// one context window, and Chinese runs about a token a character, more with some tokenizers: the material gets 40% of
+// the window. A window the plugin cannot read (a custom API) counts as 32k.
+export function summaryMaterialBudget(contextTokens = 0) {
+    const tokens = Number(contextTokens) > 0 ? Number(contextTokens) : 32768;
+    return Math.max(4000, Math.min(60000, Math.round(tokens * 0.4)));
+}

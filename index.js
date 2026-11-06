@@ -26,6 +26,8 @@ import { formatBlocksForPrompt, getPromptStructureExcerpt, migrateBuiltInStructu
 import { countKeywordHits, extractAllTaggedBlocks, extractConfiguredTagBlocks, extractTaggedContent, filterTextByConfiguredTags, getHash, matchesAnyKeyword, normalizeSearchText, parseList, parseTagRule, removeExactTextBlock, stripConfiguredTags, stripTableEditTags } from './src/shared/text.js';
 import { parseMissingSummaryBatchResult } from './src/summary/draft-parser.js';
 import { getMultiSummaryLabel, getNextMultiSummaryLevel, getSummaryKindLabel, getSummaryLevel } from './src/summary/levels.js';
+import { summaryMaterialBudget } from './src/summary/length-target.js';
+import { explainContextOverflow } from './src/summary/request-overflow.js';
 import { buildFloorMemoryIndex, createMemoryOrchestrationPlan } from './src/memory/floor-memory-index.js';
 import { formatSourceRange, getBlockSortKey, getFiniteMessageIds, getSourceEnd, getSourceMessageIdsFromBlocks, getSourceStart, getSummarySortKey, sortSummariesBySource } from './src/summary/source-metadata.js';
 import { defaultGenerationTargets, findTargetContinuityGaps, getSortedTargetBlocks, parseLooseNumberRange, partitionGenerationTargets, selectGenerationTargets, targetSelectionModes } from './src/summary/target-selection.js';
@@ -735,6 +737,7 @@ const {
     isRawSourceBlock,
 } = summarySelectors;
 const summaryGenerationController = createSummaryGenerationController({
+    getMaterialBudget: summaryMaterialChars,
     getStageMaterialOverview,
     summarySources,
     getIsBusy: () => isBusy,
@@ -1870,6 +1873,7 @@ const memoryOrchestrator = createMemoryOrchestrator({
     getUnsummarizedStageBlocks: (...args) => getUnsummarizedStageBlocks(...args),
     generateEpicDraft: (...args) => generateEpicDraft(...args),
     getSortedTargetBlocks,
+    getMaterialBudget: summaryMaterialChars,
     noteFactsActivity: () => factsController.noteActivity(),
     resumeFacts: () => factsController.resume(),
     consolidateFacts: () => factsController.maybeRun({ trigger: 'auto' }),
@@ -1933,6 +1937,7 @@ const {
 } = summaryTargetController;
 
 const summaryTaskQueue = createSummaryTaskQueue({
+    explainFailure: (error, task) => explainContextOverflow(error?.message || String(error), task?.kind),
     summarySources,
     rebuildMissingTask: task => summaryBackfillController.rebuildMissingTask(task),
     // A summary task reads floors; 整理事实 reads summaries, so its fingerprint is theirs (id and text version).
@@ -1983,6 +1988,12 @@ function hostContextTokens() {
         } catch { /* try the next one */ }
     }
     return 0;
+}
+
+// How much material one summary request can carry: by the window of the model the summary goes to (SillyTavern's own
+// API), or as for a 32k model where the plugin cannot read it (a custom API).
+function summaryMaterialChars() {
+    return summaryMaterialBudget(ensureState().automation?.apiProvider === 'custom' ? 0 : hostContextTokens());
 }
 
 const factsController = createFactsController({

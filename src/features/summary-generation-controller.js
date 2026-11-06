@@ -2,7 +2,7 @@ import { storyTimeContext } from '../memory/story-state.js';
 import {resolveSummaryGraph, getSummaryStatus} from '../memory/summary-provenance.js';
 import { inspectSummaryMaterials } from '../summary/material-quality.js';
 import { stageAutomationStatus } from '../summary/automation-status.js';
-import { summaryLengthChars, summaryLengthNote } from '../summary/length-target.js';
+import { summaryLengthChars, summaryLengthNote, summaryMaterialBudget } from '../summary/length-target.js';
 export { inspectSummaryMaterials } from '../summary/material-quality.js';
 
 // 多次总结 only re-summarises 阶段总结 or earlier 多次总结; story summaries go through 阶段总结 first.
@@ -63,6 +63,8 @@ export function createSummaryGenerationController({
     toastr,
     confirmDanger,
     confirm,
+    // How much material one request can carry, in characters: by the model's window where it can be read.
+    getMaterialBudget = () => summaryMaterialBudget(),
 }) {
     const checkOnce = fn => summarySources?.once ? summarySources.once(fn) : fn();
     // What a selection in the generation panel will send: shown before anything is asked of the model.
@@ -71,6 +73,9 @@ export function createSummaryGenerationController({
         const blocks = batches.flat();
         const report = inspectSummaryMaterials(blocks);
         const ids = getSourceMessageIdsFromBlocks(blocks);
+        // The longest single request, when it is more than one request can carry: it would come back refused.
+        const budget = getMaterialBudget();
+        const tooLong = Math.max(0, ...batches.map(batch => inspectSummaryMaterials(batch).textLength).filter(length => length > budget));
         return {
             count: blocks.length,
             textLength: report.textLength,
@@ -79,6 +84,7 @@ export function createSummaryGenerationController({
             samples: blocks.slice(0, 2).map(block => ({ where: formatSourceRange(getSourceMessageIdsFromBlocks([block])), text: plainText(block.content).slice(0, 160) })),
             requests: batches.filter(batch => batch.length).length,
             targetChars: batches.reduce((sum, batch) => sum + summaryLengthChars(kind, inspectSummaryMaterials(batch).textLength, getState().generationPrompts?.summaryLength), 0),
+            tooLong,
         };
     }
     const describeStage = pool => config => {

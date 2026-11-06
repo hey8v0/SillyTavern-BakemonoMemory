@@ -128,6 +128,7 @@ export function createSummaryTargetController({
                 <div class="bk-dlg-meta" data-gen-meta></div></div>
                 <button type="button" class="bk-dlg-x" data-dlg-value="" aria-label="取消">×</button></div>
             <p class="bk-dlg-gap" data-gen-gap hidden></p>
+            <p class="bk-dlg-gap" data-gen-long hidden></p>
             ${sourceRows}
             <div class="bk-dlg-section"><span class="bk-dlg-label">用哪些</span>
                 ${radio('bk-gen-mode', targetSelectionModes.ALL, initialMode === targetSelectionModes.ALL, '全部没整理的', '<span class="bk-dlg-n" data-gen-total></span>')}
@@ -194,6 +195,10 @@ export function createSummaryTargetController({
                     gap.innerHTML = `<b>${floors}还没有摘要。</b>现在生成的话，这些楼之后不会再进${kindLabel}。`
                         + (openMissingBackfill ? ' <button type="button" class="bk-dlg-link" data-dlg-value="backfill">先去补写 ›</button>' : '');
                 }
+                // A request longer than the model can likely read would come back refused: said before it is sent.
+                const long = field('[data-gen-long]');
+                long.hidden = !info?.tooLong;
+                if (info?.tooLong) long.innerHTML = `<b>一次要发约 ${Number(info.tooLong).toLocaleString()} 字，可能超过模型一次能读的长度。</b>${config.batch ? '建议把每批的条数调小。' : '建议选下面的“分批”，每批少放几条。'}`;
                 const samples = info?.samples || [];
                 field('[data-gen-samples-box]').hidden = !samples.length;
                 field('[data-gen-samples-count]').textContent = samples.length ? `前 ${samples.length} 条` : '';

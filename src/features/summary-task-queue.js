@@ -27,6 +27,8 @@ export function createSummaryTaskQueue({
     rebuildMissingTask,
     // Task kinds whose result is not a summary draft (整理事实): the handler consumes the raw reply.
     resultHandlers = {},
+    // A failure as the user reads it (summary/request-overflow.js says what to change when the request was too long).
+    explainFailure = error => error?.message || String(error),
 } = {}) {
     let isQueueRunning = false;
     let runVersion = 0;
@@ -256,7 +258,7 @@ export function createSummaryTaskQueue({
                 } catch (error) {
                     if (!isCurrentRun()) return;
                     task.status = 'failed';
-                    task.error = error?.message || String(error);
+                    task.error = explainFailure(error, task);
                     task.errorCode = error?.code || '';
                     task.updatedAt = new Date().toISOString();
                     toastr.error(task.error, '任务失败');

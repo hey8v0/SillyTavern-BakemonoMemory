@@ -32,7 +32,7 @@ export async function runApiRequest({
                 if (controller.signal.aborted) return await aborted;
                 continue;
             }
-            if (!response.ok) throw new Error(formatError(response));
+            if (!response.ok) throw new Error(formatError(response, await errorDetail(response)));
             return await consume(response, controller.signal);
         }
     };
@@ -43,5 +43,22 @@ export async function runApiRequest({
         signal?.removeEventListener('abort', cancel);
         controller.signal.removeEventListener('abort', onAbort);
         controller.abort();
+    }
+}
+
+// What the provider said about a refused request, short: its error message, or the start of the body. Empty when there
+// is nothing to read.
+async function errorDetail(response) {
+    try {
+        const text = typeof response.text === 'function' ? String(await response.text()) : '';
+        let said = text;
+        try {
+            const data = JSON.parse(text);
+            const message = [data?.error?.message, data?.message, typeof data?.error === 'string' ? data.error : '', data?.detail].find(Boolean);
+            if (message) said = typeof message === 'string' ? message : JSON.stringify(message);
+        } catch { /* not JSON */ }
+        return said.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+    } catch {
+        return '';
     }
 }
