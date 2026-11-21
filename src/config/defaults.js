@@ -675,7 +675,7 @@ export function createDefaultConfiguration({
         keywordTriggers: '',
         excludeTags: 'thinking, think, reasoning',
         summaryTags: 'bakemono, summaryDraft',
-        queryMode: 'model-required',
+        queryMode: 'off',
         queryRewriteProvider: 'tavern',
         queryRewritePrompt: defaultVectorQueryRewritePrompt,
         queryCustomApi: {

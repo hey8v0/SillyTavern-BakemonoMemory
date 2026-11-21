@@ -91,7 +91,7 @@ test('in the local mode the keywords stay queries; an explicit search is still o
 });
 
 test('all the queries of a round go in one embedding request, and what was asked before costs nothing', async () => {
-    const calls = [];
+    const calls = [], attempts = [];
     const fetchImpl = async (_url, init) => {
         const { input } = JSON.parse(init.body);
         calls.push(input);
@@ -100,14 +100,16 @@ test('all the queries of a round go in one embedding request, and what was asked
     };
     const chat = chatOf('外公的事。', '码头的事。');
     chat.push({ is_user: true, mes: '我推开门。外公的铜钥匙还在吗？你一定记得。' });
-    const f = recallFixture(chat, { embeddingProvider: 'custom-openai', customApi: { baseUrl: 'https://example.test/v1', model: 'm' } }, { fetchImpl });
+    const f = recallFixture(chat, { embeddingProvider: 'custom-openai', customApi: { baseUrl: 'https://example.test/v1', model: 'm' } }, { fetchImpl, recordRequest: (_state, kind) => attempts.push(kind) });
     await f.service.buildVectorMemoryIndex();
     calls.length = 0;
+    attempts.length = 0;
     await f.recall();
     assert.equal(calls.length, 1, '一次请求');
     assert.ok(calls[0].length >= 3, '一次带上几句');
     await f.recall();
     assert.equal(calls.length, 1, 'the same line again: no request at all');
+    assert.deepEqual(attempts, ['embedding']);
 });
 
 test('a model rewrite keeps the user\'s own line as a query; when the rewrite fails the line is searched anyway', async () => {

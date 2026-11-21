@@ -135,6 +135,7 @@ export function createSummaryTaskQueue({
                     activeController = new AbortController();
                     const controller = activeController;
                     const rawResult = existingDraft ? existingDraft.content : await callGenerationModel({
+                        requestKind: task.kind,
                         prompt: task.prompt,
                         systemPrompt: task.systemPrompt,
                         signal: controller.signal,

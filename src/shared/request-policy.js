@@ -1,6 +1,6 @@
 export async function runApiRequest({
     url, init = {}, fetchImpl = globalThis.fetch, consume = response => response.json(),
-    signal, timeoutMs = 180000, retries = 1,
+    onDispatch, signal, timeoutMs = 180000, retries = 1,
     formatError = response => `接口请求失败：${response.status} ${response.statusText}`,
     wait = ms => new Promise(resolve => setTimeout(resolve, ms)),
 } = {}) {
@@ -20,6 +20,7 @@ export async function runApiRequest({
     const request = async () => {
         if (controller.signal.aborted) return await aborted;
         for (let attempt = 0; ; attempt++) {
+            onDispatch?.();
             const response = await fetchImpl(url, { ...init, signal: controller.signal });
             if (controller.signal.aborted) return await aborted;
             const retryAfter = response.headers?.get?.('retry-after');

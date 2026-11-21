@@ -34,6 +34,7 @@ function outputLimitError(usage, thinkingAdvice = '请在接口设置里打开�
 export function createGenerationClient({
     ensureState,
     generateRaw,
+    recordRequest = () => {},
     normalizeCustomApiBaseUrl,
     getCustomChatCompletionsUrl,
     defaultAutomation,
@@ -55,9 +56,10 @@ export function createGenerationClient({
         if (reason && reason !== 'stop') throw new Error(`模型未正常完成输出（${reason}），本次未作为完整摘要保存。`);
     }
 
-    async function callGenerationModel({ prompt, systemPrompt, signal, onUsage }) {
+    async function callGenerationModel({ prompt, systemPrompt, signal, onUsage, requestKind = 'story' }) {
         const state = ensureState();
         if (state.automation.apiProvider !== 'custom') {
+            recordRequest(state, requestKind);
             return await generateRaw({ prompt, systemPrompt });
         }
     
@@ -80,7 +82,7 @@ export function createGenerationClient({
             : config.disableThinking === false ? undefined
             : '插件没法替这个接口关闭思考，请在服务商那边关掉，或换一个不带思考的模型。';
         const send = extraParams => runApiRequest({ url: viaTavern ? tavernChatCompletionsUrl : getCustomChatCompletionsUrl(baseUrl), fetchImpl, signal,
-            timeoutMs: requestTimeoutMs,
+            onDispatch: () => recordRequest(state, requestKind), timeoutMs: requestTimeoutMs,
             formatError: (response, detail) => { refused = [400, 422].includes(response.status); return formatApiFailure(response, action, detail); },
             init: {
             method: 'POST',

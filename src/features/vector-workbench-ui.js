@@ -83,7 +83,7 @@ export function createVectorWorkbenchUi({
     function renderVectorSettingsSummary() {
         const val = selector => query(selector).val?.();
         const checked = selector => !!query(selector).prop?.('checked');
-        const queryMode = String(val('#bakemono-memory-vector-query-mode') || 'model-required');
+        const queryMode = String(val('#bakemono-memory-vector-query-mode') || 'off');
         const queryProvider = String(val('#bakemono-memory-vector-query-provider') || 'tavern');
         const embedCustom = val('#bakemono-memory-vector-provider') === 'custom-openai';
         query('#bakemono-memory-vector-set-amount').text(`摘要 ${val('#bakemono-memory-vector-max-summary-recall') ?? ''} · 正文 ${val('#bakemono-memory-vector-full-recall-count') ?? ''}`);

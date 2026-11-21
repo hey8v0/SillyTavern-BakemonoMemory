@@ -591,6 +591,7 @@ export function createSummaryDraftService({
         if(draft.metadata?.appendMode!=='missing_summary')summarySources?.validate(draft.metadata?.inputSnapshot,state);
         await runGeneration('正在重新生成草稿...', async () => {
             const result = normalizeGeneratedBakemono(await callGenerationModel({
+                requestKind: draft.kind,
                 prompt: draft.prompt,
                 systemPrompt: draft.kind === blockTypes.EPIC ? buildEpicSystemPrompt() : buildStageSystemPrompt(),
             }));

@@ -44,6 +44,7 @@ import { createSummaryTargetController } from './src/features/summary-target-con
 import { createSummaryTaskQueue } from './src/features/summary-task-queue.js';
 import { createContentConfigurationEvents } from './src/features/content-configuration-events.js';
 import { createAutomationConfigurationEvents } from './src/features/automation-configuration-events.js';
+import { createRequestCounts } from './src/features/request-counts.js';
 import { createVectorMemoryService } from './src/features/vector-memory-service.js';
 import { createVectorSettingsModel } from './src/features/vector-settings-model.js';
 import { createVectorWorkbenchUi } from './src/features/vector-workbench-ui.js';
@@ -1065,7 +1066,13 @@ const {
 const sendTrim = createSendTrim({ ensureState, getChat: () => chat, resolveSummaryGraph, summarySourceFloors, blockTypes,
     parseList, stripConfiguredTags, extractConfiguredTagBlocks });
 
+const requestCounts = createRequestCounts();
+function beginRequestRound(type) {
+    if (isChatReady()) requestCounts.begin(ensureState(), type);
+}
+
 const vectorMemoryService = createVectorMemoryService({
+    recordRequest: requestCounts.record,
     getSkippedFloorIds: () => sendTrim.skippedIds(),
     // 剧情事实: the cards the recent conversation names lend every name they go by to the recall keywords.
     getFactsHints: (state, text, options) => factsRecallHints(factsController.facts(state), text, options),
@@ -1416,6 +1423,7 @@ const promptInspector = createPromptInspector({
 });
 
 const overviewTokenManifest = createOverviewTokenManifest({
+    describeRequests: requestCounts.describe,
     query: $,
     getSendTrimSummary: (sources, state) => sendTrim.summary(sources, state),
     getState: ensureState,
@@ -1617,6 +1625,7 @@ const {
 } = workbenchPageOverviews;
 
 const generationClient = createGenerationClient({
+    recordRequest: requestCounts.record,
     formatApiFailure,
     query: $,
     ensureState,
@@ -2385,6 +2394,7 @@ async function init() {
     }
     await initWorkbench();
     globalThis.bakemonoMemoryRecallInterceptor = async (coreChat, contextSize, abort, type) => {
+        beginRequestRound(type);
         try { sendTrim.trim(coreChat, type); }
         catch (error) { console.warn('[BakemonoMemory] send trim failed; the chat goes as it is', error); }
         return vectorAutoRecall.intercept(coreChat, contextSize, abort, type);

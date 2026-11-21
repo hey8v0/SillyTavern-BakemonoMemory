@@ -816,7 +816,7 @@ test('active global config follows existing chats without removing the tavern mo
     assert.match(presetRegistrySource, /function syncGlobalActiveConfigToState\(/);
     assert.match(source, /syncGlobalActiveConfigToState\(initialState, \{ force: true \}\)/);
     assert.match(source, /syncConfig:\s*state => \{/);
-    assert.match(generationClientSource, /if \(state\.automation\.apiProvider !== 'custom'\) \{\s*return await generateRaw/s);
+    assert.match(generationClientSource, /if \(state\.automation\.apiProvider !== 'custom'\) \{\s*recordRequest\(state, requestKind\);\s*return await generateRaw/s);
     assert.match(configSyncSource, /state\.activeConfigSignature = getActiveConfigSignature/);
 });
 

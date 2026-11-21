@@ -28,6 +28,7 @@ export function createVectorMemoryService({
     getCustomChatCompletionsUrl,
     extractChatCompletionText,
     rewriteWithTavern,
+    recordRequest = () => {},
     parseVectorQueryRewritePayload,
     getClippedVectorText,
     computeHybridRerankScore,
@@ -239,6 +240,7 @@ export function createVectorMemoryService({
                 throw new Error('查询重写需要聊天模型。请填写改写模型；接口地址和密钥可留空复用嵌入向量接口。');
             }
             const data = await runApiRequest({ url: getCustomChatCompletionsUrl(baseUrl), fetchImpl, timeoutMs: 120000, signal: options.signal,
+                onDispatch: () => recordRequest(state, 'rewrite'),
                 formatError: response => formatApiFailure(response, '查询重写请求失败'), init: {
                 method: 'POST',
                 headers: {
@@ -267,6 +269,7 @@ export function createVectorMemoryService({
             }
             return content;
         }
+        recordRequest(state, 'rewrite');
         return await rewriteWithTavern({ prompt, systemPrompt, signal: options.signal });
     }
     
@@ -732,6 +735,7 @@ export function createVectorMemoryService({
         }
         const cap = maxDimensions(state.vectorMemory), endpoint = baseUrl + '|' + model;
         const request = dimensions => runApiRequest({ url: getCustomEmbeddingsUrl(baseUrl), fetchImpl,
+            onDispatch: () => recordRequest(state, 'embedding'),
             signal: options.signal, timeoutMs: 120000,
             formatError: response => formatApiFailure(response, '嵌入向量接口请求失败'),
             init: {
